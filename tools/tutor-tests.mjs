@@ -105,6 +105,8 @@ const sandbox = {
   // parts of the file this harness deliberately does not evaluate.
   pages: [], annotations: [], wsEpoch: 0, view: '', currentDocId: '', pdfDoc: null,
   STORAGE_DIR: 'tutor-worksheets', ADMIN_DISPLAY_NAME: 'Mr Chung',
+  // The usage door asks who is signed in; the teacher is never recorded.
+  ADMIN_EMAIL: 'chungzhikai@gmail.com',
   // The size control and auto-save reach these at CALL time.
   selectedId: null, editingId: null, tool: 'pen', strokeW: 3, fontSize: 16,
   dirty: false, docName: 'Worksheet', currentUser: null, wsKey: {},
@@ -1243,6 +1245,144 @@ ok('a gate that throws is not a gate nobody can get past',
    /onboardRequire\(user\)\.catch[\s\S]{0,200}onboardFinish\(\)/.test(html));
 ok('the teacher is not asked, and does not get a row',
    /if \(isAdmin\(user\)\) return;/.test(html));
+
+/* =====================================================================
+   N. STUDENT USAGE — who did what, and how much
+   ===================================================================== */
+section('Student usage');
+
+/* Every event a call site can raise must have a LABEL. A key with no entry
+   prints its own internal name — "practiceRight" — into a panel a teacher
+   reads, which looks like a fault rather than like a missing label. */
+const usageKeys = [...html.matchAll(/usageNote\('([a-z]+)'/g)].map(m => m[1]);
+ok('every event a call site raises is one the panel can name',
+   usageKeys.length >= 8 && usageKeys.every(k => !!S.USAGE_EVENTS[k]),
+   'unnamed: ' + usageKeys.filter(k => !S.USAGE_EVENTS[k]).join(', '));
+ok('…and every named event says which counter it moves',
+   Object.keys(S.USAGE_EVENTS).every(k => !!S.USAGE_EVENTS[k].count && !!S.USAGE_EVENTS[k].label));
+eq('an event nobody named still reads as words, not as a blank',
+   S.usageLabel('whatever'), 'whatever');
+
+/* THE ONE DOOR. A second writer is a second place to forget the two rules
+   below, and a path that logs its own way shows up in no total. */
+ok('usageNote and usageAdd are the only things that move a counter',
+   (html.match(/_usage\.inc\[field\] = /g) || []).length === 2);
+ok('…and usageFlush is the only thing that writes one',
+   (html.match(/'tutorUsage\.'/g) || []).length === 1 &&
+   (html.match(/tutorUsage\./g) || []).length === 3);
+
+/* A student's device runs all of this, so what leaves it matters. */
+function usageRun(user, fn) {
+  const writes = [];
+  S.db = { collection: () => ({ doc: () => ({ set: (p, o) => { writes.push({ p, o }); return { catch: () => {} }; } }) }) };
+  S.firebase = { firestore: { FieldValue: {
+    serverTimestamp: () => 'STAMP',
+    increment: n => ({ inc: n })
+  } } };
+  S.usageStart(user);
+  fn();
+  S.usageFlush(true);
+  S.db = null;
+  return writes;
+}
+const student = { uid: 'u1', email: 'kid@example.com' };
+const teacher = { uid: 'admin', email: S.ADMIN_EMAIL };
+
+const w = usageRun(student, () => {
+  S.usageNote('mark', '  Term 1   Paper\n2  ');
+  S.usageAdd('questions', 18);
+  S.usageAdd('correct', 11);
+});
+eq('a run of work is ONE write', w.length, 1);
+eq('…and it is a MERGE, never a set', w[0].o && w[0].o.merge, true);
+eq('a counter goes up by an INCREMENT, not by a number this tab worked out',
+   w[0].p['tutorUsage.questions'], { inc: 18 });
+eq('…so two tabs on one account cannot overwrite each other',
+   w[0].p['tutorUsage.marked'], { inc: 1 });
+eq('the day is counted once, whatever else happened',
+   w[0].p['tutorUsage.activeDays'], { inc: 1 });
+eq('the sign-in stamp goes with it', w[0].p.tutorLastSeen, 'STAMP');
+/* A worksheet's own NAME is the most that ever leaves the device. Not a
+   question, not an answer, not a mark on a particular question. */
+eq('what a line records is folded to one line and capped',
+   w[0].p.tutorRecent[0].d, 'Term 1 Paper 2');
+const long = usageRun(student, () => { S.usageNote('chat', 'x'.repeat(400)); });
+eq('a long detail is cut rather than written whole', long[0].p.tutorRecent[0].d.length, 80);
+
+const many = usageRun(student, () => {
+  for (let i = 0; i < S.USAGE_RECENT_MAX + 12; i++) S.usageNote('hint', 'Q' + i);
+});
+eq('the recent list is capped', many[0].p.tutorRecent.length, S.USAGE_RECENT_MAX);
+eq('…and it is the LAST ones that are kept',
+   many[0].p.tutorRecent[many[0].p.tutorRecent.length - 1].d,
+   'Q' + (S.USAGE_RECENT_MAX + 11));
+eq('…while the counter still counts every one of them',
+   many[0].p['tutorUsage.hints'], { inc: S.USAGE_RECENT_MAX + 12 });
+
+/* The teacher's own list is a list of the people they teach. Their own use
+   of the app is not usage to report, and recording it would put the teacher
+   at the top of their own roster every single day. */
+const t = usageRun(teacher, () => { S.usageNote('mark', 'anything'); S.usageAdd('questions', 9); });
+eq('the teacher is not recorded', t.length, 0);
+
+/* Signing out FLUSHES what is still in hand — the last few minutes of a
+   lesson must not die with the tab — and then records nothing more. Writing
+   anything after it would file one student's work under whoever signs in
+   next on a shared iPad. */
+const bye = (() => {
+  const writes = [];
+  S.db = { collection: () => ({ doc: () => ({ set: p => { writes.push(p); return { catch: () => {} }; } }) }) };
+  S.firebase = { firestore: { FieldValue: { serverTimestamp: () => 'STAMP', increment: n => ({ inc: n }) } } };
+  S.usageStart(student);
+  S.usageNote('chat');
+  S.usageStop();
+  const afterStop = writes.length;
+  S.usageNote('chat');
+  S.usageAdd('questions', 5);
+  S.usageFlush(true);
+  S.db = null;
+  return { afterStop, total: writes.length };
+})();
+eq('signing out files what is still in hand', bye.afterStop, 1);
+eq('…and nothing is recorded once the account has gone', bye.total, 1);
+
+const nothing = usageRun(student, () => {});
+eq('a session with nothing in it writes nothing at all', nothing.length, 0);
+
+const zero = usageRun(student, () => { S.usageAdd('questions', 0); S.usageAdd('correct', NaN); });
+eq('a count of nothing is not a count', zero.length, 0);
+
+/* ---- What is read back out ---- */
+const fresh = S.usageOf({});
+eq('an account from before any of this reads as zeros, never as nothing',
+   [fresh.questions, fresh.hints, fresh.activeDays], [0, 0, 0]);
+eq('…and says it has done nothing', fresh.any, false);
+/* Signing in and doing nothing is its own answer, and the panel says it in
+   words. Folded into "any" it would show a grid of twelve zeros instead. */
+eq('signing in is not, by itself, doing something',
+   S.usageOf({ tutorUsage: { sessions: 9 } }).any, false);
+eq('…but one worksheet is', S.usageOf({ tutorUsage: { worksheets: 1 } }).any, true);
+eq('…and so is a mistake practised',
+   S.usageOf({ tutorUsage: { practice: 1 } }).any, true);
+
+/* A blank was not an attempt. Counting it as one reports a child who ran
+   out of time as a child who got it wrong — which is the same rule the
+   marking, the report and the practice retry all carry. */
+const acc = S.usageOf({ tutorUsage: { correct: 6, partial: 0, wrong: 2, blank: 12 } });
+eq('accuracy is over what was ATTEMPTED', acc.attempted, 8);
+eq('…so a page left blank never counts against them', S.usageAccuracy(acc), 75);
+eq('a partial counts half', S.usageAccuracy(S.usageOf({ tutorUsage: { correct: 1, partial: 1 } })), 75);
+eq('nothing attempted has no accuracy at all',
+   S.usageAccuracy(S.usageOf({ tutorUsage: { hints: 4 } })), null);
+
+const feed = S.usageRecent({ tutorRecent: [{ t: 10, k: 'hint' }, { t: 90, k: 'chat' }, { t: 50, k: 'mark' }] });
+eq('the feed reads newest first', feed.map(e => e.k), ['chat', 'mark', 'hint']);
+eq('a feed that is not a list is not a crash', S.usageRecent({ tutorRecent: 'oops' }).length, 0);
+
+/* The day key is the student's own evening, not a timezone's. */
+eq('the day is a LOCAL day', S.usageDayKey(new Date(2026, 0, 5, 23, 30)), '2026-01-05');
+
+ok('the panel it opens exists', /id="personModal"/.test(html) && /id="personBody"/.test(html));
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'
