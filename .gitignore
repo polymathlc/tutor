@@ -1,0 +1,9 @@
+# The browser-driven checks (tools/text-caret-check.mjs) install
+# playwright-core on demand. It is a tool you reach for, not part of the app —
+# this repo is a static file — so what it drags in stays out of the history.
+node_modules/
+package.json
+package-lock.json
+
+# Scratch probes written while investigating a measurement by hand.
+tools/_*.mjs

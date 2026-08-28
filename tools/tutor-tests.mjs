@@ -66,6 +66,14 @@ const SRC_ANN    = between('/* Unrotated frame of an x/y/w/h annotation.',
                            '/* ================= Undo / redo ================= */', 'the annotation shapes');
 const SRC_KEY    = between(BAR + '\n   🔑 THE ANSWER KEY', BAR + '\n   THE STUDY BUDDY', 'the answer key');
 const SRC_BUDDY  = between('var hints = [];', BAR + '\n   THE SCREENS', 'the buddy');
+const SRC_SIZE   = between('/* ================= HOW BIG THE MARK IS =================',
+                           '/* Stroke eraser: drag across ink', 'the size control');
+const SRC_BODY   = between('/* THE ONE PLACE A SAVED BODY BECOMES',
+                           'async function openWorksheet', 'the body reader');
+const SRC_STAMP  = between('/* A Firestore timestamp, a Date, a number or nothing',
+                           'async function deleteWorksheet', 'the timestamp reader');
+const SRC_SAVE   = between('/* ================= AUTO-SAVE =================',
+                           'async function loadWorksheets', 'auto-save');
 
 /* ---- A sandbox with just enough world to evaluate them ---- */
 const noop = () => {};
@@ -76,21 +84,39 @@ const domStub = {
                           appendChild: noop, setAttribute: noop, addEventListener: noop }),
   addEventListener: noop
 };
+/* A real map, because the local backup's whole job is what it keeps and what
+   it clears — a stub that swallows both would agree with any behaviour. */
+const store = new Map();
+const localStorageStub = {
+  getItem: k => (store.has(k) ? store.get(k) : null),
+  setItem: (k, v) => { store.set(k, String(v)); },
+  removeItem: k => { store.delete(k); }
+};
 const sandbox = {
   console,
   document: domStub,
-  window: {},
-  localStorage: { getItem: () => '', setItem: noop },
+  window: { addEventListener: noop, confirm: () => false },
+  localStorage: localStorageStub,
   db: null, auth: null, storage: null, firebase: null,
   // The answer-key block reads these at CALL time; they are declared in
   // parts of the file this harness deliberately does not evaluate.
   pages: [], annotations: [], wsEpoch: 0, view: '', currentDocId: '', pdfDoc: null,
   STORAGE_DIR: 'tutor-worksheets', ADMIN_DISPLAY_NAME: 'Mr Chung',
+  // The size control and auto-save reach these at CALL time.
+  selectedId: null, editingId: null, tool: 'pen', strokeW: 3, fontSize: 16,
+  dirty: false, docName: 'Worksheet', currentUser: null, wsKey: {},
+  renderAllOverlays: noop, pushUndo: noop, setDirty: noop, toast: noop,
+  applyKeyVisibility: noop, renderHints: noop, renderMarking: noop, renderChat: noop,
+  performSave: noop, round2: v => Math.round(v * 100) / 100,
+  worksheetBody: () => '{}',
+  bodyByteLength: j => String(j).length,
   setTimeout, clearTimeout, Blob: class { constructor(p) { this.size = String(p).length; } },
   Math, JSON, Date, String, Number, Array, Object, parseInt, parseFloat, isNaN, Promise
 };
 vm.createContext(sandbox);
-vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY, sandbox, { filename: 'index.html' });
+vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
+                '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE,
+                sandbox, { filename: 'index.html' });
 const S = sandbox;
 
 /* =====================================================================
@@ -626,6 +652,192 @@ ok('the speak tool is in the toolbar, hidden until it is known to work',
    /data-tool="speak" id="speakToolBtn" hidden/.test(html));
 ok('…and both mics are painted from one function',
    /function renderMicBtns/.test(html) && /speakToolBtn/.test(html) && /chatMicBtn/.test(html));
+
+
+
+/* =====================================================================
+   HOW BIG THE MARK IS
+   One control for two numbers. Every way it goes wrong is quiet: the wrong
+   number shown against the selection, the pen reset by a trip through the
+   text tool, a highlighter tripled every time it is touched.
+   ===================================================================== */
+section('The size control');
+
+S.tool = 'pen'; S.selectedId = null; S.editingId = null; S.annotations = [];
+eq('a drawing tool sizes a STROKE', S.annSizeKind(), 'stroke');
+S.tool = 'text';
+eq('the 🅣 sizes a FONT', S.annSizeKind(), 'font');
+S.tool = 'speak';
+eq('…and so does the 🎤, because it writes a text box too', S.annSizeKind(), 'font');
+
+/* THE TWO NUMBERS ARE REMEMBERED APART. Sharing one is a pen that comes back
+   from the text tool 16px thick, which reads as the app forgetting. */
+S.tool = 'pen'; S.strokeW = 3; S.fontSize = 16;
+S.setAnnSize(9);
+eq('setting the size with a pen in hand moves the pen', S.strokeW, 9);
+eq('…and leaves the text size alone', S.fontSize, 16);
+S.tool = 'text';
+S.setAnnSize(28);
+eq('setting it with the 🅣 in hand moves the text size', S.fontSize, 28);
+eq('…and leaves the pen alone', S.strokeW, 9);
+S.tool = 'pen';
+eq('so going pen → text → pen finds the pen where it was left', S.annSizeValue(), 9);
+
+/* IT DESCRIBES THE SELECTION FIRST. A control that only ever described the
+   pen would leave a student redrawing something to resize it. */
+S.annotations = [{ id: 'a1', type: 'text', page: 1, fontSize: 40, h: 60 },
+                 { id: 'a2', type: 'pen', page: 1, width: 5 },
+                 { id: 'a3', type: 'highlight', page: 1, width: 27 }];
+S.selectedId = 'a1';
+eq('a selected text box shows ITS size, not the pen', S.annSizeKind(), 'font');
+eq('…and its own number', S.annSizeValue(), 40);
+S.selectedId = 'a2';
+eq('a selected stroke shows its own width', S.annSizeValue(), 5);
+
+/* A HIGHLIGHTER'S WIDTH IS DERIVED, so the control shows the PEN number it
+   was derived from. Showing 27 and then setting it back to 3 would silently
+   triple it — and doing that twice would take it to 81. */
+S.selectedId = 'a3'; S.strokeW = 9;
+eq('a selected highlighter shows the pen number behind it', S.annSizeValue(), 9);
+S.setAnnSize(4);
+eq('…and setting 4 gives it the highlighter width for 4', S.annotations[2].width, 12);
+S.setAnnSize(9);
+eq('…and 9 gives 27, not 81', S.annotations[2].width, 27);
+
+/* A BOX BEING TYPED IN IS NOT SOMETHING TO RESIZE out from under the caret. */
+S.selectedId = 'a1'; S.editingId = 'a1'; S.tool = 'pen';
+eq('the box being typed in is not the control\'s target', S.annSizeTarget(), null);
+eq('…so the control falls back to the tool in hand', S.annSizeKind(), 'stroke');
+S.editingId = null;
+
+/* THE CLAMP. A typed box can hold anything at all. */
+S.selectedId = null; S.tool = 'pen';
+S.setAnnSize(999);   eq('a pen size past the top clamps', S.strokeW, S.ANN_SIZE_KINDS.stroke.max);
+S.setAnnSize(0);     eq('…and below the bottom', S.strokeW, S.ANN_SIZE_KINDS.stroke.min);
+S.setAnnSize(-40);   eq('a negative size never gets through', S.strokeW, S.ANN_SIZE_KINDS.stroke.min);
+S.strokeW = 7;
+S.setAnnSize('abc'); eq('nonsense leaves the size where it was', S.strokeW, 7);
+S.setAnnSize(4.6);   eq('a fraction rounds rather than drawing at 4.6', S.strokeW, 5);
+S.tool = 'text';
+S.setAnnSize(4);     eq('a font clamps to its OWN floor, not the pen\'s', S.fontSize, S.ANN_SIZE_KINDS.font.min);
+ok('a font may be bigger than any pen', S.ANN_SIZE_KINDS.font.max > S.ANN_SIZE_KINDS.stroke.max);
+
+/* A TEXT BOX GROWS WITH ITS SIZE. A size put up on a box that does not grow
+   clips the answer the marking then never sees. */
+S.tool = 'select'; S.selectedId = 'a1'; S.annotations[0].fontSize = 12; S.annotations[0].h = 21;
+S.setAnnSize(48);
+ok('a text box grows when its size does', S.annotations[0].h >= 48 * 1.8,
+   'h is ' + S.annotations[0].h);
+
+ok('the highlighter draws through the ONE width function',
+   /a\.width = highlightWidthFor\(strokeW\)/.test(html));
+ok('the slider is gone and the arrows and the box are there',
+   !/id="strokeRange"/.test(html) &&
+   /id="sizeDown"/.test(html) && /id="sizeUp"/.test(html) &&
+   /id="sizeInput"[^>]*type="number"|type="number" id="sizeInput"/.test(html));
+ok('…and the control says which size it is changing',
+   /id="sizeLabel"/.test(html) && /label\.textContent = k\.label/.test(html));
+/* Sync from the ONE repaint every selection change already goes through:
+   hooking the dozen places that set `selectedId` is how one gets missed and
+   the control goes stale on exactly one route. */
+ok('the control is repainted from renderAllOverlays, not per call site',
+   /function renderAllOverlays\(\) \{ pages\.forEach\(renderOverlay\); syncSizeCtl\(\); \}/.test(html));
+ok('…and from setTool, because the meaning changes with the tool',
+   /renderMicBtns\(\);\s*\n\s*syncSizeCtl\(\);/.test(html));
+/* Writing the value back mid-keystroke is what turns "24" into "2". */
+ok('the box is never written to while it is being typed in',
+   /document\.activeElement !== input/.test(html));
+
+/* =====================================================================
+   AUTO-SAVE
+   The work on the page IS the lesson, and every failure here is a student
+   who did the work and has nothing to show for it.
+   ===================================================================== */
+section('Auto-save');
+
+S.saveFails = 0;
+eq('the ordinary wait is short', S.autoSaveDelay(), S.AUTOSAVE_DELAY);
+S.saveFails = 1;
+ok('a failure waits longer', S.autoSaveDelay() > S.AUTOSAVE_DELAY);
+S.saveFails = 2;
+ok('…and longer again', S.autoSaveDelay() > S.AUTOSAVE_DELAY * 2);
+S.saveFails = 40;
+eq('…but never past the ceiling, or a phone spends the lesson retrying',
+   S.autoSaveDelay(), S.AUTOSAVE_MAX_DELAY);
+ok('a failed save RE-ARMS the timer rather than giving up',
+   /scheduleAutoSave\(\);[\s\S]{0,400}?\} catch|catch \(e\) \{[\s\S]{0,700}?scheduleAutoSave\(\);/.test(html));
+ok('…and keeps what it could not send on the device',
+   /catch \(e\) \{[\s\S]{0,500}?localBackupWrite\(currentDocId\)/.test(html));
+ok('a save that lands clears that copy',
+   /dirty = false;[\s\S]{0,200}?localBackupClear\(currentDocId\)/.test(html));
+
+/* BOTH EVENTS. Safari on iOS very often gives a swiped-away tab `pagehide`
+   and nothing else; a desktop tab switched away gets `visibilitychange` long
+   before it is closed. */
+ok('the save is flushed on the way out, by both events',
+   /visibilitychange[\s\S]{0,200}?flushSave/.test(html) &&
+   /addEventListener\('pagehide', flushSave\)/.test(html));
+
+/* ---- The copy on the device ---- */
+store.clear();
+S.docName = 'Fractions';
+S.worksheetBody = () => JSON.stringify({ annotations: [{ id: 'x' }] });
+S.localBackupWrite('doc1');
+ok('a refused save leaves a copy on the device', !!S.localBackupRead('doc1'));
+S.localBackupClear('doc1');
+eq('…and a save that lands takes it away', S.localBackupRead('doc1'), null);
+
+/* localStorage is a few megabytes for the WHOLE origin. A body past the cap
+   is dropped rather than allowed to evict everything else in there. */
+S.worksheetBody = () => 'x'.repeat(S.LOCAL_BACKUP_MAX + 1);
+S.localBackupWrite('big');
+eq('a body too big for localStorage is not written', S.localBackupRead('big'), null);
+S.worksheetBody = () => JSON.stringify({ annotations: [] });
+
+/* IT IS OFFERED, NEVER APPLIED — and only when it is genuinely ahead of what
+   the server holds. Quietly overwriting newer server work with whatever this
+   browser was holding is a worse bug than the one it rescues. */
+store.clear();
+S.currentDocId = 'doc2';
+S.localBackupWrite('doc2');
+var kept = JSON.parse(store.get('polymath.tutor.unsaved:doc2'));
+S.offerLocalBackup('doc2', kept.at + 60000);      // the server is NEWER
+eq('a backup older than the server is dropped without asking',
+   S.localBackupRead('doc2'), null);
+
+/* A timestamp arrives as a Firestore stamp, a Date, a number or nothing,
+   depending on whether the document has been round-tripped yet. */
+eq('a Firestore timestamp reads', S.stampOf({ toMillis: () => 1234 }), 1234);
+eq('a seconds-only stamp reads', S.stampOf({ seconds: 2 }), 2000);
+eq('a Date reads', S.stampOf(new Date(5000)), 5000);
+eq('a number reads', S.stampOf(7), 7);
+eq('nothing reads as 0, so the backup is OFFERED rather than assumed stale',
+   S.stampOf(undefined), 0);
+
+/* ---- One door from a saved body to the open worksheet ---- */
+S.annotations = []; S.hints = []; S.chat = [];
+S.applyWorksheetBody({ annotations: [{ id: 'z' }], hints: [{ id: 'h' }],
+                       marking: { items: [1, 2], runAt: 9 }, chat: [{ t: 'hi' }],
+                       key: { pages: [3], rows: [{ n: '1' }], shared: false } }, {});
+eq('the body puts the ink back', S.annotations.length, 1);
+eq('…the hints', S.hints.length, 1);
+eq('…the marking', S.marking.items.length, 2);
+eq('…and the answer key', S.wsKey.pages, [3]);
+ok('a body with nothing in it does not throw',
+   (function () { try { S.applyWorksheetBody({}, {}); return true; } catch (e) { return false; } })());
+eq('…and leaves no ink behind from the last one', S.annotations.length, 0);
+ok('opening a worksheet and putting a rescued copy back share ONE reader',
+   (html.match(/applyWorksheetBody\(/g) || []).length >= 2);
+
+/* The status is three states, because a student acts on them differently. */
+ok('"not saved" is its own state, not the same word as "nothing to save"',
+   /'⚠ Not saved'/.test(html) && /saveBad/.test(html));
+
+ok('the logo is in the top-left corner, with a fallback that needs no network',
+   /class="brandLogo"/.test(html) && /onerror=/.test(html) &&
+   /polymath-logo-sticker/.test(html));
+ok('…and it is the tab and home-screen icon too',
+   /rel="icon"/.test(html) && /rel="apple-touch-icon"/.test(html));
 
 
 console.log('\n' + (failures

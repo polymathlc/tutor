@@ -370,7 +370,295 @@ THE TEACHER SETS`), plus 📌 **Set for my students** on a worksheet card and th
   disappeared half way through, with the marking on it, would be work taken
   away rather than an assignment withdrawn.
 
+## 📏 How big the mark is (v1.2.0)
+
+`ANN_SIZE_KINDS` / `ANN_FONT_TOOLS` / `annSizeTarget` / `annSizeKind` /
+`annSizeValue` / `annSizeClamp` / `highlightWidthFor` / **`setAnnSize`** /
+`annFitTextHeight` / `nudgeAnnSize` / `syncSizeCtl` (search `HOW BIG THE MARK
+IS`), plus `#sizeGroup` in the toolbar and the `.size*` CSS.
+
+The thickness was a `<input type="range">` that only ever moved the PEN, and
+the text size was a constant nobody could reach: a student who wanted bigger
+handwriting had no control at all, and one who wanted 24pt could only aim a
+slider at it.
+
+- **ONE control for two numbers, because to a student it is one question.** A
+  drawing tool's size is a stroke WIDTH and the 🅣 / 🎤's is a FONT size —
+  different units, different sensible ranges, and no phone toolbar has room
+  for two spinners of which one is always useless. So it changes meaning with
+  what is in hand and **says which** (`#sizeLabel` reads "Pen" or "Text").
+- **IT DESCRIBES THE SELECTION FIRST.** Tap a text box written earlier and it
+  shows THAT box's size, and typing a new number changes that box — the same
+  rule `setColor` already follows, and without it a student has to delete
+  something and redraw it to resize it.
+- **The two numbers are remembered SEPARATELY** (`strokeW`, `fontSize`), so
+  pen → text → pen does not come back with a 16px-thick pen, which reads as
+  the app forgetting.
+- **A HIGHLIGHTER'S WIDTH IS DERIVED** (`highlightWidthFor`, the ONE place
+  that relationship lives — it is marking a line of print, not writing on
+  it), so the control shows the PEN number behind it rather than the derived
+  width. Showing 27 and setting it back to 3 would silently triple it, and
+  doing that twice would reach 81.
+- **A box being TYPED IN is never the target.** `annSizeTarget` refuses
+  `selectedId === editingId`: resizing a box out from under the caret
+  mid-word is not something anybody asked for.
+- **`setAnnSize` is the ONE writer** — the arrows, the typed box, `[` / `]`
+  and the spinner keys all land there, so the clamp, the restyle and the
+  repaint cannot drift apart.
+- **A text box GROWS with its size** (`annFitTextHeight`, re-measured off the
+  live element rather than scaled, because how many lines the words take at
+  this width is not a thing arithmetic knows). A size put up on a box that
+  does not grow clips the answer the marking then never sees. It never
+  SHRINKS a box the student dragged taller — that was their decision.
+- **`syncSizeCtl` is painted from `renderAllOverlays`**, the one function
+  every selection change already goes through. Hooking the dozen places that
+  set `selectedId` is how one of them gets missed and the control goes stale
+  on exactly one route — the reasoning Ans Key's `syncLineStyleCtl` carries.
+  It **never writes the box while it is being typed in**, or "24" becomes "2"
+  the moment the 2 is pressed, and an EMPTY box is left alone until `blur`
+  rather than clamped to the minimum, which is what would stop anybody
+  clearing it to type a number at all.
+- On a phone the LABEL gives way and the arrows and the box both stay: the
+  lit tool button already says which size this is, and the arrows are what
+  make it usable with a thumb.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
+## 💾 Auto-save — and what happens when it FAILS (v1.2.0)
+
+`AUTOSAVE_DELAY` / `AUTOSAVE_MAX_DELAY` / `autoSaveDelay` / `scheduleAutoSave`
+/ `setSaveState` / `savingNow` / `saveAgain` / `saveFails` / `flushSave` /
+`localBackupWrite` / `localBackupRead` / `localBackupClear` /
+**`offerLocalBackup`** / `stampOf` / **`applyWorksheetBody`** (search
+`AUTO-SAVE`).
+
+Auto-save existed and worked — **until it didn't**. `performSave`'s catch put
+the button back to "Save" and stopped: `dirty` stayed true, nothing re-armed
+the timer, and the next auto-save waited for the next stroke. So one dropped
+connection mid-lesson left the tab on its own for the rest of it, silently,
+with a button reading the same word it reads when there is nothing to save.
+
+- **A FAILED SAVE RETRIES**, with the wait doubling to `AUTOSAVE_MAX_DELAY` —
+  a tab that cannot reach the server must not spend a lesson retrying every
+  two seconds and flattening a phone, and it must not stop either.
+- **WHAT IT COULD NOT SEND IS KEPT ON THE DEVICE.** That is the whole
+  difference between "auto-save" and "your work is safe": before this, a
+  refused write left the only copy in a tab the student was about to close.
+  It is written on failure and on the way out, and **cleared the moment a
+  save lands** — a rescue, never a cache, so it can never quietly serve stale
+  work in place of the real thing.
+- **IT IS OFFERED, NEVER APPLIED** (`offerLocalBackup`). The server's copy may
+  be NEWER — written from another device or another tab — and overwriting
+  that with whatever this browser was holding is a worse bug than the one
+  this rescues. So it only speaks up when it is genuinely ahead, and then it
+  asks. `stampOf` reads a Firestore stamp, a `Date`, a number or nothing, and
+  **an unreadable one comes back 0 so the backup is offered rather than
+  assumed stale**: the student is the one who knows.
+- **`LOCAL_BACKUP_MAX` bounds it.** localStorage is a few megabytes for the
+  whole origin and a worksheet heavy enough to overflow into Storage can be
+  most of that alone; a body past the cap is dropped rather than allowed to
+  evict everything else in there. The retry is still the real rescue.
+- **`applyWorksheetBody` is the ONE place a saved body becomes the open
+  worksheet.** Opening one and putting a rescued copy back are the same job,
+  and a second copy of that list is one that forgets a field the day another
+  is added to `worksheetBody`. It sets the body-derived state and **nothing
+  else** — not `currentDocId`, not `bodyOverflow` — because the rescue is
+  putting work back into a worksheet that is already open.
+- **BOTH `visibilitychange` AND `pagehide`**, because neither is enough:
+  Safari on iOS very often gives a swiped-away tab `pagehide` and nothing
+  else, and a desktop tab switched away gets `visibilitychange` long before
+  it is closed.
+- **`savingNow` / `saveAgain`**: one write in flight at a time. Auto-save, a
+  hidden tab and a pressed button can all fire within a second, and two
+  writes of the same body racing is how the older one lands last.
+- **The status is three states, not one word.** "Save" used to mean *nothing
+  to save*, *not saved yet* and *the save just failed* alike — three things a
+  student would act on differently. `setSaveState` is the ONE writer, and
+  `setDirty` will not paint a plain "Save" over a ⚠ that is still true.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
+## ✒️ The caret lands on the I-beam (v1.1.2)
+
+`ANN_TEXT_PAD_X` / `ANN_TEXT_PAD_Y` / `ANN_TEXT_LINE` / `ANN_TEXT_FONT` /
+`ANN_CARET_PROBE` / **`textCaretRect`** / `textCaretModel` /
+**`textCaretDelta`** / `startTextBox` / `textBoxWidth` (search `WHERE THE
+CARET REALLY IS`), and the `a.type === 'text'` branch of `drawAnnsOnCtx`.
+
+A text box is an HTML `div` inside a `foreignObject`, so **the caret is not at
+the box's x/y**: it sits inside the padding, and it is a whole line box tall.
+The I-beam's hot spot is its **middle**, not its top. `startTextBox` dropped
+the box's top-left on the pointer, so the first letter appeared a padding to
+the right and half a line **below** where the student was pointing — about
+thirteen pixels at 16px, which is exactly the "that is not where I clicked"
+that was reported.
+
+- **THE CARET IS MEASURED, NEVER MODELLED — and the difference is not
+  theoretical.** v1.1.1 modelled it as *content-box top + line-height / 2*,
+  which is wrong on EVERY placement by the same small amount, always upwards:
+  **Blink FLOORS the half-leading** rather than splitting it. At 16px on a
+  21.6px line the exact half-leading is 2.3px and the caret box starts 2.0px
+  down, so the modelled centre sat **0.297 page units** low — and 0.95 at
+  34px. No constant fixes that, because the flooring depends on the font's own
+  metrics at the size and scale it is laid out at, which only the browser
+  knows.
+  **`textCaretRect` asks the browser instead.** A zero-width space gives the
+  first line box a real fragment, the range round it is measured, and the
+  probe comes straight back out — it is zero-width, it joins a line box that
+  is there either way, and it is gone before the box is focused, so it can
+  never be typed over or saved. It is written as `'\u200B'` rather than as the
+  character, because an invisible literal is one a later edit silently drops.
+- **`textCaretModel` is the FALLBACK, for a browser that hands back no rect at
+  all**, and it **REFUSES rather than guess** when the line-height will not
+  parse. `line-height: normal` computes to the string, and the real normal
+  line box is nothing like `fontSize * ANN_TEXT_LINE`. Measured, guessing with
+  that multiplier lands in the **same place** as refusing (16px: −2.297
+  guessed against −2.313 refused; identical at 34 and 48), so the guess buys
+  nothing and **pretends to have corrected** — which is the half that matters:
+  a correction that is really a guess hides the fact that the measurement
+  failed. Keep the constants in step with `.annText` anyway.
+- **KNOWN HAZARD in `textCaretRect`, and it is written on the function.**
+  U+200B is a BREAK OPPORTUNITY, so while the probe is in a box whose first
+  word is longer than the box the div is a line TALLER (47.19 → 68.78 →
+  47.19 once it comes out). Nothing is harmed today — only the probe's own
+  rect is read, and every caller reads `scrollHeight` after the probe has
+  gone — but anything that later reads a layout property inside that window
+  gets an answer about a box that does not exist.
+- **THE TWO COORDINATE SYSTEMS ARE THE TRAP.** `getBoundingClientRect` comes
+  back in SCREEN pixels; `getComputedStyle` comes back in the SVG's own USER
+  units, because the div is laid out inside a `foreignObject` and the whole
+  overlay is then scaled to the page's zoom. Mixing them is right at 100% and
+  wrong at every other zoom — the one bug that would look fixed on the machine
+  it was written on and be wrong on every iPad in the centre. Hence `kx`/`ky`,
+  and hence a harness that sweeps seven zooms rather than one.
+- **The correction moves the foreignObject, it does not re-render.** A rebuild
+  throws away the node about to be focused, and with it the caret and — on an
+  iPad — the keyboard, mid-tap. That is the trap Ans Key's own text tool
+  documents at length.
+- **`textBoxWidth` has a FLOOR.** `baseW - x - 12` goes to nothing and then
+  negative within a few centimetres of the right-hand edge, and a box with a
+  negative width wraps every single word onto its own line.
+- **A spoken answer is placed by the SAME rule**, so tapping a spot and
+  speaking puts the words where tapping that spot and typing would have.
+- **The flattened picture had to be fixed with it.** `drawAnnsOnCtx` is what
+  the marking run reads and what goes into the mistake book, and all four of
+  its text numbers were wrong: no padding, a baseline guessed at
+  `y + fontSize`, the full box width rather than the width inside the padding,
+  and `sans-serif` where the screen uses Century Gothic. Text drawn somewhere
+  other than where the student sees it is the app marking a page nobody was
+  looking at. Its position now agrees with the screen to under a device pixel
+  at the real raster scale.
+- **KNOWN LIMIT, and the harness reports it rather than hiding it**: the
+  flatten WRAPS differently from the screen in three ways it always has. The
+  screen is `white-space: pre-wrap; overflow-wrap: break-word`; the canvas
+  splits on `/\s+/`, so a **run of spaces collapses**, a **tab becomes one
+  space**, and a **word longer than the box is never broken** (the screen
+  breaks it mid-word, the picture runs it off the edge). Those change the line
+  breaks the AI marks from. They are older than the caret fix and are left
+  alone deliberately — matching `pre-wrap` and `break-word` in canvas is its
+  own change with its own risks, and it is not what a misplaced caret is.
+- **KNOWN LIMIT, the other one**: `textBoxWidth`'s floor is 80 units, so a box
+  started within ~92 units of the right edge runs off the page and is clipped
+  out of the flattened picture. Clamping `x` to make it fit would move the
+  caret off the pointer — the two goals genuinely conflict there, and the
+  caret is the one that was asked for.
+
+**`node tools/text-caret-check.mjs`** is the only honest check of any of it:
+it loads the REAL `.annText` rule and the REAL placement functions out of
+`index.html`, builds the same `foreignObject`-inside-a-scaled-SVG the app
+builds, clicks at a known point and then measures the caret's own rectangle
+in the browser. It sweeps eight zooms × seven font sizes × seven points
+including all four edges (392 placements), a `devicePixelRatio: 2` pass, three
+stylesheet variants, the flattened picture against the screen, and **72
+placements of the SPOKEN answer** — the one path that puts a box on a div
+that already has words in it — and passes only inside half a page unit.
+
+- **IT MEASURED NOTHING FOR ITS FIRST 168 GREEN TICKS, and that is the
+  cautionary tale of this whole section.** `range.setStart(div, 0)` on an
+  **empty** contenteditable returns **zero rects** in Chromium, so every
+  placement fell through to a fallback that computed *content-box top +
+  line-height / 2* — byte-for-byte `textCaretDelta`'s own formula. The check
+  agreed with the code because it **was** the code. The four mutants still went
+  red, because they broke the placement rather than the shared formula. So the
+  probe is not a nicety: **without the zero-width space there is no
+  measurement at all**, and a fallback that fires is now reported and FAILS the
+  run rather than passing quietly.
+- **THE VERDICT IS READ OFF A REFERENCE THAT SHARES NO MECHANISM WITH THE
+  CODE**, which is the other half of that lesson. `textCaretRect` answers with
+  a zero-width space and a `Range`; ask the harness the same question the same
+  way and the two agree because they are the same trick, not because the caret
+  is anywhere in particular. So the judged measurement is a **real glyph's
+  inline box** read with `getBoundingClientRect` — different probe, different
+  API, same truth — and the two are asserted to AGREE on every placement. A
+  disagreement fails the run: one of them is then lying and the check is worth
+  nothing until it is known which.
+- **A PROBE LEFT IN THE BOX IS AN ANSWER WITH A U+200B IN IT.**
+  `commitActiveTextEdit` reads `div.innerText`, so it would be saved, marked
+  and filed in the mistake book, invisibly. The harness asserts the box is
+  empty again after every placement.
+- **`--selftest` breaks the placement twelve ways and requires each to go
+  red**, over BOTH sweeps (a mutant that only shows in one of them is still
+  caught — the appended-probe one shows only in the spoken sweep),
+  and **`sub()` THROWS when a mutant matches nothing.** That is the
+  load-bearing half: a mutant is a string replacement against code that is
+  being edited, so a rename turns it into a no-op — and a no-op reports "not
+  caught", which reads as a hole in the measurement rather than as a stale
+  test. It has already happened here, to two of them at once.
+- Three mutants are worth keeping by name. **Mixed units** is clean at 100%
+  zoom, which is precisely why one zoom level would have passed the original
+  bug straight through. **A ±0.55 drift** sizes the tolerance, and it must go
+  red in BOTH directions — while the code was leaning one way, the drift that
+  cancelled the lean was not caught, which was itself evidence the lean was
+  real. And **"the caret is MODELLED again instead of measured"** is the alarm
+  on this section's own history: it reproduces v1.1.1 exactly, and without it
+  the bias could come back under a screenful of green ticks. **"The probe is
+  appended"** is the fourth: it is invisible on the empty box the text tool
+  makes and puts the spoken answer a whole line out, which is why that sweep
+  had to exist at all.
+- Like scan's `mobile-check`, it needs `playwright-core` and the Chromium
+  already on the machine, so it is a tool you reach for rather than a gate.
+
 ## House rules
+- After touching **📏 the size control or 💾 auto-save** (`ANN_SIZE_KINDS`,
+  `annSizeTarget`, `annSizeKind`, `annSizeValue`, `annSizeClamp`,
+  `highlightWidthFor`, `setAnnSize`, `annFitTextHeight`, `syncSizeCtl`,
+  `autoSaveDelay`, `scheduleAutoSave`, `setSaveState`, `flushSave`,
+  `localBackup*`, `offerLocalBackup`, `stampOf`, `applyWorksheetBody`, or
+  `performSave`'s catch), run `node tools/tutor-tests.mjs`. Every failure is
+  silent and the app goes on looking right. A size control that stops
+  describing the selection leaves a student redrawing something to resize it;
+  one that shows a highlighter's derived width triples it every time it is
+  touched; one written to mid-keystroke turns "24" into "2"; and a text box
+  that does not grow with its size clips the answer the marking never sees.
+  On the save side the quiet ones are worse: a catch that stops re-arming the
+  timer turns one dropped connection into a lesson with no auto-save at all,
+  a backup applied rather than OFFERED overwrites newer work from another
+  device with whatever this browser was holding, a backup that is not cleared
+  on success is stale work waiting to be offered back, and a second copy of
+  `applyWorksheetBody` is one that forgets a field the day another is added
+  to `worksheetBody`.
+- After touching **the text box's placement** (`ANN_TEXT_PAD_X`,
+  `ANN_TEXT_PAD_Y`, `ANN_TEXT_LINE`, `ANN_TEXT_FONT`, `ANN_CARET_PROBE`,
+  `textCaretRect`, `textCaretModel`, `textCaretDelta`,
+  `startTextBox`, `textBoxWidth`, `placeSpokenAnswer`'s placement, the
+  `a.type === 'text'` branch of `drawAnnsOnCtx`, or **the `.annText` rule in
+  the stylesheet**), run
+  **`node tools/text-caret-check.mjs --selftest`** and look at the numbers.
+  Reading the source cannot answer this one: where a caret lands is decided by
+  the padding, the line height, the font's own metrics and the zoom the page
+  happens to be at, and only a browser knows all four. Put the box's top-left
+  on the pointer and the first letter is half a line below the I-beam — which
+  is the bug this fixed. **Model the caret instead of measuring it and it is
+  out by a fraction of a pixel on every placement, always the same way**, which
+  no screenshot shows and only a `Range` catches. Mix
+  `getBoundingClientRect`'s screen pixels with `getComputedStyle`'s user units
+  and it is perfect at 100% and wrong on every iPad in the centre, which is why
+  the sweep is eight zooms and not one. Take the width floor away and a box
+  near the right edge wraps every word onto its own line. Leave the probe in
+  the box and it is saved into the student's own answer, invisibly. Append it
+  instead of putting it first and the empty box the text tool makes is
+  perfect while every spoken answer is a whole line out. **And add a rule to
+  the placement without adding its mutant to `--selftest` — or rename a
+  variable a mutant names and let it match nothing — and you have added a tick
+  rather than a check.**
 - After touching **🔑 the answer key, 🎤 speaking an answer, 📌 the worksheets
   the teacher sets, or the marking's page numbers** (`wsKey`, `pageIsKey`,
   `studentPages`, `applyKeyVisibility`, `keyPageLooksLikeKey`, `KEY_TITLE_RE`,

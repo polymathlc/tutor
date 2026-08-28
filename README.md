@@ -12,6 +12,127 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.2.1 — the caret check, audited
+
+Nothing on the screen changed. The harness that decides whether the caret is on the pointer was
+audited and hardened, and two things it turned up are now written down.
+
+- **The verdict is read off a reference that shares no mechanism with the code.** `textCaretRect`
+  answers with a zero-width space and a `Range`; the harness asked the same question the same way,
+  so the two agreed because they were the same trick. It now measures a **real glyph's inline box**
+  with `getBoundingClientRect` — different probe, different API — and asserts the two agree on every
+  placement. That is the exact shape of the fault this file had once already.
+- **The spoken answer is swept too** (72 placements). Everything else places an *empty* box, so
+  nothing was exercising the one path that puts a box on a div that already has words in it — and
+  a probe appended rather than put first is invisible on an empty box and a whole line out on that
+  one.
+- **A probe left in the box would be saved into the answer**, marked, and filed in the mistake
+  book, invisibly. The harness now asserts the box is empty again after every placement.
+- Twelve mutants (was eight), sizes 8 and 96 added — the real ends of the size control.
+- **Two corrections.** The fallback's refusal to guess at `line-height: normal` was described as
+  being better than guessing; measured, guessing lands in the *same place*. It is kept because it
+  stops the app pretending to have corrected, which is the half that matters. And U+200B is a
+  **break opportunity**, so while the probe is in a box whose first word is longer than the box the
+  div is a line taller — harmless today, and now written on the function.
+
+392 + 72 placements, worst **0.003 across / −0.014 down**, every mutant caught.
+
+## v1.2.0 — a size you can set, work you cannot lose, and the centre's own logo
+
+### 📏 Change the size of the pen and of the typing
+
+The thickness was a slider that only ever moved the **pen**, and the text size
+was a constant nobody could reach — so a student who wanted bigger handwriting
+had no control at all.
+
+Now there is **▼ 3 ▲** in the toolbar: tap the arrows, or **type the number
+you want**. It means the pen's thickness with a drawing tool in hand and the
+text size with 🅣 or 🎤, and it says which. `[` and `]` step it from the
+keyboard.
+
+It follows what you have **selected**, so tapping a text box you wrote earlier
+and typing 24 makes that box 24 — you never have to delete something and draw
+it again to resize it. A text box grows with its size rather than clipping the
+words in it.
+
+### 💾 Your work saves itself, and keeps trying when it can't
+
+It always auto-saved. What it did not do was **cope with a save that failed**:
+the button went back to saying "Save" and that was that, so one dropped
+connection mid-lesson meant no auto-save for the rest of it — silently.
+
+- A failed save **keeps trying**, waiting a little longer each time.
+- What could not be sent is **kept on this device**, and put back when you
+  next open the worksheet: *"There is work on this device from about 4 minutes
+  ago that never reached the server. Put it back?"* It asks rather than
+  assuming, because your work on another device might be newer.
+- It saves on the way out of the tab on a phone as well as on a laptop.
+- The button now says **three** different things instead of one — ✓ Saved,
+  Save, and **⚠ Not saved** — because you would do something different about
+  each.
+
+### 🎨 The Polymath logo, top left
+
+The centre's own logo in the corner of every screen, and as the icon on the
+browser tab and on a home screen — there was none of either before, so a
+worksheet pinned to an iPad wore a screenshot of itself. It falls back to a
+drawn mark when a school network blocks the image, rather than to a broken
+picture icon.
+
+---
+
+## v1.1.2 — the caret really lands where you click
+
+v1.1.1 put the box in the right place by **working out** where the caret would
+be: content-box top plus half the line-height. That is wrong on every
+placement by the same small amount, always upwards — Blink does not split the
+half-leading, it **floors** it. At 16px the caret sat 0.3 of a pixel high, at
+34px nearly a whole one.
+
+Worse, the check could not have told you. `Range` on an **empty** editable box
+returns no rectangle at all in Chromium, so the harness quietly fell back to
+computing the caret with *the same formula the app used* — 168 green ticks for
+a measurement that never happened.
+
+The caret is now **asked of the browser** (a zero-width space, measured and
+removed before the box is focused), the harness measures the real thing and
+FAILS if it ever cannot, and `--selftest` grew from four mutants to eight —
+including one that puts the old modelling back, so this cannot return under a
+page of ticks.
+
+```
+336 placements · 7 zooms · 6 font sizes · every page edge · dpr 1 and 2
+worst 0.003 across / -0.014 down   (was 0.000 / -0.953)
+```
+
+Also: the box for a **spoken** answer is measured for its height at the width
+it will actually have, and `line-height: normal` now refuses to correct rather
+than correcting by a wrong multiplier.
+
+---
+
+## v1.1.1 — the caret lands where you click
+
+The 🅣 text tool put the box's **top-left** on the pointer, so the first letter
+appeared a few pixels right and about half a line **below** the I-beam. An I-beam
+points at its middle, not its top.
+
+The box is now placed so the **caret** is on the pointer — and the offset is
+**measured** off the rendered box rather than worked out from numbers copied out
+of the stylesheet, so it stays right if the styling ever changes. A spoken answer
+(🎤) lands by the same rule.
+
+The flattened picture the marking reads was fixed with it: it was drawing the
+text without its padding, at a guessed baseline, wrapping at the wrong width and
+in the wrong font — so what the AI marked was never quite what the student saw.
+
+`node tools/text-caret-check.mjs` measures the real caret in a real browser
+across seven zooms, four font sizes and all four page edges, and
+`--selftest` breaks the placement four ways and requires each break to be
+caught.
+
+---
+
 ## v1.1.0 — say your answer, and the answer key the buddy keeps to itself
 
 ### 🎤 Speak your answer
@@ -208,3 +329,15 @@ node tools/tutor-tests.mjs
 
 It loads the real sections out of `index.html` and runs them against stubs. Every failure it catches
 is one the app would otherwise carry on looking perfectly right through.
+
+```
+npm i playwright-core && node tools/text-caret-check.mjs --selftest
+```
+
+Where a text caret lands cannot be checked by reading the source — the padding, the line height, the
+font's own metrics and the page's zoom all decide it, and only a browser knows all four. This one
+loads the real `.annText` rule and the real placement functions, clicks at a known point in headless
+Chromium and measures the caret's own rectangle, across seven zooms × four font sizes × six points
+including every edge. `--selftest` breaks the placement four ways and requires each break to be
+caught, because a check that cannot fail is not a check. Like Scan & Answer's `mobile-check`, it is a
+tool you reach for rather than a gate.

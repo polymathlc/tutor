@@ -8,6 +8,11 @@
      actually stops iOS zooming into them. -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Study Buddy — Polymath Learning Centre</title>
+<!-- The browser tab and the home-screen icon. There was neither before,
+     so a worksheet pinned to an iPad home screen wore a screenshot of
+     itself. -->
+<link rel="icon" href="https://dl.dropboxusercontent.com/scl/fi/h40yjlyg8ldefwfaa3dib/polymath-logo-sticker.png?rlkey=o1ra4taqy79gt9t8u096v82zj">
+<link rel="apple-touch-icon" href="https://dl.dropboxusercontent.com/scl/fi/h40yjlyg8ldefwfaa3dib/polymath-logo-sticker.png?rlkey=o1ra4taqy79gt9t8u096v82zj">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Study Buddy">
@@ -60,11 +65,21 @@
   header .btn { flex: none; }
   .brand { display: flex; align-items: center; gap: 11px; margin-right: auto; min-width: 0; cursor: pointer; }
   .brandTitle, .brandSub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* THE MARK IS A BOX AND NOTHING ELSE — no tile behind the logo. It was an
+     accent-coloured rounded square because what sat in it was an EMOJI, which
+     needs something to sit on; a logo does not, and a coloured square behind
+     one is a second badge around a badge. With no background the radius and
+     the clipping have nothing left to do either, so they went with it rather
+     than being left to crop the corners off a logo that is not square. */
   .brandMark {
-    width: 38px; height: 38px; border-radius: 11px; flex: none;
+    width: 38px; height: 38px; flex: none;
     display: grid; place-items: center;
-    background: var(--accent); font-size: 20px;
+    font-size: 20px;
   }
+  /* The logo fills its own box. `object-fit: contain` is what keeps the
+     square fallback square and stops a logo of any other shape being
+     stretched into this one. */
+  .brandLogo { width: 100%; height: 100%; object-fit: contain; display: block; }
   .brandText { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
   .brandTitle { font-size: 1.06rem; font-weight: 700; letter-spacing: -0.01em; }
   .brandSub { font-size: 0.74rem; color: var(--ink-faint); }
@@ -200,8 +215,27 @@
   .swatch { width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--bg);
             box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
   .swatch.on { box-shadow: 0 0 0 2px var(--accent-deep); }
-  #strokeRange { width: 92px; }
+  /* The size control. The step buttons are NARROWER than an ordinary tool
+     button but keep its 38px HEIGHT, so the row does not grow a taller line
+     for them — on a phone the toolbar is the one row that must not wrap. */
+  .sizeLabel { font-size: 0.72rem; color: var(--ink-faint); min-width: 26px; text-align: right; }
+  .sizeStep { width: 26px; font-size: 11px; }
+  .sizeInput {
+    width: 48px; height: 38px; text-align: center;
+    font-family: var(--font); font-size: 0.88rem; font-weight: 600;
+    color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 10px;
+  }
+  /* The spinners are the browser's own arrows, and this control already has
+     two of its own — twice as many arrows in half the room, and on a phone
+     they are too small to hit. */
+  .sizeInput::-webkit-outer-spin-button,
+  .sizeInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .sizeInput { -moz-appearance: textfield; appearance: textfield; }
   #zoomLabel { font-size: 0.78rem; color: var(--ink-faint); min-width: 42px; text-align: center; }
+  /* Not saved is a STATE, not a missing tick. It has to read as one across a
+     room, because the student it is for is about to close the tab. */
+  .saveBad { background: var(--warn-bg, #fdecec); border-color: var(--warn-line, #e6b0b0); color: #8a2b2b; }
 
   /* ---------- Worksheet view: the pages ---------- */
   #wsMain { flex: 1; min-height: 0; display: flex; }
@@ -558,7 +592,12 @@
     #wsTop { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
     #wsTop > * { flex: none; }
     #wsTitle { max-width: 30vw; }
-    #strokeRange { width: 70px; }
+    /* The size control keeps every part of itself on a phone — the arrows
+       are what make it usable with a thumb, and the box is the only way to
+       ask for a size that is not one nudge away. It is the LABEL that gives
+       way, because the tool button that is lit says the same thing. */
+    #sizeLabel { display: none; }
+    .sizeInput { width: 42px; }
   }
 
   @media (max-width: 900px) {
@@ -583,7 +622,16 @@
 
   <header>
     <div class="brand" id="brandHome" title="Back to my worksheets">
-      <div class="brandMark">📘</div>
+      <!-- The centre's own logo, with the SAME inline-SVG fallback the other
+           four apps use. It is not decoration: this app is opened on school
+           connections and on iPads in Lockdown Mode, and a broken-image icon
+           in the top-left corner of every screen is worse than the emoji it
+           replaced. The fallback needs no network at all. -->
+      <div class="brandMark">
+        <img class="brandLogo" src="https://dl.dropboxusercontent.com/scl/fi/h40yjlyg8ldefwfaa3dib/polymath-logo-sticker.png?rlkey=o1ra4taqy79gt9t8u096v82zj" alt="Polymath Learning Centre"
+             loading="eager" fetchpriority="high"
+             onerror="this.onerror=null;this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22 viewBox=%220 0 40 40%22%3E%3Crect width=%2240%22 height=%2240%22 rx=%228%22 fill=%22%234a7c59%22/%3E%3Ctext x=%2220%22 y=%2229%22 font-family=%22DM Sans,sans-serif%22 font-size=%2224%22 font-weight=%22700%22 fill=%22white%22 text-anchor=%22middle%22%3EP%3C/text%3E%3C/svg%3E';">
+      </div>
       <div class="brandText">
         <div class="brandTitle">Study Buddy</div>
         <div class="brandSub">Polymath Learning Centre · <span id="versionTag"></span></div>
@@ -668,8 +716,16 @@
 
         <div class="toolGroup" id="colorGroup"></div>
 
-        <div class="toolGroup">
-          <input type="range" id="strokeRange" min="1" max="16" step="1" value="3" title="Thickness">
+        <!-- HOW BIG THE MARK IS. One control, because it is one question —
+             it means the pen's thickness with a drawing tool in hand and the
+             text size with the 🅣 or the 🎤, and it SAYS WHICH. A slider
+             could only be aimed at; a student who wants 24pt can type 24. -->
+        <div class="toolGroup" id="sizeGroup">
+          <span id="sizeLabel" class="sizeLabel">Pen</span>
+          <button class="toolBtn sizeStep" id="sizeDown" title="Smaller ( [ )">▼</button>
+          <input type="number" id="sizeInput" class="sizeInput" min="1" max="40" step="1" value="3"
+                 inputmode="numeric" title="Type a size">
+          <button class="toolBtn sizeStep" id="sizeUp" title="Bigger ( ] )">▲</button>
         </div>
 
         <div class="toolGroup">
@@ -983,7 +1039,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.1.0';
+var APP_VERSION = 'v1.2.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -1716,6 +1772,26 @@ var PEN_COLORS = ['#1A1A1A', '#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24A
 
 function newAnnId() { return 'a' + Date.now().toString(36) + (annIdCounter++); }
 
+/* ---- WHERE A TEXT BOX'S CARET IS ----
+   A text box is an HTML div inside a foreignObject, so the caret is NOT at
+   the box's x/y: it sits inside the padding, and it is a whole line box
+   tall. The I-beam's hot spot is its MIDDLE, not its top — so a box whose
+   top-left is dropped on the pointer puts the first letter a padding to the
+   right and half a line BELOW where the student was pointing, which at 16px
+   is about thirteen pixels of "that is not where I clicked".
+
+   These are the FALLBACK numbers, and they are kept in step with the
+   `.annText` rule in the stylesheet. They are only ever an estimate: what
+   actually decides the position is `textCaretDelta`, which MEASURES the
+   rendered box rather than trusting anything here. Keep them right anyway —
+   they are what places the box on a browser that will not give a computed
+   style back. */
+var ANN_TEXT_PAD_X = 3, ANN_TEXT_PAD_Y = 2, ANN_TEXT_LINE = 1.35;
+/* The stylesheet's own font stack, so the flattened picture wraps its words
+   where the screen wrapped them. `sans-serif` here and Century Gothic on
+   screen is two different line breaks in two pictures of the same answer. */
+var ANN_TEXT_FONT = "'Century Gothic', CenturyGothic, AppleGothic, 'Segoe UI', sans-serif";
+
 /* Unrotated frame of an x/y/w/h annotation. Text boxes never render shorter
    than one line, so their frame uses the same effective height everywhere. */
 function annFrame(a) {
@@ -1814,9 +1890,10 @@ function afterHistoryChange() {
 
 function setDirty(v) {
   dirty = v;
-  var b = $('saveBtn');
-  if (!b) return;
-  b.textContent = v ? 'Save' : '✓ Saved';
+  // A failed save leaves `dirty` true and its own ⚠ on the button; a fresh
+  // edit must not paint that back to a plain "Save" and read as though
+  // nothing were wrong.
+  if (!(v && saveFails)) setSaveState(v ? 'dirty' : 'saved');
   if (v) scheduleAutoSave();
 }
 
@@ -1981,7 +2058,7 @@ function fitWidth() {
 }
 
 /* ================= Annotation rendering ================= */
-function renderAllOverlays() { pages.forEach(renderOverlay); }
+function renderAllOverlays() { pages.forEach(renderOverlay); syncSizeCtl(); }
 
 function renderOverlay(p) {
   var svg = p.svg;
@@ -2135,26 +2212,43 @@ function drawAnnsOnCtx(ctx, kx, ky, anns, pageNum) {
         ctx.stroke();
       });
     } else if (a.type === 'text') {
+      /* THE FLATTENED PICTURE HAS TO PUT THE WORDS WHERE THE SCREEN PUT
+         THEM. This is what the marking run reads and what goes into the
+         mistake book, so text drawn a padding to the left of where the
+         student sees it — in a different font, wrapping at a different
+         width — is the app marking a page nobody was looking at. All four
+         of those were wrong here: no padding, a baseline guessed at
+         `y + fontSize`, the full box width rather than the width inside the
+         padding, and `sans-serif` where the screen uses Century Gothic. */
       var fs = Math.max(6, (a.fontSize || 16) * ky);
-      ctx.font = fs + 'px sans-serif';
-      var maxW = Math.max(40, (a.w || 200) * kx);
-      var x = a.x * kx;
-      var y = a.y * ky + fs;
+      ctx.font = fs + 'px ' + ANN_TEXT_FONT;
+      ctx.textBaseline = 'alphabetic';
+      var lineH = fs * ANN_TEXT_LINE;
+      // CSS puts the font's own box in the middle of the line box and the
+      // baseline an ascent below that. measureText knows the real metrics;
+      // the 0.8/0.2 split is only for a browser that will not report them.
+      var fm = ctx.measureText('Mg');
+      var asc = fm.fontBoundingBoxAscent, desc = fm.fontBoundingBoxDescent;
+      if (!(asc > 0) || !(desc >= 0)) { asc = fs * 0.8; desc = fs * 0.2; }
+      var half = (lineH - (asc + desc)) / 2;
+      var x = a.x * kx + ANN_TEXT_PAD_X * kx;
+      var top = a.y * ky + ANN_TEXT_PAD_Y * ky;      // top of the first line box
+      var maxW = Math.max(10, ((a.w || 200) - ANN_TEXT_PAD_X * 2) * kx);
       String(a.text || '').split('\n').forEach(function (para) {
         var line = '';
         para.split(/\s+/).forEach(function (w) {
           if (!w) return;
           var t = line ? line + ' ' + w : w;
           if (ctx.measureText(t).width > maxW && line) {
-            ctx.fillText(line, x, y);
+            ctx.fillText(line, x, top + half + asc);
             line = w;
-            y += fs * 1.35;
+            top += lineH;
           } else {
             line = t;
           }
         });
-        ctx.fillText(line, x, y);
-        y += fs * 1.35;
+        ctx.fillText(line, x, top + half + asc);
+        top += lineH;
       });
     }
     ctx.restore();
@@ -2222,6 +2316,7 @@ function setTool(t) {
   });
   updateToolCursor();
   renderMicBtns();
+  syncSizeCtl();
 }
 function updateToolCursor() {
   pages.forEach(function (p) {
@@ -2240,6 +2335,138 @@ function setColor(c) {
   if (selectedId) {
     var a = annotations.find(function (x) { return x.id === selectedId; });
     if (a && a.color !== c) { pushUndo(); a.color = c; renderAllOverlays(); setDirty(true); }
+  }
+}
+
+/* ================= HOW BIG THE MARK IS =================
+   ONE control for two numbers, because to a student it is one question. A
+   drawing tool's size is its stroke WIDTH and the 🅣 / 🎤's is a FONT size:
+   different units, different sensible ranges, and no screen has room for two
+   spinners that are never both useful. So the control changes meaning with
+   what is in hand and SAYS SO — `#sizeLabel` reads "Pen" or "Text".
+
+   IT FOLLOWS THE SELECTION FIRST. Tap a text box you wrote earlier and the
+   box shows ITS size, and typing a new one changes that box. A control that
+   only ever described the pen would leave a student redrawing something to
+   resize it — the same rule `setColor` already follows.
+
+   The two numbers are remembered SEPARATELY (`strokeW`, `fontSize`), so
+   going pen → text → pen does not reset the pen to whatever the text was. */
+var ANN_SIZE_KINDS = {
+  stroke: { min: 1, max: 40, label: 'Pen',  title: 'How thick the pen draws' },
+  font:   { min: 8, max: 96, label: 'Text', title: 'How big the typing is' }
+};
+// Which tools write with a font rather than a stroke.
+var ANN_FONT_TOOLS = { text: 1, speak: 1 };
+
+function annSizeKindOfTool(t) { return ANN_FONT_TOOLS[t] ? 'font' : 'stroke'; }
+
+/* The annotation the control is describing, or null for "the pen itself".
+   Only a real selection counts: a box still being TYPED IN is not something
+   to resize out from under the caret. */
+function annSizeTarget() {
+  if (!selectedId || selectedId === editingId) return null;
+  return annotations.find(function (x) { return x.id === selectedId; }) || null;
+}
+
+function annSizeKind() {
+  var a = annSizeTarget();
+  if (a) return a.type === 'text' ? 'font' : 'stroke';
+  return annSizeKindOfTool(tool);
+}
+
+function annSizeValue() {
+  var a = annSizeTarget();
+  if (a) {
+    if (a.type === 'text') return a.fontSize || fontSize;
+    // A highlighter's own width is DERIVED (see below), so what the control
+    // shows for one is the pen number it was derived from — otherwise
+    // selecting a highlight would jump the box to 12 and then setting it
+    // back to 3 would silently triple it.
+    if (a.type === 'highlight') return strokeW;
+    return a.width || strokeW;
+  }
+  return annSizeKind() === 'font' ? fontSize : strokeW;
+}
+
+function annSizeClamp(kind, v) {
+  var k = ANN_SIZE_KINDS[kind] || ANN_SIZE_KINDS.stroke;
+  v = Math.round(Number(v));
+  if (!isFinite(v)) return kind === 'font' ? fontSize : strokeW;
+  return Math.max(k.min, Math.min(k.max, v));
+}
+
+/* A highlighter is deliberately fatter than the pen it is set from — it is
+   marking a line of print, not writing on it. ONE place, so the drawing path
+   and a resize cannot disagree about what "3" means for a highlighter. */
+function highlightWidthFor(w) { return Math.max(w * 3, 12); }
+
+/* THE ONE WRITER. Every route in — the arrows, the typed box, the keyboard —
+   lands here, so the clamp, the restyle and the repaint cannot drift apart. */
+function setAnnSize(v) {
+  var kind = annSizeKind();
+  var val = annSizeClamp(kind, v);
+  if (kind === 'font') fontSize = val; else strokeW = val;
+
+  var a = annSizeTarget();
+  if (a) {
+    var was = a.type === 'text' ? (a.fontSize || fontSize) : (a.width || strokeW);
+    var now = a.type === 'text' ? val
+            : a.type === 'highlight' ? highlightWidthFor(val) : val;
+    if (was !== now) {
+      pushUndo();
+      if (a.type === 'text') {
+        a.fontSize = val;
+        // The box has to grow with the words in it, or a size put UP clips
+        // the answer the marking then never sees. It is re-measured off the
+        // live element rather than scaled, because how many lines the words
+        // take at this width is not a thing arithmetic knows.
+        a.h = Math.max(a.h || 0, val * 1.8);
+        renderAllOverlays();
+        annFitTextHeight(a);
+      } else {
+        a.width = now;
+      }
+      renderAllOverlays();
+      setDirty(true);
+    }
+  }
+  syncSizeCtl();
+}
+
+/* Re-measures a text box against the live div and grows it to fit. It never
+   SHRINKS a box the student has dragged taller — that is their decision. */
+function annFitTextHeight(a) {
+  var p = pages.find(function (pg) { return pg.num === a.page; });
+  if (!p) return;
+  var div = p.svg.querySelector('g[data-id="' + a.id + '"] .annText');
+  if (div && div.scrollHeight) {
+    var want = Math.max((a.fontSize || 16) * 1.8, div.scrollHeight);
+    if (want > (a.h || 0)) { a.h = round2(want); renderAllOverlays(); }
+  }
+}
+
+function nudgeAnnSize(d) { setAnnSize(annSizeValue() + d); }
+
+/* Painted from `renderAllOverlays` as well as from `setTool`, because that
+   is the one function every selection change already goes through — hooking
+   the dozen places that set `selectedId` is how one of them gets missed and
+   the control goes stale on exactly one route. */
+function syncSizeCtl() {
+  var input = $('sizeInput'), label = $('sizeLabel'), group = $('sizeGroup');
+  if (!input || !label || !group) return;
+  var kind = annSizeKind(), k = ANN_SIZE_KINDS[kind];
+  label.textContent = k.label;
+  group.title = k.title;
+  if (input.min !== String(k.min)) input.min = k.min;
+  if (input.max !== String(k.max)) input.max = k.max;
+  // Never while it is being typed in: writing the value back mid-keystroke
+  // is what turns "24" into "2" the moment the 2 is pressed. And only when
+  // it really differs — this runs on every repaint, which during a drag is
+  // every frame.
+  if (document.activeElement !== input) {
+    var v = String(annSizeValue());
+    if (input.value !== v) input.value = v;
   }
 }
 
@@ -2293,20 +2520,151 @@ function commitActiveTextEdit() {
   setDirty(true);
 }
 
+/* WHERE THE CARET REALLY IS, ASKED OF THE BROWSER.
+
+   The first version of this MODELLED it — content-box top plus half the
+   line-height — and was wrong on every placement by the same small amount,
+   always upwards. Blink does not split the half-leading exactly: it FLOORS
+   it. At 16px on a 21.6px line the exact half-leading is 2.3px and the
+   caret box starts 2.0px down, so the modelled centre sat 0.297 page units
+   below the real one. No constant fixes that, because the flooring depends
+   on the font's own metrics at the size and scale it happens to be laid out
+   at — which only the browser knows.
+
+   So the caret is MEASURED. A zero-width space gives the first line box a
+   real fragment (Chromium returns NO rects for a collapsed range in an
+   empty contenteditable, which is what made this look right for so long),
+   the range around it is measured, and the probe is taken straight out
+   again. It is zero-width and joins a line box that is there either way, so
+   it changes no geometry — and it is gone before the box is focused, so it
+   can never be typed over or saved.
+
+   The rect comes back in SCREEN pixels, which is the same frame as the
+   div's own rect — nothing here mixes the two coordinate systems. */
+// Written as an escape, never as the character itself: an invisible
+// literal is one a later edit silently drops.
+var ANN_CARET_PROBE = '\u200B';
+
+/* WHILE THE PROBE IS IN, THE BOX IS NOT ITSELF. U+200B is a BREAK
+   OPPORTUNITY, so in a box whose first word is longer than the box the
+   browser now has somewhere to break and the div is a line taller
+   (measured: 47.19 -> 68.78 -> 47.19 again once it comes out). Nothing
+   here is harmed by that — only the probe's OWN rect is read, and every
+   caller reads scrollHeight after the probe has gone — but anything that
+   later reads a layout property inside this window gets an answer about a
+   box that does not exist. Take the probe out first. */
+function textCaretRect(div) {
+  var doc = div && div.ownerDocument;
+  if (!doc || !doc.createRange) return null;
+  var probe = doc.createTextNode(ANN_CARET_PROBE);
+  var out = null;
+  try {
+    div.insertBefore(probe, div.firstChild);
+    var rg = doc.createRange();
+    rg.selectNodeContents(probe);
+    var list = rg.getClientRects();
+    var r = (list && list.length) ? list[0] : rg.getBoundingClientRect();
+    // The caret is drawn the height of the font's box on that line, and the
+    // I-beam points at its MIDDLE.
+    if (r && r.height > 0) out = { x: r.left, mid: r.top + r.height / 2 };
+  } catch (e) { out = null; }
+  if (probe.parentNode) probe.parentNode.removeChild(probe);
+  return out;
+}
+
+/* The FALLBACK, for a browser that hands back no rect at all. It is the old
+   model, and it is a little high for the reason above — but it lands within
+   a pixel instead of half a line out, which is what it is for.
+
+   It REFUSES rather than guess when the line-height will not parse.
+   `line-height: normal` computes to the string, and the real normal line box
+   is nothing like `fontSize * ANN_TEXT_LINE`. Measured, guessing with that
+   multiplier lands in the SAME PLACE as refusing (16px: -2.297 guessed
+   against -2.313 refused; identical at 34 and 48) — so it buys nothing and
+   pretends to have corrected, which is the half that matters: a correction
+   that is really a guess hides the fact that the measurement failed. */
+function textCaretModel(div, kx, ky) {
+  if (!window.getComputedStyle) return null;
+  var r = div.getBoundingClientRect();
+  if (!(r.width > 0 || r.height > 0)) return null;
+  var cs = window.getComputedStyle(div);
+  var lh = parseFloat(cs.lineHeight);
+  if (!(lh > 0)) return null;
+  var padL = parseFloat(cs.paddingLeft) || 0;
+  var padT = parseFloat(cs.paddingTop) || 0;
+  var bL = parseFloat(cs.borderLeftWidth) || 0;
+  var bT = parseFloat(cs.borderTopWidth) || 0;
+  return {
+    x: r.left + (bL + padL) * kx,
+    mid: r.top + (bT + padT + lh / 2) * ky
+  };
+}
+
+/* HOW FAR THE BOX IS FROM WHERE IT SHOULD BE.
+
+   THE TWO COORDINATE SYSTEMS ARE THE TRAP. Every rect above is in SCREEN
+   pixels; the box's own x/y are in the SVG's USER units, because the div is
+   laid out inside a foreignObject and the whole overlay is then scaled to
+   the page's zoom. Mixing them is right at 100% and wrong at every other
+   zoom — the one bug that would look fixed on the machine it was written
+   on. Hence `kx` / `ky`, and hence a harness that sweeps seven zooms. */
+function textCaretDelta(p, div, pt) {
+  if (!p || !div) return null;
+  var pr = p.svg.getBoundingClientRect();
+  if (!(pr.width > 0) || !(pr.height > 0)) return null;
+  var kx = pr.width / p.baseW;          // screen px per page unit, across
+  var ky = pr.height / p.baseH;         // …and down
+  if (!(kx > 0) || !(ky > 0)) return null;
+  var caret = textCaretRect(div) || textCaretModel(div, kx, ky);
+  if (!caret) return null;
+  var wantX = pr.left + pt.x * kx;
+  var wantY = pr.top + pt.y * ky;
+  return { dx: (wantX - caret.x) / kx, dy: (wantY - caret.mid) / ky };
+}
+
 function startTextBox(p, pt) {
   pushUndo();
+  // The estimate first, so a browser that will not hand back a computed
+  // style still lands within a pixel rather than half a line out.
+  var x = pt.x - ANN_TEXT_PAD_X;
+  var y = pt.y - ANN_TEXT_PAD_Y - fontSize * ANN_TEXT_LINE / 2;
   var a = {
     id: newAnnId(), type: 'text', page: p.num,
-    x: pt.x, y: pt.y, w: Math.min(320, p.baseW - pt.x - 12), h: fontSize * 1.8,
+    x: round2(x), y: round2(y), w: 0, h: fontSize * 1.8,
     text: '', color: color, fontSize: fontSize
   };
+  a.w = textBoxWidth(p, a.x);
   annotations.push(a);
   editingId = a.id;
   selectedId = a.id;
   renderOverlay(p);
   var div = p.svg.querySelector('g[data-id="' + a.id + '"] .annText');
-  if (div) { div.focus(); }
+  if (div) {
+    // Measured, then corrected by moving the foreignObject ITSELF rather
+    // than re-rendering: a rebuild throws away the node about to be focused,
+    // and with it the caret and — on an iPad — the keyboard, mid-tap.
+    var d = textCaretDelta(p, div, pt);
+    if (d && (Math.abs(d.dx) > 0.01 || Math.abs(d.dy) > 0.01)) {
+      a.x = round2(a.x + d.dx);
+      a.y = round2(a.y + d.dy);
+      a.w = textBoxWidth(p, a.x);
+      var fo = div.parentNode;
+      if (fo && fo.setAttribute) {
+        fo.setAttribute('x', a.x);
+        fo.setAttribute('y', a.y);
+        fo.setAttribute('width', Math.max(a.w, 40));
+      }
+    }
+    div.focus();
+  }
   setDirty(true);
+}
+
+/* How wide a new box is. It has a FLOOR: `baseW - x - 12` goes to nothing —
+   and then negative — within a few centimetres of the right-hand edge, and a
+   box with a negative width wraps every single word onto its own line. */
+function textBoxWidth(p, x) {
+  return round2(Math.max(80, Math.min(320, p.baseW - x - 12)));
 }
 
 function attachOverlayHandlers(p) {
@@ -2373,7 +2731,7 @@ function attachOverlayHandlers(p) {
     if (tool === 'pen' || tool === 'highlight') {
       a.type = tool;
       a.points = [pt];
-      if (tool === 'highlight') a.width = Math.max(strokeW * 3, 12);
+      if (tool === 'highlight') a.width = highlightWidthFor(strokeW);
     } else if (tool === 'line' || tool === 'arrow') {
       a.type = tool;
       a.x1 = pt.x; a.y1 = pt.y; a.x2 = pt.x; a.y2 = pt.y;
@@ -4005,19 +4363,41 @@ function placeSpokenAnswer(p, pt, text) {
   var live = pages.find(function (pg) { return pg.num === p.num; });
   if (!live) return;
   pushUndo();
+  // Placed by the SAME rule as a typed box, so tapping a spot and speaking
+  // puts the words where tapping that spot and typing would have: the first
+  // line centred on the tap, not starting half a line below it.
   var a = {
     id: newAnnId(), type: 'text', page: live.num,
-    x: pt.x, y: pt.y,
-    w: Math.min(360, Math.max(140, live.baseW - pt.x - 12)),
+    x: round2(pt.x - ANN_TEXT_PAD_X),
+    y: round2(pt.y - ANN_TEXT_PAD_Y - fontSize * ANN_TEXT_LINE / 2),
+    w: 0,
     h: fontSize * 1.8,
     text: text, color: color, fontSize: fontSize
   };
+  a.w = round2(Math.max(140, Math.min(360, live.baseW - a.x - 12)));
   annotations.push(a);
   selectedId = a.id;
   renderOverlay(live);
   var div = live.svg.querySelector('g[data-id="' + a.id + '"] .annText');
-  if (div && div.scrollHeight) {
-    a.h = Math.max(fontSize * 1.8, div.scrollHeight);
+  if (div) {
+    var d = textCaretDelta(live, div, pt);
+    if (d && (Math.abs(d.dx) > 0.01 || Math.abs(d.dy) > 0.01)) {
+      a.x = round2(a.x + d.dx);
+      a.y = round2(a.y + d.dy);
+      a.w = round2(Math.max(140, Math.min(360, live.baseW - a.x - 12)));
+      // The correction is put on the LIVE box before its height is read.
+      // `scrollHeight` is how many lines the words take AT A WIDTH, so
+      // measuring it against the width the box no longer has is a height
+      // for a box that does not exist — and a box too short clips the
+      // answer the marking never sees.
+      var fo = div.parentNode;
+      if (fo && fo.setAttribute) {
+        fo.setAttribute('x', a.x);
+        fo.setAttribute('y', a.y);
+        fo.setAttribute('width', Math.max(a.w, 40));
+      }
+    }
+    if (div.scrollHeight) a.h = Math.max(fontSize * 1.8, div.scrollHeight);
     renderOverlay(live);
   }
   setDirty(true);
@@ -5050,10 +5430,15 @@ function scoreOf() {
 }
 
 async function performSave(quiet) {
-  if (!currentDocId || !currentUser) return;
+  if (!currentDocId || !currentUser) return false;
+  // One write at a time. Auto-save, a hidden tab and a pressed button can
+  // all fire within a second of each other, and two writes of the same body
+  // racing is how the older one lands last.
+  if (savingNow) { saveAgain = true; return false; }
+  savingNow = true;
   var btn = $('saveBtn');
   btn.disabled = true;
-  btn.textContent = 'Saving…';
+  setSaveState('saving');
   try {
     await writeBody(currentDocId, worksheetBody(), {
       name: docName,
@@ -5071,33 +5456,169 @@ async function performSave(quiet) {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     dirty = false;
-    btn.textContent = '✓ Saved';
+    saveFails = 0;
+    localBackupClear(currentDocId);
+    setSaveState('saved');
     if (!quiet) toast('Saved.');
   } catch (e) {
     console.error(e);
-    btn.textContent = 'Save';
-    toast('Save failed: ' + ((e && e.message) || e), 6000);
+    saveFails++;
+    // THE WORK IS KEPT ON THE DEVICE THE MOMENT THE SERVER REFUSES IT. That
+    // is the whole difference between "auto-save" and "your work is safe":
+    // a school connection drops, and until this the only copy was in a tab
+    // the student was about to close.
+    localBackupWrite(currentDocId);
+    setSaveState('failed');
+    // AND IT KEEPS TRYING. It used to give up here — `dirty` stayed true and
+    // nothing re-armed the timer, so one blip mid-lesson meant no auto-save
+    // at all for the rest of it, silently.
+    scheduleAutoSave();
+    if (!quiet || saveFails === 1) {
+      toast('Could not save just yet — your work is kept on this device and ' +
+            'I will keep trying. ' + ((e && e.message) || e), 6000);
+    }
   }
+  savingNow = false;
   btn.disabled = false;
+  if (saveAgain) { saveAgain = false; scheduleAutoSave(); }
+  return !dirty;
 }
 
-/* Auto-save: a lightweight write a few seconds after the last change, so
-   nothing is ever lost to a closed tab. The page being hidden flushes it
-   immediately — on iOS that is the only event a swiped-away tab reliably
-   gets. */
-var AUTOSAVE_DELAY = 4000;
+/* ================= AUTO-SAVE =================
+   A student is not going to press Save, and the work on the page is the
+   lesson. So it saves itself a couple of seconds after the last change, on
+   the way out of the tab, and — this is the part that was missing — IT KEEPS
+   TRYING WHEN A SAVE FAILS, with what it could not send kept on the device
+   until it lands.
+
+   `performSave` used to leave a failure exactly where it fell: `dirty` stayed
+   true, nothing re-armed the timer, and the next auto-save waited for the
+   next stroke. One dropped connection mid-lesson and the tab was on its own
+   for the rest of it, with a button quietly reading "Save". */
+var AUTOSAVE_DELAY = 2500;
+var AUTOSAVE_MAX_DELAY = 30000;
 var autoSaveTimer = null;
+var savingNow = false;      // one write in flight at a time
+var saveAgain = false;      // …and something changed while it was flying
+var saveFails = 0;
+
+/* The wait GROWS while saves are failing, up to half a minute. A tab that
+   cannot reach the server must not spend the lesson retrying every two
+   seconds and flattening a phone battery — but it must not stop, either. */
+function autoSaveDelay() {
+  if (!saveFails) return AUTOSAVE_DELAY;
+  return Math.min(AUTOSAVE_MAX_DELAY, AUTOSAVE_DELAY * Math.pow(2, saveFails));
+}
 function scheduleAutoSave() {
   if (!currentDocId) return;
   clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(function () { performSave(true); }, AUTOSAVE_DELAY);
+  autoSaveTimer = setTimeout(function () { performSave(true); }, autoSaveDelay());
 }
-document.addEventListener('visibilitychange', function () {
-  if (document.visibilityState === 'hidden' && dirty && currentDocId) {
+
+/* WHAT THE STUDENT IS TOLD. It was the Save button's own label, which could
+   say "Save" for "nothing to save yet", "not saved yet" and "the save just
+   failed" alike — three states a student would act on differently, wearing
+   one word. */
+function setSaveState(st) {
+  var btn = $('saveBtn');
+  if (!btn) return;
+  if (st === 'saving') { btn.textContent = 'Saving…'; btn.classList.remove('saveBad'); return; }
+  if (st === 'failed') {
+    btn.textContent = '⚠ Not saved';
+    btn.classList.add('saveBad');
+    btn.title = 'Your work is kept on this device and I am still trying. Tap to try now.';
+    return;
+  }
+  btn.classList.remove('saveBad');
+  if (st === 'saved') { btn.textContent = '✓ Saved'; btn.title = 'Saved'; return; }
+  btn.textContent = 'Save';
+  btn.title = 'Save your work';
+}
+
+/* ---- The copy on the device ----
+   Only ever written when the server REFUSED one, and cleared the moment a
+   save lands. It is a rescue, not a cache: nothing reads it except the offer
+   below, so it can never quietly serve stale work in place of the real
+   thing. A body too big for localStorage is dropped rather than throwing —
+   the retry is still running, and half a worksheet is not a worksheet. */
+function localBackupKey(id) { return 'polymath.tutor.unsaved:' + id; }
+/* localStorage is a few megabytes for the WHOLE origin, and a worksheet
+   heavy enough to overflow into Storage can be most of that on its own. A
+   body past this is not written rather than being allowed to evict whatever
+   else is in there — the retry is still the real rescue, and this is the
+   belt beside it. */
+var LOCAL_BACKUP_MAX = 2 * 1024 * 1024;
+function localBackupWrite(id) {
+  if (!id) return;
+  try {
+    var body = worksheetBody();
+    if (bodyByteLength(body) > LOCAL_BACKUP_MAX) return;
+    localStorage.setItem(localBackupKey(id), JSON.stringify({
+      at: Date.now(), name: docName, body: body
+    }));
+  } catch (e) { /* out of room, or a private window. The retry stands. */ }
+}
+function localBackupClear(id) {
+  if (!id) return;
+  try { localStorage.removeItem(localBackupKey(id)); } catch (e) {}
+}
+function localBackupRead(id) {
+  if (!id) return null;
+  try {
+    var raw = localStorage.getItem(localBackupKey(id));
+    if (!raw) return null;
+    var o = JSON.parse(raw);
+    return (o && o.body && o.at) ? o : null;
+  } catch (e) { return null; }
+}
+
+/* IT IS OFFERED, NEVER APPLIED. The copy on the device is work that never
+   reached the server — but the server's copy may be NEWER, written from
+   another device or another tab, and quietly overwriting that with whatever
+   this browser happened to be holding is a worse bug than the one this
+   rescues. So it only speaks up when it is genuinely ahead, and then it
+   asks. */
+function offerLocalBackup(id, serverStamp) {
+  var b = localBackupRead(id);
+  if (!b) return;
+  if (serverStamp && b.at <= serverStamp) { localBackupClear(id); return; }
+  var mins = Math.max(1, Math.round((Date.now() - b.at) / 60000));
+  var msg = 'There is work on this device from about ' + mins + ' minute' +
+            (mins === 1 ? '' : 's') + ' ago that never reached the server. Put it back?';
+  setTimeout(function () {
+    if (currentDocId !== id) return;         // they have moved on
+    if (!window.confirm(msg)) { localBackupClear(id); return; }
+    try {
+      applyWorksheetBody(JSON.parse(b.body));
+      renderAllOverlays();
+      applyKeyVisibility();
+      renderHints();
+      renderMarking();
+      renderChat();
+      setDirty(true);
+      toast('Put back. Saving it now.', 4000);
+      performSave(true);
+    } catch (e) {
+      console.error(e);
+      toast('That copy could not be read back.', 5000);
+    }
+  }, 400);
+}
+
+/* BOTH EVENTS, because neither is enough on its own: Safari on iOS very
+   often gives a swiped-away tab `pagehide` and nothing else, and a desktop
+   tab switched away gets `visibilitychange` long before it is closed. */
+function flushSave() {
+  if (dirty && currentDocId) {
     clearTimeout(autoSaveTimer);
+    localBackupWrite(currentDocId);   // before the write, not after it
     performSave(true);
   }
+}
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'hidden') flushSave();
 });
+window.addEventListener('pagehide', flushSave);
 
 async function loadWorksheets() {
   if (!currentUser) { worksheets = []; assignments = []; renderWorksheets(); return; }
@@ -5131,6 +5652,33 @@ async function loadWorksheets() {
   renderWorksheets();
 }
 
+/* THE ONE PLACE A SAVED BODY BECOMES THE OPEN WORKSHEET. Opening one and
+   putting back a copy the server never received are the same job, and a
+   second copy of this list is one that forgets a field the day another is
+   added to `worksheetBody`. It sets the body-derived state and NOTHING else
+   — not `currentDocId`, not `bodyOverflow` — because the rescue is putting
+   work back into a worksheet that is already open. */
+function applyWorksheetBody(body, w) {
+  w = w || {};
+  annotations = Array.isArray(body.annotations) ? body.annotations : [];
+  hints = Array.isArray(body.hints) ? body.hints : [];
+  marking = { items: (body.marking && Array.isArray(body.marking.items)) ? body.marking.items : [],
+              runAt: (body.marking && body.marking.runAt) || null, running: false };
+  chat = Array.isArray(body.chat) ? body.chat : [];
+  // A worksheet saved before the key existed has no `key` at all, and
+  // keyReset() has already left an empty one — so it opens exactly as it
+  // always did, with every page shown.
+  var k = body.key || {};
+  wsKey.pages = Array.isArray(k.pages) ? k.pages.filter(function (n) { return n >= 1; }) : [];
+  wsKey.rows = Array.isArray(k.rows) ? k.rows : [];
+  wsKey.path = k.path || '';
+  wsKey.name = k.name || '';
+  wsKey.scanned = !!k.scanned;
+  wsKey.shared = !!k.shared || !!w.sharedPdf;
+  selectedId = null;
+  editingId = null;
+}
+
 async function openWorksheet(id) {
   var w = worksheets.find(function (x) { return x.id === id; });
   if (!w) return;
@@ -5150,21 +5698,7 @@ async function openWorksheet(id) {
     // read the open fails outright rather than leaving a blank worksheet
     // that auto-save would then write over the real one.
     var body = await readBody(w);
-    annotations = Array.isArray(body.annotations) ? body.annotations : [];
-    hints = Array.isArray(body.hints) ? body.hints : [];
-    marking = { items: (body.marking && Array.isArray(body.marking.items)) ? body.marking.items : [],
-                runAt: (body.marking && body.marking.runAt) || null, running: false };
-    chat = Array.isArray(body.chat) ? body.chat : [];
-    // A worksheet saved before the key existed has no `key` at all, and
-    // keyReset() has already left an empty one — so it opens exactly as it
-    // always did, with every page shown.
-    var k = body.key || {};
-    wsKey.pages = Array.isArray(k.pages) ? k.pages.filter(function (n) { return n >= 1; }) : [];
-    wsKey.rows = Array.isArray(k.rows) ? k.rows : [];
-    wsKey.path = k.path || '';
-    wsKey.name = k.name || '';
-    wsKey.scanned = !!k.scanned;
-    wsKey.shared = !!k.shared || !!w.sharedPdf;
+    applyWorksheetBody(body, w);
     bodyOverflow = !!w.bodyPath;
     currentDocId = id;
     wsMeta.level = w.level || '';
@@ -5179,10 +5713,27 @@ async function openWorksheet(id) {
     renderChat();
     showView('ws');
     if (window.innerWidth > 900) openBuddy('hints'); else closeBuddy();
+    // Anything this device holds that never reached the server, offered back
+    // against what the server actually has.
+    offerLocalBackup(id, stampOf(w.updatedAt));
   } catch (e) {
     console.error(e);
     toast('Could not open it: ' + ((e && e.message) || e), 6000);
   }
+}
+
+/* A Firestore timestamp, a Date, a number or nothing — all of which turn up
+   on `updatedAt` depending on whether the document has been round-tripped
+   through the server yet. Anything unreadable comes back 0, which makes the
+   rescue OFFER rather than assume the server is newer: it asks either way,
+   and the student is the one who knows. */
+function stampOf(t) {
+  if (!t) return 0;
+  if (typeof t.toMillis === 'function') { try { return t.toMillis(); } catch (e) { return 0; } }
+  if (t instanceof Date) return t.getTime();
+  if (typeof t === 'number') return t;
+  if (typeof t.seconds === 'number') return t.seconds * 1000;
+  return 0;
 }
 
 async function deleteWorksheet(id) {
@@ -5752,12 +6303,23 @@ $('zoomInBtn').addEventListener('click', function () { zoomBy(1.2); });
 $('zoomOutBtn').addEventListener('click', function () { zoomBy(1 / 1.2); });
 $('fitBtn').addEventListener('click', fitWidth);
 $('saveBtn').addEventListener('click', function () { performSave(); });
-$('strokeRange').addEventListener('input', function () {
-  strokeW = parseInt(this.value, 10) || 3;
-  if (selectedId) {
-    var a = annotations.find(function (x) { return x.id === selectedId; });
-    if (a && a.type !== 'highlight') { a.width = strokeW; renderAllOverlays(); setDirty(true); }
-  }
+$('sizeUp').addEventListener('click', function () { nudgeAnnSize(1); });
+$('sizeDown').addEventListener('click', function () { nudgeAnnSize(-1); });
+/* `input`, not `change`: the mark should follow the number as it is typed.
+   An EMPTY box is left alone rather than clamped to the minimum — clamping
+   mid-edit is what stops anybody clearing it to type 24. `blur` puts the
+   real value back, so a box left empty or holding nonsense never stays that
+   way. */
+$('sizeInput').addEventListener('input', function () {
+  if (this.value === '') return;
+  setAnnSize(this.value);
+});
+$('sizeInput').addEventListener('blur', function () { syncSizeCtl(); });
+$('sizeInput').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.preventDefault(); this.blur(); }
+  // The arrow keys are the spinner this control took away.
+  if (e.key === 'ArrowUp') { e.preventDefault(); nudgeAnnSize(1); }
+  if (e.key === 'ArrowDown') { e.preventDefault(); nudgeAnnSize(-1); }
 });
 
 document.querySelectorAll('.bTab').forEach(function (b) {
@@ -5798,6 +6360,11 @@ document.addEventListener('keydown', function (e) {
   }
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
   if (view !== 'ws') return;
+  // `[` and `]` step the size, the same pair every other editor in the
+  // family uses. They are here rather than on the input, because the hand
+  // that wants a fatter pen is on the page, not in the toolbar.
+  if (e.key === '[') { e.preventDefault(); nudgeAnnSize(-1); return; }
+  if (e.key === ']') { e.preventDefault(); nudgeAnnSize(1); return; }
   var keys = { p: 'pen', h: 'highlight', t: 'text', l: 'line', a: 'arrow', r: 'rect',
                o: 'ellipse', e: 'eraser', v: 'select', d: 'hint', m: 'speak' };
   var want = keys[e.key.toLowerCase()];
