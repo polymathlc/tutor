@@ -370,11 +370,12 @@ THE TEACHER SETS`), plus 📌 **Set for my students** on a worksheet card and th
   disappeared half way through, with the marking on it, would be work taken
   away rather than an assignment withdrawn.
 
-## ✒️ The caret lands on the I-beam (v1.1.1)
+## ✒️ The caret lands on the I-beam (v1.1.2)
 
 `ANN_TEXT_PAD_X` / `ANN_TEXT_PAD_Y` / `ANN_TEXT_LINE` / `ANN_TEXT_FONT` /
-**`textCaretDelta`** / `startTextBox` / `textBoxWidth` (search `WHERE A TEXT
-BOX'S CARET IS`), and the `a.type === 'text'` branch of `drawAnnsOnCtx`.
+`ANN_CARET_PROBE` / **`textCaretRect`** / `textCaretModel` /
+**`textCaretDelta`** / `startTextBox` / `textBoxWidth` (search `WHERE THE
+CARET REALLY IS`), and the `a.type === 'text'` branch of `drawAnnsOnCtx`.
 
 A text box is an HTML `div` inside a `foreignObject`, so **the caret is not at
 the box's x/y**: it sits inside the padding, and it is a whole line box tall.
@@ -384,15 +385,27 @@ the right and half a line **below** where the student was pointing — about
 thirteen pixels at 16px, which is exactly the "that is not where I clicked"
 that was reported.
 
-- **THE OFFSET IS MEASURED, NEVER ASSUMED.** Every number that decides where a
-  caret lands — the padding, the line height, the border, the font's own
-  metrics — is a CSS value, and a copy of it in the script is a copy that
-  drifts the first time the stylesheet is touched. So the box is rendered, the
-  browser is asked where the caret actually IS (`textCaretDelta`), and the box
-  is moved by the difference. That is exact whatever the CSS says, and it
-  stays exact when somebody changes it. The constants are the FALLBACK, for a
-  browser that will not hand back a computed style — keep them in step with
-  `.annText` anyway.
+- **THE CARET IS MEASURED, NEVER MODELLED — and the difference is not
+  theoretical.** v1.1.1 modelled it as *content-box top + line-height / 2*,
+  which is wrong on EVERY placement by the same small amount, always upwards:
+  **Blink FLOORS the half-leading** rather than splitting it. At 16px on a
+  21.6px line the exact half-leading is 2.3px and the caret box starts 2.0px
+  down, so the modelled centre sat **0.297 page units** low — and 0.95 at
+  34px. No constant fixes that, because the flooring depends on the font's own
+  metrics at the size and scale it is laid out at, which only the browser
+  knows.
+  **`textCaretRect` asks the browser instead.** A zero-width space gives the
+  first line box a real fragment, the range round it is measured, and the
+  probe comes straight back out — it is zero-width, it joins a line box that
+  is there either way, and it is gone before the box is focused, so it can
+  never be typed over or saved. It is written as `'\u200B'` rather than as the
+  character, because an invisible literal is one a later edit silently drops.
+- **`textCaretModel` is the FALLBACK, for a browser that hands back no rect at
+  all**, and it **REFUSES rather than guess** when the line-height will not
+  parse: `line-height: normal` computes to the string, and the real normal
+  line box is nothing like `fontSize * ANN_TEXT_LINE` — modelling it with that
+  multiplier was **36/36 placements off, worst −3.95**, which is worse than not
+  correcting at all. Keep the constants in step with `.annText` anyway.
 - **THE TWO COORDINATE SYSTEMS ARE THE TRAP.** `getBoundingClientRect` comes
   back in SCREEN pixels; `getComputedStyle` comes back in the SVG's own USER
   units, because the div is laid out inside a `foreignObject` and the whole
@@ -415,30 +428,64 @@ that was reported.
   `y + fontSize`, the full box width rather than the width inside the padding,
   and `sans-serif` where the screen uses Century Gothic. Text drawn somewhere
   other than where the student sees it is the app marking a page nobody was
-  looking at.
+  looking at. Its position now agrees with the screen to under a device pixel
+  at the real raster scale.
+- **KNOWN LIMIT, and the harness reports it rather than hiding it**: the
+  flatten WRAPS differently from the screen in three ways it always has. The
+  screen is `white-space: pre-wrap; overflow-wrap: break-word`; the canvas
+  splits on `/\s+/`, so a **run of spaces collapses**, a **tab becomes one
+  space**, and a **word longer than the box is never broken** (the screen
+  breaks it mid-word, the picture runs it off the edge). Those change the line
+  breaks the AI marks from. They are older than the caret fix and are left
+  alone deliberately — matching `pre-wrap` and `break-word` in canvas is its
+  own change with its own risks, and it is not what a misplaced caret is.
+- **KNOWN LIMIT, the other one**: `textBoxWidth`'s floor is 80 units, so a box
+  started within ~92 units of the right edge runs off the page and is clipped
+  out of the flattened picture. Clamping `x` to make it fit would move the
+  caret off the pointer — the two goals genuinely conflict there, and the
+  caret is the one that was asked for.
 
 **`node tools/text-caret-check.mjs`** is the only honest check of any of it:
 it loads the REAL `.annText` rule and the REAL placement functions out of
 `index.html`, builds the same `foreignObject`-inside-a-scaled-SVG the app
 builds, clicks at a known point and then measures the caret's own rectangle
-with a DOM `Range` — the browser's own answer, not the placement code's. It
-sweeps seven zooms × four font sizes × six points including all four edges,
-and passes only inside half a page unit.
+in the browser. It sweeps seven zooms × six font sizes × seven points
+including all four edges (336 placements), a `devicePixelRatio: 2` pass, three
+stylesheet variants and the flattened picture against the screen, and passes
+only inside half a page unit.
 
-- **It measures with a `Range`, deliberately.** Checking against the div's box
-  would be the placement code marking its own homework: it would agree even if
-  the padding were read off the wrong edge.
-- **`--selftest` breaks the placement four ways and requires each to go red.**
-  A check that cannot fail is not a check, and the only way to know which kind
-  you have is to try. The mixed-units mutant is the one worth keeping: it goes
-  red at 144 of 168 placements and is *clean at 100% zoom*, which is precisely
-  why one zoom level would have passed the bug straight through.
+- **IT MEASURED NOTHING FOR ITS FIRST 168 GREEN TICKS, and that is the
+  cautionary tale of this whole section.** `range.setStart(div, 0)` on an
+  **empty** contenteditable returns **zero rects** in Chromium, so every
+  placement fell through to a fallback that computed *content-box top +
+  line-height / 2* — byte-for-byte `textCaretDelta`'s own formula. The check
+  agreed with the code because it **was** the code. The four mutants still went
+  red, because they broke the placement rather than the shared formula. So the
+  probe is not a nicety: **without the zero-width space there is no
+  measurement at all**, and a fallback that fires is now reported and FAILS the
+  run rather than passing quietly.
+- **`--selftest` breaks the placement eight ways and requires each to go red**,
+  and **`sub()` THROWS when a mutant matches nothing.** That is the
+  load-bearing half: a mutant is a string replacement against code that is
+  being edited, so a rename turns it into a no-op — and a no-op reports "not
+  caught", which reads as a hole in the measurement rather than as a stale
+  test. It has already happened here, to two of them at once.
+- Three mutants are worth keeping by name. **Mixed units** is clean at 100%
+  zoom, which is precisely why one zoom level would have passed the original
+  bug straight through. **A ±0.55 drift** sizes the tolerance, and it must go
+  red in BOTH directions — while the code was leaning one way, the drift that
+  cancelled the lean was not caught, which was itself evidence the lean was
+  real. And **"the caret is MODELLED again instead of measured"** is the alarm
+  on this section's own history: it reproduces v1.1.1 exactly, 112 placements
+  off at worst −0.95, and without it the bias could come back under 336 green
+  ticks.
 - Like scan's `mobile-check`, it needs `playwright-core` and the Chromium
   already on the machine, so it is a tool you reach for rather than a gate.
 
 ## House rules
 - After touching **the text box's placement** (`ANN_TEXT_PAD_X`,
-  `ANN_TEXT_PAD_Y`, `ANN_TEXT_LINE`, `ANN_TEXT_FONT`, `textCaretDelta`,
+  `ANN_TEXT_PAD_Y`, `ANN_TEXT_LINE`, `ANN_TEXT_FONT`, `ANN_CARET_PROBE`,
+  `textCaretRect`, `textCaretModel`, `textCaretDelta`,
   `startTextBox`, `textBoxWidth`, `placeSpokenAnswer`'s placement, the
   `a.type === 'text'` branch of `drawAnnsOnCtx`, or **the `.annText` rule in
   the stylesheet**), run
@@ -447,12 +494,16 @@ and passes only inside half a page unit.
   the padding, the line height, the font's own metrics and the zoom the page
   happens to be at, and only a browser knows all four. Put the box's top-left
   on the pointer and the first letter is half a line below the I-beam — which
-  is the bug this fixed. Mix `getBoundingClientRect`'s screen pixels with
-  `getComputedStyle`'s user units and it is perfect at 100% and wrong on every
-  iPad in the centre, which is why the sweep is seven zooms and not one. Take
-  the width floor away and a box near the right edge wraps every word onto its
-  own line. And add a rule to the placement without adding its mutant to
-  `--selftest` and you have added a tick rather than a check.
+  is the bug this fixed. **Model the caret instead of measuring it and it is
+  out by a fraction of a pixel on every placement, always the same way**, which
+  no screenshot shows and only a `Range` catches. Mix
+  `getBoundingClientRect`'s screen pixels with `getComputedStyle`'s user units
+  and it is perfect at 100% and wrong on every iPad in the centre, which is why
+  the sweep is seven zooms and not one. Take the width floor away and a box
+  near the right edge wraps every word onto its own line. **And add a rule to
+  the placement without adding its mutant to `--selftest` — or rename a
+  variable a mutant names and let it match nothing — and you have added a tick
+  rather than a check.**
 - After touching **🔑 the answer key, 🎤 speaking an answer, 📌 the worksheets
   the teacher sets, or the marking's page numbers** (`wsKey`, `pageIsKey`,
   `studentPages`, `applyKeyVisibility`, `keyPageLooksLikeKey`, `KEY_TITLE_RE`,

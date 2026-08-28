@@ -983,7 +983,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.1.1';
+var APP_VERSION = 'v1.1.2';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -2330,43 +2330,95 @@ function commitActiveTextEdit() {
   setDirty(true);
 }
 
-/* HOW FAR THE BOX IS FROM WHERE IT SHOULD BE, MEASURED OFF THE LIVE ELEMENT.
-   Every number that decides where a caret lands — the padding, the line
-   height, the border — is a CSS value, and a copy of it in this file is a
-   copy that drifts the first time the stylesheet is touched. So the box is
-   rendered, the browser is asked where the caret actually IS, and the box is
-   moved by the difference. That is exact whatever the CSS says, and it stays
-   exact when somebody changes it.
+/* WHERE THE CARET REALLY IS, ASKED OF THE BROWSER.
 
-   THE TWO COORDINATE SYSTEMS ARE THE TRAP. `getBoundingClientRect` comes
-   back in SCREEN pixels; `getComputedStyle` comes back in the SVG's own USER
-   units, because the div is laid out inside a foreignObject and the whole
-   overlay is then scaled to the page's zoom. Mixing them is right at 100%
-   and wrong at every other zoom — which is the one bug that would look fixed
-   on the machine it was written on. Hence `kx` / `ky`. */
-function textCaretDelta(p, div, pt) {
-  if (!p || !div || !window.getComputedStyle) return null;
-  var pr = p.svg.getBoundingClientRect();
+   The first version of this MODELLED it — content-box top plus half the
+   line-height — and was wrong on every placement by the same small amount,
+   always upwards. Blink does not split the half-leading exactly: it FLOORS
+   it. At 16px on a 21.6px line the exact half-leading is 2.3px and the
+   caret box starts 2.0px down, so the modelled centre sat 0.297 page units
+   below the real one. No constant fixes that, because the flooring depends
+   on the font's own metrics at the size and scale it happens to be laid out
+   at — which only the browser knows.
+
+   So the caret is MEASURED. A zero-width space gives the first line box a
+   real fragment (Chromium returns NO rects for a collapsed range in an
+   empty contenteditable, which is what made this look right for so long),
+   the range around it is measured, and the probe is taken straight out
+   again. It is zero-width and joins a line box that is there either way, so
+   it changes no geometry — and it is gone before the box is focused, so it
+   can never be typed over or saved.
+
+   The rect comes back in SCREEN pixels, which is the same frame as the
+   div's own rect — nothing here mixes the two coordinate systems. */
+// Written as an escape, never as the character itself: an invisible
+// literal is one a later edit silently drops.
+var ANN_CARET_PROBE = '\u200B';
+
+function textCaretRect(div) {
+  var doc = div && div.ownerDocument;
+  if (!doc || !doc.createRange) return null;
+  var probe = doc.createTextNode(ANN_CARET_PROBE);
+  var out = null;
+  try {
+    div.insertBefore(probe, div.firstChild);
+    var rg = doc.createRange();
+    rg.selectNodeContents(probe);
+    var list = rg.getClientRects();
+    var r = (list && list.length) ? list[0] : rg.getBoundingClientRect();
+    // The caret is drawn the height of the font's box on that line, and the
+    // I-beam points at its MIDDLE.
+    if (r && r.height > 0) out = { x: r.left, mid: r.top + r.height / 2 };
+  } catch (e) { out = null; }
+  if (probe.parentNode) probe.parentNode.removeChild(probe);
+  return out;
+}
+
+/* The FALLBACK, for a browser that hands back no rect at all. It is the old
+   model, and it is a little high for the reason above — but it lands within
+   a pixel instead of half a line out, which is what it is for.
+
+   It REFUSES rather than guess when the line-height will not parse.
+   `line-height: normal` computes to the string, and the real normal line box
+   is nothing like `fontSize * ANN_TEXT_LINE` — modelling it with that
+   multiplier is worse than not correcting at all. */
+function textCaretModel(div, kx, ky) {
+  if (!window.getComputedStyle) return null;
   var r = div.getBoundingClientRect();
-  if (!(pr.width > 0) || !(pr.height > 0) || !(r.width > 0 || r.height > 0)) return null;
-  var kx = pr.width / p.baseW;          // screen px per page unit, across
-  var ky = pr.height / p.baseH;         // …and down
-  if (!(kx > 0) || !(ky > 0)) return null;
+  if (!(r.width > 0 || r.height > 0)) return null;
   var cs = window.getComputedStyle(div);
+  var lh = parseFloat(cs.lineHeight);
+  if (!(lh > 0)) return null;
   var padL = parseFloat(cs.paddingLeft) || 0;
   var padT = parseFloat(cs.paddingTop) || 0;
   var bL = parseFloat(cs.borderLeftWidth) || 0;
   var bT = parseFloat(cs.borderTopWidth) || 0;
-  var lh = parseFloat(cs.lineHeight);
-  // `line-height: normal` computes to the string, not a length.
-  if (!(lh > 0)) lh = (parseFloat(cs.fontSize) || 16) * ANN_TEXT_LINE;
-  // An empty box's caret starts at the top-left of the content area and is
-  // one line box tall. Its MIDDLE is what the I-beam points at.
-  var caretX = r.left + (bL + padL) * kx;
-  var caretY = r.top + (bT + padT + lh / 2) * ky;
+  return {
+    x: r.left + (bL + padL) * kx,
+    mid: r.top + (bT + padT + lh / 2) * ky
+  };
+}
+
+/* HOW FAR THE BOX IS FROM WHERE IT SHOULD BE.
+
+   THE TWO COORDINATE SYSTEMS ARE THE TRAP. Every rect above is in SCREEN
+   pixels; the box's own x/y are in the SVG's USER units, because the div is
+   laid out inside a foreignObject and the whole overlay is then scaled to
+   the page's zoom. Mixing them is right at 100% and wrong at every other
+   zoom — the one bug that would look fixed on the machine it was written
+   on. Hence `kx` / `ky`, and hence a harness that sweeps seven zooms. */
+function textCaretDelta(p, div, pt) {
+  if (!p || !div) return null;
+  var pr = p.svg.getBoundingClientRect();
+  if (!(pr.width > 0) || !(pr.height > 0)) return null;
+  var kx = pr.width / p.baseW;          // screen px per page unit, across
+  var ky = pr.height / p.baseH;         // …and down
+  if (!(kx > 0) || !(ky > 0)) return null;
+  var caret = textCaretRect(div) || textCaretModel(div, kx, ky);
+  if (!caret) return null;
   var wantX = pr.left + pt.x * kx;
   var wantY = pr.top + pt.y * ky;
-  return { dx: (wantX - caretX) / kx, dy: (wantY - caretY) / ky };
+  return { dx: (wantX - caret.x) / kx, dy: (wantY - caret.mid) / ky };
 }
 
 function startTextBox(p, pt) {
@@ -4132,6 +4184,17 @@ function placeSpokenAnswer(p, pt, text) {
       a.x = round2(a.x + d.dx);
       a.y = round2(a.y + d.dy);
       a.w = round2(Math.max(140, Math.min(360, live.baseW - a.x - 12)));
+      // The correction is put on the LIVE box before its height is read.
+      // `scrollHeight` is how many lines the words take AT A WIDTH, so
+      // measuring it against the width the box no longer has is a height
+      // for a box that does not exist — and a box too short clips the
+      // answer the marking never sees.
+      var fo = div.parentNode;
+      if (fo && fo.setAttribute) {
+        fo.setAttribute('x', a.x);
+        fo.setAttribute('y', a.y);
+        fo.setAttribute('width', Math.max(a.w, 40));
+      }
     }
     if (div.scrollHeight) a.h = Math.max(fontSize * 1.8, div.scrollHeight);
     renderOverlay(live);

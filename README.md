@@ -12,6 +12,36 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.1.2 — the caret really lands where you click
+
+v1.1.1 put the box in the right place by **working out** where the caret would
+be: content-box top plus half the line-height. That is wrong on every
+placement by the same small amount, always upwards — Blink does not split the
+half-leading, it **floors** it. At 16px the caret sat 0.3 of a pixel high, at
+34px nearly a whole one.
+
+Worse, the check could not have told you. `Range` on an **empty** editable box
+returns no rectangle at all in Chromium, so the harness quietly fell back to
+computing the caret with *the same formula the app used* — 168 green ticks for
+a measurement that never happened.
+
+The caret is now **asked of the browser** (a zero-width space, measured and
+removed before the box is focused), the harness measures the real thing and
+FAILS if it ever cannot, and `--selftest` grew from four mutants to eight —
+including one that puts the old modelling back, so this cannot return under a
+page of ticks.
+
+```
+336 placements · 7 zooms · 6 font sizes · every page edge · dpr 1 and 2
+worst 0.003 across / -0.014 down   (was 0.000 / -0.953)
+```
+
+Also: the box for a **spoken** answer is measured for its height at the width
+it will actually have, and `line-height: normal` now refuses to correct rather
+than correcting by a wrong multiplier.
+
+---
+
 ## v1.1.1 — the caret lands where you click
 
 The 🅣 text tool put the box's **top-left** on the pointer, so the first letter
