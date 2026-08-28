@@ -904,7 +904,77 @@ The roster said who had signed in. It could not say what any of them had
   anywhere.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 🗂 THE COVER — the front page, on a stack of sheets (v1.7.0)
+
+`COVER_W` / `COVER_Q` / `COVER_MAX` / `coverOf` / **`makeCoverDataUrl`** /
+**`ensureCover`** / `coverSheets` / `coverNode` (search `THE COVER`), plus the
+`.wsCover` / `.wsSheet` / `.wsFace` CSS.
+
+A list of file names is a list nobody can read at a glance — *Term 1 Paper 2*
+and *Term 1 Paper 2 (1)* are the same row twice — so every card wears the
+worksheet's own first page.
+
+- **IT IS MADE ONCE, FROM THE PDF ALREADY IN HAND**, and stored on the
+  worksheet's own document. Rendering it in the LIST would mean downloading
+  ten PDFs to draw ten pictures, on a school connection, every time the home
+  screen is opened. So it is made at upload — the bytes are right there — and,
+  for every worksheet older than this, the first time it is **opened**. The
+  library fills itself in as it is used and **no migration runs anywhere**.
+- **IT IS NEVER A KEY PAGE.** `studentPages()` is the ONE place "the pages the
+  student has" is decided and the cover reads it; the whole 🔑 section exists
+  to keep a marking scheme off the student's screen, and putting page 1 of one
+  on the HOME screen instead is the same leak through a side door. That is
+  also why the upload makes it **after `keyAutoScan`** rather than beside the
+  PDF write: before the scan has run, a marking scheme on page 1 is still an
+  ordinary page.
+- **THE SHEET IS PAINTED WHITE BEFORE THE PAGE IS DRAWN.** A PDF page is
+  transparent where nothing is drawn and a transparent canvas flattens to
+  **black** in a JPEG — the whole page, ink and all.
+- **`COVER_MAX` is a REFUSAL, not a cap.** The cover and the body share one
+  Firestore document (`BODY_INLINE_LIMIT` is 600 KB of it), so a cover that
+  will not fit comfortably underneath is not stored at all. A card with no
+  picture is a small loss; a document that cannot be written is the student's
+  work.
+- **`coverOf` only ever accepts a `data:image/` url.** It is a field on a
+  document rendered straight into an `<img src>`; anything else the record
+  happens to be carrying is not a picture this app drew.
+- **It is written with its own small update**, never folded into
+  `performSave`: a cover never changes, and re-sending it on every auto-save
+  would put tens of kilobytes on the wire every couple of seconds. A cover
+  that cannot be written is not worth a word to the student.
+- **A worksheet SET for the class carries its cover to every copy**
+  (`cover: coverOf(w)` on the push, `coverOf(a)` on the start), so thirty
+  students cost one render — the same way the key rows travel already read.
+- **The stack is the PAGE COUNT** (`coverSheets`: 1 → none, 2 → one, 3+ →
+  two), so it says how much paper there is rather than being decoration. The
+  sheets are **absolutely positioned**, so however many there are the card is
+  the size of the front page and the grid never goes ragged.
+- The two greys the sheets are drawn in are deliberately **not `--line`**:
+  #ECECEA against a white card is invisible from a step back, and a stack
+  nobody can see is not a stack.
+- An empty face **says how it fills in** on a worksheet of your own, and says
+  **nothing** on one the teacher set — that one fills in from the teacher's
+  copy, which is not something a student can do anything about, and asking
+  for something impossible is worse than saying nothing.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## House rules
+- After touching **🗂 the worksheet cover** (`COVER_W`, `COVER_Q`,
+  `COVER_MAX`, `coverOf`, `makeCoverDataUrl`, `ensureCover`, `coverSheets`,
+  `coverNode`, the `.wsCover` / `.wsSheet` / `.wsFace` rules, or where the
+  cover is made in `handleUpload` / `openWorksheet` / `pushWorksheet` /
+  `startAssignment`), run `node tools/tutor-tests.mjs` **and look at the home
+  screen**. A drawing is the one thing reading the source cannot check, and
+  every other failure here is silent. Make it from `pages` rather than
+  `studentPages()`, or make it before the key scan, and the front page of a
+  marking scheme is on the home screen — the leak the whole 🔑 section exists
+  to prevent, through a side door. Skip the white fill and every cover is a
+  black rectangle, because a PDF page is transparent where nothing is drawn.
+  Turn the size refusal into a cap and a big cover and a big body together
+  write a document Firestore rejects — which is the student's work, not the
+  picture. Fold it into `performSave` and every auto-save carries it again.
+  And let the sheets behind stop being absolute and a four-page worksheet is
+  a taller card than a one-page one, on a grid that then reads as broken.
 - After touching **📈 student usage** (`USAGE_EVENTS`, `usageLabel`,
   `usageNote`, `usageAdd`, `usageFlush`, `usageStart`, `usageStop`,
   `usageDayKey`, `usageOf`, `usageAccuracy`, `usageRecent`, `openPersonUsage`,
