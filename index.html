@@ -187,6 +187,49 @@
     box-shadow: var(--shadow-card); padding: 20px 22px; display: flex; flex-direction: column; gap: 10px;
   }
   .wsCard h3 { font-size: 1rem; font-weight: 700; line-height: 1.4; }
+
+  /* THE COVER — the worksheet's own first page, on a stack of sheets.
+     The face is in the flow and gives the block its height; the sheets
+     behind it are absolute at `inset: 0`, so they are exactly the same box
+     shifted, which is what makes the stack read as paper rather than as
+     three boxes. The bottom margin is what the deepest sheet hangs into. */
+  .wsCover { position: relative; margin: -4px 0 22px; }
+  /* The sheets behind peek out UNDER the front one, each a little narrower
+     — a stack of paper seen from the front. Offsetting them diagonally
+     instead reads as one page with a thin edge, which is not a stack. They
+     are absolutely positioned, so however many there are the card's layout
+     is the front page's and nothing moves. */
+  .wsSheet {
+    position: absolute; left: 8px; right: 8px; top: auto; bottom: -6px; height: 16px;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    /* NOT `--line`. That border is #ECECEA against a white card, which is
+       invisible from a step back — the stack would be there and nobody
+       would see it. These two are the shading of paper under paper, and
+       they are the one place in the app that needs it. */
+    background: #F3F1ED; border: 1px solid #DCDAD5;
+  }
+  .wsSheet.s2 { left: 17px; right: 17px; bottom: -12px; background: #EAE7E2; border-color: #D2CFC9; }
+  .wsFace {
+    position: relative; overflow: hidden; background: #fff;
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    box-shadow: var(--shadow-card); aspect-ratio: 5 / 4;
+  }
+  /* The TOP of the page, never the middle of it: the heading is what says
+     which paper this is, and an A4 page shrunk whole into a card is a grey
+     rectangle. */
+  .wsCoverImg { display: block; width: 100%; height: 100%;
+                object-fit: cover; object-position: top center; }
+  /* A card with no picture yet says how it fills in, rather than sitting
+     there as an empty box that reads as a fault. */
+  .wsFaceNone {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; background: var(--bg-soft); text-align: center; padding: 0 18px;
+  }
+  .wsFaceNone span { font-size: 30px; opacity: .35; }
+  .wsFaceNone small { font-size: 0.74rem; color: var(--ink-faint); line-height: 1.5; }
+  /* No aspect-ratio (an old iPad) is a face with no height at all, which is
+     a card that has silently lost its picture. */
+  @supports not (aspect-ratio: 1 / 1) { .wsFace { height: 168px; } }
   .wsMeta { display: flex; flex-wrap: wrap; gap: 6px; }
   .chip {
     font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 999px;
@@ -1432,7 +1475,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.6.0';
+var APP_VERSION = 'v1.7.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -6745,6 +6788,135 @@ async function mwsExport(ids, withKey) {
   printThis($('mistSheet'));
 }
 
+/* =====================================================================
+   THE COVER — the front page, on a stack of sheets
+   ---------------------------------------------------------------------
+   A list of file names is a list nobody can read at a glance: "Term 1 Paper
+   2" and "Term 1 Paper 2 (1)" are the same row twice. So every card wears
+   the worksheet's OWN first page, drawn as a stack of sheets — the paper
+   itself, which is what a student recognises.
+
+   IT IS MADE ONCE, FROM THE PDF ALREADY IN HAND, and stored on the
+   worksheet's own document. Rendering it in the list instead would mean
+   downloading ten PDFs to draw ten pictures, on a school connection, every
+   time the home screen is opened — so it is made at upload (the bytes are
+   right there) and, for every worksheet older than this, the first time it
+   is OPENED. The library fills itself in as it is used and no migration
+   runs anywhere.
+
+   IT IS NEVER A KEY PAGE. `studentPages()` is the ONE place "the pages the
+   student has" is decided, and the cover reads it — the whole 🔑 section
+   exists to keep a marking scheme off the student's screen, and putting it
+   on the home screen instead would be the same leak through a side door.
+   That is also why the cover is made AFTER the key scan at upload rather
+   than beside the PDF write. */
+var COVER_W = 260;        // px wide — wider than a card ever draws it
+var COVER_Q = 0.62;
+/* A refusal rather than a cap: the body already carries up to
+   BODY_INLINE_LIMIT and the two share one Firestore document, so a cover
+   that will not fit comfortably underneath it is not stored at all. A card
+   with no picture is a small loss; a document that cannot be written is the
+   student's work. */
+var COVER_MAX = 60000;    // characters of data URL
+
+function coverOf(w) {
+  var c = w && w.cover;
+  return typeof c === 'string' && c.slice(0, 11) === 'data:image/' ? c : '';
+}
+
+async function makeCoverDataUrl() {
+  var list = (typeof studentPages === 'function' ? studentPages() : pages) || [];
+  var p = list[0];
+  if (!p || !p.page) return '';
+  try {
+    // The page may be mid-render for the screen. pdf.js is asked for one
+    // render of a page at a time.
+    if (p.renderTask) { try { await p.renderTask.promise; } catch (e) {} }
+    var vp1 = p.page.getViewport({ scale: 1 });
+    if (!vp1.width) return '';
+    var vp = p.page.getViewport({ scale: COVER_W / vp1.width });
+    var c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(vp.width));
+    c.height = Math.max(1, Math.round(vp.height));
+    var ctx = c.getContext('2d');
+    // WHITE FIRST. A PDF page is transparent where nothing is drawn, and a
+    // transparent canvas flattens to BLACK in a JPEG — the whole page, ink
+    // and all.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    await p.page.render({ canvasContext: ctx, viewport: vp }).promise;
+    var url = c.toDataURL('image/jpeg', COVER_Q);
+    return url.length > COVER_MAX ? '' : url;
+  } catch (e) {
+    console.warn('cover: not made', e);
+    return '';
+  }
+}
+
+/* Written with its own small update rather than folded into performSave: a
+   cover never changes, and re-sending it on every auto-save would put tens
+   of kilobytes on the wire every couple of seconds. A cover that cannot be
+   written is never worth a word to the student. */
+async function ensureCover(id, existing) {
+  if (!id || !db || !currentUser || coverOf({ cover: existing })) return '';
+  var url = await makeCoverDataUrl();
+  if (!url) return '';
+  try {
+    await db.collection(COLLECTION).doc(id).set({ cover: url }, { merge: true });
+  } catch (e) {
+    console.warn('cover: not saved', e);
+    return url;
+  }
+  var w = worksheets.find(function (x) { return x.id === id; });
+  if (w) w.cover = url;
+  return url;
+}
+
+/* How many sheets are drawn behind the front one is the PAGE COUNT, so the
+   stack says how much paper there is rather than being decoration. */
+function coverSheets(pageCount) {
+  var n = Number(pageCount) || 0;
+  return n > 2 ? 2 : n > 1 ? 1 : 0;
+}
+
+/* `hint` is what an empty face says. A worksheet of your own fills in the
+   first time you open it, so it says so; a worksheet SET by the teacher
+   fills in from their copy, which is nothing a student can do anything
+   about — so that one says nothing rather than asking for something
+   impossible. */
+function coverNode(w, hint) {
+  var wrap = document.createElement('div');
+  wrap.className = 'wsCover';
+  var behind = coverSheets(w && w.pageCount);
+  for (var i = behind; i >= 1; i--) {
+    var sh = document.createElement('div');
+    sh.className = 'wsSheet s' + i;
+    wrap.appendChild(sh);
+  }
+  var face = document.createElement('div');
+  face.className = 'wsFace';
+  var url = coverOf(w);
+  if (url) {
+    var img = document.createElement('img');
+    img.className = 'wsCoverImg';
+    img.src = url;
+    img.alt = '';
+    face.appendChild(img);
+  } else {
+    face.className += ' wsFaceNone';
+    var ico = document.createElement('span');
+    ico.textContent = '📄';
+    face.appendChild(ico);
+    if (hint) {
+      var say = document.createElement('small');
+      say.textContent = hint;
+      face.appendChild(say);
+    }
+  }
+  wrap.appendChild(face);
+  return wrap;
+}
+
 /* ---- The worksheet list ---- */
 function renderWorksheets() {
   var box = $('wsList');
@@ -6768,6 +6940,7 @@ function renderWorksheets() {
   worksheets.forEach(function (w) {
     var card = document.createElement('div');
     card.className = 'wsCard';
+    card.appendChild(coverNode(w, 'Open it once and the front page shows here'));
     var h = document.createElement('h3');
     h.textContent = w.name || 'Untitled';
     card.appendChild(h);
@@ -6935,6 +7108,7 @@ async function startAssignment(id) {
       keyPath: a.keyPath || '',
       keyAnswers: (a.keyRows || []).length,
       pageCount: a.pageCount || 0,
+      cover: coverOf(a),
       body: body,
       bodyPath: '',
       score: { correct: 0, attempted: 0 },
@@ -6976,6 +7150,10 @@ async function pushWorksheet(id) {
       keyPages: Array.isArray(key.pages) ? key.pages : (w.keyPages || []),
       keyRows: rows,
       pageCount: w.pageCount || 0,
+      // The teacher's own cover, so a class of thirty costs one render
+      // rather than thirty — the same reason the key rows travel already
+      // read. It is the teacher's blank paper, never a student's work.
+      cover: coverOf(w),
       byUid: currentUser.uid,
       byName: currentUser.displayName || ADMIN_DISPLAY_NAME,
       active: true,
@@ -7031,6 +7209,7 @@ function renderAssignments() {
     var mine = myCopyOf(a);
     var card = document.createElement('div');
     card.className = 'wsCard setCard';
+    card.appendChild(coverNode(a));
     var h = document.createElement('h3');
     h.textContent = a.name || 'Worksheet';
     card.appendChild(h);
@@ -7429,6 +7608,10 @@ async function openWorksheet(id) {
     // Anything this device holds that never reached the server, offered back
     // against what the server actually has.
     offerLocalBackup(id, stampOf(w.updatedAt));
+    // Every worksheet older than covers gets one here, the first time it is
+    // opened — the pages are already rendered, so it costs a canvas and one
+    // small write, and the library fills itself in as it is used.
+    ensureCover(id, w.cover).then(function (u) { if (u) renderWorksheets(); });
   } catch (e) {
     console.error(e);
     toast('Could not open it: ' + ((e && e.message) || e), 6000);
@@ -7571,6 +7754,9 @@ async function handleUpload(file) {
     await keyAutoScan(true);
     if (keyHasAnything()) await keyRefreshRows();
     await performSave(true);
+    // AFTER the key scan: `studentPages()` is what the cover reads, and
+    // before it has run a marking scheme on page 1 is still an ordinary page.
+    await ensureCover(id, '');
     if (pushIt) { await loadWorksheets(); await pushWorksheet(id); }
   } catch (e) {
     console.error(e);

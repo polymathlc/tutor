@@ -77,6 +77,7 @@ const SRC_SAVE   = between('/* ================= AUTO-SAVE =================',
 const SRC_PRAC   = between('var pracSel = {};',
                            '/* THE ONE PLACE ANYTHING IN THIS APP IS COPIED', 'practising the mistakes');
 const SRC_PEOPLE = between('var PEOPLE_COL =', 'function renderAuth() {', 'the first sign-in and the roster');
+const SRC_COVER  = between('var COVER_W =', "/* ---- The worksheet list ---- */", 'the worksheet cover');
 
 /* ---- A sandbox with just enough world to evaluate them ---- */
 const noop = () => {};
@@ -116,6 +117,8 @@ const sandbox = {
   worksheetBody: () => '{}',
   // The practice session and the printed sheet reach these at CALL time.
   mistakes: [], mistFilter: 'open', levelLabel: v => v, subjectLabel: () => 'Science',
+  // The cover reads the pages the STUDENT has, and writes one small field.
+  worksheets: [], COLLECTION: 'tutorWorksheets', studentPages: () => [],
   mistakeImageUrl: () => Promise.resolve(''), setMistakeCleared: noop, renderMistakes: noop,
   aiAvailable: () => true, loadTeachingNotes: () => Promise.resolve(),
   chungAvatar: () => ({ style: {}, classList: { add: noop } }), chungSays: n => n,
@@ -127,7 +130,7 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
                 '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
-                '\n' + SRC_PRAC + '\n' + SRC_PEOPLE,
+                '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER,
                 sandbox, { filename: 'index.html' });
 const S = sandbox;
 
@@ -1383,6 +1386,120 @@ eq('a feed that is not a list is not a crash', S.usageRecent({ tutorRecent: 'oop
 eq('the day is a LOCAL day', S.usageDayKey(new Date(2026, 0, 5, 23, 30)), '2026-01-05');
 
 ok('the panel it opens exists', /id="personModal"/.test(html) && /id="personBody"/.test(html));
+
+/* =====================================================================
+   N. THE COVER — the front page, on a stack of sheets
+   ===================================================================== */
+section('The worksheet cover');
+
+/* A field on a document, rendered straight into an <img src>. Only ever a
+   picture this app drew — never a url the document happens to be carrying. */
+eq('a cover is a picture, not a link', S.coverOf({ cover: 'https://example.com/x.png' }), '');
+eq('…nor a script url', S.coverOf({ cover: 'javascript:alert(1)' }), '');
+eq('…and a real one is kept', S.coverOf({ cover: 'data:image/jpeg;base64,AAAA' }),
+   'data:image/jpeg;base64,AAAA');
+eq('a worksheet with no cover has none', S.coverOf({}), '');
+
+/* The stack SAYS how much paper there is rather than being decoration. */
+eq('one page is one sheet', S.coverSheets(1), 0);
+eq('two pages puts one behind it', S.coverSheets(2), 1);
+eq('a whole paper is a stack', S.coverSheets(9), 2);
+eq('…and it never grows past two', S.coverSheets(400), 2);
+eq('an unknown page count is not a stack', S.coverSheets(undefined), 0);
+
+/* ---- Drawing it ---- */
+function coverStub(opts) {
+  const o = opts || {};
+  const calls = { fills: [], rendered: 0 };
+  const ctx = {
+    set fillStyle(v) { calls.fill = v; },
+    get fillStyle() { return calls.fill; },
+    fillRect: (x, y, w, h) => calls.fills.push([x, y, w, h])
+  };
+  S.document.createElement = () => ({
+    width: 0, height: 0,
+    getContext: () => ctx,
+    toDataURL: () => o.url || ('data:image/jpeg;base64,' + 'A'.repeat(o.len || 500))
+  });
+  const page = {
+    getViewport: ({ scale }) => ({ width: 600 * scale, height: 850 * scale }),
+    render: () => { calls.rendered++; return { promise: Promise.resolve() }; }
+  };
+  S.studentPages = () => (o.none ? [] : [{ num: o.num || 1, page }]);
+  return calls;
+}
+const drawn = coverStub({});
+const coverUrl = await S.makeCoverDataUrl();
+ok('the first page the STUDENT has is drawn', drawn.rendered === 1);
+/* A PDF page is transparent where nothing is drawn, and a transparent
+   canvas flattens to BLACK in a JPEG — the whole page, ink and all. */
+eq('the sheet is painted white first', drawn.fill, '#ffffff');
+eq('…across the whole of it', drawn.fills.length, 1);
+ok('what comes back is a picture', /^data:image\/jpeg/.test(coverUrl));
+
+/* The cover and the body share ONE Firestore document, so a cover that will
+   not fit comfortably underneath the body is not stored at all. */
+coverStub({ len: S.COVER_MAX + 10 });
+eq('a cover too big for the document is refused, not squeezed in',
+   await S.makeCoverDataUrl(), '');
+
+coverStub({ none: true });
+eq('a worksheet with no pages the student can see has no cover',
+   await S.makeCoverDataUrl(), '');
+
+/* ---- Writing it ---- */
+function coverWriter() {
+  const writes = [];
+  S.db = { collection: () => ({ doc: () => ({ set: (p, o) => { writes.push({ p, o }); return Promise.resolve(); } }) }) };
+  S.currentUser = { uid: 'u1' };
+  return writes;
+}
+coverStub({});
+let cw = coverWriter();
+await S.ensureCover('w1', '');
+eq('a worksheet without one gets one', cw.length, 1);
+eq('…written as a MERGE, never a set', cw[0].o && cw[0].o.merge, true);
+ok('…and it is the only field it touches',
+   Object.keys(cw[0].p).length === 1 && /^data:image\//.test(cw[0].p.cover));
+
+cw = coverWriter();
+await S.ensureCover('w1', 'data:image/jpeg;base64,AAAA');
+eq('a worksheet that already has one is never redrawn', cw.length, 0);
+
+cw = coverWriter();
+S.db = { collection: () => ({ doc: () => ({ set: () => Promise.reject(new Error('denied')) }) }) };
+const keptCover = await S.ensureCover('w1', '');
+ok('a cover that could not be saved is never an error at the student',
+   /^data:image\//.test(keptCover));
+S.db = null;
+S.currentUser = null;
+
+/* ---- Where it is made, read out of the file ---- */
+/* The 🔑 section exists to keep a marking scheme off the student's screen.
+   Putting page 1 of it on the home screen instead is the same leak through
+   a side door, so the cover reads `studentPages()` and is made AFTER the
+   key scan at upload rather than beside the PDF write. */
+ok('the cover is drawn from the pages the STUDENT has',
+   /makeCoverDataUrl[\s\S]{0,400}studentPages\(\)/.test(html));
+ok('…and it is made after the key scan, never before it',
+   html.indexOf('await keyAutoScan(true)') < html.indexOf("await ensureCover(id, '')"));
+ok('an older worksheet gets one the first time it is opened',
+   /offerLocalBackup\(id[\s\S]{0,320}ensureCover\(id, w\.cover\)/.test(html));
+/* A class of thirty costs one render, the same way the key rows travel
+   already read. */
+ok('a worksheet set for the class carries its cover to every copy',
+   /cover: coverOf\(w\)/.test(html) && /cover: coverOf\(a\)/.test(html));
+ok('both kinds of card wear one',
+   (html.match(/appendChild\(coverNode\(/g) || []).length === 2);
+/* The face is in the flow and gives the block its height; the sheets behind
+   are ABSOLUTE, so however many pages a worksheet has the card is the same
+   size and the grid does not go ragged. */
+ok('the sheets behind never change the card\'s size',
+   /\.wsSheet \{[\s\S]{0,140}position: absolute;/.test(html));
+ok('…and they peek out under the front page rather than beside it',
+   /\.wsSheet \{[\s\S]{0,200}bottom: -\d+px; height: \d+px;/.test(html));
+ok('a browser with no aspect-ratio still gets a face with a height',
+   /@supports not \(aspect-ratio[\s\S]{0,80}\.wsFace \{ height:/.test(html));
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'

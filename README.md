@@ -12,6 +12,30 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.7.0 — you can see which paper it is
+
+A list of file names is a list nobody can read at a glance: *Term 1 Paper 2*
+and *Term 1 Paper 2 (1)* are the same row twice. So every worksheet card —
+and every worksheet the teacher has set — now wears **its own first page**,
+drawn as a **stack of sheets**, and how many sheets are behind it says how
+much paper there is.
+
+**It is made once, from the PDF already in hand**, and kept on the
+worksheet's own record. Drawing it in the list instead would mean
+downloading ten PDFs to show ten pictures every time the home screen opens.
+A worksheet uploaded from now on gets one straight away; **everything
+already in the library gets one the first time it is opened**, so it fills
+itself in as it is used and nothing has to be migrated.
+
+**It is never a page of the answer key.** The 🔑 pages are kept off the
+student's screen, and putting page 1 of a marking scheme on the home screen
+instead would be the same leak through a side door.
+
+**A worksheet set for the class carries its cover to every copy**, so thirty
+students cost one render — the same way the answer key travels already read.
+
+---
+
 ## v1.6.0 — who did what
 
 The roster said who had signed in. It could not say what any of them had
