@@ -370,7 +370,89 @@ THE TEACHER SETS`), plus 📌 **Set for my students** on a worksheet card and th
   disappeared half way through, with the marking on it, would be work taken
   away rather than an assignment withdrawn.
 
+## ✒️ The caret lands on the I-beam (v1.1.1)
+
+`ANN_TEXT_PAD_X` / `ANN_TEXT_PAD_Y` / `ANN_TEXT_LINE` / `ANN_TEXT_FONT` /
+**`textCaretDelta`** / `startTextBox` / `textBoxWidth` (search `WHERE A TEXT
+BOX'S CARET IS`), and the `a.type === 'text'` branch of `drawAnnsOnCtx`.
+
+A text box is an HTML `div` inside a `foreignObject`, so **the caret is not at
+the box's x/y**: it sits inside the padding, and it is a whole line box tall.
+The I-beam's hot spot is its **middle**, not its top. `startTextBox` dropped
+the box's top-left on the pointer, so the first letter appeared a padding to
+the right and half a line **below** where the student was pointing — about
+thirteen pixels at 16px, which is exactly the "that is not where I clicked"
+that was reported.
+
+- **THE OFFSET IS MEASURED, NEVER ASSUMED.** Every number that decides where a
+  caret lands — the padding, the line height, the border, the font's own
+  metrics — is a CSS value, and a copy of it in the script is a copy that
+  drifts the first time the stylesheet is touched. So the box is rendered, the
+  browser is asked where the caret actually IS (`textCaretDelta`), and the box
+  is moved by the difference. That is exact whatever the CSS says, and it
+  stays exact when somebody changes it. The constants are the FALLBACK, for a
+  browser that will not hand back a computed style — keep them in step with
+  `.annText` anyway.
+- **THE TWO COORDINATE SYSTEMS ARE THE TRAP.** `getBoundingClientRect` comes
+  back in SCREEN pixels; `getComputedStyle` comes back in the SVG's own USER
+  units, because the div is laid out inside a `foreignObject` and the whole
+  overlay is then scaled to the page's zoom. Mixing them is right at 100% and
+  wrong at every other zoom — the one bug that would look fixed on the machine
+  it was written on and be wrong on every iPad in the centre. Hence `kx`/`ky`,
+  and hence a harness that sweeps seven zooms rather than one.
+- **The correction moves the foreignObject, it does not re-render.** A rebuild
+  throws away the node about to be focused, and with it the caret and — on an
+  iPad — the keyboard, mid-tap. That is the trap Ans Key's own text tool
+  documents at length.
+- **`textBoxWidth` has a FLOOR.** `baseW - x - 12` goes to nothing and then
+  negative within a few centimetres of the right-hand edge, and a box with a
+  negative width wraps every single word onto its own line.
+- **A spoken answer is placed by the SAME rule**, so tapping a spot and
+  speaking puts the words where tapping that spot and typing would have.
+- **The flattened picture had to be fixed with it.** `drawAnnsOnCtx` is what
+  the marking run reads and what goes into the mistake book, and all four of
+  its text numbers were wrong: no padding, a baseline guessed at
+  `y + fontSize`, the full box width rather than the width inside the padding,
+  and `sans-serif` where the screen uses Century Gothic. Text drawn somewhere
+  other than where the student sees it is the app marking a page nobody was
+  looking at.
+
+**`node tools/text-caret-check.mjs`** is the only honest check of any of it:
+it loads the REAL `.annText` rule and the REAL placement functions out of
+`index.html`, builds the same `foreignObject`-inside-a-scaled-SVG the app
+builds, clicks at a known point and then measures the caret's own rectangle
+with a DOM `Range` — the browser's own answer, not the placement code's. It
+sweeps seven zooms × four font sizes × six points including all four edges,
+and passes only inside half a page unit.
+
+- **It measures with a `Range`, deliberately.** Checking against the div's box
+  would be the placement code marking its own homework: it would agree even if
+  the padding were read off the wrong edge.
+- **`--selftest` breaks the placement four ways and requires each to go red.**
+  A check that cannot fail is not a check, and the only way to know which kind
+  you have is to try. The mixed-units mutant is the one worth keeping: it goes
+  red at 144 of 168 placements and is *clean at 100% zoom*, which is precisely
+  why one zoom level would have passed the bug straight through.
+- Like scan's `mobile-check`, it needs `playwright-core` and the Chromium
+  already on the machine, so it is a tool you reach for rather than a gate.
+
 ## House rules
+- After touching **the text box's placement** (`ANN_TEXT_PAD_X`,
+  `ANN_TEXT_PAD_Y`, `ANN_TEXT_LINE`, `ANN_TEXT_FONT`, `textCaretDelta`,
+  `startTextBox`, `textBoxWidth`, `placeSpokenAnswer`'s placement, the
+  `a.type === 'text'` branch of `drawAnnsOnCtx`, or **the `.annText` rule in
+  the stylesheet**), run
+  **`node tools/text-caret-check.mjs --selftest`** and look at the numbers.
+  Reading the source cannot answer this one: where a caret lands is decided by
+  the padding, the line height, the font's own metrics and the zoom the page
+  happens to be at, and only a browser knows all four. Put the box's top-left
+  on the pointer and the first letter is half a line below the I-beam — which
+  is the bug this fixed. Mix `getBoundingClientRect`'s screen pixels with
+  `getComputedStyle`'s user units and it is perfect at 100% and wrong on every
+  iPad in the centre, which is why the sweep is seven zooms and not one. Take
+  the width floor away and a box near the right edge wraps every word onto its
+  own line. And add a rule to the placement without adding its mutant to
+  `--selftest` and you have added a tick rather than a check.
 - After touching **🔑 the answer key, 🎤 speaking an answer, 📌 the worksheets
   the teacher sets, or the marking's page numbers** (`wsKey`, `pageIsKey`,
   `studentPages`, `applyKeyVisibility`, `keyPageLooksLikeKey`, `KEY_TITLE_RE`,

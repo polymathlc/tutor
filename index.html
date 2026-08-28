@@ -983,7 +983,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.1.0';
+var APP_VERSION = 'v1.1.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -1716,6 +1716,26 @@ var PEN_COLORS = ['#1A1A1A', '#E53935', '#1E88E5', '#43A047', '#FB8C00', '#8E24A
 
 function newAnnId() { return 'a' + Date.now().toString(36) + (annIdCounter++); }
 
+/* ---- WHERE A TEXT BOX'S CARET IS ----
+   A text box is an HTML div inside a foreignObject, so the caret is NOT at
+   the box's x/y: it sits inside the padding, and it is a whole line box
+   tall. The I-beam's hot spot is its MIDDLE, not its top — so a box whose
+   top-left is dropped on the pointer puts the first letter a padding to the
+   right and half a line BELOW where the student was pointing, which at 16px
+   is about thirteen pixels of "that is not where I clicked".
+
+   These are the FALLBACK numbers, and they are kept in step with the
+   `.annText` rule in the stylesheet. They are only ever an estimate: what
+   actually decides the position is `textCaretDelta`, which MEASURES the
+   rendered box rather than trusting anything here. Keep them right anyway —
+   they are what places the box on a browser that will not give a computed
+   style back. */
+var ANN_TEXT_PAD_X = 3, ANN_TEXT_PAD_Y = 2, ANN_TEXT_LINE = 1.35;
+/* The stylesheet's own font stack, so the flattened picture wraps its words
+   where the screen wrapped them. `sans-serif` here and Century Gothic on
+   screen is two different line breaks in two pictures of the same answer. */
+var ANN_TEXT_FONT = "'Century Gothic', CenturyGothic, AppleGothic, 'Segoe UI', sans-serif";
+
 /* Unrotated frame of an x/y/w/h annotation. Text boxes never render shorter
    than one line, so their frame uses the same effective height everywhere. */
 function annFrame(a) {
@@ -2135,26 +2155,43 @@ function drawAnnsOnCtx(ctx, kx, ky, anns, pageNum) {
         ctx.stroke();
       });
     } else if (a.type === 'text') {
+      /* THE FLATTENED PICTURE HAS TO PUT THE WORDS WHERE THE SCREEN PUT
+         THEM. This is what the marking run reads and what goes into the
+         mistake book, so text drawn a padding to the left of where the
+         student sees it — in a different font, wrapping at a different
+         width — is the app marking a page nobody was looking at. All four
+         of those were wrong here: no padding, a baseline guessed at
+         `y + fontSize`, the full box width rather than the width inside the
+         padding, and `sans-serif` where the screen uses Century Gothic. */
       var fs = Math.max(6, (a.fontSize || 16) * ky);
-      ctx.font = fs + 'px sans-serif';
-      var maxW = Math.max(40, (a.w || 200) * kx);
-      var x = a.x * kx;
-      var y = a.y * ky + fs;
+      ctx.font = fs + 'px ' + ANN_TEXT_FONT;
+      ctx.textBaseline = 'alphabetic';
+      var lineH = fs * ANN_TEXT_LINE;
+      // CSS puts the font's own box in the middle of the line box and the
+      // baseline an ascent below that. measureText knows the real metrics;
+      // the 0.8/0.2 split is only for a browser that will not report them.
+      var fm = ctx.measureText('Mg');
+      var asc = fm.fontBoundingBoxAscent, desc = fm.fontBoundingBoxDescent;
+      if (!(asc > 0) || !(desc >= 0)) { asc = fs * 0.8; desc = fs * 0.2; }
+      var half = (lineH - (asc + desc)) / 2;
+      var x = a.x * kx + ANN_TEXT_PAD_X * kx;
+      var top = a.y * ky + ANN_TEXT_PAD_Y * ky;      // top of the first line box
+      var maxW = Math.max(10, ((a.w || 200) - ANN_TEXT_PAD_X * 2) * kx);
       String(a.text || '').split('\n').forEach(function (para) {
         var line = '';
         para.split(/\s+/).forEach(function (w) {
           if (!w) return;
           var t = line ? line + ' ' + w : w;
           if (ctx.measureText(t).width > maxW && line) {
-            ctx.fillText(line, x, y);
+            ctx.fillText(line, x, top + half + asc);
             line = w;
-            y += fs * 1.35;
+            top += lineH;
           } else {
             line = t;
           }
         });
-        ctx.fillText(line, x, y);
-        y += fs * 1.35;
+        ctx.fillText(line, x, top + half + asc);
+        top += lineH;
       });
     }
     ctx.restore();
@@ -2293,20 +2330,88 @@ function commitActiveTextEdit() {
   setDirty(true);
 }
 
+/* HOW FAR THE BOX IS FROM WHERE IT SHOULD BE, MEASURED OFF THE LIVE ELEMENT.
+   Every number that decides where a caret lands — the padding, the line
+   height, the border — is a CSS value, and a copy of it in this file is a
+   copy that drifts the first time the stylesheet is touched. So the box is
+   rendered, the browser is asked where the caret actually IS, and the box is
+   moved by the difference. That is exact whatever the CSS says, and it stays
+   exact when somebody changes it.
+
+   THE TWO COORDINATE SYSTEMS ARE THE TRAP. `getBoundingClientRect` comes
+   back in SCREEN pixels; `getComputedStyle` comes back in the SVG's own USER
+   units, because the div is laid out inside a foreignObject and the whole
+   overlay is then scaled to the page's zoom. Mixing them is right at 100%
+   and wrong at every other zoom — which is the one bug that would look fixed
+   on the machine it was written on. Hence `kx` / `ky`. */
+function textCaretDelta(p, div, pt) {
+  if (!p || !div || !window.getComputedStyle) return null;
+  var pr = p.svg.getBoundingClientRect();
+  var r = div.getBoundingClientRect();
+  if (!(pr.width > 0) || !(pr.height > 0) || !(r.width > 0 || r.height > 0)) return null;
+  var kx = pr.width / p.baseW;          // screen px per page unit, across
+  var ky = pr.height / p.baseH;         // …and down
+  if (!(kx > 0) || !(ky > 0)) return null;
+  var cs = window.getComputedStyle(div);
+  var padL = parseFloat(cs.paddingLeft) || 0;
+  var padT = parseFloat(cs.paddingTop) || 0;
+  var bL = parseFloat(cs.borderLeftWidth) || 0;
+  var bT = parseFloat(cs.borderTopWidth) || 0;
+  var lh = parseFloat(cs.lineHeight);
+  // `line-height: normal` computes to the string, not a length.
+  if (!(lh > 0)) lh = (parseFloat(cs.fontSize) || 16) * ANN_TEXT_LINE;
+  // An empty box's caret starts at the top-left of the content area and is
+  // one line box tall. Its MIDDLE is what the I-beam points at.
+  var caretX = r.left + (bL + padL) * kx;
+  var caretY = r.top + (bT + padT + lh / 2) * ky;
+  var wantX = pr.left + pt.x * kx;
+  var wantY = pr.top + pt.y * ky;
+  return { dx: (wantX - caretX) / kx, dy: (wantY - caretY) / ky };
+}
+
 function startTextBox(p, pt) {
   pushUndo();
+  // The estimate first, so a browser that will not hand back a computed
+  // style still lands within a pixel rather than half a line out.
+  var x = pt.x - ANN_TEXT_PAD_X;
+  var y = pt.y - ANN_TEXT_PAD_Y - fontSize * ANN_TEXT_LINE / 2;
   var a = {
     id: newAnnId(), type: 'text', page: p.num,
-    x: pt.x, y: pt.y, w: Math.min(320, p.baseW - pt.x - 12), h: fontSize * 1.8,
+    x: round2(x), y: round2(y), w: 0, h: fontSize * 1.8,
     text: '', color: color, fontSize: fontSize
   };
+  a.w = textBoxWidth(p, a.x);
   annotations.push(a);
   editingId = a.id;
   selectedId = a.id;
   renderOverlay(p);
   var div = p.svg.querySelector('g[data-id="' + a.id + '"] .annText');
-  if (div) { div.focus(); }
+  if (div) {
+    // Measured, then corrected by moving the foreignObject ITSELF rather
+    // than re-rendering: a rebuild throws away the node about to be focused,
+    // and with it the caret and — on an iPad — the keyboard, mid-tap.
+    var d = textCaretDelta(p, div, pt);
+    if (d && (Math.abs(d.dx) > 0.01 || Math.abs(d.dy) > 0.01)) {
+      a.x = round2(a.x + d.dx);
+      a.y = round2(a.y + d.dy);
+      a.w = textBoxWidth(p, a.x);
+      var fo = div.parentNode;
+      if (fo && fo.setAttribute) {
+        fo.setAttribute('x', a.x);
+        fo.setAttribute('y', a.y);
+        fo.setAttribute('width', Math.max(a.w, 40));
+      }
+    }
+    div.focus();
+  }
   setDirty(true);
+}
+
+/* How wide a new box is. It has a FLOOR: `baseW - x - 12` goes to nothing —
+   and then negative — within a few centimetres of the right-hand edge, and a
+   box with a negative width wraps every single word onto its own line. */
+function textBoxWidth(p, x) {
+  return round2(Math.max(80, Math.min(320, p.baseW - x - 12)));
 }
 
 function attachOverlayHandlers(p) {
@@ -4005,19 +4110,30 @@ function placeSpokenAnswer(p, pt, text) {
   var live = pages.find(function (pg) { return pg.num === p.num; });
   if (!live) return;
   pushUndo();
+  // Placed by the SAME rule as a typed box, so tapping a spot and speaking
+  // puts the words where tapping that spot and typing would have: the first
+  // line centred on the tap, not starting half a line below it.
   var a = {
     id: newAnnId(), type: 'text', page: live.num,
-    x: pt.x, y: pt.y,
-    w: Math.min(360, Math.max(140, live.baseW - pt.x - 12)),
+    x: round2(pt.x - ANN_TEXT_PAD_X),
+    y: round2(pt.y - ANN_TEXT_PAD_Y - fontSize * ANN_TEXT_LINE / 2),
+    w: 0,
     h: fontSize * 1.8,
     text: text, color: color, fontSize: fontSize
   };
+  a.w = round2(Math.max(140, Math.min(360, live.baseW - a.x - 12)));
   annotations.push(a);
   selectedId = a.id;
   renderOverlay(live);
   var div = live.svg.querySelector('g[data-id="' + a.id + '"] .annText');
-  if (div && div.scrollHeight) {
-    a.h = Math.max(fontSize * 1.8, div.scrollHeight);
+  if (div) {
+    var d = textCaretDelta(live, div, pt);
+    if (d && (Math.abs(d.dx) > 0.01 || Math.abs(d.dy) > 0.01)) {
+      a.x = round2(a.x + d.dx);
+      a.y = round2(a.y + d.dy);
+      a.w = round2(Math.max(140, Math.min(360, live.baseW - a.x - 12)));
+    }
+    if (div.scrollHeight) a.h = Math.max(fontSize * 1.8, div.scrollHeight);
     renderOverlay(live);
   }
   setDirty(true);

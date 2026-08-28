@@ -12,6 +12,28 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.1.1 — the caret lands where you click
+
+The 🅣 text tool put the box's **top-left** on the pointer, so the first letter
+appeared a few pixels right and about half a line **below** the I-beam. An I-beam
+points at its middle, not its top.
+
+The box is now placed so the **caret** is on the pointer — and the offset is
+**measured** off the rendered box rather than worked out from numbers copied out
+of the stylesheet, so it stays right if the styling ever changes. A spoken answer
+(🎤) lands by the same rule.
+
+The flattened picture the marking reads was fixed with it: it was drawing the
+text without its padding, at a guessed baseline, wrapping at the wrong width and
+in the wrong font — so what the AI marked was never quite what the student saw.
+
+`node tools/text-caret-check.mjs` measures the real caret in a real browser
+across seven zooms, four font sizes and all four page edges, and
+`--selftest` breaks the placement four ways and requires each break to be
+caught.
+
+---
+
 ## v1.1.0 — say your answer, and the answer key the buddy keeps to itself
 
 ### 🎤 Speak your answer
@@ -208,3 +230,15 @@ node tools/tutor-tests.mjs
 
 It loads the real sections out of `index.html` and runs them against stubs. Every failure it catches
 is one the app would otherwise carry on looking perfectly right through.
+
+```
+npm i playwright-core && node tools/text-caret-check.mjs --selftest
+```
+
+Where a text caret lands cannot be checked by reading the source — the padding, the line height, the
+font's own metrics and the page's zoom all decide it, and only a browser knows all four. This one
+loads the real `.annText` rule and the real placement functions, clicks at a known point in headless
+Chromium and measures the caret's own rectangle, across seven zooms × four font sizes × six points
+including every edge. `--selftest` breaks the placement four ways and requires each break to be
+caught, because a check that cannot fail is not a check. Like Scan & Answer's `mobile-check`, it is a
+tool you reach for rather than a gate.
