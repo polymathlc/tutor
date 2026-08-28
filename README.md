@@ -12,6 +12,62 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.1.0 — say your answer, and the answer key the buddy keeps to itself
+
+### 🎤 Speak your answer
+
+A P3 child who can explain evaporation out loud in one breath will spend four minutes writing the
+same sentence badly. Tap **🎤**, tap the spot on the page, speak — and what you said is written into
+a text box exactly where you tapped, as ordinary ink you can move, rub out and edit.
+
+It becomes a normal annotation, so it is marked like anything else you wrote. There is a mic on the
+💬 **Ask** box too, which fills the box rather than sending, so you can fix anything it misheard.
+
+It writes down what you said and **stops**. It does not answer the question, it does not correct
+your science, and it never looks at the page while it is listening.
+
+Speech is read by **`gemini-3.5-transcribe`**, a model whose whole job is listening, with the
+ordinary model behind it so the mic never simply stops working. It is told what language the paper
+is in — a 华文 answer transcribed as English phonetics comes back as nonsense.
+
+### 🔑 The answer key — hidden from you, read by your buddy
+
+Half the worksheets people bring in have the answers printed at the back. Those pages used to be
+rendered like any other, which is the whole worksheet given away by scrolling, and then *marked*,
+so the score counted questions nobody attempted.
+
+Now they are **put away**: taken out of your worksheet, never marked, never in a mistake picture —
+and read once, so your buddy can mark you against the real thing. The 🔑 chip in the worksheet bar
+says how many pages went and puts any of them back in one tap.
+
+You can also attach a **marking scheme as its own PDF** — for maths especially, where the working
+matters as much as the answer. It is never shown on screen at all.
+
+The key is the authority on **what** the answer is, not on **how** it must be worded: a key that
+says "24 g" is satisfied by "24 grams", and what counts as a full-mark answer is still the
+teacher's own marking standard from the shared notebook. **And having the key changes nothing about
+how much help you get** — the help level still decides that, exactly as before.
+
+### 📌 Worksheets your teacher sets
+
+Mr Chung can upload a worksheet with its answer key and push it to the class. It appears under
+**📌 Set for you** on your home screen; start it and you get **your own copy** to write on — your
+ink, your hints, your marking, your mistake book. The key comes with it, already read.
+
+**This needs one line in the Firestore rules**, because a collection the rules do not know about
+fails closed — the write is denied, the read comes back empty, and nothing on screen explains why:
+
+```
+match /tutorAssignments/{id} {
+  allow read: if request.auth != null;
+  allow write: if isAdmin();
+}
+```
+
+Until it is there, pushing says so and names the rule; students simply see no set worksheets.
+
+---
+
 ## v1.0.0 — the first build
 
 ### 💡 The help ladder, and the ceiling on it
@@ -109,7 +165,8 @@ The app is a static file. GitHub Pages serves it; everything else is the shared 
 
 | Path | What is in it |
 | --- | --- |
-| `tutorWorksheets/{id}` | One worksheet: its name, level, subject, help level, score, and everything written about it (ink, hints, marking, chat) |
+| `tutorWorksheets/{id}` | One worksheet: its name, level, subject, help level, score, and everything written about it (ink, hints, marking, chat, and its answer key) |
+| `tutorAssignments/{id}` | A worksheet the teacher has set for the class — readable by any signed-in student, writable only by the admin |
 | `users/{uid}/mistakes/{id}` | The student's own mistake book |
 | `users/{adminUid}/teachingNotes/{id}` | The shared notebook — read here, written only by the admin |
 | `users/{adminUid}/aiTraining/answerStyle` | The style profile Ans Key distils — read here, never written |
@@ -117,13 +174,16 @@ The app is a static file. GitHub Pages serves it; everything else is the shared 
 
 Suggested rules: a student may read and write `tutorWorksheets` documents whose `ownerUid` is their
 own, and their own `users/{uid}/mistakes`. `teachingNotes` and `aiTraining` are readable by any
-signed-in user and writable only by the admin.
+signed-in user and writable only by the admin. **`tutorAssignments` needs its own line** — readable
+by any signed-in user, writable only by the admin — or 📌 setting a worksheet fails closed: the
+write is denied, the student's read comes back empty, and nothing on screen explains why.
 
 ### Storage
 
 | Path | What is in it |
 | --- | --- |
 | `tutor-worksheets/{id}.pdf` | The uploaded worksheet |
+| `tutor-worksheets/{id}.key.pdf` | Its answer key, when one was attached as its own PDF — never rendered on screen |
 | `tutor-worksheets/{id}.body.json` | The ink, hints and marking, when they outgrow a Firestore document (~1 MB) |
 | `tutor-mistakes/{uid}/{id}.jpg` | The picture kept with a mistake |
 

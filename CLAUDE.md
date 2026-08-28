@@ -210,7 +210,189 @@ literal rather than a `var` assigned up there.
   the admin's own record; a key field in an app students sign into on shared iPads is a key waiting
   to be typed on the wrong device.
 
+## 🎙️ TRANSCRIPTION — one model, one door (v1.1.0)
+
+`AI_TRANSCRIBE_MODEL` / `window.transcribeAudio` / `window.transcribeRouteNote`
+in the module (search `TRANSCRIPTION — ONE MODEL, ONE DOOR`). **Every Polymath
+app that turns speech into text carries the same door — ship a change to all of
+them together.**
+
+- **`gemini-3.5-transcribe` reads every recording**, through
+  `window.transcribeAudio`. A call site that reaches past it to
+  `window.askGemini` is a surface still transcribing on the chat model, and
+  nothing on any screen would say so: the words come back either way, a little
+  worse.
+- **THE MODEL IS A ROUTE, NOT A PROMISE.** An id gets renamed, withdrawn and
+  rolled out region by region, and one this project cannot reach is a 400/404
+  on EVERY recording — which reads as "the mic is broken" rather than "that id
+  is a release out of date". So it is tried first with `AI_MODEL` behind it, a
+  refusal is remembered for `AI_TRANSCRIBE_DOWN_MS`, and a success clears the
+  mark — the day the id starts answering, the app uses it with nothing
+  redeployed.
+- **NO THINKING LEVEL IS SENT.** A level a model does not know is a 400, not a
+  worse answer, and a speech model has no reason to know the chat models'
+  scale. Transcription is reading, not reasoning.
+
+## 🎤 SPEAKING AN ANSWER (v1.1.0)
+
+`VOICE_MAX_MS` / `voice` / `voiceSupported` / `voiceHint` / `startVoice` /
+`stopVoice` / `cancelVoice` / `finishVoice` / **`placeSpokenAnswer`** /
+`putSpokenIntoChat` / `renderMicBtns` / `renderVoiceBar` (search `SPEAKING AN
+ANSWER`), plus the 🎤 tool in the toolbar, the `#voiceBar` and the mic on the
+chat row.
+
+A P3 child who can explain evaporation out loud in one breath will spend four
+minutes writing the same sentence badly, and by the end of it the science has
+gone out of the answer and the handwriting is what is being marked. So they can
+**say** it: tap 🎤, tap the spot on the page, speak, and what they said is
+written into a text box exactly where they tapped.
+
+- **IT BECOMES ORDINARY INK**, and that is the whole point of putting it on the
+  page rather than into a box beside it. A spoken answer is a `text` annotation
+  like any other — it moves, it is erased, it undoes, it saves, it is
+  composited onto the page for the marking run and it is in the picture that
+  goes into the mistake book. Nothing downstream is told it was spoken rather
+  than typed, because nothing downstream should care.
+- **IT IS NEVER MARKING AND IT IS NEVER A HINT.** It writes down what the
+  student said and stops: it does not answer, does not correct, does not finish
+  the sentence, and never so much as looks at the page —
+  `window.transcribeAudio` is handed audio and nothing else. A mic that quietly
+  improved an answer on the way in would mark the student on words they never
+  said, and the ✅ Marking tab would then be marking the app.
+- **THE LANGUAGE TRAVELS** (`voiceHint`). It is the one thing this app knows
+  and the model cannot, and it is not a nicety: a 华文 answer transcribed as
+  English phonetics comes back as nonsense.
+- **The box is MEASURED after it is drawn**, never guessed at: a sentence
+  spoken in one breath is three lines on a phone and one on a laptop, and a box
+  too short clips the answer the marking then never sees.
+- **A recording that arrives late is DROPPED** (`wsEpoch`), because writing an
+  answer onto somebody else's worksheet is worse than losing it.
+- **Both mics are painted from ONE function** (`renderMicBtns`), so the two can
+  never disagree about whether the app is listening — and a mic that is not
+  going to work is not drawn at all, because a button that silently does
+  nothing is worse than no button.
+- **The bar is FIXED to the viewport, not to the worksheet.** The page under it
+  scrolls while a student is speaking, and a ⏹ Done button that scrolls away is
+  one they cannot find.
+
+## 🔑 THE ANSWER KEY — hidden from the student, read by the buddy (v1.1.0)
+
+`wsKey` / `pageIsKey` / **`studentPages`** / `applyKeyVisibility` /
+`keyPageLooksLikeKey` / `pageText` / `keyScanPdf` / `keyScanByEye` /
+`keyAutoScan` / `keyReadImages` / `keyRefreshRows` / `attachKeyPdf` /
+**`keyContext`** / **`keyRuleBlock`** / `openKeyModal` (search `THE ANSWER
+KEY`), plus the 🔑 chip in the worksheet bar and the `#keyModal`.
+
+Half the worksheets a child brings in have the answers printed at the back, and
+a past paper has its marking scheme stapled to it. This app used to render
+those pages like any other — the whole worksheet given away by scrolling — and
+then MARK them, so the "score" included the answer key the student never
+attempted. The same pages are the best thing the buddy could possibly have, so
+they are taken out of the STUDENT'S view and put into the BUDDY'S.
+
+- **`wsKey.pages` are never rendered, never marked, never in a mistake
+  picture.** They stay in `pages` with `p.num` intact and are HIDDEN, rather
+  than being left out of the list — so every page number in the app is still
+  the PDF's own, and a key page can still be rasterised when it is read.
+  **`studentPages()` is the ONE place "the pages the student has" is decided**,
+  and the marking, the progress bar and `visiblePage()` all read it.
+- **`wsKey.rows` is the key TRANSCRIBED** — number → answer → working. TEXT,
+  not pictures, so it costs nothing to carry into every marking batch and every
+  hint. That is the difference between "the key is considered" and "the key is
+  considered on the first page".
+- **A key can arrive as its OWN PDF**, which is how a maths marking scheme
+  usually comes. It is never rendered at all.
+- **THE KEY IS THE AUTHORITY ON WHAT THE ANSWER IS, NOT ON HOW IT MUST BE
+  WORDED** (`keyRuleBlock`). It does not replace the teaching notes and it does
+  not replace the marking standard: a key that says "24 g" is satisfied by "24
+  grams", and which of those earns full marks is the notes' business. Grounding
+  happens exactly as it did — `aiGrounding(...)` is still there and the key is
+  added **beside** it, never instead of it.
+- **AND THE KEY NEVER LIFTS THE HELP CEILING.** Handing the model the answers
+  and then asking for "a nudge" is precisely the door the ladder exists to
+  shut, so the ceiling is restated wherever the key is used. A key that quietly
+  turned "Nudges only" into full answers would be the worst bug this app could
+  have: it would look like the buddy working unusually well.
+- **Three prompts carry it and all three must**: the hint, the marking and the
+  chat. A key that reaches two of them is a buddy that marks against the paper
+  and hints against a guess, with nothing on screen to say which.
+- **Finding a key page errs towards leaving it alone.** A key page left showing
+  is the bug this fixes and the student can tick it themselves in one tap; a
+  question page wrongly hidden is a question that has VANISHED, and they have
+  no way of knowing it was ever there. Two guards make hiding pages safe at
+  all, and neither is optional: it will never hide **every** page, and it will
+  never hide a page the student has **already written on**.
+- **A HEADING IS SHORT.** `KEY_TITLE_MAX_LINE` is what stops "the answer key is
+  on page 12, but do not look at it until you have finished" — a sentence
+  printed in a question — reading as a heading and taking that question page
+  out of the worksheet.
+- **`KEY_ROW_RE`'s end is a LOOKAHEAD.** `(?:$|\n)` consumes the newline the
+  next row needs for its own `(?:^|\n)`, so with the `g` flag every other row
+  is skipped: a page of ten answers counts as five, falls under `KEY_MIN_ROWS`,
+  and the back page of a past paper is served to the student with the answers
+  on it.
+- **The scan is never silent.** The chip says how many pages went and opens the
+  list to put any of them back.
+- **The key is read ONCE.** `attachKeyPdf(file, defer)` and
+  `keyAutoScan(defer)` exist so the upload path attaches, then finds the key
+  pages, then transcribes the lot in one pass rather than transcribing the
+  marking scheme twice.
+
+## 📌 WORKSHEETS THE TEACHER SETS (v1.1.0)
+
+`ASSIGN_COLLECTION` / `loadAssignments` / `myCopyOf` / `startAssignment` /
+`pushWorksheet` / `unpushWorksheet` / `renderAssignments` (search `WORKSHEETS
+THE TEACHER SETS`), plus 📌 **Set for my students** on a worksheet card and the
+**📌 Set for you** section on Home.
+
+- **A PUSH IS A COPY, NOT A SHARE.** Starting an assignment creates a worksheet
+  document of the STUDENT'S OWN — their ink, their hints, their marking, their
+  mistake book — under their own uid where they can write and nobody else can
+  read. What is shared is the PDF in Storage: one file the class reads rather
+  than thirty uploads of the same paper.
+- **`sharedPdf` is what stops a student's tidy-up deleting the class's file.**
+  `deleteWorksheet` and `detachKeyPdf` both check it. Without it, one student
+  deleting their own copy takes the worksheet away from everybody.
+- **The answer key travels ALREADY READ.** The teacher's copy transcribed it
+  once; every student's copy is handed the rows, so a class of thirty costs one
+  reading of the marking scheme rather than thirty (`scanned: true` is what
+  stops each copy looking for key pages all over again).
+- **`myCopyOf` is what stops a second visit starting a blank copy** and making
+  yesterday's work look lost.
+- **IT NEEDS ONE LINE IN THE FIRESTORE RULES**, and the failure without it is
+  why `pushWorksheet` checks and SAYS SO. A collection the rules do not know
+  about fails CLOSED: the write is denied, the read comes back empty, and
+  nothing on any screen explains why — the teacher would push a paper, see no
+  error, and find out a week later that no student ever got it. The student
+  side degrades quietly on purpose (no assignments is the ordinary case); the
+  teacher side names the rule to paste. See README.md.
+- **Taking one off the list leaves the copies alone.** A worksheet that
+  disappeared half way through, with the marking on it, would be work taken
+  away rather than an assignment withdrawn.
+
 ## House rules
+- After touching **🔑 the answer key, 🎤 speaking an answer, 📌 the worksheets
+  the teacher sets, or the marking's page numbers** (`wsKey`, `pageIsKey`,
+  `studentPages`, `applyKeyVisibility`, `keyPageLooksLikeKey`, `KEY_TITLE_RE`,
+  `KEY_ROW_RE`, `KEY_TITLE_MAX_LINE`, `keyScanPdf`, `keyScanByEye`,
+  `keyAutoScan`, `keyReadImages`, `keyRefreshRows`, `attachKeyPdf`,
+  `detachKeyPdf`, `keyContext`, `keyRuleBlock`, `voiceHint`, `startVoice`,
+  `finishVoice`, `placeSpokenAnswer`, `renderMicBtns`, `window.transcribeAudio`,
+  `_markNewItem`, `_markFoldRows`, `pushWorksheet`, `startAssignment`,
+  `myCopyOf`, or `deleteWorksheet`'s `sharedPdf` guard), run
+  **`node tools/tutor-tests.mjs`**. Every failure in there is silent and the
+  app carries on looking right. A key page left showing is the whole worksheet
+  given away by scrolling; a question page wrongly hidden is a question that
+  has VANISHED, and the student has no way of knowing it was ever there. A key
+  that stops reaching one of the three prompts is a buddy that marks against
+  the paper and hints against a guess. A `keyRuleBlock` that stops restating
+  the ceiling turns "Nudges only" into full answers, which looks exactly like
+  the buddy working unusually well. A page number worked out from an index
+  rather than passed through crops every mistake picture from the wrong page,
+  and both numbers are perfectly plausible. A mic that answers or corrects on
+  the way in marks the student on words they never said. And a `sharedPdf`
+  guard that goes away lets one student tidying up their own copy delete the
+  worksheet for the whole class.
 - **The Gemini model is `AI_MODEL` and its thinking floor is `AI_THINK_MIN`, and the two move
   TOGETHER.** Every model has its own thinking scale, and a level it does not know is a
   **400 INVALID_ARGUMENT on every AI call in the app** — not a worse answer, no answer at all.
