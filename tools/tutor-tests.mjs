@@ -74,6 +74,8 @@ const SRC_STAMP  = between('/* A Firestore timestamp, a Date, a number or nothin
                            'async function deleteWorksheet', 'the timestamp reader');
 const SRC_SAVE   = between('/* ================= AUTO-SAVE =================',
                            'async function loadWorksheets', 'auto-save');
+const SRC_PRAC   = between('var pracSel = {};',
+                           '/* THE ONE PLACE ANYTHING IN THIS APP IS PRINTED', 'practising the mistakes');
 
 /* ---- A sandbox with just enough world to evaluate them ---- */
 const noop = () => {};
@@ -81,7 +83,7 @@ const domStub = {
   getElementById: () => null,
   querySelectorAll: () => [],
   createElement: () => ({ style: {}, classList: { add: noop, remove: noop, toggle: noop },
-                          appendChild: noop, setAttribute: noop, addEventListener: noop }),
+                          appendChild: noop, setAttribute: noop, addEventListener: noop, focus: noop }),
   addEventListener: noop
 };
 /* A real map, because the local backup's whole job is what it keeps and what
@@ -109,13 +111,20 @@ const sandbox = {
   applyKeyVisibility: noop, renderHints: noop, renderMarking: noop, renderChat: noop,
   performSave: noop, round2: v => Math.round(v * 100) / 100,
   worksheetBody: () => '{}',
+  // The practice session and the printed sheet reach these at CALL time.
+  mistakes: [], mistFilter: 'open', levelLabel: v => v, subjectLabel: () => 'Science',
+  mistakeImageUrl: () => Promise.resolve(''), setMistakeCleared: noop, renderMistakes: noop,
+  aiAvailable: () => true, loadTeachingNotes: () => Promise.resolve(),
+  chungAvatar: () => ({ style: {}, classList: { add: noop } }), chungSays: n => n,
+  boxNode: () => ({}), escHtml: v => String(v),
   bodyByteLength: j => String(j).length,
   setTimeout, clearTimeout, Blob: class { constructor(p) { this.size = String(p).length; } },
   Math, JSON, Date, String, Number, Array, Object, parseInt, parseFloat, isNaN, Promise
 };
 vm.createContext(sandbox);
 vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
-                '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE,
+                '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
+                '\n' + SRC_PRAC,
                 sandbox, { filename: 'index.html' });
 const S = sandbox;
 
@@ -1060,6 +1069,88 @@ ok('the face is drawn once per run of replies, not once per bubble',
 ok('…and once per hint card rather than once per rung',
    /chungSays\(txt, ri === 0\)/.test(html));
 
+
+/* =====================================================================
+   PRACTISING THE MISTAKES, AND THE PRINTED SHEET
+   ===================================================================== */
+section('Practising the mistakes');
+
+/* The session paints as it goes, so it is given a screen to paint on and a
+   toast that goes nowhere — this section is about WHICH questions it
+   practises, not what the panel looks like. */
+S.$ = () => ({ innerHTML: '', textContent: '', style: {}, value: '',
+               classList: { add: noop, remove: noop }, appendChild: noop,
+               addEventListener: noop, focus: noop });
+S.toast = noop;
+
+S.mistakes = [
+  { id: 'a', cleared: false, marks: '0/2', question: 'one' },
+  { id: 'b', cleared: false, marks: '1/3', question: 'two' },
+  { id: 'c', cleared: true,  marks: '0/1', question: 'three' }
+];
+S.mistFilter = 'open';
+S.pracSel = {};
+
+eq('"still to redo" shows only what is not cleared', S.mistakesShown().map(m => m.id), ['a', 'b']);
+S.mistFilter = 'all';
+eq('"everything" shows the lot', S.mistakesShown().map(m => m.id), ['a', 'b', 'c']);
+
+/* Every button that says "all" means every card the student can SEE.
+   Practising or printing questions hidden behind a filter is the one
+   outcome nobody could have predicted from the button they pressed. */
+S.mistFilter = 'open';
+S.pracSel = { a: 1, c: 1 };
+eq('a tick on a card the filter has hidden is not in the selection',
+   S.pracSelectedIds(), ['a']);
+S.pracPruneSel();
+eq('…and it is pruned away rather than left to come back',
+   Object.keys(S.pracSel), ['a']);
+
+S.pracSelectAll(true);
+eq('pick every one picks what is on screen and nothing else',
+   Object.keys(S.pracSel).sort(), ['a', 'b']);
+S.pracSelectAll(false);
+eq('…and clearing clears', Object.keys(S.pracSel), []);
+
+/* A question with nothing chosen must not open an empty session. */
+S.pracStart([]);
+eq('practising nothing does not start a session', S.prac, null);
+S.pracStart(['a', 'zzz']);
+eq('an id whose mistake has gone is dropped rather than crashing the session',
+   S.prac.ids, ['a']);
+S.prac = null;
+
+/* Ruled space sized by what the question was WORTH — a 1-mark answer must
+   not get the room a 4-mark one needs, and a 4-mark one must not be given
+   two lines. */
+eq('a 1-mark question still gets two lines to write on', S.mwsLines({ marks: '0/1' }), 2);
+eq('a 4-mark question gets four', S.mwsLines({ marks: '0/4' }), 4);
+eq('a question with no marks recorded falls back to two', S.mwsLines({ marks: '' }), 2);
+eq('a huge allocation is capped rather than filling a page with rules',
+   S.mwsLines({ marks: '0/40' }), 6);
+
+/* "Export as a PDF" is the browser's own Save as PDF. There is no PDF
+   WRITER in this app — pdf.js reads them — so a print stylesheet is the
+   whole mechanism, and the ONE element being printed is the one carrying
+   `.printMe`. Naming the report by its id worked while it was the only
+   printable thing in the app and hid the worksheet the moment there were
+   two. */
+ok('the print stylesheet shows the ONE element being printed, by class',
+   /body > \*:not\(\.printMe\)\s*\{\s*display:\s*none/.test(html));
+ok('…and both printable things go through the one door',
+   (html.match(/printThis\(/g) || []).length >= 3);
+ok('the pictures are AWAITED before the print dialog opens',
+   /await Promise\.all\(list\.map/.test(html) && /printThis\(\$\('mistSheet'\)\)/.test(html));
+ok('a picture that will not load takes itself off the sheet',
+   /im\.onerror = function \(\) \{ m\._sheetUrl = ''; res\(\); \}/.test(html));
+/* Getting it right is what the book is for, so a correct retry files it
+   under Sorted — and it must be reversible, which is the card's own ↩︎. */
+ok('a correct retry clears the mistake',
+   /prac\.result\.verdict === 'correct'[\s\S]{0,400}setMistakeCleared\(m\.id, true\)/.test(html));
+ok('a blank retry is never marked wrong',
+   /if \(!mine\) \{ toast\('Have a go first/.test(html));
+ok('the answer is not on screen until the question has been answered',
+   /if \(prac\.revealed\) \{[\s\S]{0,900}boxNode\('The answer'/.test(html));
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'

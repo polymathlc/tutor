@@ -635,6 +635,63 @@
   .bWhoName { font-weight: 700; line-height: 1.2; }
   .bWhoSub { font-size: 0.68rem; color: var(--ink-faint); line-height: 1.2; }
 
+  /* ---------- Practising the mistakes ---------- */
+  .mistTools { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-bottom: 18px; }
+  .mwsKeyToggle {
+    display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; color: var(--ink-soft);
+    padding: 0 4px; cursor: pointer; min-height: 44px;
+  }
+  /* Tailwind-style resets are not in play here, but a bare checkbox is still
+     worth setting explicitly — an invisible white square where the control
+     should be is the classic trap. */
+  .mwsKeyToggle input, .mistPick input {
+    appearance: auto; -webkit-appearance: auto; width: 18px; height: 18px; accent-color: var(--accent-deep);
+  }
+  .mistPick {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+    font-size: 0.76rem; font-weight: 700; color: var(--ink-soft);
+    padding: 9px 12px; border-bottom: 1px solid var(--line); min-height: 44px;
+  }
+  .mistCard.picked { outline: 2px solid var(--accent-deep); outline-offset: -2px; }
+  .pracCount { font-size: 0.8rem; color: var(--ink-faint); font-weight: 700; }
+  .pracShot {
+    display: block; width: 100%; border: 1px solid var(--line); border-radius: var(--radius-sm);
+    margin: 12px 0; background: #fff;
+  }
+  .pracQ { font-size: 0.95rem; line-height: 1.7; margin: 12px 0 4px; }
+  .pracAnswer {
+    width: 100%; min-height: 90px; resize: vertical; font-size: 16px; line-height: 1.6;
+    background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 11px 13px; margin-bottom: 4px; font-family: var(--font);
+  }
+  .pracAnswer:disabled { color: var(--ink-soft); background: var(--bg); }
+  .pracEnd { text-align: center; padding: 18px 0 8px; }
+  .pracEnd .chungAv { margin: 0 auto 14px; }
+  .pracEndTitle { font-size: 1.5rem; font-weight: 700; margin-bottom: 8px; }
+
+  /* ---------- The printed worksheet ----------
+     Off screen until 🖨 builds it. It is only ever seen on paper, so it is
+     styled for paper: black on white, no colour to lose. */
+  #mistSheet { display: none; }
+  #mistSheet.printMe { display: block; }
+  .mwsHead { border-bottom: 2px solid #000; padding-bottom: 10pt; margin-bottom: 16pt; }
+  .mwsTitle { font-size: 17pt; font-weight: 700; }
+  .mwsSub { font-size: 9.5pt; color: #444; margin-top: 3pt; }
+  .mwsFields {
+    display: flex; flex-wrap: wrap; gap: 18pt; margin-top: 12pt; font-size: 10pt; color: #222;
+  }
+  .mwsQ { margin-bottom: 20pt; page-break-inside: avoid; break-inside: avoid; }
+  .mwsQHead { font-size: 10.5pt; font-weight: 700; margin-bottom: 6pt; }
+  .mwsQHead span { font-weight: 400; color: #555; }
+  .mwsQText { font-size: 11pt; line-height: 1.6; margin-bottom: 8pt; }
+  .mwsShot { display: block; max-width: 100%; max-height: 95mm; margin: 0 0 8pt; }
+  .mwsRules { margin-top: 4pt; }
+  .mwsRule { border-bottom: 1px solid #999; height: 22pt; }
+  .mwsKey { page-break-before: always; break-before: page; padding-top: 6pt; }
+  .mwsKeyTitle { font-size: 13pt; font-weight: 700; border-bottom: 2px solid #000; padding-bottom: 6pt; margin-bottom: 12pt; }
+  .mwsKeyRow { display: flex; gap: 8pt; font-size: 10.5pt; line-height: 1.6; margin-bottom: 7pt; page-break-inside: avoid; }
+  .mwsKeyRow b { flex: none; min-width: 20pt; }
+
   /* ---------- The report ---------- */
   .repHead { margin-bottom: 18px; }
   .repTitle { font-size: 1.2rem; font-weight: 700; line-height: 1.35; }
@@ -716,7 +773,11 @@
      every row anyway, which is what makes that safe rather than essential. */
   @media print {
     html, body { height: auto; overflow: visible; background: #fff; }
-    body > *:not(#reportModal) { display: none !important; }
+    /* The ONE element being printed carries `.printMe`. Naming the report by
+       its id worked while it was the only printable thing in the app and
+       hid the worksheet the moment there were two. */
+    body > *:not(.printMe) { display: none !important; }
+    .modalBack.printMe { position: static; display: block !important; padding: 0; background: none; }
     #reportModal { position: static; display: block !important; padding: 0; background: none; }
     #reportModal .modalCard {
       max-width: none; max-height: none; width: auto; box-shadow: none; border-radius: 0; display: block;
@@ -730,6 +791,8 @@
     .repRow td, .repCount, .repRank, .repNote.repGood {
       -webkit-print-color-adjust: exact; print-color-adjust: exact;
     }
+    #mistSheet.printMe { padding: 0; font-family: var(--font); color: #000; }
+    @page { margin: 14mm; }
   }
 
   /* ---------- Modals ---------- */
@@ -1015,6 +1078,7 @@
           page is too much.
         </p>
         <div class="mistFilters" id="mistFilters"></div>
+        <div class="mistTools" id="mistTools"></div>
         <div id="mistList"></div>
       </main>
     </div>
@@ -1197,6 +1261,24 @@
   </div>
 </div>
 
+<!-- ============ Practising the mistakes ============ -->
+<div class="modalBack" id="pracModal">
+  <div class="modalCard">
+    <div class="modalHead">
+      <h2>✏️ Practise</h2>
+      <span class="spacer"></span>
+      <span class="pracCount" id="pracCount"></span>
+    </div>
+    <div class="modalBody" id="pracBody"></div>
+    <div class="modalFoot" id="pracFoot"></div>
+  </div>
+</div>
+
+<!-- The printed worksheet. It is a direct child of <body> and empty until
+     🖨 builds it, because the print stylesheet shows the one element
+     carrying `.printMe` and hides every other child of the body. -->
+<div id="mistSheet" aria-hidden="true"></div>
+
 <!-- ============ The report ============
      The marked paper read as a whole: every question with its topic, what it
      earned, and what the topics say to go and revise. Printable, because a
@@ -1270,7 +1352,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.3.0';
+var APP_VERSION = 'v1.4.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -5965,9 +6047,9 @@ function renderMistakes() {
 
   var list = $('mistList');
   list.innerHTML = '';
-  var show = mistakes.filter(function (m) {
-    return mistFilter === 'all' ? true : mistFilter === 'done' ? !!m.cleared : !m.cleared;
-  });
+  var show = mistakesShown();
+  pracPruneSel();
+  renderMistTools(show);
   if (!show.length) {
     var pad = document.createElement('div');
     pad.className = 'emptyPad';
@@ -5986,10 +6068,77 @@ function renderMistakes() {
   list.appendChild(grid);
 }
 
+/* The bar above the book: practise them, or put them on paper. Every count
+   on it is of the cards ON SCREEN, and the buttons SAY so — a button that
+   silently reaches past the filter is one nobody can predict. */
+function renderMistTools(show) {
+  var bar = $('mistTools');
+  if (!bar) return;
+  bar.innerHTML = '';
+  if (!show.length) return;
+  var picked = pracSelectedIds();
+  var n = picked.length;
+
+  var all = document.createElement('button');
+  all.className = 'btn btnPrimary';
+  all.textContent = '✏️ Practise all ' + show.length;
+  all.addEventListener('click', function () { pracStart(show.map(function (m) { return m.id; })); });
+  bar.appendChild(all);
+
+  var some = document.createElement('button');
+  some.className = 'btn';
+  some.textContent = n ? '✏️ Practise the ' + n + ' picked' : '✏️ Practise picked';
+  some.disabled = !n;
+  some.addEventListener('click', function () { pracStart(picked); });
+  bar.appendChild(some);
+
+  var sheet = document.createElement('button');
+  sheet.className = 'btn';
+  sheet.textContent = n ? '🖨 Worksheet from the ' + n + ' picked' : '🖨 Worksheet from all ' + show.length;
+  sheet.title = 'Print them as a worksheet — or save it as a PDF from the print dialog';
+  sheet.addEventListener('click', function () {
+    mwsExport(n ? picked : show.map(function (m) { return m.id; }), $('mwsKey').checked);
+  });
+  bar.appendChild(sheet);
+
+  var key = document.createElement('label');
+  key.className = 'mwsKeyToggle';
+  var kb = document.createElement('input');
+  kb.type = 'checkbox';
+  kb.id = 'mwsKey';
+  key.appendChild(kb);
+  var kt = document.createElement('span');
+  kt.textContent = 'with the answers';
+  key.appendChild(kt);
+  bar.appendChild(key);
+
+  var sel = document.createElement('button');
+  sel.className = 'btn btnGhost';
+  sel.textContent = n ? 'Clear the ' + n + ' picked' : 'Pick every one';
+  sel.addEventListener('click', function () { pracSelectAll(!n); });
+  bar.appendChild(sel);
+}
+
 function mistakeCard(m) {
   var card = document.createElement('div');
-  card.className = 'mistCard' + (m.verdict === 'partial' ? ' mPartial' : ' mWrong');
+  card.className = 'mistCard' + (m.verdict === 'partial' ? ' mPartial' : ' mWrong') +
+    (pracSel[m.id] ? ' picked' : '');
   if (m.cleared) card.style.opacity = '.62';
+
+  /* The tick is a LABEL round the box, not a bare checkbox: on a phone a
+     19px square is a target nobody hits, and the words beside it are what
+     make it obvious the card can be chosen at all. */
+  var pick = document.createElement('label');
+  pick.className = 'mistPick';
+  var cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!pracSel[m.id];
+  cb.addEventListener('change', function () { pracToggle(m.id); });
+  pick.appendChild(cb);
+  var pl = document.createElement('span');
+  pl.textContent = 'Practise this';
+  pick.appendChild(pl);
+  card.appendChild(pick);
 
   if (m.imagePath) {
     var img = document.createElement('img');
@@ -6059,6 +6208,421 @@ function mistakeCard(m) {
   foot.appendChild(del);
   card.appendChild(foot);
   return card;
+}
+
+/* =====================================================================
+   PRACTISING THE MISTAKES
+
+   A mistake book that can only be READ is a list of everything a student
+   has ever got wrong, which is a list nobody opens twice. What empties it
+   is doing the questions again — so the book can be worked through here,
+   one question at a time, or printed as a worksheet and done on paper.
+
+   THE ANSWER IS NOT ON SCREEN UNTIL THEY HAVE ANSWERED. It is right there
+   on the card in the book, which is fine for looking something up and
+   useless for practice: a question shown next to its own answer is a
+   question nobody attempts. `pracRevealed` is the one flag that decides it.
+   ===================================================================== */
+var pracSel = {};          // id -> 1, the ticked mistakes
+var prac = null;           // the session in flight
+
+/* WHICH MISTAKES ARE ON SCREEN. The filter chips decide it, and every
+   button that says "all" means every card the student can SEE — practising
+   or printing questions hidden behind a filter is the one outcome nobody
+   could have predicted from the button they pressed. */
+function mistakesShown() {
+  return mistakes.filter(function (m) {
+    return mistFilter === 'all' ? true : mistFilter === 'done' ? !!m.cleared : !m.cleared;
+  });
+}
+/* Ticks are pruned on every render rather than in each of the paths that
+   can remove a card — a card cleared, deleted or filtered away is not a
+   thing to practise, and "3 selected" outliving the cards it counted is how
+   the wrong questions end up on the sheet. */
+function pracPruneSel() {
+  var live = {};
+  mistakesShown().forEach(function (m) { live[m.id] = 1; });
+  Object.keys(pracSel).forEach(function (id) { if (!live[id]) delete pracSel[id]; });
+}
+function pracSelectedIds() {
+  return mistakesShown().filter(function (m) { return pracSel[m.id]; }).map(function (m) { return m.id; });
+}
+function pracToggle(id) {
+  if (pracSel[id]) delete pracSel[id]; else pracSel[id] = 1;
+  renderMistakes();
+}
+function pracSelectAll(on) {
+  pracSel = {};
+  if (on) mistakesShown().forEach(function (m) { pracSel[m.id] = 1; });
+  renderMistakes();
+}
+function mistakeById(id) { return mistakes.find(function (m) { return m.id === id; }) || null; }
+
+/* ---- The session ---- */
+function pracStart(ids) {
+  ids = (ids || []).filter(function (id) { return !!mistakeById(id); });
+  if (!ids.length) { toast('Pick at least one question to practise.'); return; }
+  prac = { ids: ids, i: 0, done: 0, right: 0, busy: false, revealed: false, result: null, typed: '' };
+  $('pracModal').classList.add('open');
+  pracRender();
+}
+function pracClose() {
+  $('pracModal').classList.remove('open');
+  prac = null;
+  renderMistakes();
+}
+function pracCurrent() { return prac ? mistakeById(prac.ids[prac.i]) : null; }
+/* What the question is WORTH, not what it scored. Last time's 0 out of 2 is
+   the mark they are here to improve on, and hanging it over the retry is the
+   one thing on this screen that could put a child off starting. */
+function pracWorth(m) {
+  var pair = markPairOf(m);
+  if (!pair) return '';
+  return markPretty(pair.total) + (pair.total === 1 ? ' mark' : ' marks');
+}
+
+/* A retry is marked like anything else in this app: the correct answer is
+   worked out from the question first, a BLANK is never marked wrong, and
+   the three verdicts are the only three there are. */
+var PRAC_SYS =
+  'You are ' + 'Chung GPT' + ', marking one question a student has come back to after getting it wrong. ' +
+  'Reply with STRICT JSON only, exactly: {"verdict":"correct | partial | wrong","feedback":"…"}. ' +
+  '"verdict" is "correct" when their answer would earn full marks, "partial" when it is right as far as it goes ' +
+  'but is missing a required step, unit, keyword or one part of a two-part question, and "wrong" otherwise. ' +
+  '"feedback" is 1 to 3 sentences spoken TO the student: what they got right, exactly where it went wrong, and ' +
+  'what to do instead. They got this question wrong once already, so say what has IMPROVED as well. Never be ' +
+  'unkind and never be vague. Plain text only — no markdown, no bullets, no line breaks.';
+
+async function pracCheck() {
+  if (!prac || prac.busy) return;
+  var m = pracCurrent();
+  if (!m) return;
+  var el = $('pracAnswer');
+  var mine = String((el ? el.value : prac.typed) || '').trim();
+  // A blank is not a wrong answer here either — it has simply not been
+  // attempted, and marking one would be the app telling a child they failed
+  // a question they never tried.
+  if (!mine) { toast('Have a go first — write what you think the answer is.'); return; }
+  if (!aiAvailable()) return;
+  prac.busy = true;
+  pracRender();
+  try {
+    await loadTeachingNotes();
+    var lines = [];
+    var subj = m.subject ? subjectLabel(m.subject) : '';
+    var lvl = m.level ? levelLabel(m.level) : '';
+    if (subj || lvl) lines.push('The student is doing ' + [lvl, subj].filter(Boolean).join(' ') + '.');
+    lines.push('The question: ' + (m.question || '(see the picture on their sheet)'));
+    if (m.answer) lines.push('The correct answer: ' + m.answer);
+    if (m.explanation) lines.push('Why: ' + m.explanation);
+    if (m.studentAnswer) lines.push('What they put the FIRST time, which was ' + (m.verdict || 'wrong') +
+      ': ' + m.studentAnswer);
+    lines.push('What they have written NOW: ' + mine);
+    var raw = await window.askGemini(lines.join('\n'), {
+      system: PRAC_SYS + aiGrounding('mark'),
+      maxOutputTokens: 500, temperature: 0.2, json: true
+    });
+    var out = _parseAIJson(raw) || {};
+    var v = String(out.verdict || '').toLowerCase().trim();
+    if (!MARK_VERDICTS[v]) v = '';
+    prac.result = { verdict: v, feedback: _mkStr(out.feedback, 900), mine: mine };
+  } catch (e) {
+    prac.result = { verdict: '', feedback: 'That did not go through. ' + ((e && e.message) || '') +
+      ' The answer is below — check it against what you wrote.', mine: mine };
+  }
+  prac.busy = false;
+  prac.revealed = true;
+  prac.done++;
+  if (prac.result && prac.result.verdict === 'correct') {
+    prac.right++;
+    /* Getting it right is what the book is FOR, so a correct retry files it
+       under Sorted then and there rather than leaving the student to
+       remember. The card's own ↩︎ puts it straight back — this is the one
+       place the book empties itself, and it must be reversible. */
+    if (!m.cleared) setMistakeCleared(m.id, true);
+  }
+  pracRender();
+}
+
+function pracNext() {
+  if (!prac) return;
+  if (prac.i >= prac.ids.length - 1) { pracRender(true); return; }
+  prac.i++;
+  prac.revealed = false;
+  prac.result = null;
+  prac.typed = '';
+  pracRender();
+}
+
+function pracRender(finished) {
+  var body = $('pracBody');
+  var foot = $('pracFoot');
+  body.innerHTML = '';
+  foot.innerHTML = '';
+  if (!prac) return;
+
+  if (finished) {
+    var end = document.createElement('div');
+    end.className = 'pracEnd';
+    end.appendChild(chungAvatar(prac.right === prac.done ? 'happy' : '', 64));
+    var h = document.createElement('div');
+    h.className = 'pracEndTitle';
+    h.textContent = prac.right + ' of ' + prac.done + ' right';
+    end.appendChild(h);
+    var sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.textContent = prac.right === prac.done
+      ? 'Every one of them. They have moved to Sorted — come back to them in a week and see if they stick.'
+      : (prac.right ? 'The ones you got right have moved to Sorted. The rest are still in the book, ready for next time.'
+                    : 'They are all still in the book. Read the answers through, then come back and try again.');
+    end.appendChild(sub);
+    body.appendChild(end);
+    var fin = document.createElement('button');
+    fin.className = 'btn btnPrimary';
+    fin.textContent = 'Done';
+    fin.addEventListener('click', pracClose);
+    foot.appendChild(fin);
+    $('pracCount').textContent = '';
+    return;
+  }
+
+  var m = pracCurrent();
+  if (!m) { pracClose(); return; }
+  $('pracCount').textContent = 'Question ' + (prac.i + 1) + ' of ' + prac.ids.length;
+
+  var meta = document.createElement('div');
+  meta.className = 'mistMeta';
+  [[m.number ? 'Q' + m.number : '', 'chip'], [m.docName || '', 'chip'],
+   [m.level ? levelLabel(m.level) : '', 'chip chipLevel'],
+   [m.subject ? subjectLabel(m.subject) : '', 'chip'], [pracWorth(m), 'chip']].forEach(function (r) {
+    if (!r[0]) return;
+    var c = document.createElement('span');
+    c.className = r[1];
+    c.textContent = r[0];
+    meta.appendChild(c);
+  });
+  body.appendChild(meta);
+
+  if (m.imagePath) {
+    var img = document.createElement('img');
+    img.className = 'pracShot';
+    img.alt = 'The question';
+    img.addEventListener('error', function () { if (img.parentNode) img.parentNode.removeChild(img); });
+    mistakeImageUrl(m).then(function (u) { if (u) img.src = u; else img.remove(); });
+    body.appendChild(img);
+  }
+  if (m.question) {
+    var q = document.createElement('div');
+    q.className = 'pracQ';
+    q.textContent = m.question;
+    body.appendChild(q);
+  }
+
+  var lab = document.createElement('div');
+  lab.className = 'boxLabel';
+  lab.textContent = 'Your answer';
+  body.appendChild(lab);
+  var ta = document.createElement('textarea');
+  ta.id = 'pracAnswer';
+  ta.className = 'pracAnswer';
+  ta.rows = 3;
+  ta.placeholder = 'Write it out again…';
+  ta.value = (prac.result && prac.result.mine) || prac.typed || '';
+  ta.disabled = !!prac.revealed || !!prac.busy;
+  ta.addEventListener('input', function () { prac.typed = ta.value; });
+  body.appendChild(ta);
+  if (!prac.revealed && !prac.busy) setTimeout(function () { ta.focus(); }, 30);
+
+  if (prac.revealed) {
+    var r = prac.result || {};
+    if (r.verdict) {
+      var chip = document.createElement('span');
+      chip.className = 'verdict ' + (r.verdict === 'correct' ? 'mCorrect'
+        : r.verdict === 'partial' ? 'mPartial' : 'mWrong');
+      chip.textContent = r.verdict === 'correct' ? '✅ Correct'
+        : r.verdict === 'partial' ? '🟡 Almost' : '❌ Not quite';
+      var wrap = document.createElement('div');
+      wrap.style.margin = '14px 0 4px';
+      wrap.appendChild(chip);
+      body.appendChild(wrap);
+    }
+    if (r.feedback) {
+      var fb = document.createElement('div');
+      fb.className = 'rungText';
+      fb.textContent = r.feedback;
+      body.appendChild(chungSays(fb, true, r.verdict === 'correct' ? 'happy' : ''));
+    }
+    if (m.answer) body.appendChild(boxNode('The answer', m.answer, 'ansBox'));
+    if (m.explanation) body.appendChild(boxNode('Why', m.explanation, 'whyBox'));
+  }
+
+  if (!prac.revealed) {
+    var check = document.createElement('button');
+    check.className = 'btn btnPrimary';
+    check.textContent = prac.busy ? 'Marking…' : 'Check my answer';
+    check.disabled = !!prac.busy;
+    check.addEventListener('click', pracCheck);
+    foot.appendChild(check);
+    var skip = document.createElement('button');
+    skip.className = 'btn';
+    skip.textContent = 'Show me the answer';
+    skip.addEventListener('click', function () {
+      prac.revealed = true;
+      var box = $('pracAnswer');
+      prac.result = { verdict: '', feedback: '', mine: String((box ? box.value : prac.typed) || '') };
+      prac.done++;
+      pracRender();
+    });
+    foot.appendChild(skip);
+  } else {
+    var next = document.createElement('button');
+    next.className = 'btn btnPrimary';
+    next.textContent = prac.i >= prac.ids.length - 1 ? 'Finish' : 'Next question';
+    next.addEventListener('click', pracNext);
+    foot.appendChild(next);
+  }
+  var quit = document.createElement('button');
+  quit.className = 'btn btnGhost';
+  quit.textContent = 'Stop';
+  quit.addEventListener('click', pracClose);
+  foot.appendChild(quit);
+}
+
+/* =====================================================================
+   THE PRINTED WORKSHEET
+
+   "Export as a PDF" is the browser's own Save as PDF, reached through
+   print. There is no PDF WRITER in this app — pdf.js reads them — and
+   adding one would be a third of a megabyte of library for a button every
+   browser and every phone already has.
+
+   The pictures are the hard part: `window.print()` does not wait for an
+   <img> to load, so a sheet printed the instant it is built comes out with
+   the questions missing and nothing on screen to say why. Every picture is
+   awaited before the dialog opens.
+   ===================================================================== */
+function mwsLines(m) {
+  // Ruled space sized by what the question was worth, so a 1-mark answer
+  // does not get the room a 4-mark one needs and vice versa.
+  var pair = markPairOf(m);
+  var n = pair ? Math.ceil(pair.total) : 2;
+  return Math.max(2, Math.min(6, n));
+}
+function mwsRules(n) {
+  var out = '';
+  for (var i = 0; i < n; i++) out += '<div class="mwsRule"></div>';
+  return out;
+}
+
+function mwsBuild(list, withKey) {
+  var sheet = $('mistSheet');
+  sheet.innerHTML = '';
+  var head = document.createElement('div');
+  head.className = 'mwsHead';
+  head.innerHTML =
+    '<div class="mwsTitle">Try these again</div>' +
+    '<div class="mwsSub">Polymath Learning Centre · ' +
+    list.length + ' question' + (list.length === 1 ? '' : 's') + '</div>' +
+    '<div class="mwsFields"><span>Name: ______________________</span><span>Date: ______________</span>' +
+    '<span>Score: ______ / ______</span></div>';
+  sheet.appendChild(head);
+
+  list.forEach(function (m, i) {
+    var q = document.createElement('div');
+    q.className = 'mwsQ';
+    var n = document.createElement('div');
+    n.className = 'mwsQHead';
+    n.textContent = (i + 1) + '.';
+    if (m.number) {
+      var from = document.createElement('span');
+      from.textContent = '  was Q' + m.number + (m.docName ? ' of ' + m.docName : '');
+      n.appendChild(from);
+    }
+    q.appendChild(n);
+    if (m._sheetUrl) {
+      var img = document.createElement('img');
+      img.className = 'mwsShot';
+      img.src = m._sheetUrl;
+      img.alt = '';
+      q.appendChild(img);
+    } else if (m.question) {
+      var t = document.createElement('div');
+      t.className = 'mwsQText';
+      t.textContent = m.question;
+      q.appendChild(t);
+    }
+    var rules = document.createElement('div');
+    rules.className = 'mwsRules';
+    rules.innerHTML = mwsRules(mwsLines(m));
+    q.appendChild(rules);
+    sheet.appendChild(q);
+  });
+
+  if (withKey) {
+    var key = document.createElement('div');
+    key.className = 'mwsKey';
+    key.innerHTML = '<div class="mwsKeyTitle">Answers</div>';
+    list.forEach(function (m, i) {
+      var row = document.createElement('div');
+      row.className = 'mwsKeyRow';
+      var a = document.createElement('b');
+      a.textContent = (i + 1) + '.';
+      row.appendChild(a);
+      var t = document.createElement('span');
+      t.textContent = m.answer || '(no answer recorded)';
+      row.appendChild(t);
+      key.appendChild(row);
+    });
+    sheet.appendChild(key);
+  }
+  return sheet;
+}
+
+/* THE ONE PLACE ANYTHING IN THIS APP IS PRINTED. The print stylesheet hides
+   every direct child of <body> that is not `.printMe`, so two things that
+   both wanted to print would otherwise hide each other — which is exactly
+   what happened when the report's rule named itself by id. */
+function printThis(el) {
+  if (!el) return;
+  var cleaned = false;
+  function done() {
+    if (cleaned) return;
+    cleaned = true;
+    el.classList.remove('printMe');
+    window.removeEventListener('afterprint', done);
+  }
+  el.classList.add('printMe');
+  window.addEventListener('afterprint', done);
+  window.print();
+  // `print()` blocks until the dialog closes almost everywhere; iOS Safari
+  // is the exception and fires afterprint instead. Both routes end here.
+  setTimeout(done, 800);
+}
+
+async function mwsExport(ids, withKey) {
+  var list = (ids || []).map(mistakeById).filter(Boolean);
+  if (!list.length) { toast('Pick at least one question to put on the sheet.'); return; }
+  toast('Building the sheet…');
+  // The pictures are fetched and AWAITED before the dialog opens. A sheet
+  // printed while they are still loading comes out with the questions
+  // missing, and the student is left holding a page of ruled lines.
+  await Promise.all(list.map(function (m) {
+    if (!m.imagePath) { m._sheetUrl = ''; return Promise.resolve(); }
+    return mistakeImageUrl(m).then(function (u) {
+      if (!u) { m._sheetUrl = ''; return; }
+      return new Promise(function (res) {
+        var im = new Image();
+        im.onload = function () { m._sheetUrl = u; res(); };
+        // A picture that will not load takes itself off the sheet and the
+        // question falls back to its wording — a numbered question with
+        // nothing under it is worse than one printed as text.
+        im.onerror = function () { m._sheetUrl = ''; res(); };
+        im.src = u;
+      });
+    });
+  }));
+  mwsBuild(list, withKey);
+  printThis($('mistSheet'));
 }
 
 /* ---- The worksheet list ---- */
@@ -7277,7 +7841,7 @@ $('engineBtn').addEventListener('click', openEngineModal);
 $('engineClose').addEventListener('click', function () { $('engineModal').classList.remove('open'); });
 
 $('repClose').addEventListener('click', closeReport);
-$('repPrint').addEventListener('click', function () { window.print(); });
+$('repPrint').addEventListener('click', function () { printThis($('reportModal')); });
 $('repCopy').addEventListener('click', function () {
   var text = reportAsText();
   // The clipboard API needs a secure context and a permission a school
