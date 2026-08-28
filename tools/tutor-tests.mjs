@@ -75,7 +75,8 @@ const SRC_STAMP  = between('/* A Firestore timestamp, a Date, a number or nothin
 const SRC_SAVE   = between('/* ================= AUTO-SAVE =================',
                            'async function loadWorksheets', 'auto-save');
 const SRC_PRAC   = between('var pracSel = {};',
-                           '/* THE ONE PLACE ANYTHING IN THIS APP IS PRINTED', 'practising the mistakes');
+                           '/* THE ONE PLACE ANYTHING IN THIS APP IS COPIED', 'practising the mistakes');
+const SRC_PEOPLE = between('var PEOPLE_COL =', 'function renderAuth() {', 'the first sign-in and the roster');
 
 /* ---- A sandbox with just enough world to evaluate them ---- */
 const noop = () => {};
@@ -124,7 +125,7 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
                 '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
-                '\n' + SRC_PRAC,
+                '\n' + SRC_PRAC + '\n' + SRC_PEOPLE,
                 sandbox, { filename: 'index.html' });
 const S = sandbox;
 
@@ -1151,6 +1152,97 @@ ok('a blank retry is never marked wrong',
    /if \(!mine\) \{ toast\('Have a go first/.test(html));
 ok('the answer is not on screen until the question has been answered',
    /if \(prac\.revealed\) \{[\s\S]{0,900}boxNode\('The answer'/.test(html));
+
+/* =====================================================================
+   THE FIRST SIGN-IN, AND WHO HAS SIGNED IN
+   ===================================================================== */
+section('The first sign-in');
+
+/* A profile that could NOT be read comes in as null, and the answer must be
+   "ask" — letting somebody through on a read error is an account that
+   silently skips the fee question for good. */
+eq('a profile that could not be read is asked', S.onboardNeeds(null), true);
+eq('a profile with no answers is asked', S.onboardNeeds({ name: 'Wei Ling' }), true);
+eq('an answer to an OLDER version is asked again',
+   S.onboardNeeds({ tutorOnboard: { v: 0, parent: 'a', students: ['b'] } }), true);
+eq('an answer to THIS version is not asked again',
+   S.onboardNeeds({ tutorOnboard: { v: S.ONBOARD_VERSION, parent: 'a', students: ['b'] } }), false);
+eq('rubbish where the answers should be is asked',
+   S.onboardNeeds({ tutorOnboard: 'yes' }), true);
+
+const c1 = S.onboardClean({ parent: '  Mrs Tan  ', students: ['Wei Ling', '   ', '', 'Wei Jie'], enrolled: true });
+eq('the parent is trimmed', c1.parent, 'Mrs Tan');
+/* A roster row reading "Student:" is worse than one that says nothing. */
+eq('blank student names are dropped rather than stored', c1.students, ['Wei Ling', 'Wei Jie']);
+eq('an enrolled family is not paying anything', c1.payingFee, false);
+eq('…and no fee is recorded against them', c1.fee, '');
+eq('the version it was answered under is stored with it', c1.v, S.ONBOARD_VERSION);
+
+const c2 = S.onboardClean({ parent: 'Mr Lim', students: ['Jun Hao'], enrolled: false });
+/* This is a billing commitment, so it is stored as its own flag rather than
+   inferred from `enrolled` somewhere else later. */
+eq('a family that is not enrolled is on the fee', c2.payingFee, true);
+eq('…and the amount they agreed to is recorded', c2.fee, S.APP_FEE);
+ok('the fee is a real amount, not an empty string', /\$\d/.test(S.APP_FEE), 'APP_FEE is "' + S.APP_FEE + '"');
+
+eq('eight students is the most that can be added',
+   S.onboardClean({ parent: 'p', students: Array(20).fill('x'), enrolled: true }).students.length, 8);
+
+/* Neither route may be arrived at by default: an agreement to pay something
+   has to be chosen. */
+eq('no parent name is not a complete answer',
+   S.onboardValid({ parent: '', students: ['a'], enrolled: true }), false);
+eq('no student name is not a complete answer',
+   S.onboardValid({ parent: 'p', students: ['  '], enrolled: true }), false);
+eq('not saying whether you are enrolled is not a complete answer',
+   S.onboardValid({ parent: 'p', students: ['a'], enrolled: null }), false);
+eq('both answers and a name is', S.onboardValid({ parent: 'p', students: ['a'], enrolled: false }), true);
+
+section('Who has signed in');
+
+const r1 = S.personRow('u1', {
+  name: 'Wei Ling', email: 'a@b.c', tutorLastSeen: { seconds: 1700000000 },
+  tutorOnboard: { v: 1, parent: 'Mrs Tan', students: ['Wei Ling', 'Wei Jie'], enrolled: true, payingFee: false }
+});
+eq('a row reads the students off the answers', r1.students, ['Wei Ling', 'Wei Jie']);
+eq('…and the parent', r1.parent, 'Mrs Tan');
+eq('…and knows they are enrolled', r1.enrolled, true);
+eq('…and that they owe nothing', r1.paying, false);
+
+/* Somebody who signed in and closed the dialog is exactly the person a
+   teacher wants to see, so the row is shown and says so. */
+const r2 = S.personRow('u2', { email: 'x@y.z', tutorLastSeen: { seconds: 1700000100 } });
+eq('an account that has not answered yet is still a row', r2.email, 'x@y.z');
+eq('…and it says it has not answered', r2.answered, false);
+eq('…and is not counted as enrolled', r2.enrolled, false);
+
+const sorted = S.peopleSort([
+  { name: 'old', email: '', seen: 1000 },
+  { name: 'never', email: '', seen: 0 },
+  { name: 'newest', email: '', seen: 9000 }
+]);
+eq('the most recent sign-in comes first', sorted.map(r => r.name), ['newest', 'old', 'never']);
+
+/* The rules for this collection live in another repository and are shared
+   with four other apps, so this one writes ONE namespaced field and merges. */
+ok('the roster is the centre\'s existing one, not a second list',
+   /var PEOPLE_COL = 'studentProfiles'/.test(html));
+ok('every write to it is a MERGE',
+   !/peopleRef\([^)]*\)\.set\((?![^;]*\{ merge: true \})/.test(html));
+/* A name a teacher typed in Ans Key must not be replaced by whatever a
+   parent typed here. */
+ok('a name is only ever written into an EMPTY one',
+   /if \(!known\)/.test(html) && (html.match(/var known = String\(/g) || []).length >= 2);
+ok('the gate cannot be dismissed with Esc',
+   /\.modalBack\.open:not\(#onboardModal\)/.test(html));
+/* Trapping somebody behind a dialog they have already answered — on a
+   dropped connection, of all things — is worse than asking twice. */
+ok('a write that failed lets them through and asks again next time',
+   /roster: answers could not be saved[\s\S]{0,300}onboardFinish\(\)/.test(html));
+ok('a gate that throws is not a gate nobody can get past',
+   /onboardRequire\(user\)\.catch[\s\S]{0,200}onboardFinish\(\)/.test(html));
+ok('the teacher is not asked, and does not get a row',
+   /if \(isAdmin\(user\)\) return;/.test(html));
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'
