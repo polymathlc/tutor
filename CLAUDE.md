@@ -848,7 +848,76 @@ is free; not enrolled is **$100 a month**, agreed to by a parent or guardian.
   in and closed the dialog is shown, saying it has not answered, because that
   is exactly the person worth chasing.
 
+## 📈 WHO DID WHAT — student usage (v1.6.0)
+
+`USAGE_EVENTS` / `usageLabel` / `USAGE_RECENT_MAX` / **`usageNote`** /
+`usageAdd` / `usageFlush` / `usageStart` / `usageStop` / `usageDayKey` /
+`usageOf` / `usageAccuracy` / `usageRecent` / `openPersonUsage` (search `WHO
+DID WHAT`), plus the extra columns on 👥 and the `#personModal`.
+
+The roster said who had signed in. It could not say what any of them had
+**done** — which is the question a teacher opens that list with.
+
+- **`usageNote(key, detail)` IS THE ONE DOOR**, and `usageAdd` is its only
+  sibling (for the counts that are not one-per-event: a marking run is ONE
+  `mark` and eighteen questions). A second writer is a second place to forget
+  the two rules below, and a path added later that logs its own way is a piece
+  of work that shows up in no total.
+- **WHAT LEAVES THE DEVICE IS COUNTS AND A WORKSHEET'S OWN NAME.** Never a
+  question, never an answer, never the mark on a particular question — a
+  child's work stays in their own account, which is the rule the mistake book
+  already carries. The detail is folded to one line and cut to 80 characters,
+  so a caller that hands it something bigger cannot turn the feed into a
+  transcript.
+- **THE COUNTERS ARE `FieldValue.increment`, and the feed is not.** A student
+  has the app open on an iPad and a phone; a counter written as a number this
+  tab worked out is a counter the other tab overwrites. The recent list is
+  written whole and IS last-writer-wins, deliberately — it is a convenience,
+  the counters are the truth, and forty rows of it is not worth a transaction.
+- **The teacher is never recorded** (`usageStart` asks `isAdmin`). Their own
+  list is a list of the people they teach, and recording their own use would
+  put them at the top of their own roster every single day.
+- **Signing out FLUSHES and then records nothing.** The last few minutes of a
+  lesson must not die with the tab, and a write after it would file one
+  student's work under whoever signs in next on a shared iPad. Both
+  `visibilitychange` and `pagehide`, for the reason auto-save carries: Safari
+  on iOS very often gives a swiped-away tab `pagehide` and nothing else.
+- **Accuracy is over what was ATTEMPTED.** A blank was not an attempt, and
+  counting it as one reports a child who ran out of time as a child who got it
+  wrong — the same rule the marking, the report and the practice retry each
+  carry. A partial counts half.
+- **"Anything at all" deliberately does NOT count a sign-in.** Signing in and
+  doing nothing is its own answer and the panel says it in words; folded in, it
+  would show a grid of twelve zeros instead, which reads as a broken panel
+  rather than as a student who has not started.
+- **Every key a call site raises must be in `USAGE_EVENTS`**, or the feed
+  prints an internal name — "practiceRight" — into a panel a teacher reads. The
+  harness reads the call sites out of the file and fails on one that is not
+  named there.
+- **An account from before any of this reads as ZEROS, never as nothing.** A
+  dash where a count should be reads as a fault rather than as "none yet".
+- **It needed no Firestore rules change**: more namespaced fields
+  (`tutorUsage`, `tutorRecent`) on a document this app already writes, merged.
+  Those rules live in another repository and are shared with four apps, so a
+  feature that needs one is a feature that waits.
+- **The panel is a READ.** Nothing in `openPersonUsage` writes anything
+  anywhere.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## House rules
+- After touching **📈 student usage** (`USAGE_EVENTS`, `usageLabel`,
+  `usageNote`, `usageAdd`, `usageFlush`, `usageStart`, `usageStop`,
+  `usageDayKey`, `usageOf`, `usageAccuracy`, `usageRecent`, `openPersonUsage`,
+  or any call site that raises an event), run `node tools/tutor-tests.mjs`.
+  Every failure here is silent and the panel still fills. A second writer is a
+  path whose work shows up in no total, and one that logs a detail bigger than
+  a worksheet's name turns a usage record into a transcript of a child's
+  answers. A counter written as a number rather than an increment is one tab
+  overwriting the other's afternoon. A blank folded into the accuracy reports a
+  child who ran out of time as a child who got it wrong. An event key that is
+  not in `USAGE_EVENTS` prints its own internal name at a teacher. And
+  recording the teacher puts them at the top of their own roster every day,
+  which makes the list they opened it for useless.
 - After touching **👥 the first sign-in or the roster** (`PEOPLE_COL`,
   `ONBOARD_VERSION`, `APP_FEE`, `onboardNeeds`, `onboardClean`, `onboardValid`,
   `onboardRequire`, `noteSignedIn`, `onboardSave`, `personRow`, `peopleSort`,

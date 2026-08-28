@@ -657,6 +657,29 @@
   .obChoiceTitle { font-weight: 700; font-size: 0.98rem; }
   .obChoiceSub { font-size: 0.83rem; color: var(--ink-soft); line-height: 1.6; margin-top: 6px; }
 
+  /* ---------- What one student has been doing ----------
+     The row on the roster answers "how much"; this answers "what, and when". */
+  .peopleRow { cursor: pointer; }
+  .peopleRow:hover td { filter: brightness(0.98); }
+  .usageGrid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
+    gap: 10px; margin: 20px 0 14px;
+  }
+  .usageBox {
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: var(--bg-soft); padding: 14px 16px;
+  }
+  .usageBox b { display: block; font-size: 1.35rem; line-height: 1.2; color: var(--ink); }
+  .usageBox span { display: block; font-size: 0.72rem; color: var(--ink-faint); margin-top: 5px; }
+  .usageFeed { border: 1px solid var(--line); border-radius: var(--radius-sm); overflow: hidden; }
+  .usageEvent {
+    display: flex; gap: 12px; align-items: baseline;
+    padding: 10px 14px; font-size: 0.82rem; color: var(--ink-soft);
+    border-bottom: 1px solid var(--line);
+  }
+  .usageEvent:last-child { border-bottom: 0; }
+  .usageWhen { flex: none; width: 118px; font-size: 0.72rem; color: var(--ink-faint); }
+
   /* ---------- Practising the mistakes ---------- */
   .mistTools { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-bottom: 18px; }
   .mwsKeyToggle {
@@ -1307,6 +1330,17 @@
   </div>
 </div>
 
+<!-- ============ One student's usage (admin only) ============ -->
+<div class="modalBack" id="personModal">
+  <div class="modalCard tnWide">
+    <div class="modalHead"><h2 id="personTitle">Usage</h2></div>
+    <div class="modalBody" id="personBody"></div>
+    <div class="modalFoot">
+      <button class="btn btnPrimary" id="personClose">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ Practising the mistakes ============ -->
 <div class="modalBack" id="pracModal">
   <div class="modalCard">
@@ -1398,7 +1432,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.5.0';
+var APP_VERSION = 'v1.6.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -3853,6 +3887,7 @@ async function askHintAt(p, pt) {
       h.number = out.number;
       h.rungs = out.rungs;
       h.shown = 1;                      // ALWAYS the smallest hint first
+      usageNote('hint', h.number ? 'Q' + h.number : '');
       setDirty(true);
     }
   } catch (e) {
@@ -3871,6 +3906,7 @@ function showNextRung(id) {
   if (!h) return;
   if (h.shown >= h.rungs.length) return;
   h.shown++;
+  usageNote('rung', h.number ? 'Q' + h.number : '');
   setDirty(true);
   renderHints();
 }
@@ -4434,6 +4470,15 @@ async function runMarking() {
       renderMarking();
     }
     marking.runAt = Date.now();
+    usageNote('mark', docName || '');
+    var uc = markTally();
+    var um = markMarkTally();
+    usageAdd('questions', uc.correct + uc.partial + uc.wrong + uc.blank);
+    usageAdd('correct', uc.correct);
+    usageAdd('partial', uc.partial);
+    usageAdd('wrong', uc.wrong);
+    usageAdd('blank', uc.blank);
+    if (um.has) { usageAdd('awarded', um.awarded); usageAdd('total', um.attempted); }
     await fileMistakes();
   } catch (e) {
     toast('Marking failed: ' + ((e && e.message) || 'please try again.'), 6000);
@@ -4711,6 +4756,7 @@ async function setMistakeCleared(id, cleared) {
   var m = mistakes.find(function (x) { return x.id === id; });
   if (!m) return;
   m.cleared = cleared;
+  if (cleared) usageNote('cleared', m.docName || '');
   renderMistakes();
   try { await mistakesCollRef().doc(id).update({ cleared: cleared }); }
   catch (e) { toast('Could not save that — please try again.'); }
@@ -5154,6 +5200,7 @@ async function sendChat(text) {
   if (aiBusy) { toast(aiEngineName() + ' is still thinking…'); return; }
   if (!aiAvailable()) return;
   var epoch = wsEpoch;
+  usageNote('chat');
   chat.push({ who: 'me', text: text });
   chat.push({ who: 'buddy', text: aiEngineName() + ' is reading the worksheet…', pending: true });
   renderChat();
@@ -5786,6 +5833,7 @@ function scrollToPage(num) {
    what is on the screen, what is printed and what is copied are three
    renderings of one calculation rather than three calculations. */
 function openReport() {
+  usageNote('report', docName || '');
   renderReport();
   $('reportModal').classList.add('open');
 }
@@ -6379,6 +6427,8 @@ async function pracCheck() {
   prac.busy = false;
   prac.revealed = true;
   prac.done++;
+  usageNote('practice', m.docName || '');
+  if (prac.result && prac.result.verdict === 'correct') usageAdd('practiceRight', 1);
   if (prac.result && prac.result.verdict === 'correct') {
     prac.right++;
     /* Getting it right is what the book is FOR, so a correct retry files it
@@ -6691,6 +6741,7 @@ async function mwsExport(ids, withKey) {
     });
   }));
   mwsBuild(list, withKey);
+  usageNote('sheet', list.length + ' question' + (list.length === 1 ? '' : 's'));
   printThis($('mistSheet'));
 }
 
@@ -7479,6 +7530,7 @@ async function handleUpload(file) {
     wsMeta.level = level;
     wsMeta.subject = subject;
     wsMeta.guidance = upGrade;
+    usageNote('upload', name);
     var id = db.collection(COLLECTION).doc().id;
     await storage.ref(STORAGE_DIR + '/' + id + '.pdf')
       .put(new Blob([pdfBytes], { type: 'application/pdf' }));
@@ -8114,6 +8166,188 @@ function obSyncNext() {
 }
 
 /* =====================================================================
+   WHAT THEY ACTUALLY DID — the usage record
+
+   The 👥 list says who signed in. It cannot say what they DID, because
+   everything a student does here lives under `users/{uid}/…`, which the
+   teacher cannot read — and rightly: those are their worksheets and their
+   work. So a summary is kept beside them on the roster row instead, in the
+   one place the teacher can already see.
+
+   WHAT IS RECORDED IS COUNTS AND WORKSHEET NAMES. Never an answer, never a
+   question, never a mark on a particular question — the same line the
+   Science portal's class mirror draws. A teacher wanting the detail of one
+   paper opens the report with the student; this is how much of what, and
+   when.
+
+   THE COUNTERS ARE THE TRUTH AND THE RECENT LIST IS A CONVENIENCE, and the
+   split is deliberate. Counters go up with `FieldValue.increment`, which is
+   safe from two tabs at once; the recent list is written whole and is
+   therefore last-writer-wins. A dropped line out of a log is a dropped line;
+   a counter that two tabs disagreed about would be a number nobody can
+   trust.
+   ===================================================================== */
+
+/* THE ONE PLACE A RAW EVENT KEY BECOMES WORDS. The log stores `hint`,
+   `mark`, `practice` — internal names, not English — and the row, the
+   breakdown and the copied text all read this map so they cannot drift
+   apart. A key with NO entry still shows, as its own raw key: an unlabelled
+   event is a missing label, but an event dropped out of the list because
+   nobody wrote a label for it is a missing PIECE OF WORK. */
+var USAGE_EVENTS = {
+  signin:   { label: 'Signed in',        count: 'sessions' },
+  upload:   { label: 'Uploaded a worksheet', count: 'worksheets' },
+  hint:     { label: 'Asked for a hint', count: 'hints' },
+  rung:     { label: 'Took more help',   count: 'rungs' },
+  chat:     { label: 'Asked a question', count: 'chats' },
+  mark:     { label: 'Marked a worksheet', count: 'marked' },
+  practice: { label: 'Practised a mistake', count: 'practice' },
+  cleared:  { label: 'Sorted a mistake', count: 'cleared' },
+  sheet:    { label: 'Printed a worksheet', count: 'sheets' },
+  report:   { label: 'Opened the report', count: 'reports' }
+};
+function usageLabel(key) {
+  var e = USAGE_EVENTS[key];
+  return e ? e.label : String(key || 'Something');
+}
+
+var USAGE_RECENT_MAX = 40;   // one roster row holds this comfortably
+var USAGE_FLUSH_MS = 2500;
+
+var _usage = null;           // { inc: {}, recent: [], timer, day }
+var _usageOn = false;
+
+/* A local day rather than a UTC one: "did they do anything today" is a
+   question about the student's own evening, not about a timezone. */
+function usageDayKey(d) {
+  var t = d || new Date();
+  return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') +
+         '-' + String(t.getDate()).padStart(2, '0');
+}
+
+function usageStart(user) {
+  // The teacher is not a student: their own list is a list of the people
+  // they teach, and their own use of the app is not usage to report.
+  _usageOn = !!(user && db && !isAdmin(user));
+  _usage = { inc: {}, recent: [], timer: null, uid: user ? user.uid : '' };
+}
+function usageStop() {
+  usageFlush(true);
+  _usageOn = false;
+  _usage = null;
+}
+
+/* THE ONE DOOR. Every path that is worth reporting calls this and nothing
+   else — a second writer is a second place to forget the privacy rule
+   above, and a path added later that logs its own way is a piece of work
+   that shows up in no total. */
+function usageNote(key, detail) {
+  if (!_usageOn || !_usage) return;
+  var e = USAGE_EVENTS[key];
+  var field = (e && e.count) || key;
+  _usage.inc[field] = (_usage.inc[field] || 0) + 1;
+  _usage.recent.push({
+    t: Date.now(),
+    k: String(key || ''),
+    // A worksheet's own name, and nothing else. No question, no answer.
+    d: String(detail == null ? '' : detail).replace(/\s+/g, ' ').trim().slice(0, 80)
+  });
+  if (_usage.recent.length > USAGE_RECENT_MAX) {
+    _usage.recent = _usage.recent.slice(-USAGE_RECENT_MAX);
+  }
+  clearTimeout(_usage.timer);
+  _usage.timer = setTimeout(function () { usageFlush(); }, USAGE_FLUSH_MS);
+}
+
+/* Counts that are not one-per-event — a marking run is ONE `mark` but
+   eighteen questions — go up by a number rather than by one. */
+function usageAdd(field, n) {
+  if (!_usageOn || !_usage) return;
+  n = Number(n) || 0;
+  if (!n) return;
+  _usage.inc[field] = (_usage.inc[field] || 0) + n;
+  clearTimeout(_usage.timer);
+  _usage.timer = setTimeout(function () { usageFlush(); }, USAGE_FLUSH_MS);
+}
+
+/* The last few events must not die with the tab. Both events, because
+   neither is enough on its own: Safari on iOS very often gives a swiped-away
+   tab `pagehide` and nothing else, and a desktop tab switched away gets
+   `visibilitychange` long before it is closed. */
+window.addEventListener('visibilitychange', function () {
+  if (document.visibilityState === 'hidden') usageFlush(true);
+});
+window.addEventListener('pagehide', function () { usageFlush(true); });
+
+function usageFlush(now) {
+  if (!_usageOn || !_usage) return;
+  var u = _usage;
+  clearTimeout(u.timer);
+  u.timer = null;
+  var keys = Object.keys(u.inc);
+  if (!keys.length && !u.recent.length) return;
+  var patch = { tutorLastSeen: firebase.firestore.FieldValue.serverTimestamp() };
+  keys.forEach(function (k) {
+    patch['tutorUsage.' + k] = firebase.firestore.FieldValue.increment(u.inc[k]);
+  });
+  // One a day, whatever else happened: "active days" is what says whether
+  // the app is part of a week or was opened once.
+  var day = usageDayKey();
+  if (u.day !== day) {
+    u.day = day;
+    patch['tutorUsage.lastDay'] = day;
+    patch['tutorUsage.activeDays'] = firebase.firestore.FieldValue.increment(1);
+  }
+  if (u.recent.length) patch.tutorRecent = u.recent.slice(-USAGE_RECENT_MAX);
+  u.inc = {};
+  var ref = peopleRef(u.uid);
+  var write = ref.set(patch, { merge: true });
+  // A usage record that cannot be written is never a reason to interrupt a
+  // student mid-worksheet. It is worth knowing about, and nothing more.
+  if (write && write.catch) write.catch(function (e) { console.warn('usage: not recorded', e); });
+  return write;
+}
+
+/* What is READ back out. `tutorUsage` may be missing entirely (an account
+   from before this existed, or one that has only signed in), and every
+   number falls back to 0 rather than to nothing — a dash where a count
+   should be reads as a fault rather than as "none yet". */
+function usageOf(p) {
+  var u = (p && p.tutorUsage) || {};
+  function n(k) { return Number(u[k]) || 0; }
+  var marked = n('questions');
+  return {
+    sessions: n('sessions'), worksheets: n('worksheets'),
+    hints: n('hints'), rungs: n('rungs'), chats: n('chats'),
+    marked: n('marked'), questions: marked,
+    correct: n('correct'), partial: n('partial'), wrong: n('wrong'), blank: n('blank'),
+    awarded: n('awarded'), total: n('total'),
+    practice: n('practice'), practiceRight: n('practiceRight'),
+    cleared: n('cleared'), sheets: n('sheets'), reports: n('reports'),
+    activeDays: n('activeDays'), lastDay: String(u.lastDay || ''),
+    // Accuracy over questions that were ATTEMPTED. A blank was not an
+    // attempt, and counting it as one reports a child who ran out of time
+    // as a child who got it wrong.
+    attempted: n('correct') + n('partial') + n('wrong'),
+    /* "Anything at all" deliberately does NOT count a sign-in. Signing in
+       and doing nothing is its own answer and the panel says it in words;
+       folded in here it would show a grid of twelve zeros instead, which
+       reads as a broken panel rather than as a student who has not started. */
+    any: !!(n('worksheets') || n('marked') || n('hints') || n('rungs') || n('chats') ||
+            n('practice') || n('cleared') || n('sheets') || n('reports'))
+  };
+}
+function usageAccuracy(u) {
+  if (!u.attempted) return null;
+  return Math.round(((u.correct + u.partial / 2) / u.attempted) * 100);
+}
+function usageRecent(p) {
+  var rows = (p && p.tutorRecent) || [];
+  if (!Array.isArray(rows)) return [];
+  return rows.slice().sort(function (a, b) { return (b.t || 0) - (a.t || 0); }).slice(0, USAGE_RECENT_MAX);
+}
+
+/* =====================================================================
    THE TEACHER'S LIST — who has signed in
 
    Read straight out of the shared roster. A row with no name is still
@@ -8135,7 +8369,9 @@ function personRow(id, p) {
     paying: !!o.payingFee,
     fee: String(o.fee || ''),
     seen: stampOf(p && p.tutorLastSeen),
-    managed: !!(p && p.managed)
+    managed: !!(p && p.managed),
+    usage: usageOf(p),
+    recent: usageRecent(p)
   };
 }
 /* Newest sign-in first: a list a teacher opens to see who has been in is a
@@ -8207,7 +8443,8 @@ function renderPeople(state) {
   var t = document.createElement('table');
   t.className = 'repTable';
   var head = document.createElement('tr');
-  ['Student', 'Parent or guardian', 'Email', 'Enrolled', 'Last signed in'].forEach(function (h) {
+  ['Student', 'Parent or guardian', 'Enrolled', 'Worksheets', 'Questions', 'Right',
+   'Hints / extra', 'Days', 'Last signed in'].forEach(function (h) {
     var th = document.createElement('th');
     th.textContent = h;
     head.appendChild(th);
@@ -8218,15 +8455,31 @@ function renderPeople(state) {
   var tb = document.createElement('tbody');
   rows.forEach(function (r) {
     var tr = document.createElement('tr');
-    tr.className = 'repRow ' + (r.paying ? 'vHalf' : r.enrolled ? 'vOk' : 'vBlank');
-    repCell(tr, r.students.length ? r.students.join(', ') : (r.name || '—'), 'repTopicName');
+    tr.className = 'repRow peopleRow ' + (r.paying ? 'vHalf' : r.enrolled ? 'vOk' : 'vBlank');
+    tr.title = 'Open what they have been doing';
+    tr.addEventListener('click', function () { openPersonUsage(r.id); });
+    var who = repCell(tr, r.students.length ? r.students.join(', ') : (r.name || '—'), 'repTopicName');
+    if (r.email) {
+      var em = document.createElement('div');
+      em.className = 'repObj';
+      em.textContent = r.email;
+      who.appendChild(em);
+    }
     repCell(tr, r.parent || '—', '');
-    repCell(tr, r.email || '—', 'repObj');
     var st = r.managed ? 'Added by hand'
       : !r.answered ? 'Not answered yet'
       : r.enrolled ? '🎓 Enrolled — free'
       : '💳 ' + (r.fee || APP_FEE);
     repCell(tr, st, 'repVerdict ' + (r.paying ? 'vHalf' : r.enrolled ? 'vOk' : 'vBlank'));
+    var u = r.usage;
+    repCell(tr, u.worksheets ? String(u.worksheets) : '—', 'repMarks');
+    repCell(tr, u.questions ? String(u.questions) : '—', 'repMarks');
+    var acc = usageAccuracy(u);
+    repCell(tr, acc === null ? '—' : acc + '%', 'repMarks');
+    // Hints and rungs together: how much help is being taken is the number a
+    // teacher actually reads, and one without the other says very little.
+    repCell(tr, u.hints || u.rungs ? u.hints + ' / ' + u.rungs : '—', 'repMarks');
+    repCell(tr, u.activeDays ? String(u.activeDays) : '—', 'repMarks');
     repCell(tr, r.seen ? new Date(r.seen).toLocaleString(undefined,
       { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never', 'repObj');
     tb.appendChild(tr);
@@ -8245,11 +8498,117 @@ function renderPeople(state) {
   }
 }
 
+/* ---- One student, opened from the list ----
+   The row answers "how much"; this answers "what, and when". It is a READ:
+   nothing in here writes anything anywhere. */
+function openPersonUsage(id) {
+  var r = (_peopleRows || []).find(function (x) { return x.id === id; });
+  if (!r) return;
+  var body = $('personBody');
+  body.innerHTML = '';
+  $('personTitle').textContent = r.students.length ? r.students.join(', ') : (r.name || r.email || 'This account');
+
+  var sub = document.createElement('div');
+  sub.className = 'repWhen';
+  sub.textContent = [r.parent && 'parent: ' + r.parent, r.email,
+    r.managed ? 'added by hand' : !r.answered ? 'has not answered the first questions'
+      : r.enrolled ? 'enrolled — free' : 'paying ' + (r.fee || APP_FEE)].filter(Boolean).join(' · ');
+  body.appendChild(sub);
+
+  var u = r.usage;
+  if (!u.any) {
+    var none = document.createElement('p');
+    none.className = 'sub';
+    none.style.marginTop = '18px';
+    none.textContent = r.seen
+      ? 'They have signed in but not done anything in the app yet.'
+      : 'This row is on the roster but nobody has signed in on it.';
+    body.appendChild(none);
+    $('personModal').classList.add('open');
+    return;
+  }
+
+  var grid = document.createElement('div');
+  grid.className = 'usageGrid';
+  var acc = usageAccuracy(u);
+  [['Worksheets', u.worksheets], ['Marked', u.marked], ['Questions', u.questions],
+   ['Right', acc === null ? '—' : acc + '%'],
+   ['Hints', u.hints], ['Extra help taken', u.rungs], ['Questions asked', u.chats],
+   ['Mistakes practised', u.practice], ['Got right on the retry', u.practiceRight],
+   ['Sorted', u.cleared], ['Sheets printed', u.sheets], ['Days used', u.activeDays]]
+    .forEach(function (row) {
+      var b = document.createElement('div');
+      b.className = 'usageBox';
+      b.innerHTML = '<b></b><span></span>';
+      b.firstChild.textContent = String(row[1] == null ? 0 : row[1]);
+      b.lastChild.textContent = row[0];
+      grid.appendChild(b);
+    });
+  body.appendChild(grid);
+
+  if (u.attempted) {
+    var bd = document.createElement('div');
+    bd.className = 'repCounts';
+    bd.style.marginTop = '4px';
+    [['vOk', u.correct, 'correct'], ['vHalf', u.partial, 'partly right'],
+     ['vNo', u.wrong, 'wrong'], ['vBlank', u.blank, 'left blank']].forEach(function (c) {
+      if (!c[1]) return;
+      var sp = document.createElement('span');
+      sp.className = 'repCount ' + c[0];
+      sp.textContent = c[1] + ' ' + c[2];
+      bd.appendChild(sp);
+    });
+    body.appendChild(bd);
+  }
+  if (u.total) {
+    var m = document.createElement('div');
+    m.className = 'scoreLine';
+    m.style.marginTop = '14px';
+    m.innerHTML = '<b></b> <span></span>';
+    m.firstChild.textContent = markPretty(u.awarded) + ' / ' + markPretty(u.total);
+    m.lastChild.textContent = 'marks across everything they have attempted';
+    body.appendChild(m);
+  }
+
+  var h = document.createElement('h3');
+  h.className = 'repH';
+  h.textContent = 'What they have been doing';
+  body.appendChild(h);
+  var list = r.recent;
+  if (!list.length) {
+    var p2 = document.createElement('p');
+    p2.className = 'sub';
+    p2.textContent = 'Nothing recorded yet — the counts above are from before this was kept.';
+    body.appendChild(p2);
+  } else {
+    var ul = document.createElement('div');
+    ul.className = 'usageFeed';
+    list.forEach(function (e) {
+      var row = document.createElement('div');
+      row.className = 'usageEvent';
+      var w = document.createElement('span');
+      w.className = 'usageWhen';
+      w.textContent = e.t ? new Date(e.t).toLocaleString(undefined,
+        { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+      var t = document.createElement('span');
+      t.textContent = usageLabel(e.k) + (e.d ? ' — ' + e.d : '');
+      row.appendChild(w);
+      row.appendChild(t);
+      ul.appendChild(row);
+    });
+    body.appendChild(ul);
+  }
+  $('personModal').classList.add('open');
+}
+
 function peopleAsText() {
   return (_peopleRows || []).map(function (r) {
     return [r.students.join(', ') || r.name || '(no name)', r.parent || '(no parent)', r.email,
             r.managed ? 'added by hand' : !r.answered ? 'not answered'
               : r.enrolled ? 'enrolled (free)' : 'paying ' + (r.fee || APP_FEE),
+            r.usage.worksheets + ' worksheets', r.usage.questions + ' questions',
+            (usageAccuracy(r.usage) === null ? '-' : usageAccuracy(r.usage) + '% right'),
+            r.usage.hints + ' hints', r.usage.activeDays + ' days',
             r.seen ? new Date(r.seen).toISOString() : 'never'].join('\t');
   }).join('\n');
 }
@@ -8309,12 +8668,15 @@ if (auth) auth.onAuthStateChanged(function (user) {
     loadTeachingNotes(true);
     loadWorksheets();
     loadMistakes();
+    usageStart(user);
+    usageNote('signin');
     onboardRequire(user).catch(function (e) {
       // A gate that throws must not be a gate nobody can get past.
       console.warn('first sign-in: could not be asked', e);
       onboardFinish();
     });
   } else {
+    usageStop();
     _peopleRows = null;
     onboardFinish();
   }
@@ -8374,6 +8736,7 @@ $('engineClose').addEventListener('click', function () { $('engineModal').classL
 
 $('peopleBtn').addEventListener('click', openPeople);
 $('peopleClose').addEventListener('click', function () { $('peopleModal').classList.remove('open'); });
+$('personClose').addEventListener('click', function () { $('personModal').classList.remove('open'); });
 $('peopleCopy').addEventListener('click', function () { copyText(peopleAsText(), 'Roster copied'); });
 
 $('repClose').addEventListener('click', closeReport);

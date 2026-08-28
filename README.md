@@ -12,6 +12,40 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.6.0 — who did what
+
+The roster said who had signed in. It could not say what any of them had
+**done**, which is the question a teacher actually has when they open it — so
+every row now carries the work as well as the name, and clicking a row opens
+that one student on their own.
+
+**On the roster**: worksheets, questions answered, how many of them were right,
+hints and extra help taken, days used, and when they last signed in.
+
+**On one student**: twelve counts — worksheets, marked papers, questions,
+accuracy, hints, extra help, questions asked, mistakes practised, how many went
+right on the retry, mistakes sorted, sheets printed, days used — the
+correct / partly right / wrong / blank breakdown, the marks across everything
+they have attempted, and **what they have been doing**, newest first.
+
+**What leaves the device is counts and a worksheet's own name.** Never a
+question, never an answer, never the mark on a particular question. The counts
+go up by an *increment*, so two tabs on one account cannot overwrite each
+other's work.
+
+**Accuracy is over what was attempted.** A page left blank is not counted as a
+page got wrong — the same rule the marking, the report and the practice retry
+have carried since each of them shipped.
+
+**The teacher is not in their own list.** Their use of the app is not usage to
+report, and recording it would put them at the top of their own roster every
+day.
+
+**Nothing here needed a Firestore rules change** — it is more namespaced fields
+on `studentProfiles`, which the app already writes.
+
+---
+
 ## v1.5.0 — who is using this
 
 On a **first sign-in** the app asks two things and then gets out of the way.
