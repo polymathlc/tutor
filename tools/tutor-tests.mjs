@@ -64,6 +64,7 @@ const SRC_CORE   = between('/* ================= Small helpers =================
                            BAR + '\n   THE ANNOTATION ENGINE', 'the helpers, the ladder and the grounding');
 const SRC_ANN    = between('/* Unrotated frame of an x/y/w/h annotation.',
                            '/* ================= Undo / redo ================= */', 'the annotation shapes');
+const SRC_KEY    = between(BAR + '\n   🔑 THE ANSWER KEY', BAR + '\n   THE STUDY BUDDY', 'the answer key');
 const SRC_BUDDY  = between('var hints = [];', BAR + '\n   THE SCREENS', 'the buddy');
 
 /* ---- A sandbox with just enough world to evaluate them ---- */
@@ -81,11 +82,15 @@ const sandbox = {
   window: {},
   localStorage: { getItem: () => '', setItem: noop },
   db: null, auth: null, storage: null, firebase: null,
+  // The answer-key block reads these at CALL time; they are declared in
+  // parts of the file this harness deliberately does not evaluate.
+  pages: [], annotations: [], wsEpoch: 0, view: '', currentDocId: '', pdfDoc: null,
+  STORAGE_DIR: 'tutor-worksheets', ADMIN_DISPLAY_NAME: 'Mr Chung',
   setTimeout, clearTimeout, Blob: class { constructor(p) { this.size = String(p).length; } },
   Math, JSON, Date, String, Number, Array, Object, parseInt, parseFloat, isNaN, Promise
 };
 vm.createContext(sandbox);
-vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_BUDDY, sandbox, { filename: 'index.html' });
+vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY, sandbox, { filename: 'index.html' });
 const S = sandbox;
 
 /* =====================================================================
@@ -195,21 +200,27 @@ eq('…with the feedback kept', invented.feedback, 'Nearly.');
    the pictures 1..n within the batch it was handed. Get this wrong and
    every question after the third cites the wrong page — and every mistake
    picture is cropped from it. */
-const it3 = S._markNewItem({ question: 'Q', answer: 'A', page: 2 }, 3, 3);
-eq('page 2 of the batch starting at 3 is page 5 of the worksheet', it3.page, 5);
-const itBad = S._markNewItem({ question: 'Q', answer: 'A', page: 9 }, 3, 3);
-eq('a page outside the batch falls back to the batch\'s first page', itBad.page, 4);
-const itNone = S._markNewItem({ question: 'Q', answer: 'A' }, 0, 2);
+const it3 = S._markNewItem({ question: 'Q', answer: 'A', page: 2 }, [4, 5, 6]);
+eq('the 2nd picture of a batch of pages 4,5,6 is page 5', it3.page, 5);
+const itBad = S._markNewItem({ question: 'Q', answer: 'A', page: 9 }, [4, 5, 6]);
+eq('a picture outside the batch falls back to the batch\'s first page', itBad.page, 4);
+const itNone = S._markNewItem({ question: 'Q', answer: 'A' }, [1, 2]);
 eq('a missing page falls back the same way', itNone.page, 1);
-eq('an empty row is not a question', S._markNewItem({}, 0, 1), null);
+eq('an empty row is not a question', S._markNewItem({}, [1]), null);
+/* THE PAGE NUMBERS ARE THE REAL ONES, not an index into the run. With an
+   answer key hidden the pages a student has are not consecutive, so the
+   3rd picture of a run can be page 6 — and a mistake picture cropped from
+   "page 3" would then be a picture of a different question entirely. */
+const itSkip = S._markNewItem({ question: 'Q', answer: 'A', page: 3 }, [1, 2, 6]);
+eq('a run that skips a hidden key page still names the real page', itSkip.page, 6);
 
 /* A question straddling a batch boundary is ONE question, not two halves
    each with half an answer. */
 const into = [];
-S._markFoldRows([{ number: '8', question: 'The first half', answer: '', page: 1 }], 0, 1, into);
+S._markFoldRows([{ number: '8', question: 'The first half', answer: '', page: 1 }], [1], into);
 S._markFoldRows([{ continuation: true, question: 'the second half.', answer: '42 cm', page: 1,
                    explanation: 'Because…', studentAnswer: '40', verdict: 'wrong', feedback: 'Check the units.' }],
-                1, 1, into);
+                [2], into);
 eq('a continuation folds into the question before it', into.length, 1);
 eq('…its wording is joined', into[0].question, 'The first half the second half.');
 eq('…the answer comes from the half that could see the whole question', into[0].answer, '42 cm');
@@ -218,7 +229,7 @@ eq('…and the marking is merged in', into[0].verdict, 'wrong');
 
 const two = [];
 S._markFoldRows([{ number: '1', question: 'A', answer: 'a', page: 1 },
-                 { continuation: true, question: 'B', answer: 'b', page: 1 }], 0, 1, two);
+                 { continuation: true, question: 'B', answer: 'b', page: 1 }], [1], two);
 eq('a continuation that is NOT the first row of a batch is its own question', two.length, 2);
 
 /* =====================================================================
@@ -326,6 +337,118 @@ eq('a text box is never bounded shorter than one line',
    S.annBounds({ type: 'text', x: 0, y: 0, w: 100, h: 0, fontSize: 10 }).y2, 18);
 
 /* =====================================================================
+   6b. 🔑 THE ANSWER KEY — hidden from the student, read by the buddy
+   ---------------------------------------------------------------------
+   Every failure in here is silent and the app carries on looking right: a
+   key page left showing is the whole worksheet given away by scrolling, a
+   question page wrongly hidden is a question that has vanished, and a key
+   that stops reaching the prompts is a buddy marking against its own guess
+   while the card says it has the answers.
+   ===================================================================== */
+section('The answer key');
+
+ok('a page that announces itself is a key page',
+   S.keyPageLooksLikeKey('ANSWER KEY\n\n1  (3)\n2  (1)\n3  (4)'));
+ok('…in Chinese too', S.keyPageLooksLikeKey('答案\n\n1 （3）\n2 （1）'));
+ok('a marking scheme is a key page',
+   S.keyPageLooksLikeKey('Paper 1 Marking Scheme\n1. B\n2. C'));
+/* The SHAPE of a key, with no heading anywhere on it — the back page of a
+   past paper, which is most of them. */
+ok('a dense column of numbered answers is a key page',
+   S.keyPageLooksLikeKey(['1 (3)', '2 (1)', '3 (4)', '4 (2)', '5 (3)',
+                          '6 (1)', '7 (4)', '8 (2)', '9 (3)', '10 (1)'].join('\n')));
+
+/* …and the other way, which matters more: a question page wrongly called a
+   key disappears out of the student's worksheet, and they have no way of
+   knowing a question was ever there. */
+ok('an ordinary question page is NOT a key page',
+   !S.keyPageLooksLikeKey('1. A beaker of water was left on a windowsill for three days.\n' +
+                          'Explain what happened to the water level and why.\n\n' +
+                          '2. Name the process in question 1.'));
+ok('a question page that MENTIONS an answer key is not one',
+   !S.keyPageLooksLikeKey('Section B\n\nWork through every question. The answer key is on page 12, ' +
+                          'but do not look at it until you have finished.\n\n1. What is 24 x 3?'));
+ok('a blank page is not a key page', !S.keyPageLooksLikeKey('   \n \n'));
+ok('a handful of numbered lines is not a key page',
+   !S.keyPageLooksLikeKey('1 (3)\n2 (1)\n3 (4)\nNow turn over.'));
+
+/* THE TWO GUARDS THAT MAKE HIDING PAGES SAFE AT ALL. Neither can be
+   unit-tested without a PDF, so they are pinned against the source: a
+   worksheet with every page hidden is not a worksheet, and ink on a page is
+   proof it was the student's to answer whatever it looks like. */
+const scanSrc = SRC_KEY.slice(SRC_KEY.indexOf('async function keyScanPdf'));
+ok('the scan never hides EVERY page', /found\.length\s*>=\s*pages\.length/.test(scanSrc),
+   scanSrc.slice(0, 400).replace(/\s+/g, ' '));
+ok('…and never hides a page the student has written on',
+   /annotations\.forEach[\s\S]{0,120}inked\[a\.page\]/.test(scanSrc) && /!inked\[n\]/.test(scanSrc),
+   scanSrc.slice(0, 900).replace(/\s+/g, ' '));
+
+/* What actually reaches the model. The rows are TEXT, so they can travel in
+   every batch — the difference between "the key is considered" and "the key
+   is considered on the first page". */
+S.wsKey = { pages: [], rows: [], path: '', name: '', scanned: false, reading: false };
+eq('no key, nothing said to the model', S.keyContext(), '');
+eq('…and no rule either', S.keyRuleBlock(), '');
+S.wsKey.rows = [{ number: '7', answer: '24 g', working: '3 x 8 = 24' },
+                { number: '8', answer: 'evaporation', working: '' }];
+const ctx = S.keyContext();
+ok('the key rows reach the prompt', /24 g/.test(ctx) && /evaporation/.test(ctx), ctx);
+ok('…with the paper\'s own numbering', /(^|\n)7 — /.test(ctx), ctx);
+ok('…and the working where the key printed any', /3 x 8 = 24/.test(ctx), ctx);
+
+const rule = S.keyRuleBlock();
+ok('the key is the authority on WHAT the answer is', /authority on WHAT the answer is/i.test(rule), rule);
+ok('…and NOT on how it must be worded', /NOT the authority on how an answer must be WORDED/i.test(rule), rule);
+/* THE ONE THAT MATTERS MOST. Handing the model the answers and then asking
+   for a nudge is precisely the door the ladder exists to shut, so the
+   ceiling is restated wherever the key is used. Without this line the key
+   quietly turns "Nudges only" into full answers — which looks, from the
+   outside, exactly like the buddy working unusually well. */
+ok('…and it never lifts the help ceiling',
+   /DOES NOT CHANGE WHAT YOU MAY SAY/.test(rule) && /still holds/.test(rule), rule);
+ok('the marking standard still outranks the key\'s shorthand',
+   /marking standard above/.test(rule), rule);
+
+/* A page ticked as key is out of the student's worksheet — out of the
+   viewer, out of the marking, and out of the mistake pictures. */
+S.wsKey.pages = [3];
+S.pages = [{ num: 1 }, { num: 2 }, { num: 3 }, { num: 4 }];
+ok('a key page is a key page', S.pageIsKey(3));
+eq('…and is not one of the student\'s pages',
+   S.studentPages().map(p => p.num), [1, 2, 4]);
+S.wsKey = { pages: [], rows: [], path: '', name: '', scanned: false, reading: false };
+S.pages = [];
+
+/* =====================================================================
+   6c. 🎤 SPEAKING AN ANSWER
+   ===================================================================== */
+section('Speaking an answer');
+
+S.wsMeta = { level: 'P5', subject: 'science', guidance: 'method' };
+const hintPage = S.voiceHint('page');
+ok('the transcriber is told it is a school answer being spoken',
+   /answering|ANSWER/i.test(hintPage), hintPage);
+/* IT WRITES DOWN, IT NEVER ANSWERS. A mic that quietly improved an answer
+   on the way in would mark the student on words they never said. */
+ok('…and told not to answer, correct or finish it',
+   /do not answer the question/i.test(hintPage) && /do not correct them/i.test(hintPage), hintPage);
+ok('units and terms are kept as the student said them',
+   /units/i.test(hintPage), hintPage);
+const hintChat = S.voiceHint('chat');
+ok('asking the buddy is a different job from answering', hintChat !== hintPage, hintChat);
+ok('…and that one is not answered either', /do not answer it/i.test(hintChat), hintChat);
+
+/* The one thing this app knows and the model cannot. A 华文 answer
+   transcribed as English phonetics comes back as nonsense. */
+S.wsMeta.subject = 'chinese';
+const hintZh = S.voiceHint('page');
+ok('a 华文 worksheet is transcribed in Chinese characters',
+   /Simplified Chinese/i.test(hintZh), hintZh);
+ok('…never in pinyin and never translated',
+   /never in pinyin/i.test(hintZh) && /never translated/i.test(hintZh), hintZh);
+S.wsMeta.subject = 'science';
+
+/* =====================================================================
    7. Against the FILE itself — the things no unit test can see
    ===================================================================== */
 section('Against index.html itself');
@@ -334,22 +457,41 @@ section('Against index.html itself');
    already grounded from the feature that called it. A call site that
    forgets is a feature that quietly stops speaking in the teacher's voice,
    and no other check in this file can see it. */
+/* …and the two calls that are ungrounded ON PURPOSE, each with its reason
+   written down. This is the same shape as the Science portal's census: an
+   exemption is a named system prompt and a sentence, so a NEW call site
+   that forgets its grounding cannot hide behind somebody else's exemption.
+   A stale one fails too — that is how a renamed prompt slips back through. */
+const UNGROUNDED_BY_DESIGN = {
+  KEY_READ_SYS: 'transcribes the paper\'s own answer key. A transcriber told what the answer ought to say ' +
+                'writes that down instead of what is printed, and a key rewritten on the way in is a whole ' +
+                'class marked against something the paper never said.',
+  KEY_EYE_SYS:  'asks which PAGES are the answer key. It returns page numbers, not science said to anybody.'
+};
 const callSites = [...html.matchAll(/window\.askGemini\(/g)].map(m => m.index);
 ok('there are askGemini call sites to check at all', callSites.length >= 3,
    'found ' + callSites.length);
+const exemptSeen = {};
 callSites.forEach((idx, i) => {
   const chunk = html.slice(idx, idx + 900);
   // The bridge's own definition is not a call site.
   if (/window\.askGemini\s*=/.test(html.slice(Math.max(0, idx - 40), idx + 40))) return;
+  const exempt = Object.keys(UNGROUNDED_BY_DESIGN)
+    .find(sys => new RegExp('system:\\s*' + sys + '\\b').test(chunk));
+  if (exempt) { exemptSeen[exempt] = 1; return; }
   ok('askGemini call site ' + (i + 1) + ' passes aiGrounding(', /aiGrounding\(/.test(chunk),
      chunk.slice(0, 220).replace(/\s+/g, ' '));
+});
+Object.keys(UNGROUNDED_BY_DESIGN).forEach(sys => {
+  ok('the exemption for ' + sys + ' is still used by a real call site', !!exemptSeen[sys],
+     'nothing calls askGemini with system: ' + sys + ' any more — take the exemption out');
 });
 
 /* Both ceiling rules go into the SYSTEM prompt, beside the grounding. A
    hard constraint carried in the user message is one the next question can
    talk over, and the two call sites drifting apart is exactly how the chat
    ends up locked and the marking wide open. */
-const markCall = html.slice(html.indexOf('var raw = await window.askGemini(markPrompt'), html.indexOf('var raw = await window.askGemini(markPrompt') + 500);
+const markCall = html.slice(html.indexOf('var raw = await window.askGemini(markPrompt'), html.indexOf('var raw = await window.askGemini(markPrompt') + 900);
 ok('the marking sends its blank rule in the SYSTEM prompt', /system:\s*MARK_SYS \+ markBlankRule\(\)/.test(markCall),
    markCall.replace(/\s+/g, ' ').slice(0, 240));
 const chatCall = html.slice(html.indexOf('var out = await window.askGemini('), html.indexOf('var out = await window.askGemini(') + 400);
@@ -406,6 +548,85 @@ ok('taking them down RELEASES anyone waiting on the first snapshot',
 const note = html.slice(html.indexOf('async function quickNoteSave'), html.indexOf('async function quickNoteSave') + 1400);
 ok('a note written here leaves `topics` empty for the Portal', /topics:\s*\[\]/.test(note));
 ok('…and says which app it came from', /source:\s*'tutor'/.test(note));
+
+/* ---- 🔑 The key reaches all three things that talk to the student ----
+   The hint, the chat and the marking each build their own system prompt,
+   and a key that reaches two of them is a buddy that marks against the
+   paper and hints against a guess — with nothing on screen to say which. */
+const hintCall = html.slice(html.indexOf('var raw = await window.askGemini(lines.join'),
+                            html.indexOf('var raw = await window.askGemini(lines.join') + 700);
+ok('the hint prompt carries the answer key', /aiGrounding\('hint'\)\s*\+\s*keyRuleBlock\(\)/.test(hintCall),
+   hintCall.replace(/\s+/g, ' ').slice(0, 240));
+ok('the marking prompt carries the answer key', /aiGrounding\('mark'\)\s*\+\s*keyRuleBlock\(\)/.test(markCall),
+   markCall.replace(/\s+/g, ' ').slice(0, 260));
+ok('the chat carries it too, behind the ceiling rule',
+   /buddyCeilingRule\(\)\s*\+\s*aiGrounding\('teach'\)\s*\+\s*keyRuleBlock\(\)/.test(chatCall),
+   chatCall.replace(/\s+/g, ' ').slice(0, 260));
+
+/* THE KEY IS NOT THE STUDENT'S WORK. Marking the pages at the back of the
+   paper puts the paper's own answers into the score as questions they "got
+   right", and into the mistake book with a picture of the key beside them. */
+const runMark = html.slice(html.indexOf('async function runMarking'),
+                           html.indexOf('async function runMarking') + 3200);
+ok('marking runs over the student\'s pages, not the key\'s', /var work = studentPages\(\)/.test(runMark),
+   runMark.replace(/\s+/g, ' ').slice(0, 260));
+ok('…and the picture and its page number are pushed together',
+   /imgs\.push\([^)]*\);\s*pageNums\.push\(batch\[b\]\.num\)/.test(runMark.replace(/\s+/g, ' ')) ||
+   /pageNums\.push\(batch\[b\]\.num\)/.test(runMark),
+   runMark.replace(/\s+/g, ' ').slice(0, 400));
+
+/* The key is remembered with the worksheet, or every reopen reads the
+   marking scheme again — which costs an AI call a page and makes the pages
+   reappear in the viewer meanwhile. */
+const body = html.slice(html.indexOf('function worksheetBody'), html.indexOf('function worksheetBody') + 900);
+ok('the key is saved with the worksheet', /key:\s*\{\s*pages: wsKey\.pages/.test(body),
+   body.replace(/\s+/g, ' ').slice(0, 300));
+
+/* A worksheet the teacher set shares ONE PDF with the whole class, so a
+   student tidying up their own copy must not delete the file every other
+   student is reading. */
+const del = html.slice(html.indexOf('async function deleteWorksheet'),
+                       html.indexOf('async function deleteWorksheet') + 1100);
+ok('deleting a copy never deletes the class\'s shared PDF',
+   /w\.storagePath && !w\.sharedPdf/.test(del), del.replace(/\s+/g, ' ').slice(0, 300));
+
+/* Setting work for the class writes to a collection every student reads, so
+   hiding the button is not the lock. */
+ok('only the teacher can set a worksheet, checked in the handler',
+   /function pushWorksheet\(id\) \{\s*if \(!isAdmin\(currentUser\)\) return;/.test(html.replace(/\s+/g, ' ').replace(/async function/g, 'function')) ||
+   /async function pushWorksheet\(id\) \{[\s\S]{0,120}if \(!isAdmin\(currentUser\)\) return;/.test(html),
+   'pushWorksheet does not re-check isAdmin');
+
+/* ---- 🎙️ One transcription door, and one model ---- */
+/* Named once in CODE. The comment above it names it too, which is the
+   point of the comment, so only assignments are counted. */
+ok('the speech model is a constant, assigned exactly once',
+   (html.match(/=\s*"gemini-3\.5-transcribe"/g) || []).length === 1,
+   'found ' + (html.match(/=\s*"gemini-3\.5-transcribe"/g) || []).length + ' assignments');
+ok('there is a transcription door on window', /window\.transcribeAudio\s*=/.test(html));
+/* THE FALLBACK IS THE POINT. A model id gets renamed under us, and an id
+   this project cannot reach is a 400 on every recording — which reads as
+   "the mic is broken" rather than "that id is out of date". */
+const door = html.slice(html.indexOf('window.transcribeAudio ='),
+                        html.indexOf('window.transcribeAudio =') + 1400);
+ok('…with the ordinary model behind it', /if \(!geminiModel\)/.test(door) && /runTranscribe\(geminiModel/.test(door),
+   door.replace(/\s+/g, ' ').slice(0, 300));
+ok('…and a refusal is remembered rather than paid for on every recording',
+   /_transcribeDownUntil = Date\.now\(\) \+ AI_TRANSCRIBE_DOWN_MS/.test(door),
+   door.replace(/\s+/g, ' ').slice(0, 300));
+/* No thinkingConfig on a speech model: a level a model does not know is a
+   400, not a worse answer, and transcription is reading rather than
+   reasoning. */
+ok('the transcription call sends no thinking level',
+   !/thinking/i.test(html.slice(html.indexOf('async function runTranscribe'),
+                                html.indexOf('async function runTranscribe') + 400)));
+/* A mic that is not going to work is not drawn: a button that silently does
+   nothing is worse than no button. */
+ok('the speak tool is in the toolbar, hidden until it is known to work',
+   /data-tool="speak" id="speakToolBtn" hidden/.test(html));
+ok('…and both mics are painted from one function',
+   /function renderMicBtns/.test(html) && /speakToolBtn/.test(html) && /chatMicBtn/.test(html));
+
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'

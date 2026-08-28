@@ -223,6 +223,59 @@
   .pageWrap svg.overlay.textMode { cursor: text; }
   .pageWrap svg.overlay.eraserMode { cursor: cell; }
   .pageWrap svg.overlay.hintMode { cursor: help; }
+  .pageWrap svg.overlay.speakMode { cursor: crosshair; }
+  .keyChip.on { border-color: var(--accent-deep, #1E88E5); color: var(--accent-deep, #1E88E5); font-weight: 700; }
+  .keyList { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; margin-top: 10px; }
+  .keyRow {
+    display: flex; align-items: center; gap: 11px; padding: 9px 11px;
+    border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-size: 0.9rem;
+  }
+  .keyRow:hover { background: var(--bg-soft); }
+  /* Tailwind-style resets are not in play here, but a bare checkbox still
+     renders as nothing at all in some webviews unless it is asked for. */
+  .keyRow input[type="checkbox"] { appearance: auto; -webkit-appearance: checkbox; width: 17px; height: 17px; flex: none; }
+  .keyState {
+    background: var(--bg-soft); border: 1px solid var(--line); border-radius: 12px;
+    padding: 13px 15px; font-size: 0.88rem; line-height: 1.7;
+  }
+  .keyRow .dim, .keyState .dim { color: var(--ink-faint); }
+  .wsCard.setCard { border-color: var(--accent-deep, #1E88E5); }
+  .chip.chipSet { background: rgba(30,136,229,.12); color: var(--accent-deep, #1E88E5); font-weight: 700; }
+  /* The listening bar sits over the worksheet, above the page and below the
+     buddy panel: a student mid-sentence has to be able to see that the app
+     is listening without hunting for it, and has to be able to stop. */
+  /* FIXED to the viewport, not to the worksheet: the page under it scrolls
+     while a student is speaking, and a bar that scrolls away with it is a
+     ⏹ Done button they cannot find. z-index sits above the buddy's phone
+     button (85), which is the one thing it could otherwise hide behind. */
+  #voiceBar {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 90; display: none;
+    align-items: center; gap: 12px;
+    background: var(--card, #fff); border: 1px solid var(--line);
+    border-radius: 999px; padding: 9px 14px 9px 16px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.16);
+    max-width: calc(100% - 32px);
+  }
+  #voiceBar.on { display: flex; }
+  #voiceBar .vMsg { font-size: 0.86rem; font-weight: 600; white-space: nowrap; }
+  #voiceBar .vDot {
+    width: 10px; height: 10px; border-radius: 50%; background: #E53935; flex: none;
+    animation: vpulse 1.1s ease-in-out infinite;
+  }
+  #voiceBar .vDot.busy { background: var(--accent-deep, #1E88E5); }
+  @keyframes vpulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { #voiceBar .vDot { animation: none; } }
+  .toolBtn.recording, .iconBtn.recording {
+    background: #fee2e2; border-color: #dc2626; color: #b3261e;
+    animation: vpulse 1.1s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { .toolBtn.recording, .iconBtn.recording { animation: none; } }
+  @media (max-width: 640px) {
+    /* Above the buddy's phone button rather than on top of it. */
+    #voiceBar { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); padding: 8px 10px 8px 12px; gap: 8px; }
+    #voiceBar .vMsg { font-size: 0.78rem; }
+  }
   .pageNumTag {
     position: absolute; left: 8px; top: 8px; z-index: 2; pointer-events: none;
     font-size: 0.68rem; font-weight: 700; color: var(--ink-faint);
@@ -564,6 +617,17 @@
         </div>
 
         <div id="homeSignedIn" class="hidden">
+          <div id="assignSection" class="hidden">
+            <div class="sectionHead">
+              <h2>📌 Set for you</h2>
+            </div>
+            <p class="sub" style="margin:0 4px 16px">
+              Worksheets your teacher has set. Start one and you get your own copy to write on — your buddy
+              already has its answer key, so it can mark you against the real thing.
+            </p>
+            <div id="assignList"></div>
+            <div style="height:34px"></div>
+          </div>
           <div class="sectionHead">
             <h2>My worksheets</h2>
             <span class="spacer"></span>
@@ -598,6 +662,8 @@
           <button class="toolBtn" data-tool="hint" id="hintToolBtn"
                   data-ai-title="💡 Ask for a hint — tap the question you are stuck on and {ai} nudges you towards it"
                   title="💡 Ask for a hint">💡</button>
+          <button class="toolBtn" data-tool="speak" id="speakToolBtn" hidden
+                  title="🎤 Say your answer — tap where it goes on the page, then speak (M)">🎤</button>
         </div>
 
         <div class="toolGroup" id="colorGroup"></div>
@@ -618,6 +684,7 @@
           <button class="toolBtn" id="fitBtn" title="Fit the page width">⤢</button>
         </div>
 
+        <button class="btn btnSm keyChip hidden" id="keyChip" title="This worksheet's answer key">🔑 Answer key</button>
         <button class="btn btnSm" id="saveBtn" title="Save your work">Save</button>
       </div>
 
@@ -660,6 +727,8 @@
         </aside>
 
         <button class="btn btnPrimary" id="buddyFab">💬 Buddy</button>
+        <!-- Painted by renderVoiceBar(); empty and hidden until the mic is on. -->
+        <div id="voiceBar" role="status" aria-live="polite"></div>
       </div>
     </div>
 
@@ -713,10 +782,61 @@
         and only goes further when you ask it to.
       </p>
       <div class="gradeGrid" id="upGradeGrid"></div>
+
+      <h3 style="margin-top:24px;font-size:1rem;font-weight:700">🔑 Does it have an answer key?</h3>
+      <p class="hint" style="margin-top:5px">
+        If the answers are printed at the back, your buddy finds those pages and <b>puts them away</b> — you
+        will not see them, and they are not marked. Attach a separate marking scheme here if you have one; it
+        is never shown on screen, only used to mark you and to aim the hints.
+      </p>
+      <div class="rowBtns" style="margin-top:12px">
+        <button class="btn" id="upKeyBtn">📎 Attach an answer key (optional)</button>
+        <span class="hint" id="upKeyName"></span>
+      </div>
+
+      <div id="upPushWrap" class="hidden" style="margin-top:22px">
+        <label class="keyRow" for="upPush" style="cursor:pointer">
+          <input type="checkbox" id="upPush">
+          <span><b>📌 Set this for my students</b>
+            <span class="dim">— everyone signed in gets their own copy to write on, with this key behind it.</span>
+          </span>
+        </label>
+      </div>
     </div>
     <div class="modalFoot">
       <button class="btn" id="upCancel">Cancel</button>
       <button class="btn btnPrimary" id="upGo">Choose the PDF and upload</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ Answer-key dialog ============ -->
+<div class="modalBack" id="keyModal">
+  <div class="modalCard">
+    <div class="modalHead"><h2>🔑 The answer key</h2></div>
+    <div class="modalBody">
+      <p class="sub">
+        An answer key is for your buddy, not for you. Any page ticked here is <b>taken out of your
+        worksheet</b> — you will not see it, it is not marked, and it never turns up in your mistake book —
+        and it is read once so your buddy can mark against it and aim its hints. How much of a hint you are
+        told is still decided by the help level, exactly as before.
+      </p>
+      <div class="keyState" id="keyState"></div>
+      <h3 style="margin-top:22px;font-size:1rem;font-weight:700">Which pages are the answer key?</h3>
+      <div class="keyList" id="keyPageList"></div>
+      <h3 style="margin-top:22px;font-size:1rem;font-weight:700">Or attach the key as its own PDF</h3>
+      <p class="hint" style="margin-top:5px">
+        A marking scheme usually comes as a separate file — for maths especially, where the working matters as
+        much as the answer. It is never shown on screen at all.
+      </p>
+      <div class="rowBtns" style="margin-top:12px">
+        <button class="btn" id="keyAttach">📎 Choose the answer-key PDF</button>
+        <button class="btn hidden" id="keyDetach">Remove it</button>
+        <button class="btn" id="keyReread">🔄 Read the key again</button>
+      </div>
+    </div>
+    <div class="modalFoot">
+      <button class="btn btnPrimary" id="keyClose">Done</button>
     </div>
   </div>
 </div>
@@ -821,6 +941,8 @@
 
 <div id="toast"></div>
 <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+<input type="file" id="keyFileInput" accept="application/pdf,.pdf" hidden>
+<input type="file" id="upKeyInput" accept="application/pdf,.pdf" hidden>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -861,7 +983,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.0.0';
+var APP_VERSION = 'v1.1.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -1712,6 +1834,7 @@ async function loadPdf(bytes, name) {
   hints = [];
   marking = { items: [], runAt: null, running: false };
   chat = [];
+  keyReset();
   wsMeta = { level: '', subject: '', guidance: HINT_DEFAULT };
   setDirty(false);
 
@@ -1748,6 +1871,10 @@ async function loadPdf(bytes, name) {
     pages.push(p);
     attachOverlayHandlers(p);
   }
+  // Every page of the PDF is built, key pages included — they are HIDDEN
+  // rather than left out, so `p.num` stays the real page number everywhere
+  // and the key can still be rasterised and read when it is transcribed.
+  applyKeyVisibility();
   fitWidth();
   setTool('pen');
 }
@@ -1781,6 +1908,10 @@ function rasterVisiblePages() {
   var top = area.scrollTop - area.clientHeight;
   var bottom = area.scrollTop + area.clientHeight * 2;
   pages.forEach(function (p) {
+    // A hidden answer-key page measures 0 tall at offsetTop 0, which reads
+    // as "at the top of the viewport" — so it would be rasterised on every
+    // scroll, for a picture nobody is looking at.
+    if (pageIsKey(p.num)) { releasePageCanvas(p); return; }
     var pTop = p.wrap.offsetTop;
     var pBottom = pTop + p.wrap.offsetHeight;
     if (pBottom >= top && pTop <= bottom) renderPageCanvas(p);
@@ -2090,6 +2221,7 @@ function setTool(t) {
     b.classList.toggle('active', b.getAttribute('data-tool') === t);
   });
   updateToolCursor();
+  renderMicBtns();
 }
 function updateToolCursor() {
   pages.forEach(function (p) {
@@ -2097,6 +2229,7 @@ function updateToolCursor() {
     p.svg.classList.toggle('textMode', tool === 'text');
     p.svg.classList.toggle('eraserMode', tool === 'eraser');
     p.svg.classList.toggle('hintMode', tool === 'hint');
+    p.svg.classList.toggle('speakMode', tool === 'speak');
   });
 }
 function setColor(c) {
@@ -2195,6 +2328,15 @@ function attachOverlayHandlers(p) {
     if (tool === 'hint') {
       e.preventDefault();
       askHintAt(p, pt);
+      return;
+    }
+
+    // 🎤 Say the answer. The tap is WHERE it goes, so the box lands beside
+    // the question rather than at the top of the page: a spoken answer that
+    // has to be dragged into place afterwards is a spoken answer nobody uses.
+    if (tool === 'speak') {
+      e.preventDefault();
+      startVoice({ kind: 'page', page: p, pt: pt });
       return;
     }
 
@@ -2332,6 +2474,496 @@ function translateAnn(a, dx, dy) {
   }
 }
 
+
+/* =====================================================================
+   🔑 THE ANSWER KEY — HIDDEN FROM THE STUDENT, READ BY THE BUDDY
+   ---------------------------------------------------------------------
+   Half the worksheets a child brings in have the answers printed at the
+   back, and a paper past year has its marking scheme stapled to it. Until
+   now this app rendered those pages like any other, which is the whole
+   worksheet given away by scrolling — and then MARKED them, so the "score"
+   included the answer key the student had not attempted.
+
+   The same pages are the best thing the buddy could possibly have. So they
+   are taken out of the STUDENT'S view and put into the BUDDY'S:
+
+   • `wsKey.pages` are page numbers of this PDF that are answer key. They
+     are never rendered, never marked, and never in a mistake picture.
+   • `wsKey.rows` is that key TRANSCRIBED — number → answer → working. Text,
+     not pictures, so it costs nothing to carry into every marking batch and
+     every hint, which is what makes "consider the key" true rather than
+     true-on-the-first-page.
+   • A key can also arrive as its OWN PDF (📎 below), which is how a maths
+     paper's marking scheme usually comes. It is never rendered at all.
+
+   THE KEY IS THE AUTHORITY ON WHAT THE ANSWER IS, NOT ON HOW IT MUST BE
+   WORDED — see `keyRuleBlock`. It does not replace the teaching notes and
+   it does not replace the marking standard: a key says "24 g" and a child
+   who wrote "24 grams" is right, and which of those is a full-mark answer
+   is the notes' business, not the key's. Grounding still happens exactly as
+   it did; the key is added BESIDE it.
+
+   AND THE KEY NEVER LIFTS THE HELP CEILING. Handing the model the answers
+   and then asking for "a nudge" is precisely the door the ladder exists to
+   shut, so the ceiling rule is stated again alongside the key wherever the
+   key is used. A key that quietly turned "Nudges only" into full answers
+   would be the worst bug this app could have: it would look like the buddy
+   working unusually well.
+   ===================================================================== */
+
+var wsKey = {
+  pages: [],        // page numbers of THIS pdf that are answer key
+  rows: [],         // [{ number, answer, working }] — the key, transcribed
+  path: '',         // a separate answer-key PDF in Storage, if one was attached
+  name: '',         // what that PDF was called
+  scanned: false,   // whether the automatic look for key pages has run
+  reading: false,   // a transcription is in flight
+  shared: false     // it came with a worksheet the teacher set — the class's, not this copy's
+};
+function keyReset() {
+  wsKey = { pages: [], rows: [], path: '', name: '', scanned: false, reading: false, shared: false };
+}
+function keyHasAnything() { return !!(wsKey.rows.length || wsKey.pages.length || wsKey.path); }
+function pageIsKey(n) { return wsKey.pages.indexOf(n) !== -1; }
+/* The pages the STUDENT has: the worksheet without its answer key. Marking,
+   the page count on the card and the "which page am I looking at" test all
+   read this rather than `pages`, because a key page is not part of the work
+   and must never be counted, marked or shown as one. */
+function studentPages() { return pages.filter(function (p) { return !pageIsKey(p.num); }); }
+
+function applyKeyVisibility() {
+  pages.forEach(function (p) {
+    var hide = pageIsKey(p.num);
+    p.wrap.style.display = hide ? 'none' : '';
+    // A hidden page holding a rasterised canvas is memory kept for a picture
+    // nobody is looking at — and on an iPad that is what makes Safari drop
+    // the tab. It is painted again on demand when the key is transcribed.
+    if (hide) releasePageCanvas(p);
+  });
+  renderKeyChip();
+  scheduleRaster();
+}
+
+/* ---- The chip that says so ----
+   A page that has quietly disappeared from a worksheet is the one thing
+   this feature can get wrong, so it is never silent: the chip says how many
+   went and opens the list to put any of them back. */
+function renderKeyChip() {
+  var chip = $('keyChip');
+  if (!chip) return;
+  var on = view === 'ws' && !!pages.length;
+  chip.classList.toggle('hidden', !on);
+  if (!on) return;
+  var n = wsKey.pages.length;
+  var bits = [];
+  if (n) bits.push(n + ' page' + (n === 1 ? '' : 's') + ' hidden');
+  if (wsKey.path) bits.push('key PDF');
+  if (wsKey.rows.length) bits.push(wsKey.rows.length + ' answers');
+  chip.textContent = '🔑 ' + (bits.length ? bits.join(' · ') : 'Answer key');
+  chip.classList.toggle('on', keyHasAnything());
+  chip.title = keyHasAnything()
+    ? 'Your buddy has this worksheet\'s answer key. Tap to see what it is using.'
+    : 'Attach this worksheet\'s answer key, or mark a page as one.';
+}
+
+/* ---- Is this page an answer key? ----
+   Read off the PDF's own TEXT LAYER first: free, instant, and the same
+   answer every time. Two things say a page is a key, and they are
+   deliberately different in kind — a page that ANNOUNCES itself ("Answer
+   Key", "Marking Scheme", "答案") and a page that is SHAPED like one, a
+   dense column of "12 (3)" with almost no prose between the rows.
+
+   It errs towards leaving a page alone. A key page left showing is the bug
+   this fixes and the student can mark it themselves in one tap; a question
+   page wrongly hidden is a question that has vanished out of a worksheet,
+   which is worse and harder to notice. */
+var KEY_TITLE_RE = /(answer\s*key|answer\s*scheme|answer\s*sheet|marking\s*scheme|marking\s*guide|suggested\s*answers?|model\s*answers?|答\s*案|参考答案|评分标准)/i;
+/* THE ROW'S END IS A LOOKAHEAD, NOT A MATCH. `(?:$|\n)` consumes the
+   newline that the NEXT row needs for its own `(?:^|\n)`, so with the `g`
+   flag every other row is skipped — a page of ten answers counts as five,
+   falls under KEY_MIN_ROWS, and the back page of a past paper is served to
+   the student with the answers on it. */
+var KEY_ROW_RE = /(?:^|\n)[ \t]*\(?(\d{1,3})\)?[ \t]*[.):、\-]?[ \t]*[\(\[]?[ \t]*(?:[1-5]|[A-Ea-e])[ \t]*[\)\]]?[ \t]*(?=\n|$)/g;
+var KEY_MIN_ROWS = 8;          // fewer than this is a page with numbers on it
+var KEY_ROW_SHARE = 0.5;       // …and the rows have to be most of the page
+/* A HEADING IS SHORT. "the answer key is on page 12, but do not look at it
+   until you have finished" is a sentence in a question, and reading it as a
+   heading takes that question page out of the student's worksheet. Only the
+   first few lines are looked at, and only where the whole line is short
+   enough to be a title. */
+var KEY_TITLE_MAX_LINE = 60;
+var KEY_TITLE_LINES = 8;
+/* Enough ink to be a page at all. It is deliberately tiny: it exists to
+   rule out a blank sheet with a scanner artefact on it, and nothing else —
+   an answer key that says 答案 and lists four answers is 10 characters and
+   is very much a key. */
+var KEY_MIN_INK = 4;
+
+function keyPageLooksLikeKey(text) {
+  var t = String(text || '').replace(/\r/g, '');
+  if (t.replace(/\s+/g, '').length < KEY_MIN_INK) return false;   // a blank page is not a key
+  var heads = t.split('\n').map(function (l) { return l.trim(); })
+               .filter(Boolean).slice(0, KEY_TITLE_LINES);
+  if (heads.some(function (l) { return l.length <= KEY_TITLE_MAX_LINE && KEY_TITLE_RE.test(l); })) return true;
+  KEY_ROW_RE.lastIndex = 0;
+  var rows = 0;
+  while (KEY_ROW_RE.exec(t)) rows++;
+  if (rows < KEY_MIN_ROWS) return false;
+  var lines = t.split('\n').filter(function (l) { return l.trim(); }).length;
+  return lines > 0 && rows / lines >= KEY_ROW_SHARE;
+}
+
+/* pdf.js hands back the text with no line breaks of its own, so the items
+   are joined back into lines by their y position — without that every page
+   is one enormous line and the shape test above can never fire. */
+async function pageText(p) {
+  try {
+    var tc = await p.page.getTextContent();
+    var lines = [];
+    var lastY = null;
+    (tc.items || []).forEach(function (it) {
+      var y = it.transform ? Math.round(it.transform[5]) : 0;
+      if (lastY === null || Math.abs(y - lastY) > 3) { lines.push(''); lastY = y; }
+      lines[lines.length - 1] += (it.str || '') + (it.hasEOL ? '\n' : ' ');
+    });
+    return lines.join('\n');
+  } catch (e) { return ''; }
+}
+
+/* ---- Reading the key itself ----
+   TRANSCRIBES, and is deliberately the one call here that is NOT grounded
+   in the teaching notes: a transcriber told what the answer ought to say
+   writes that down instead of what is printed. The same rule the Scan app's
+   key pass carries. */
+var KEY_READ_SYS =
+  'You are transcribing the ANSWER KEY of a school worksheet or exam paper. The attached pictures are its ' +
+  'answer-key pages, in order. Reply with STRICT JSON only, no markdown, exactly this shape: ' +
+  '{"rows":[{"number":"7","answer":"24 g","working":"the worked solution as printed, or an empty string"}]}. ' +
+  'Rules: one entry per numbered answer PRINTED on the pages, in the order they appear, keeping the paper\'s ' +
+  'own numbering in "number" ("7", "3a", "12(b)"). ONE ENTRY PER LETTERED PART. For a multiple-choice answer ' +
+  '"answer" is the option as the key prints it ("3", "B"), with the option\'s wording after it when the key ' +
+  'prints that too. "working" is the key\'s own worked solution or marking points where it shows any, copied ' +
+  'as printed and condensed to plain text — leave it an empty string when the key just states the answer. ' +
+  'TRANSCRIBE, NEVER SOLVE: if the key does not answer a question, it is not in your reply. Do not correct ' +
+  'the key, do not finish it, and do not add a question it does not answer. If the pictures are not an answer ' +
+  'key at all, return {"rows":[]}. Plain text in every field: no markdown, no bullets, no line breaks.';
+
+var KEY_READ_BATCH = 4;
+
+async function keyReadImages(imgs, what) {
+  var rows = [];
+  for (var i = 0; i < imgs.length; i += KEY_READ_BATCH) {
+    var batch = imgs.slice(i, i + KEY_READ_BATCH);
+    var raw = await window.askGemini(
+      'The attached ' + (batch.length === 1 ? 'picture is a page' : batch.length + ' pictures are pages') +
+      ' of ' + what + '. Transcribe every answer printed on ' + (batch.length === 1 ? 'it' : 'them') + '.',
+      { system: KEY_READ_SYS, maxOutputTokens: 6000, temperature: 0.1, json: true,
+        thinkingLevel: 'low', images: batch });
+    var res = _parseAIJson(raw);
+    ((res && res.rows) || []).forEach(function (r) {
+      if (!r || typeof r !== 'object') return;
+      var answer = _mkStr(r.answer, 600);
+      var number = _mkStr(r.number, 16);
+      if (!answer && !number) return;
+      rows.push({ number: number, answer: answer, working: _mkStr(r.working, 1200) });
+    });
+  }
+  return rows;
+}
+
+/* The key pages of THIS pdf, read into rows. They are rasterised on demand:
+   they are hidden, so their canvases were released the moment they were
+   marked as key pages. */
+async function keyReadOwnPages() {
+  var keys = pages.filter(function (p) { return pageIsKey(p.num); });
+  if (!keys.length) return [];
+  var imgs = [];
+  for (var i = 0; i < keys.length; i++) {
+    await ensurePageRaster(keys[i]);
+    var data = compositeJpeg(keys[i], 1500, 0.86);
+    if (data) imgs.push({ mimeType: 'image/jpeg', data: data });
+  }
+  if (!imgs.length) return [];
+  return keyReadImages(imgs, 'this worksheet\'s own answer key');
+}
+
+/* ---- Finding the key pages when the worksheet is opened ----
+   Runs ONCE per worksheet, on upload. Two guards are what make hiding pages
+   safe at all, and neither is optional:
+     • it will never hide EVERY page — a worksheet with nothing left in it
+       is not a worksheet, it is a bug that looks like a failed upload;
+     • it will never hide a page the student has already written on — ink on
+       a page is proof it was theirs to answer, whatever it looks like. */
+async function keyScanPdf() {
+  if (!pdfDoc || !pages.length) return [];
+  var found = [];
+  var anyText = false;
+  for (var i = 0; i < pages.length; i++) {
+    var t = await pageText(pages[i]);
+    if (t.replace(/\s+/g, '').length > 40) anyText = true;
+    if (keyPageLooksLikeKey(t)) found.push(pages[i].num);
+  }
+  // A scanned or photographed worksheet has no text layer at all, so the
+  // reading above could not have found anything. That is not "no key" — it
+  // is "nothing to read", and it is the commonest kind of paper here.
+  if (!anyText && !found.length && aiAvailable(true)) {
+    try { found = await keyScanByEye(); }
+    catch (e) { console.warn('The look for answer-key pages failed', e); }
+  }
+  var inked = {};
+  annotations.forEach(function (a) { inked[a.page] = 1; });
+  found = found.filter(function (n) { return !inked[n]; });
+  if (found.length >= pages.length) return [];
+  return found;
+}
+
+var KEY_EYE_SYS =
+  'You are looking at the pages of one school worksheet, in order, to say which of them are the ANSWER KEY ' +
+  'rather than questions for the student to answer. Reply with STRICT JSON only: {"keyPages":[3,4]}. ' +
+  'A key page is one printed as an answer key, answer sheet, marking scheme, model answers or 答案 — a list of ' +
+  'answers to questions printed elsewhere. A page of questions is NOT a key page even when the answers have ' +
+  'been filled in by hand: handwriting is the student\'s work, not the paper\'s key. If you are not sure about ' +
+  'a page, LEAVE IT OUT — a question page wrongly called a key disappears out of the student\'s worksheet. ' +
+  'The numbers are 1 for the first attached picture. Return {"keyPages":[]} when none of them is a key.';
+
+async function keyScanByEye() {
+  var imgs = [];
+  var nums = [];
+  for (var i = 0; i < pages.length; i++) {
+    await ensurePageRaster(pages[i]);
+    // Small on purpose: this asks what a page IS, not what it says, and a
+    // dozen full-size pages is a big bill for one yes-or-no per page.
+    var data = compositeJpeg(pages[i], 800, 0.7);
+    if (data) { imgs.push({ mimeType: 'image/jpeg', data: data }); nums.push(pages[i].num); }
+  }
+  if (!imgs.length) return [];
+  var raw = await window.askGemini(
+    'Which of these ' + imgs.length + ' pages are the answer key?',
+    { system: KEY_EYE_SYS, maxOutputTokens: 400, temperature: 0, json: true, thinkingLevel: 'low', images: imgs });
+  var res = _parseAIJson(raw);
+  var out = [];
+  ((res && res.keyPages) || []).forEach(function (n) {
+    var i = parseInt(n, 10);
+    if (i >= 1 && i <= nums.length) out.push(nums[i - 1]);
+  });
+  return out;
+}
+
+/* Upload runs this once: find the key pages, hide them, read them. Every
+   step swallows its own failure — a worksheet whose key could not be read
+   is still a worksheet, and it works exactly as it did before any of this
+   existed. */
+async function keyAutoScan(defer) {
+  if (wsKey.scanned) return;
+  wsKey.scanned = true;
+  var epoch = wsEpoch;
+  var found = [];
+  try { found = await keyScanPdf(); }
+  catch (e) { console.warn('Answer-key scan failed', e); return; }
+  if (epoch !== wsEpoch || !found.length) return;
+  wsKey.pages = found;
+  applyKeyVisibility();
+  setDirty(true);
+  toast('🔑 ' + found.length + ' answer-key page' + (found.length === 1 ? '' : 's') +
+        ' put away — your buddy will use ' + (found.length === 1 ? 'it' : 'them') +
+        ', you will not see ' + (found.length === 1 ? 'it' : 'them') + '. Tap 🔑 to change that.', 7000);
+  if (!defer) await keyRefreshRows(epoch);
+}
+
+/* Re-reads the key into rows. Called whenever WHICH pages are the key
+   changes, and after a key PDF is attached — the rows are what every prompt
+   actually carries, so a key page ticked by hand and never read is a key
+   the buddy does not have. */
+async function keyRefreshRows(epoch) {
+  if (wsKey.reading) return;
+  if (!pdfDoc && !wsKey.path) return;
+  if (!wsKey.pages.length && !wsKey.path) { wsKey.rows = []; renderKeyChip(); return; }
+  if (!aiAvailable()) return;
+  epoch = epoch === undefined ? wsEpoch : epoch;
+  wsKey.reading = true;
+  renderKeyChip();
+  try {
+    var rows = [];
+    if (wsKey.pages.length) rows = rows.concat(await keyReadOwnPages());
+    if (epoch !== wsEpoch) return;
+    if (wsKey.path) rows = rows.concat(await keyReadPdfAt(wsKey.path));
+    if (epoch !== wsEpoch) return;
+    wsKey.rows = rows;
+    setDirty(true);
+    if (rows.length) toast('🔑 ' + rows.length + ' answers read from the key — your buddy has them now.', 5000);
+    else toast('🔑 Nothing could be read off the answer key — your buddy will work the answers out itself.', 6000);
+  } catch (e) {
+    console.warn('The answer key could not be read', e);
+    toast('The answer key could not be read — your buddy will work the answers out itself.', 6000);
+  } finally {
+    wsKey.reading = false;
+    renderKeyChip();
+  }
+}
+
+/* ---- A key that came as its own PDF ----
+   Rendered here and NEVER added to `pages`: it is not part of the worksheet
+   and there is no state in which a student should be looking at it. */
+async function keyRenderPdfImages(bytes) {
+  var doc = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+  var imgs = [];
+  var max = Math.min(doc.numPages, 12);
+  for (var n = 1; n <= max; n++) {
+    var pg = await doc.getPage(n);
+    var vp = pg.getViewport({ scale: 1 });
+    var f = Math.min(2, 1500 / Math.max(vp.width, vp.height));
+    var v = pg.getViewport({ scale: f });
+    var c = document.createElement('canvas');
+    c.width = Math.floor(v.width);
+    c.height = Math.floor(v.height);
+    await pg.render({ canvasContext: c.getContext('2d'), viewport: v }).promise;
+    imgs.push({ mimeType: 'image/jpeg', data: c.toDataURL('image/jpeg', 0.86).split(',')[1] });
+  }
+  return imgs;
+}
+async function keyReadPdfAt(path) {
+  var url = await storage.ref(path).getDownloadURL();
+  var resp = await fetch(url);
+  if (!resp.ok) throw new Error('the answer key could not be downloaded (HTTP ' + resp.status + ').');
+  var buf = await resp.arrayBuffer();
+  var imgs = await keyRenderPdfImages(new Uint8Array(buf));
+  if (!imgs.length) return [];
+  return keyReadImages(imgs, 'this worksheet\'s answer key');
+}
+
+/* `defer` means "upload it, do not read it yet" — the upload path attaches
+   a key PDF and finds the key pages inside the worksheet before reading
+   ANYTHING, so the marking scheme is transcribed once rather than once for
+   the attachment and again for the pages found a moment later. */
+async function attachKeyPdf(file, defer) {
+  if (!currentDocId) { toast('Save the worksheet first.'); return; }
+  if (!file || (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name))) {
+    toast('The answer key has to be a PDF.');
+    return;
+  }
+  var epoch = wsEpoch;
+  toast('Uploading the answer key…', 15000);
+  try {
+    var buf = await file.arrayBuffer();
+    var path = STORAGE_DIR + '/' + currentDocId + '.key.pdf';
+    await storage.ref(path).put(new Blob([buf], { type: 'application/pdf' }));
+    if (epoch !== wsEpoch) return;
+    wsKey.path = path;
+    wsKey.name = file.name;
+    setDirty(true);
+    renderKeyChip();
+    if (!defer) await keyRefreshRows(epoch);
+    renderKeyModal();
+  } catch (e) {
+    console.error(e);
+    toast('The answer key could not be attached: ' + ((e && e.message) || e), 6000);
+  }
+}
+async function detachKeyPdf() {
+  var path = wsKey.path;
+  var shared = wsKey.shared;
+  wsKey.path = '';
+  wsKey.name = '';
+  setDirty(true);
+  renderKeyChip();
+  renderKeyModal();
+  // A key that came with a worksheet the TEACHER set belongs to the whole
+  // class. Taking it off this copy must take it off THIS copy — deleting
+  // the file would take it off everybody's, from a student tidying up.
+  if (path && !shared) { try { await storage.ref(path).delete(); } catch (e) { /* may be gone */ } }
+  await keyRefreshRows();
+}
+
+/* ---- What the buddy is told ----
+   TEXT, never pictures. The rows go into every marking batch and every
+   hint, and a picture of the key in each of them would cost more than the
+   marking itself — which is the difference between "the key is considered"
+   and "the key is considered on the first page". */
+var KEY_CTX_MAX = 6000;
+function keyContext() {
+  if (!wsKey.rows.length) return '';
+  var lines = [];
+  var used = 0;
+  for (var i = 0; i < wsKey.rows.length; i++) {
+    var r = wsKey.rows[i];
+    var line = (r.number ? r.number + ' — ' : '• ') + (r.answer || '') +
+               (r.working ? '   [working: ' + r.working + ']' : '');
+    if (used + line.length > KEY_CTX_MAX) { lines.push('… (the rest of the key is not shown)'); break; }
+    used += line.length;
+    lines.push(line);
+  }
+  return 'THE PAPER\'S OWN ANSWER KEY, transcribed from ' +
+    (wsKey.path ? 'the answer key that came with it' : 'the answer-key pages of this worksheet') + ':\n' +
+    lines.join('\n') + '\n';
+}
+
+/* THE RULE THAT GOES WITH IT. Three things, and each of them is a way this
+   feature goes wrong if it is left out:
+     • the key says WHAT the answer is, not how it must be WORDED — a key
+       says "24 g" and a child who wrote "24 grams" is right, and which of
+       those earns full marks is the teaching notes' business;
+     • a key can be misprinted, and a key nobody may disagree with marks a
+       whole class against a typo;
+     • THE HELP CEILING STILL HOLDS. Handing the model the answers and then
+       asking for a nudge is exactly the door the ladder exists to shut. */
+function keyRuleBlock() {
+  if (!wsKey.rows.length) return '';
+  return '\nYOU HAVE THE PAPER\'S OWN ANSWER KEY (below). It is the authority on WHAT the answer is — where your ' +
+    'own working disagrees with it, the key stands and you say so in one plain sentence rather than quietly ' +
+    'marking against yourself. It is NOT the authority on how an answer must be WORDED: a key that says "24 g" ' +
+    'is satisfied by "24 grams", and what counts as a full-mark answer is the teacher\'s marking standard above, ' +
+    'not the key\'s shorthand. Where the key answers nothing for a question, work that one out yourself as usual.\n' +
+    'THE KEY DOES NOT CHANGE WHAT YOU MAY SAY. Everything you have been told about how far to go still holds, ' +
+    'word for word: having the answer in front of you is not permission to hand it over.\n' +
+    keyContext();
+}
+
+/* ---- The 🔑 window ---- */
+function openKeyModal() {
+  if (!pages.length) return;
+  renderKeyModal();
+  $('keyModal').classList.add('open');
+}
+function renderKeyModal() {
+  var body = $('keyPageList');
+  if (!body) return;
+  body.innerHTML = '';
+  pages.forEach(function (p) {
+    var row = document.createElement('label');
+    row.className = 'keyRow';
+    var cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = pageIsKey(p.num);
+    cb.addEventListener('change', function () { toggleKeyPage(p.num, cb.checked); });
+    var t = document.createElement('span');
+    t.innerHTML = '<b>Page ' + p.num + '</b> <span class="dim">' +
+      (pageIsKey(p.num) ? 'hidden — answer key' : 'shown — part of the worksheet') + '</span>';
+    row.appendChild(cb);
+    row.appendChild(t);
+    body.appendChild(row);
+  });
+  var st = $('keyState');
+  if (st) {
+    var bits = [];
+    bits.push(wsKey.rows.length
+      ? '✅ Your buddy has <b>' + wsKey.rows.length + ' answers</b> from this key. It uses them to mark and to ' +
+        'aim its hints — the help level still decides how much of one you are told.'
+      : (wsKey.reading ? '⏳ Reading the key…'
+        : 'No answers have been read yet. Tick the key pages above, or attach the key as its own PDF.'));
+    if (wsKey.path) bits.push('📎 Answer key PDF: <b>' + escHtml(wsKey.name || 'attached') + '</b>');
+    st.innerHTML = bits.join('<br>');
+  }
+  var det = $('keyDetach');
+  if (det) det.classList.toggle('hidden', !wsKey.path);
+}
+function toggleKeyPage(n, on) {
+  if (on && !pageIsKey(n)) wsKey.pages.push(n);
+  if (!on) wsKey.pages = wsKey.pages.filter(function (x) { return x !== n; });
+  wsKey.pages.sort(function (a, b) { return a - b; });
+  applyKeyVisibility();
+  renderKeyModal();
+  setDirty(true);
+}
 /* =====================================================================
    THE STUDY BUDDY
    ---------------------------------------------------------------------
@@ -2439,7 +3071,10 @@ async function hintLadderFor(p, pt) {
   }
 
   var raw = await window.askGemini(lines.join('\n'), {
-    system: HINT_SYS + aiGrounding('hint'),
+    // The key goes in BESIDE the grounding, and `keyRuleBlock` restates the
+    // ceiling with it: a model handed the answers and then asked for "a
+    // nudge" is exactly the door the ladder exists to shut.
+    system: HINT_SYS + aiGrounding('hint') + keyRuleBlock(),
     maxOutputTokens: 1600, temperature: 0.4, json: true, thinkingLevel: 'high',
     images: imgs.map(function (im) { return { mimeType: im.mimeType, data: im.data }; })
   });
@@ -2672,7 +3307,14 @@ function _markFields(r) {
   };
 }
 
-function _markNewItem(r, batchStart, batchLen) {
+/* `pageNums` is the REAL page number of each picture that was attached, in
+   the order they were attached. It is passed rather than worked out from an
+   index because the two stopped being the same thing the day answer-key
+   pages could be hidden: the batch is a slice of the pages the STUDENT has,
+   so page 4 of the worksheet may be the 3rd picture in the run. Get this
+   wrong and the mistake book keeps a picture of the wrong page — silently,
+   because both numbers are perfectly plausible. */
+function _markNewItem(r, pageNums) {
   if (!r || typeof r !== 'object') return null;
   var question = _mkStr(r.question, 1400);
   var answer = _mkStr(r.answer, 900);
@@ -2684,16 +3326,17 @@ function _markNewItem(r, batchStart, batchLen) {
         return { label: _mkStr(o && o.label, 4), text: _mkStr(o && o.text, 240) };
       }).filter(function (o) { return o.label || o.text; })
     : [];
-  // The model numbers pages 1..n WITHIN the batch it was given; an
-  // out-of-range or missing page falls back to the first page of that batch
-  // rather than pointing at a page that is not there.
+  // The model numbers pictures 1..n WITHIN the batch it was given; an
+  // out-of-range or missing one falls back to the first picture of that
+  // batch rather than pointing at a page that is not there.
   var page = parseInt(r.page, 10);
-  if (!(page >= 1 && page <= batchLen)) page = 1;
+  if (!(page >= 1 && page <= pageNums.length)) page = 1;
+  var real = pageNums[page - 1];
   var mk = _markFields(r);
   return {
     number: _mkStr(r.number, 16),
-    page: batchStart + page,          // 1-based across the whole worksheet
-    endPage: batchStart + page,
+    page: real,                       // the PDF's own page number
+    endPage: real,
     type: type,
     question: question,
     options: options,
@@ -2714,9 +3357,9 @@ function _markNewItem(r, batchStart, batchLen) {
    that question rather than filed as half a question of its own — with the
    answer taken from THIS entry, because only now can the whole question be
    seen. */
-function _markFoldRows(rows, batchStart, batchLen, into) {
+function _markFoldRows(rows, pageNums, into) {
   (rows || []).forEach(function (r, i) {
-    var it = _markNewItem(r, batchStart, batchLen);
+    var it = _markNewItem(r, pageNums);
     if (!it) return;
     var prev = into[into.length - 1];
     if (i === 0 && r && r.continuation === true && prev) {
@@ -2744,12 +3387,19 @@ function _markFoldRows(rows, batchStart, batchLen, into) {
   });
 }
 
-function markPrompt(from, n, total, carry) {
+function markPrompt(pageNums, total, carry) {
   var subj = wsMeta.subject ? subjectLabel(wsMeta.subject) : '';
   var lvl = wsMeta.level ? levelLabel(wsMeta.level) : '';
   var who = (lvl || subj) ? 'It is a ' + [lvl, subj].filter(Boolean).join(' ') + ' worksheet.' : '';
-  return 'The attached ' + (n === 1 ? 'picture is page ' + from : n + ' pictures are pages ' + from + '–' + (from + n - 1)) +
-      ' of ' + total + ' of the student\'s own worksheet, in order. ' + who + '\n' +
+  var n = pageNums.length;
+  // The pages are NAMED rather than counted off from a start: with an answer
+  // key hidden they are not always consecutive, and a prompt saying
+  // "pages 3–5" over pictures of 3, 4 and 6 is a prompt that lies.
+  var which = n === 1
+    ? 'picture is page ' + pageNums[0]
+    : n + ' pictures are pages ' + pageNums.join(', ');
+  return 'The attached ' + which +
+      ' of the student\'s own worksheet, in order. ' + who + '\n' +
     markSubjectRule() +
     'Find EVERY question printed on these pages. Work the correct answer to each one out yourself first. Then, ' +
     'question by question: where the student has written something, mark it and write them feedback; where the ' +
@@ -2804,38 +3454,53 @@ async function runMarking() {
   var epoch = wsEpoch;
   marking = { items: [], runAt: null, running: true };
   renderMarking();
-  markProgress(0, pages.length, '✨ ' + aiEngineName() + ' is reading your worksheet…');
+  // THE ANSWER KEY IS NOT THE STUDENT'S WORK. Marking the pages at the back
+  // of the paper would put the paper's own answers into the score as
+  // questions the student "got right" — and into the mistake book as
+  // questions they got wrong, with a picture of the key beside them.
+  var work = studentPages();
+  markProgress(0, work.length, '✨ ' + aiEngineName() + ' is reading your worksheet…');
   var failed = [];
   try {
     await loadTeachingNotes();
-    var total = pages.length;
+    var total = work.length;
     var carry = '';
     for (var start = 0; start < total; start += MARK_BATCH) {
       if (run !== _markRun || epoch !== wsEpoch) return;
-      var batch = pages.slice(start, start + MARK_BATCH);
+      var batch = work.slice(start, start + MARK_BATCH);
+      // Counted over the pages the STUDENT has, not the PDF's own numbers:
+      // this is a progress bar, and "page 9–10 of 8" is what page numbers
+      // read as once an answer key has been taken out of the middle.
       markProgress(start, total, '✨ Marking page ' + (start + 1) +
         (batch.length > 1 ? '–' + (start + batch.length) : '') + ' of ' + total + '…' +
         (marking.items.length ? '  (' + marking.items.length + ' question' + (marking.items.length === 1 ? '' : 's') + ' so far)' : ''));
       var imgs = [];
+      var pageNums = [];
       for (var b = 0; b < batch.length; b++) {
         await ensurePageRaster(batch[b]);
         var data = compositeJpeg(batch[b], 1500, 0.86);
-        if (data) imgs.push({ mimeType: 'image/jpeg', data: data });
+        // The picture and its page number are pushed TOGETHER, so a page
+        // that would not render drops out of both rather than shifting every
+        // page number after it by one.
+        if (data) { imgs.push({ mimeType: 'image/jpeg', data: data }); pageNums.push(batch[b].num); }
         else failed.push(batch[b].num);
       }
       if (!imgs.length) continue;
       try {
-        var raw = await window.askGemini(markPrompt(start + 1, imgs.length, total, carry), {
+        var raw = await window.askGemini(markPrompt(pageNums, total, carry), {
           // The ceiling goes in the SYSTEM prompt, beside the grounding and
           // exactly where the chat's does. A hard constraint carried in the
           // user message is a constraint the next question can talk over.
-          system: MARK_SYS + markBlankRule() + aiGrounding('mark'),
+          // The paper's own answer key goes in BESIDE the grounding, never
+          // instead of it: the key says what the answer is, the teaching
+          // notes say what counts as a full-mark one.
+          system: MARK_SYS + markBlankRule() + aiGrounding('mark') + keyRuleBlock(),
           maxOutputTokens: 8000, temperature: 0.2, json: true, thinkingLevel: 'high',
           images: imgs
         });
         if (run !== _markRun || epoch !== wsEpoch) return;
         var res = _parseAIJson(raw);
-        _markFoldRows((res && res.questions) || [], start, imgs.length, marking.items);
+        _markFoldRows((res && res.questions) || [], pageNums, marking.items);
       } catch (e) {
         // ONE unreadable batch never sinks the rest of the worksheet: those
         // pages are reported and the run carries on.
@@ -3132,6 +3797,264 @@ async function saveCrop() {
   }
 }
 
+
+/* =====================================================================
+   🎤 SPEAKING AN ANSWER
+   ---------------------------------------------------------------------
+   A P3 child who can explain evaporation out loud in one breath will spend
+   four minutes writing the same sentence badly, and by the end of it the
+   science has gone out of the answer and the handwriting is what is being
+   marked. So they can SAY it: tap 🎤, tap the spot on the page, speak, and
+   what they said is written into a text box exactly where they tapped.
+
+   IT BECOMES ORDINARY INK, and that is the whole point of putting it on the
+   page rather than into a box beside it. A spoken answer is a `text`
+   annotation like any other — it moves, it is erased, it undoes, it saves,
+   it is composited onto the page for the marking run and it is there in the
+   picture that goes into the mistake book. Nothing downstream is told that
+   it was spoken rather than typed, because nothing downstream should care.
+
+   IT IS NEVER MARKING, AND IT IS NEVER A HINT. This writes down what the
+   student said and stops. It does not answer the question, it does not
+   correct the science, and it does not so much as look at the page —
+   `window.transcribeAudio` is handed audio and nothing else. A mic that
+   quietly improved an answer on the way in would mark the student on words
+   they never said, and the ✅ Marking tab would then be marking the app.
+
+   THE LANGUAGE TRAVELS. It is the one thing this app knows and the model
+   cannot, and it is not a nicety: a 华文 answer transcribed as English
+   phonetics comes back as nonsense.
+   ===================================================================== */
+
+/* A mic left open sends a huge recording to the model for what is meant to
+   be one spoken answer, so it stops itself at the cap and writes down what
+   it has rather than recording until the battery goes. */
+var VOICE_MAX_MS = 60000;
+var voice = {
+  on: false, busy: false, cancelled: false,
+  rec: null, stream: null, chunks: [], mime: '',
+  hardStop: null, tick: null, endsAt: 0,
+  target: null              // { kind:'page', page, pt } | { kind:'chat' }
+};
+
+function voiceSupported() {
+  return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia &&
+            window.MediaRecorder && window.transcribeAudio);
+}
+function _voicePickMime() {
+  var types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg', 'audio/mp4'];
+  for (var i = 0; i < types.length; i++) {
+    try { if (MediaRecorder.isTypeSupported(types[i])) return types[i]; } catch (e) {}
+  }
+  return '';
+}
+function _voiceBlobB64(blob) {
+  return new Promise(function (res, rej) {
+    var r = new FileReader();
+    r.onload = function () { var s = String(r.result || ''); var c = s.indexOf(','); res(c >= 0 ? s.slice(c + 1) : s); };
+    r.onerror = rej;
+    r.readAsDataURL(blob);
+  });
+}
+
+/* What the model is told about what it is listening to. Nothing here says
+   what the ANSWER should be — only what language it will be in and that a
+   school answer is being spoken, which is what puts the units and the full
+   stops in the right places. */
+function voiceHint(kind) {
+  var who = wsMeta.subject === 'chinese'
+    ? 'The speaker is a Singapore primary or lower-secondary student answering a 华文 question out loud. Write ' +
+      'it down in Simplified Chinese characters with the paper\'s own full-width punctuation — never in pinyin, ' +
+      'and never translated into English.'
+    : 'The speaker is a Singapore primary or lower-secondary student, in Singapore English. Keep units, ' +
+      'measurements and scientific or mathematical terms exactly as they say them ("25 degrees Celsius", ' +
+      '"3/4", "photosynthesis"), and keep names of places and people as they are.';
+  return who + (kind === 'page'
+    ? ' They are saying their ANSWER to one question on a worksheet. Write down what they said and nothing ' +
+      'else: do not answer the question, do not correct them, do not finish their sentence.'
+    : ' They are asking their study buddy a question. Write down what they said and nothing else — do not answer it.');
+}
+
+function voiceBarEl() { return $('voiceBar'); }
+function renderVoiceBar() {
+  var bar = voiceBarEl();
+  if (!bar) return;
+  if (!voice.on && !voice.busy) { bar.classList.remove('on'); bar.innerHTML = ''; return; }
+  bar.classList.add('on');
+  if (voice.busy) {
+    bar.innerHTML = '<span class="vDot busy"></span><span class="vMsg">✍️ Writing down what you said…</span>';
+    return;
+  }
+  var left = Math.max(0, Math.ceil((voice.endsAt - Date.now()) / 1000));
+  bar.innerHTML =
+    '<span class="vDot"></span>' +
+    '<span class="vMsg">🎙️ Listening… ' + left + 's left</span>' +
+    '<button class="btn btnSm btnPrimary" id="voiceStopBtn">⏹ Done</button>' +
+    '<button class="btn btnSm" id="voiceCancelBtn">Throw it away</button>';
+  var s = $('voiceStopBtn'); if (s) s.addEventListener('click', stopVoice);
+  var c = $('voiceCancelBtn'); if (c) c.addEventListener('click', cancelVoice);
+}
+
+function startVoice(target) {
+  // A tap while the last recording is still being written down would
+  // otherwise do nothing at all, which reads as a broken button.
+  if (voice.busy) { toast('Still writing down what you said — one moment…'); return; }
+  if (voice.on) { stopVoice(); return; }
+  if (!voiceSupported()) {
+    toast('This browser cannot record — you can still type your answer.', 5000);
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+    var mime = _voicePickMime();
+    var rec;
+    try { rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined); }
+    catch (e) {
+      stream.getTracks().forEach(function (t) { t.stop(); });
+      toast('Recording is not supported on this browser — type your answer instead.', 5000);
+      return;
+    }
+    voice.chunks = [];
+    voice.cancelled = false;
+    voice.mime = rec.mimeType || mime || 'audio/webm';
+    voice.target = target;
+    rec.ondataavailable = function (ev) { if (ev.data && ev.data.size) voice.chunks.push(ev.data); };
+    rec.onstop = finishVoice;
+    rec.start();
+    voice.rec = rec;
+    voice.stream = stream;
+    voice.on = true;
+    voice.endsAt = Date.now() + VOICE_MAX_MS;
+    voice.hardStop = setTimeout(function () { if (voice.on) stopVoice(); }, VOICE_MAX_MS);
+    voice.tick = setInterval(function () { if (voice.on) renderVoiceBar(); else clearInterval(voice.tick); }, 1000);
+    renderVoiceBar();
+    renderMicBtns();
+  }).catch(function (e) {
+    var code = (e && e.name) || '';
+    toast(code === 'NotAllowedError'
+      ? 'Your buddy needs permission to use the microphone — allow it and tap 🎤 again.'
+      : 'The microphone could not be started — type your answer instead.', 5500);
+  });
+}
+
+function _voiceClearTimers() {
+  if (voice.hardStop) { clearTimeout(voice.hardStop); voice.hardStop = null; }
+  if (voice.tick) { clearInterval(voice.tick); voice.tick = null; }
+}
+function stopVoice() {
+  if (!voice.on || !voice.rec) return;
+  voice.on = false;
+  voice.busy = true;
+  _voiceClearTimers();
+  renderVoiceBar();
+  renderMicBtns();
+  try { voice.rec.stop(); } catch (e) {}
+}
+/* Throw the recording away: nothing transcribed, nothing sent, nothing
+   written on the page. A student who has just said the wrong thing out loud
+   should not have to erase it afterwards. */
+function cancelVoice() {
+  if (!voice.on || !voice.rec) return;
+  voice.on = false;
+  voice.cancelled = true;
+  _voiceClearTimers();
+  renderVoiceBar();
+  renderMicBtns();
+  try { voice.rec.stop(); } catch (e) {}
+  toast('Recording thrown away.');
+}
+
+function finishVoice() {
+  var target = voice.target, mime = voice.mime, stream = voice.stream, cancelled = voice.cancelled;
+  var blob = new Blob(voice.chunks, { type: mime });
+  if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+  voice.rec = null; voice.stream = null; voice.chunks = []; voice.target = null;
+  _voiceClearTimers();
+  if (cancelled) { voice.busy = false; voice.cancelled = false; renderVoiceBar(); renderMicBtns(); return; }
+  if (!blob.size) {
+    voice.busy = false; renderVoiceBar(); renderMicBtns();
+    toast('Did not catch any speech — tap 🎤 and try again.', 4500);
+    return;
+  }
+  var epoch = wsEpoch;
+  _voiceBlobB64(blob).then(function (b64) {
+    return window.transcribeAudio(b64, mime, voiceHint(target && target.kind));
+  }).then(function (text) {
+    // Another worksheet was opened while the recording was being written
+    // down — dropping it beats writing an answer onto somebody else's page.
+    if (epoch !== wsEpoch) return;
+    var clean = String(text || '').trim();
+    if (!clean) { toast('Did not catch any speech — tap 🎤 and try again.', 4500); return; }
+    if (target && target.kind === 'page') placeSpokenAnswer(target.page, target.pt, clean);
+    else putSpokenIntoChat(clean);
+  }).catch(function (e) {
+    console.warn('transcription failed', e);
+    toast('That did not come through — tap 🎤 to try again, or type it instead.', 6000);
+  }).then(function () {
+    voice.busy = false;
+    renderVoiceBar();
+    renderMicBtns();
+  });
+}
+
+/* The spoken answer, written onto the page as ordinary ink. The box is
+   MEASURED after it is drawn rather than guessed at: a sentence spoken in
+   one breath is three lines on a phone and one on a laptop, and a box that
+   is too short clips the answer the marking then never sees. */
+function placeSpokenAnswer(p, pt, text) {
+  if (!pages.length) return;
+  var live = pages.find(function (pg) { return pg.num === p.num; });
+  if (!live) return;
+  pushUndo();
+  var a = {
+    id: newAnnId(), type: 'text', page: live.num,
+    x: pt.x, y: pt.y,
+    w: Math.min(360, Math.max(140, live.baseW - pt.x - 12)),
+    h: fontSize * 1.8,
+    text: text, color: color, fontSize: fontSize
+  };
+  annotations.push(a);
+  selectedId = a.id;
+  renderOverlay(live);
+  var div = live.svg.querySelector('g[data-id="' + a.id + '"] .annText');
+  if (div && div.scrollHeight) {
+    a.h = Math.max(fontSize * 1.8, div.scrollHeight);
+    renderOverlay(live);
+  }
+  setDirty(true);
+  toast('Written on the page — tap it with 🅣 to fix anything it misheard.', 5000);
+}
+
+function putSpokenIntoChat(text) {
+  openBuddy('chat');
+  var ta = $('chatInput');
+  if (!ta) { sendChat(text); return; }
+  // ADDED to what is already typed rather than replacing it, so a
+  // half-typed question can be finished out loud.
+  var cur = ta.value ? ta.value.replace(/\s+$/, '') + ' ' : '';
+  ta.value = cur + text;
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(120, ta.scrollHeight) + 'px';
+  ta.focus();
+}
+
+/* Both mics are painted from ONE function, so the two can never disagree
+   about whether the app is listening — and a mic that is not going to work
+   is not drawn at all, because a button that silently does nothing is worse
+   than no button. */
+function renderMicBtns() {
+  var tb = $('speakToolBtn');
+  if (tb) {
+    tb.hidden = !voiceSupported();
+    tb.classList.toggle('recording', voice.on && voice.target && voice.target.kind === 'page');
+  }
+  var cb = $('chatMicBtn');
+  if (cb) {
+    cb.hidden = !voiceSupported();
+    cb.classList.toggle('recording', voice.on && voice.target && voice.target.kind === 'chat');
+    cb.disabled = voice.busy;
+    cb.textContent = voice.busy ? '⏳' : (voice.on ? '⏹' : '🎤');
+  }
+}
 /* ================= Ask the buddy =================
    Held to the SAME ceiling as the ladder. Without this the help level is a
    suggestion: a student on "Nudges only" types "just tell me the answer"
@@ -3185,7 +4108,10 @@ async function sendChat(text) {
     });
     lines.push('Student: ' + text);
     var out = await window.askGemini(lines.join('\n'), {
-      system: CHAT_SYS + buddyCeilingRule() + aiGrounding('teach'),
+      // buddyCeilingRule() comes FIRST and keyRuleBlock() restates it, so
+      // the one place a student can ask in their own words for the answer is
+      // also the one place the key is most tempting to hand over.
+      system: CHAT_SYS + buddyCeilingRule() + aiGrounding('teach') + keyRuleBlock(),
       maxOutputTokens: 1200, temperature: 0.5, images: imgs
     });
     if (epoch !== wsEpoch) return;
@@ -3204,10 +4130,14 @@ async function sendChat(text) {
 /* Which page is most of the way up the viewport — the one being worked on. */
 function visiblePage() {
   var area = $('viewerArea');
-  if (!area || !pages.length) return null;
+  // The student's pages only: a hidden answer-key page measures 0 tall at
+  // the top of the document, so it would win this every time — and the
+  // buddy would then be answering questions about the answers.
+  var shown = studentPages();
+  if (!area || !shown.length) return null;
   var mid = area.scrollTop + area.clientHeight * 0.35;
-  var best = pages[0], bestD = Infinity;
-  pages.forEach(function (p) {
+  var best = shown[0], bestD = Infinity;
+  shown.forEach(function (p) {
     var c = p.wrap.offsetTop + p.wrap.offsetHeight / 2;
     var d = Math.abs(c - mid);
     if (d < bestD) { bestD = d; best = p; }
@@ -3230,6 +4160,7 @@ function showView(v) {
   // The buddy's phone button is fixed to the viewport, so it would otherwise
   // float over the worksheet list and the mistake book as well.
   $('buddyFab').classList.toggle('hidden', v !== 'ws' || !$('buddy').classList.contains('closed'));
+  renderKeyChip();
   if (v === 'ws') setTimeout(function () { fitWidth(); }, 30);
 }
 
@@ -3306,9 +4237,21 @@ function renderBuddyFoot() {
       sendChat(t);
     }
     send.addEventListener('click', fire);
+    // 🎤 Ask out loud. It fills the box rather than sending, because a
+    // question the model misheard is one a student can fix before it goes —
+    // and half of what they say to a buddy is a follow-up to what they typed.
+    var mic = document.createElement('button');
+    mic.className = 'iconBtn';
+    mic.id = 'chatMicBtn';
+    mic.type = 'button';
+    mic.textContent = '🎤';
+    mic.title = 'Say it instead of typing';
+    mic.addEventListener('click', function () { startVoice({ kind: 'chat' }); });
     row.appendChild(ta);
+    row.appendChild(mic);
     row.appendChild(send);
     foot.appendChild(row);
+    renderMicBtns();
   }
 }
 
@@ -3713,6 +4656,11 @@ function mistakeCard(m) {
 function renderWorksheets() {
   var box = $('wsList');
   box.innerHTML = '';
+  // The set list is drawn from here as well, because whether a student has
+  // STARTED an assignment is read off their own worksheets — the two lists
+  // have to be painted from the same moment or a card says "not started"
+  // about a worksheet they are half way through.
+  renderAssignments();
   if (!worksheets.length) {
     var pad = document.createElement('div');
     pad.className = 'emptyPad';
@@ -3759,11 +4707,268 @@ function renderWorksheets() {
     lvl.textContent = '💡 Help level';
     lvl.addEventListener('click', function () { openGradeModal(w.id); });
     foot.appendChild(lvl);
+    // 📌 The teacher's own button, and nobody else's. It is drawn only for
+    // the admin AND refused inside pushWorksheet — hiding a button that
+    // writes to a collection every student reads is not the lock.
+    if (isAdmin(currentUser) && !w.assignmentId) {
+      var push = document.createElement('button');
+      push.className = 'btn btnSm';
+      push.textContent = w.pushed ? '📌 Set — take it off' : '📌 Set for my students';
+      push.addEventListener('click', function () {
+        if (w.pushed) unpushWorksheet(w.id); else pushWorksheet(w.id);
+      });
+      foot.appendChild(push);
+    }
     var del = document.createElement('button');
     del.className = 'btn btnSm btnDanger';
     del.textContent = 'Delete';
     del.addEventListener('click', function () { deleteWorksheet(w.id); });
     foot.appendChild(del);
+    card.appendChild(foot);
+    grid.appendChild(card);
+  });
+  box.appendChild(grid);
+}
+
+/* =====================================================================
+   📌 WORKSHEETS THE TEACHER SETS
+   ---------------------------------------------------------------------
+   The teacher uploads a worksheet — with its answer key — and pushes it to
+   the class. Every signed-in student sees it on their own home screen and
+   starts it with one tap.
+
+   A PUSH IS A COPY, NOT A SHARE, and that is the whole design. Starting an
+   assignment creates a worksheet document of the STUDENT'S OWN: their ink,
+   their hints, their marking and their mistake book, written under their
+   own uid where they can write and nobody else can read. What is shared is
+   the PDF in Storage — one file the class reads, rather than thirty
+   uploads of the same paper — which is why a student's copy carries
+   `sharedPdf` and deleting it never deletes the teacher's file.
+
+   THE ANSWER KEY TRAVELS WITH IT, already read. The teacher's own copy did
+   the transcription once; every student's copy is handed the rows, so a
+   class of thirty costs one reading of the key rather than thirty.
+
+   IT NEEDS ONE LINE IN THE FIRESTORE RULES, and the failure without it is
+   the reason `pushWorksheet` checks and SAYS SO. A collection the rules do
+   not know about fails CLOSED: the write is denied, the read comes back
+   empty, and nothing on any screen explains why — the teacher would push a
+   paper, see no error, and find out a week later that no student ever got
+   it. See README.md.
+   ===================================================================== */
+var ASSIGN_COLLECTION = 'tutorAssignments';
+var assignments = [];
+/* A whole marking scheme with its working can be long, and this is one
+   Firestore document. The rows are capped rather than left to grow into a
+   write that fails at 1 MB — a push that silently did not happen is the
+   failure this section exists to prevent. */
+var ASSIGN_ROWS_MAX = 400;
+
+function assignRulesHint() {
+  return 'Pushing needs one rule in the Firestore console:  match /' + ASSIGN_COLLECTION +
+         '/{id} { allow read: if request.auth != null; allow write: if isAdmin(); }';
+}
+
+async function loadAssignments() {
+  if (!currentUser) { assignments = []; return; }
+  try {
+    // Filtered but not ordered, for `loadWorksheets`' reason: `where` +
+    // `orderBy` on different fields needs a composite index, and a student
+    // whose list is empty because an index was never built has no way of
+    // knowing that is why. Sorted here instead.
+    var snap = await db.collection(ASSIGN_COLLECTION).where('active', '==', true).limit(60).get();
+    var out = [];
+    snap.forEach(function (d) { var a = d.data() || {}; a.id = d.id; out.push(a); });
+    out.sort(function (x, y) {
+      var xv = x.createdAt && x.createdAt.toMillis ? x.createdAt.toMillis() : 0;
+      var yv = y.createdAt && y.createdAt.toMillis ? y.createdAt.toMillis() : 0;
+      return yv - xv;
+    });
+    assignments = out;
+  } catch (e) {
+    // A read that is denied is not an error worth showing a student: they
+    // simply have no worksheets set, which is the ordinary case. It is worth
+    // saying in the console, because it is also what a missing rule looks
+    // like.
+    console.warn('Set worksheets could not be read', e);
+    assignments = [];
+  }
+  renderAssignments();
+}
+
+/* The copy a student is already working on, if there is one. Without this
+   every visit to the home screen would start a fresh blank copy and the
+   work they did yesterday would look lost. */
+function myCopyOf(a) {
+  return worksheets.find(function (w) { return w.assignmentId === a.id; });
+}
+
+async function startAssignment(id) {
+  var a = assignments.find(function (x) { return x.id === id; });
+  if (!a || !currentUser) return;
+  var mine = myCopyOf(a);
+  if (mine) { openWorksheet(mine.id); return; }
+  toast('Getting “' + (a.name || 'the worksheet') + '” ready…', 15000);
+  try {
+    var body = JSON.stringify({
+      annotations: [], hints: [], marking: { items: [] }, chat: [],
+      // The key comes across ALREADY READ, so a class of thirty costs one
+      // reading of the marking scheme rather than thirty. `scanned: true`
+      // is what stops each copy looking for key pages all over again.
+      key: {
+        pages: Array.isArray(a.keyPages) ? a.keyPages : [],
+        rows: Array.isArray(a.keyRows) ? a.keyRows : [],
+        path: a.keyPath || '', name: a.keyName || '', scanned: true,
+        // The teacher's file, read by the class — never deleted from here.
+        shared: true
+      }
+    });
+    var docId = db.collection(COLLECTION).doc().id;
+    await db.collection(COLLECTION).doc(docId).set({
+      name: a.name || 'Worksheet',
+      level: a.level || '',
+      subject: a.subject || '',
+      guidance: a.guidance || HINT_DEFAULT,
+      ownerUid: currentUser.uid,
+      ownerEmail: currentUser.email || '',
+      ownerName: currentUser.displayName || '',
+      storagePath: a.storagePath,
+      // The teacher's file, read by the whole class — never deleted by a
+      // student tidying up their own copy.
+      sharedPdf: true,
+      assignmentId: a.id,
+      setBy: a.byName || ADMIN_DISPLAY_NAME,
+      keyPages: Array.isArray(a.keyPages) ? a.keyPages : [],
+      keyPath: a.keyPath || '',
+      keyAnswers: (a.keyRows || []).length,
+      pageCount: a.pageCount || 0,
+      body: body,
+      bodyPath: '',
+      score: { correct: 0, attempted: 0 },
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await loadWorksheets();
+    await openWorksheet(docId);
+  } catch (e) {
+    console.error(e);
+    toast('That worksheet could not be started: ' + ((e && e.message) || e), 6000);
+  }
+}
+
+/* The teacher's push. It reads the worksheet's own body for the key rows
+   rather than the open editor, so a worksheet can be pushed from the card
+   without opening it. */
+async function pushWorksheet(id) {
+  if (!isAdmin(currentUser)) return;
+  var w = worksheets.find(function (x) { return x.id === id; });
+  if (!w) return;
+  if (!w.storagePath) { toast('That worksheet has no PDF to share.'); return; }
+  if (!confirm('Set “' + (w.name || 'Untitled') + '” for your students?\n\n' +
+               'Every signed-in student sees it on their home screen and gets their own copy to write on. ' +
+               'Its answer key goes with it — for their buddy, never for them.')) return;
+  toast('Setting it…', 12000);
+  try {
+    var body = await readBody(w);
+    var key = (body && body.key) || {};
+    var rows = Array.isArray(key.rows) ? key.rows.slice(0, ASSIGN_ROWS_MAX) : [];
+    await db.collection(ASSIGN_COLLECTION).doc(w.id).set({
+      name: w.name || 'Worksheet',
+      level: w.level || '',
+      subject: w.subject || '',
+      guidance: w.guidance || HINT_DEFAULT,
+      storagePath: w.storagePath,
+      keyPath: key.path || w.keyPath || '',
+      keyName: key.name || '',
+      keyPages: Array.isArray(key.pages) ? key.pages : (w.keyPages || []),
+      keyRows: rows,
+      pageCount: w.pageCount || 0,
+      byUid: currentUser.uid,
+      byName: currentUser.displayName || ADMIN_DISPLAY_NAME,
+      active: true,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await db.collection(COLLECTION).doc(w.id).update({ pushed: true });
+    w.pushed = true;
+    renderWorksheets();
+    await loadAssignments();
+    toast('📌 Set — your students will see it on their home screen.' +
+          (rows.length ? ' The key went with it (' + rows.length + ' answers).' : ''), 6000);
+  } catch (e) {
+    console.error(e);
+    // NAMED, never "could not save": a denied write here is one missing
+    // line in the console, and a teacher told only "failed" has nowhere to
+    // start looking.
+    var denied = /permission|insufficient|PERMISSION_DENIED/i.test(String((e && e.message) || e));
+    toast(denied
+      ? 'Your students could not be given it — the rules do not allow it yet. ' + assignRulesHint()
+      : 'It could not be set: ' + ((e && e.message) || e), 12000);
+  }
+}
+
+async function unpushWorksheet(id) {
+  if (!isAdmin(currentUser)) return;
+  try {
+    await db.collection(ASSIGN_COLLECTION).doc(id).update({ active: false });
+    await db.collection(COLLECTION).doc(id).update({ pushed: false });
+    var w = worksheets.find(function (x) { return x.id === id; });
+    if (w) w.pushed = false;
+    renderWorksheets();
+    await loadAssignments();
+    // The copies students already started are THEIRS and are left alone: a
+    // worksheet that disappeared mid-way through, with the marking on it,
+    // would be work taken away rather than an assignment withdrawn.
+    toast('Taken off the class list. Anyone who already started it keeps their copy.', 6000);
+  } catch (e) { toast('Could not take it off the list: ' + ((e && e.message) || e), 6000); }
+}
+
+function renderAssignments() {
+  var box = $('assignList');
+  var sec = $('assignSection');
+  if (!box || !sec) return;
+  // A student with none of these should not be looking at an empty heading
+  // for a feature they may never see used.
+  var show = assignments.length > 0;
+  sec.classList.toggle('hidden', !show);
+  box.innerHTML = '';
+  if (!show) return;
+  var grid = document.createElement('div');
+  grid.className = 'wsGrid';
+  assignments.forEach(function (a) {
+    var mine = myCopyOf(a);
+    var card = document.createElement('div');
+    card.className = 'wsCard setCard';
+    var h = document.createElement('h3');
+    h.textContent = a.name || 'Worksheet';
+    card.appendChild(h);
+    var meta = document.createElement('div');
+    meta.className = 'wsMeta';
+    meta.appendChild(chipNode('📌 Set by ' + (a.byName || ADMIN_DISPLAY_NAME), 'chip chipSet'));
+    if (a.level) meta.appendChild(chipNode(levelLabel(a.level), 'chip chipLevel'));
+    if (a.subject) meta.appendChild(chipNode(subjectLabel(a.subject), 'chip'));
+    if (mine && mine.score && mine.score.attempted) {
+      meta.appendChild(chipNode('✅ ' + mine.score.correct + '/' + mine.score.attempted, 'chip chipScore'));
+    }
+    card.appendChild(meta);
+    var when = document.createElement('div');
+    when.className = 'hint';
+    when.textContent = (a.pageCount ? a.pageCount + ' page' + (a.pageCount === 1 ? '' : 's') + ' · ' : '') +
+      (mine ? 'You have started this' : 'Not started yet');
+    card.appendChild(when);
+    var foot = document.createElement('div');
+    foot.className = 'wsCardFoot';
+    var go = document.createElement('button');
+    go.className = 'btn btnSm btnPrimary';
+    go.textContent = mine ? 'Carry on' : 'Start it';
+    go.addEventListener('click', function () { startAssignment(a.id); });
+    foot.appendChild(go);
+    if (isAdmin(currentUser)) {
+      var off = document.createElement('button');
+      off.className = 'btn btnSm';
+      off.textContent = 'Take off the list';
+      off.addEventListener('click', function () { unpushWorksheet(a.id); });
+      foot.appendChild(off);
+    }
     card.appendChild(foot);
     grid.appendChild(card);
   });
@@ -3796,7 +5001,14 @@ function worksheetBody() {
     annotations: annotations,
     hints: hints,
     marking: { items: marking.items, runAt: marking.runAt },
-    chat: chat.filter(function (m) { return !m.pending; })
+    chat: chat.filter(function (m) { return !m.pending; }),
+    // The key travels in the BODY rather than the document: the transcribed
+    // rows are the biggest thing here after the ink, and the body is what
+    // already overflows into Storage when it outgrows a Firestore document.
+    // `reading` is deliberately not saved — it is a call in flight, not a
+    // fact about the worksheet.
+    key: { pages: wsKey.pages, rows: wsKey.rows, path: wsKey.path, name: wsKey.name,
+           scanned: wsKey.scanned, shared: wsKey.shared }
   });
 }
 function bodyByteLength(json) {
@@ -3828,7 +5040,7 @@ async function readBody(d) {
   } else {
     json = (d && d.body) || '';
   }
-  if (!json) return { annotations: [], hints: [], marking: { items: [] }, chat: [] };
+  if (!json) return { annotations: [], hints: [], marking: { items: [] }, chat: [], key: null };
   return JSON.parse(json);
 }
 
@@ -3850,6 +5062,12 @@ async function performSave(quiet) {
       guidance: wsMeta.guidance || HINT_DEFAULT,
       score: scoreOf(),
       pageCount: pdfDoc ? pdfDoc.numPages : 0,
+      // Summary only: the card needs to say "the buddy has the key" without
+      // reading the whole body, and a push copies these across. The rows
+      // themselves stay in the body.
+      keyPages: wsKey.pages.slice(),
+      keyPath: wsKey.path || '',
+      keyAnswers: wsKey.rows.length,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     dirty = false;
@@ -3882,7 +5100,7 @@ document.addEventListener('visibilitychange', function () {
 });
 
 async function loadWorksheets() {
-  if (!currentUser) { worksheets = []; renderWorksheets(); return; }
+  if (!currentUser) { worksheets = []; assignments = []; renderWorksheets(); return; }
   try {
     // Filtered but not ordered in the query on purpose: `where` + `orderBy`
     // on different fields needs a composite index in the console, and a
@@ -3906,6 +5124,10 @@ async function loadWorksheets() {
     worksheets = [];
     toast('Your worksheets could not be loaded — check your connection.', 5000);
   }
+  // AFTER the student's own worksheets, never before: whether an assignment
+  // has been started is read off them, so a set card painted first says "not
+  // started" about a worksheet they are half way through.
+  try { await loadAssignments(); } catch (e) { /* already reported quietly */ }
   renderWorksheets();
 }
 
@@ -3933,6 +5155,16 @@ async function openWorksheet(id) {
     marking = { items: (body.marking && Array.isArray(body.marking.items)) ? body.marking.items : [],
                 runAt: (body.marking && body.marking.runAt) || null, running: false };
     chat = Array.isArray(body.chat) ? body.chat : [];
+    // A worksheet saved before the key existed has no `key` at all, and
+    // keyReset() has already left an empty one — so it opens exactly as it
+    // always did, with every page shown.
+    var k = body.key || {};
+    wsKey.pages = Array.isArray(k.pages) ? k.pages.filter(function (n) { return n >= 1; }) : [];
+    wsKey.rows = Array.isArray(k.rows) ? k.rows : [];
+    wsKey.path = k.path || '';
+    wsKey.name = k.name || '';
+    wsKey.scanned = !!k.scanned;
+    wsKey.shared = !!k.shared || !!w.sharedPdf;
     bodyOverflow = !!w.bodyPath;
     currentDocId = id;
     wsMeta.level = w.level || '';
@@ -3941,6 +5173,7 @@ async function openWorksheet(id) {
     $('wsTitle').textContent = docName;
     setDirty(false);
     renderAllOverlays();
+    applyKeyVisibility();
     renderHints();
     renderMarking();
     renderChat();
@@ -3958,7 +5191,11 @@ async function deleteWorksheet(id) {
   if (!confirm('Delete “' + (w.name || 'Untitled') + '”? Your marks and hints on it go too. ' +
                'Anything already in your mistake book stays.')) return;
   try {
-    if (w.storagePath) { try { await storage.ref(w.storagePath).delete(); } catch (e) {} }
+    // A worksheet SET BY THE TEACHER shares the teacher's PDF rather than
+    // holding a copy of it, so deleting a student's own copy must not delete
+    // the file every other student in the class is reading.
+    if (w.storagePath && !w.sharedPdf) { try { await storage.ref(w.storagePath).delete(); } catch (e) {} }
+    if (w.keyPath && !w.sharedPdf) { try { await storage.ref(w.keyPath).delete(); } catch (e) {} }
     if (w.bodyPath) { try { await storage.ref(w.bodyPath).delete(); } catch (e) {} }
     await db.collection(COLLECTION).doc(id).delete();
     if (currentDocId === id) { currentDocId = null; showView('home'); }
@@ -3986,12 +5223,24 @@ function fillGradeGrid(gridId, current, onPick) {
   });
 }
 
+/* The answer key chosen at upload, held here until the worksheet has a
+   document to hang it on — it cannot be uploaded before then, because its
+   Storage path is the worksheet's own id. */
+var upKeyFile = null;
+
 function openUploadModal() {
   if (!currentUser) { signIn(); return; }
   $('upName').value = '';
   $('upLevel').value = '';
   $('upSubject').value = '';
   upGrade = HINT_DEFAULT;
+  upKeyFile = null;
+  $('upKeyName').textContent = '';
+  var push = $('upPush');
+  if (push) push.checked = false;
+  // Setting work for the class is the teacher's, and it is checked again in
+  // pushWorksheet — hiding the box is not the lock.
+  $('upPushWrap').classList.toggle('hidden', !isAdmin(currentUser));
   fillGradeGrid('upGradeGrid', upGrade, function (k) { upGrade = k; });
   $('uploadModal').classList.add('open');
 }
@@ -4004,6 +5253,11 @@ async function handleUpload(file) {
   var name = $('upName').value.trim() || file.name.replace(/\.pdf$/i, '');
   var level = $('upLevel').value;
   var subject = $('upSubject').value;
+  // Read while the dialog is still on screen: the fields are cleared the
+  // next time it opens, and the upload below has several awaits in it.
+  var keyFile = upKeyFile;
+  var pushIt = isAdmin(currentUser) && $('upPush') && $('upPush').checked;
+  upKeyFile = null;
   $('uploadModal').classList.remove('open');
   toast('Uploading “' + name + '”…', 20000);
   try {
@@ -4042,6 +5296,17 @@ async function handleUpload(file) {
     if (window.innerWidth > 900) openBuddy('hints'); else closeBuddy();
     loadWorksheets();
     toast('Ready — write your answers on it, and tap 💡 when you get stuck.', 5000);
+    // The key is dealt with AFTER the worksheet is on screen and saved: it
+    // takes AI calls and tens of seconds, and a student watching a spinner
+    // before they can write on their own paper is the wrong trade. Every
+    // step of it swallows its own failure.
+    // Attach, then find the key pages, then read the lot ONCE: reading after
+    // each step would transcribe the marking scheme twice.
+    if (keyFile) { try { await attachKeyPdf(keyFile, true); } catch (e) { console.warn('key attach failed', e); } }
+    await keyAutoScan(true);
+    if (keyHasAnything()) await keyRefreshRows();
+    await performSave(true);
+    if (pushIt) { await loadWorksheets(); await pushWorksheet(id); }
   } catch (e) {
     console.error(e);
     toast('Upload failed: ' + ((e && e.message) || e), 6000);
@@ -4436,6 +5701,14 @@ $('qnSave').addEventListener('click', quickNoteSave);
 $('uploadBtn').addEventListener('click', openUploadModal);
 $('upCancel').addEventListener('click', function () { $('uploadModal').classList.remove('open'); });
 $('upGo').addEventListener('click', function () { $('fileInput').click(); });
+$('upKeyBtn').addEventListener('click', function () { $('upKeyInput').click(); });
+$('upKeyInput').addEventListener('change', function (e) {
+  var f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (!f) return;
+  upKeyFile = f;
+  $('upKeyName').textContent = '🔑 ' + f.name;
+});
 $('fileInput').addEventListener('change', function (e) {
   var f = e.target.files && e.target.files[0];
   // The picker's value is cleared BEFORE the file is used: an <input
@@ -4447,6 +5720,19 @@ $('fileInput').addEventListener('change', function (e) {
 
 $('gradeCancel').addEventListener('click', function () { $('gradeModal').classList.remove('open'); });
 $('gradeSave').addEventListener('click', saveGrade);
+
+$('keyChip').addEventListener('click', openKeyModal);
+$('keyClose').addEventListener('click', function () { $('keyModal').classList.remove('open'); });
+$('keyAttach').addEventListener('click', function () { $('keyFileInput').click(); });
+$('keyDetach').addEventListener('click', detachKeyPdf);
+$('keyReread').addEventListener('click', function () { keyRefreshRows(); });
+$('keyFileInput').addEventListener('change', function (e) {
+  var f = e.target.files && e.target.files[0];
+  // Cleared BEFORE the file is used: an <input type=file> still holding
+  // last time's file fires no `change` for the same PDF picked twice.
+  e.target.value = '';
+  if (f) attachKeyPdf(f);
+});
 
 $('cropCancel').addEventListener('click', function () { $('cropModal').classList.remove('open'); cropState = null; });
 $('cropReset').addEventListener('click', function () {
@@ -4513,7 +5799,7 @@ document.addEventListener('keydown', function (e) {
   if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
   if (view !== 'ws') return;
   var keys = { p: 'pen', h: 'highlight', t: 'text', l: 'line', a: 'arrow', r: 'rect',
-               o: 'ellipse', e: 'eraser', v: 'select', d: 'hint' };
+               o: 'ellipse', e: 'eraser', v: 'select', d: 'hint', m: 'speak' };
   var want = keys[e.key.toLowerCase()];
   if (want) { e.preventDefault(); setTool(want); }
 });
@@ -4534,6 +5820,7 @@ renderHints();
 renderMarking();
 renderChat();
 renderBuddyFoot();
+renderMicBtns();
 refreshAiEngineNames();
 </script>
 
@@ -4592,6 +5879,96 @@ let geminiModel = null;
 try {
   geminiModel = getGenerativeModel(getAI(app, { backend: new GoogleAIBackend() }), { model: AI_MODEL });
 } catch (e) { console.warn("Firebase AI init failed (AI disabled):", e); }
+
+/* =====================================================================
+   🎙️ TRANSCRIPTION — ONE MODEL, ONE DOOR
+   ---------------------------------------------------------------------
+   Speech is its own job and it has its own model. `gemini-3.5-transcribe`
+   reads every recording this app turns into text, through
+   `window.transcribeAudio` — the ONE door. A call site that reaches past
+   it to `window.askGemini` is a surface still transcribing on the general
+   chat model, and nothing on any screen would say so: the words come back
+   either way, a little worse.
+
+   THE MODEL IS A ROUTE, NOT A PROMISE. A model id gets renamed, withdrawn
+   and rolled out region by region, and an id this project cannot reach is
+   a 400/404 on EVERY recording — which reads as "the mic is broken"
+   rather than "that id is a release out of date". So it is tried FIRST
+   with the ordinary model behind it, and a refusal is remembered for
+   AI_TRANSCRIBE_DOWN_MS rather than paid for again on the next recording.
+   A success clears the mark, so the day the id starts answering this app
+   starts using it with nothing redeployed and nobody told.
+
+   NO THINKING LEVEL IS SENT. Every other call here carries thinkingConfig
+   and a level a model does not know is a 400 — no answer at all, not a
+   worse one. A speech model has no reason to know the chat models' scale,
+   so the one call that could break it is deliberately not made.
+   Transcription is reading, not reasoning.
+   ===================================================================== */
+const AI_TRANSCRIBE_MODEL = "gemini-3.5-transcribe";
+const AI_TRANSCRIBE_DOWN_MS = 10 * 60 * 1000;
+window.AI_TRANSCRIBE_MODEL = AI_TRANSCRIBE_MODEL;
+let transcribeModel = null;
+let _transcribeDownUntil = 0;
+let _transcribeWhy = "";
+function transcribeModelGet() {
+  if (transcribeModel) return transcribeModel;
+  try { transcribeModel = getGenerativeModel(getAI(app, { backend: new GoogleAIBackend() }), { model: AI_TRANSCRIBE_MODEL }); }
+  catch (e) { _transcribeWhy = String((e && e.message) || e); return null; }
+  return transcribeModel;
+}
+/* A model asked for "only the transcription" still hands back a quoted
+   string or a "Transcription:" label often enough to be worth taking off
+   here rather than leaving it in what the student typed. */
+function transcribeClean(text) {
+  let s = String(text || "").trim();
+  s = s.replace(/^(?:transcription|transcript)\s*[:\-—]\s*/i, "").trim();
+  if (s.length > 1 && /^["'“”]/.test(s) && /["'“”]$/.test(s)) s = s.slice(1, -1).trim();
+  return s;
+}
+async function runTranscribe(model, prompt, mimeType, data, maxOutputTokens) {
+  const res = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: mimeType, data: data } }] }],
+    generationConfig: { maxOutputTokens: maxOutputTokens, temperature: 0 }
+  });
+  return transcribeClean(res.response.text() || "");
+}
+/* `hint` is a sentence about what is being spoken — the language of the
+   paper, above all. A 华文 answer transcribed as English phonetics comes
+   back as nonsense, and that is the one thing the caller knows and the
+   model cannot. */
+window.transcribeAudio = async function transcribeAudio(base64, mimeType, hint) {
+  const mt = String(mimeType || "audio/webm").split(";")[0];
+  const prompt =
+    "Transcribe the spoken audio to text exactly and accurately. Return ONLY the transcription as plain text " +
+    "with correct spelling, capitalisation and punctuation. Do not translate, summarise, answer, add quotes, " +
+    "labels or commentary. If there is no clear speech, return an empty string." +
+    (hint ? "\n" + hint : "");
+  const model = Date.now() >= _transcribeDownUntil ? transcribeModelGet() : null;
+  if (model) {
+    try {
+      const out = await runTranscribe(model, prompt, mt, base64, 1024);
+      _transcribeDownUntil = 0; _transcribeWhy = "";
+      return out;
+    } catch (e) {
+      _transcribeDownUntil = Date.now() + AI_TRANSCRIBE_DOWN_MS;
+      _transcribeWhy = String((e && e.message) || e);
+      console.warn("The " + AI_TRANSCRIBE_MODEL + " route refused — falling back to " + AI_MODEL + ":", e);
+    }
+  }
+  if (!geminiModel) throw new Error("AI is not configured yet");
+  return runTranscribe(geminiModel, prompt, mt, base64, 1024);
+};
+/* What the page prints about the mic — only what it knows: which model the
+   last recording really went to, and what the dedicated one said the last
+   time it refused. */
+window.transcribeRouteNote = function transcribeRouteNote() {
+  if (Date.now() < _transcribeDownUntil) {
+    return "Speech is going through " + AI_MODEL + " for a few minutes: " + AI_TRANSCRIBE_MODEL +
+           " refused a moment ago" + (_transcribeWhy ? " (" + _transcribeWhy + ")" : "") + ".";
+  }
+  return "Speech is transcribed by " + AI_TRANSCRIBE_MODEL + ", with " + AI_MODEL + " behind it.";
+};
 
 window.aiReady = () => !!geminiModel;
 
