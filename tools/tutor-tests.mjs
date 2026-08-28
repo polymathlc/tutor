@@ -209,7 +209,12 @@ section('Marking');
 const blank = S._markFields({ studentAnswer: '', verdict: 'wrong', marks: '0/2', feedback: 'You got it wrong' });
 eq('a blank is not marked', blank.marked, false);
 eq('…its verdict is dropped', blank.verdict, '');
-eq('…its marks are dropped', blank.marks, '');
+eq('…its feedback goes with it', blank.feedback, '');
+/* The marks are the ONE thing that survives a blank, and they are not an
+   exception to the rule: "0 out of 2" is the allocation the paper printed,
+   not a judgement on an answer nobody wrote. The verdict, the feedback and
+   the cross on the page all still stand down. */
+eq('…but the marks it was worth stand, awarded 0', blank.marks, '0/2');
 eq('…and the telling-off with it', blank.feedback, '');
 
 const written = S._markFields({ studentAnswer: '1.4', verdict: 'PARTIAL', marks: '1/2', feedback: 'Nearly.' });
@@ -838,6 +843,222 @@ ok('the logo is in the top-left corner, with a fallback that needs no network',
    /polymath-logo-sticker/.test(html));
 ok('…and it is the tab and home-screen icon too',
    /rel="icon"/.test(html) && /rel="apple-touch-icon"/.test(html));
+
+
+/* =====================================================================
+   THE MARKS — what a question was worth, and what it earned
+   ===================================================================== */
+section('The marks');
+
+eq('a correct answer earns the lot, whatever the model said',
+   S._markPair('1/3', 'correct', true), { awarded: 3, total: 3 });
+eq('a wrong answer earns nothing, whatever the model said',
+   S._markPair('2/3', 'wrong', true), { awarded: 0, total: 3 });
+/* An answer that earns neither 0 nor the full total is what "partial" MEANS,
+   so a partial the model scored at either end is pulled off it — otherwise
+   the chip says "partly right" and the number beside it says "wrong". */
+eq('a partial is neither nothing nor everything', S._markPair('0/2', 'partial', true),
+   { awarded: 1, total: 2 });
+eq('…including from the other end', S._markPair('2/2', 'partial', true), { awarded: 1, total: 2 });
+eq('…and one the model got right is left alone', S._markPair('2/4', 'partial', true),
+   { awarded: 2, total: 4 });
+eq('half marks are real and survive', S._markPair('1.5/2', 'partial', true), { awarded: 1.5, total: 2 });
+eq('awarded above the total is clamped', S._markPair('9/2', 'partial', true), { awarded: 1, total: 2 });
+eq('a blank earns nothing but keeps what it was worth',
+   S._markPair('2/2', '', false), { awarded: 0, total: 2 });
+/* A worksheet marked before the marks existed has none, and must show none —
+   never a zero, which reads as a mark against the student. */
+eq('a marks string that will not parse is no marks at all', S._markPair('two out of three', 'correct', true), null);
+eq('…and so is a missing one', S._markPair(undefined, 'correct', true), null);
+eq('a nonsense total is refused', S._markPair('1/9999', 'correct', true), null);
+eq('a zero total is refused', S._markPair('0/0', 'correct', true), null);
+
+eq('reading a stored marks string back does not re-mark it',
+   S.markPairOf({ marks: '1/2' }), { awarded: 1, total: 2 });
+eq('…and an old worksheet with none reads as none', S.markPairOf({ marks: '' }), null);
+
+/* =====================================================================
+   THE TICK ON THE PAGE
+   ===================================================================== */
+section('The ticks and crosses on the page');
+
+eq('a point on the page reads', S._markAt([520, 180]), { y: 520, x: 180 });
+eq('the corners read', S._markAt([0, 1000]), { y: 0, x: 1000 });
+/* NEVER clamped. A clamped point is a guess, and a tick against the wrong
+   question is worse than no tick — which is what the prompt says too. */
+eq('a point off the page is refused rather than clamped', S._markAt([1400, 180]), null);
+eq('…in either direction', S._markAt([-5, 180]), null);
+eq('a malformed point is refused', S._markAt([180]), null);
+eq('…and so is one that is not a point at all', S._markAt('middle'), null);
+
+ok('a marked wrong answer gets a cross',
+   S.markPinFor({ marked: true, verdict: 'wrong', at: { y: 1, x: 1 }, marks: '0/2' }).sym === '✗');
+ok('a correct one gets a tick',
+   S.markPinFor({ marked: true, verdict: 'correct', at: { y: 1, x: 1 }, marks: '2/2' }).sym === '✓');
+/* The symbol says the verdict on its own and the marks say how much: a
+   partial that shared BOTH with a correct answer would be telling them apart
+   by colour alone, which is exactly what a mono printer and a colour-blind
+   reader cannot do. */
+const half = S.markPinFor({ marked: true, verdict: 'partial', at: { y: 1, x: 1 }, marks: '1/2' });
+const full = S.markPinFor({ marked: true, verdict: 'correct', at: { y: 1, x: 1 }, marks: '2/2' });
+ok('a partial is told from a correct one WITHOUT its colour', half.marks !== full.marks);
+ok('…and the two do not share a class either', half.cls !== full.cls);
+eq('a BLANK gets no tick and no cross, even with a position',
+   S.markPinFor({ marked: false, verdict: '', at: { y: 1, x: 1 }, marks: '0/2' }), null);
+eq('a question with no position gets no pin', S.markPinFor({ marked: true, verdict: 'wrong', marks: '0/2' }), null);
+eq('a marked answer with no verdict gets no pin either',
+   S.markPinFor({ marked: true, verdict: '', at: { y: 1, x: 1 } }), null);
+
+/* The ticks are NOT annotations, which is the load-bearing part: put one in
+   `annotations` and the next marking run reads a page already covered in
+   ticks, agrees with them, and nothing on any screen says why the second
+   marking is so much kinder than the first. */
+ok('the ticks are drawn from `marking.items`, never from `annotations`',
+   /function renderMarksOn[\s\S]{0,600}marking\.items\.forEach/.test(html) &&
+   !/function renderMarksOn[\s\S]{0,900}annotations\.push/.test(html));
+ok('…and the flatten the marker re-reads draws only annotations',
+   /drawAnnsOnCtx\(ctx, out\.width \/ p\.baseW, out\.height \/ p\.baseH, annotations, p\.num\)/.test(html));
+
+/* =====================================================================
+   THE REPORT
+   ===================================================================== */
+section('The report');
+
+function mk(o) {
+  return Object.assign({ number: '1', page: 1, endPage: 1, type: 'open', question: 'q',
+                         options: [], option: '', answer: 'a', explanation: '',
+                         topic: '', objective: '', at: null, atPage: 1,
+                         marked: true, studentAnswer: 'x', verdict: 'correct',
+                         marks: '1/1', feedback: '' }, o);
+}
+function setItems(items) { S.marking = { items: items, runAt: 0, running: false }; }
+
+eq('two spellings of one topic are one topic',
+   S.reportTopicKey('  Fractions:  Addition '), S.reportTopicKey('fractions: addition'));
+eq('…and a trailing full stop does not make a third',
+   S.reportTopicKey('Photosynthesis.'), S.reportTopicKey('Photosynthesis'));
+
+setItems([
+  mk({ number: '1', topic: 'Fractions', objective: 'Add two fractions.', verdict: 'wrong', marks: '0/2' }),
+  mk({ number: '2', topic: 'fractions ', objective: 'Add two fractions.', verdict: 'partial', marks: '1/2' }),
+  mk({ number: '3', topic: 'Fractions', objective: 'Simplify a fraction.', verdict: 'correct', marks: '2/2' }),
+  mk({ number: '4', topic: 'Area', objective: 'Find the area of a rectangle.', verdict: 'correct', marks: '2/2' }),
+  mk({ number: '5', topic: 'Volume', objective: 'Find a volume.', marked: false, verdict: '',
+       studentAnswer: '', marks: '0/3' }),
+  mk({ number: '6', topic: '', objective: '', verdict: 'wrong', marks: '0/1' })
+]);
+
+const groups = S.reportTopics();
+eq('the topics group case- and space-insensitively', groups.length, 4);
+eq('…and the group keeps the first spelling it saw', groups[0].name, 'Fractions');
+eq('the same objective twice is listed once', groups[0].objectives.length, 2);
+eq('a question with no topic gets its own group and is never merged into one',
+   groups[3].name, S.REPORT_UNLABELLED);
+
+const rev = S.reportRevise();
+eq('a topic that went perfectly is not on the revise list',
+   rev.weak.map(g => g.name).indexOf('Area'), -1);
+eq('…it is named as a strength instead', rev.strong.map(g => g.name), ['Area']);
+/* A topic nobody attempted is not a weakness — it is untried, which is a
+   different thing to tell a student. */
+eq('a topic left entirely blank is untried, not weak', rev.untried.map(g => g.name), ['Volume']);
+eq('…and it is not on the weak list', rev.weak.map(g => g.name).indexOf('Volume'), -1);
+ok('the topic that lost the most comes first', rev.weak[0].name === 'Fractions',
+   'got ' + JSON.stringify(rev.weak.map(g => g.name)));
+
+/* A partial is HALF a misunderstanding: counting it whole would put a topic
+   the student nearly has above one they do not have at all. */
+eq('a partial counts half towards what was lost',
+   S.reportLost({ wrong: 1, partial: 1 }), 1.5);
+
+/* Three wrong out of six is more work than one out of one, so the ranking is
+   by what was LOST and only then by the rate. */
+setItems([
+  mk({ topic: 'Big', verdict: 'wrong', marks: '0/1' }),
+  mk({ topic: 'Big', verdict: 'wrong', marks: '0/1' }),
+  mk({ topic: 'Big', verdict: 'wrong', marks: '0/1' }),
+  mk({ topic: 'Big', verdict: 'correct', marks: '1/1' }),
+  mk({ topic: 'Big', verdict: 'correct', marks: '1/1' }),
+  mk({ topic: 'Big', verdict: 'correct', marks: '1/1' }),
+  mk({ topic: 'Small', verdict: 'wrong', marks: '0/1' })
+]);
+eq('three wrong out of six outranks one out of one',
+   S.reportRevise().weak.map(g => g.name), ['Big', 'Small']);
+
+/* "Go and revise Not labelled" is not advice anybody can act on, so the
+   questions the marking could not place go last however much was lost on
+   them — they are still listed, because a wrong answer is a wrong answer. */
+setItems([
+  mk({ topic: '', verdict: 'wrong', marks: '0/1' }),
+  mk({ topic: '', verdict: 'wrong', marks: '0/1' }),
+  mk({ topic: 'Angles', verdict: 'wrong', marks: '0/1' })
+]);
+const unl = S.reportRevise().weak.map(g => g.name);
+eq('an unlabelled group never outranks a real topic, whatever it lost',
+   unl, ['Angles', S.REPORT_UNLABELLED]);
+
+/* Written against a plain object, so a topic called "constructor" must not
+   find one on the prototype and count its questions into something that is
+   not a group. */
+setItems([mk({ topic: 'constructor', verdict: 'wrong', marks: '0/1' })]);
+const proto = S.reportTopics();
+eq('a topic called "constructor" is a topic like any other', proto.length, 1);
+eq('…with its own count', proto[0].wrong, 1);
+
+setItems([
+  mk({ verdict: 'correct', marks: '2/2' }),
+  mk({ verdict: 'wrong', marks: '0/3' }),
+  mk({ marked: false, verdict: '', studentAnswer: '', marks: '0/4' })
+]);
+const mt = S.markMarkTally();
+eq('the marks total over the paper', mt.total, 9);
+eq('…what was earned', mt.awarded, 2);
+/* "2 out of 9" reads as a poor paper when 4 of those marks are a question
+   nobody reached, so the two are split and the report says both. */
+eq('…what was on offer for what was attempted', mt.attempted, 5);
+eq('…and what was never attempted at all', mt.blank, 4);
+
+setItems([mk({ marks: '' }), mk({ marks: '' })]);
+eq('a worksheet marked before the marks existed reports no score, not zero',
+   S.markMarkTally().has, false);
+
+/* =====================================================================
+   CHUNG GPT
+   ===================================================================== */
+section('Chung GPT');
+
+ok('the assistant is called Chung GPT', /function aiEngineName\(\)\s*\{\s*return 'Chung GPT'/.test(html));
+ok('…and every student-facing surface goes through that one function',
+   !/Your buddy|your buddy/.test(html), 'the old name is still in the file');
+ok('the face is drawn in code, so it needs no network at all',
+   /var CHUNG_SVG\s*=/.test(html) && !/CHUNG_SVG[\s\S]{0,2000}<image/.test(html));
+
+const svg = html.slice(html.indexOf('var CHUNG_SVG'), html.indexOf('function chungAvatar'));
+/* The avatar is on screen a dozen times at once, so an `id` in it means
+   every `url(#…)` after the first resolves against the wrong element — and
+   the shape wearing it comes out as nothing at all. */
+ok('the drawing carries no id, so a dozen copies cannot collide', !/\bid=/.test(svg));
+ok('…and no gradient or filter that would need one',
+   !/<(linear|radial)Gradient|<filter|url\(#/.test(svg));
+/* Pinned on WHAT IS THERE rather than on a coordinate, so the drawing can
+   be redrawn without the harness going red for a face that is simply
+   better. */
+ok('the face has two lenses, a frame and a collared shirt',
+   (svg.match(/<rect x="/g) || []).length >= 2 && /stroke="#C7A47F"/.test(svg) && /#3E7C6B/.test(svg));
+ok('it blinks, and the lid is scaled from its OWN top rather than the canvas’s',
+   /\.cgLid\s*\{[^}]*transform-box:\s*fill-box/.test(html) &&
+   /@keyframes cgBlink/.test(html));
+ok('…and everything that moves stops for prefers-reduced-motion',
+   /@media \(prefers-reduced-motion: reduce\)[\s\S]{0,400}\.cgFace/.test(html));
+ok('a speech bubble has a tail, drawn as two triangles so it keeps its outline',
+   /\.speech::before[\s\S]{0,200}border-right-color/.test(html) &&
+   /\.speech::after[\s\S]{0,200}border-right-color/.test(html));
+/* One face per RUN of messages. A column of five identical faces down the
+   side of a panel is a sheet of stickers, not somebody talking. */
+ok('the face is drawn once per run of replies, not once per bubble',
+   /chungSays\(b, !prev \|\| prev\.who === 'me'/.test(html));
+ok('…and once per hint card rather than once per rung',
+   /chungSays\(txt, ri === 0\)/.test(html));
 
 
 console.log('\n' + (failures
