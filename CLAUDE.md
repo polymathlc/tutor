@@ -738,7 +738,77 @@ differently from a block of prose.
   four sibling apps read that word — renaming the app would attribute every
   note it has ever written to an app none of them has heard of.
 
+## ✏️ Practising the mistakes, and the sheet they print as (v1.4.0)
+
+`pracSel` / `mistakesShown` / `pracPruneSel` / `pracSelectedIds` / `pracStart`
+/ `pracCheck` / `pracRender` / `PRAC_SYS` / `mwsLines` / `mwsBuild` /
+`mwsExport` / **`printThis`** (search `PRACTISING THE MISTAKES` and `THE
+PRINTED WORKSHEET`), plus `#pracModal`, `#mistSheet` and the `.prac*` /
+`.mws*` CSS.
+
+A mistake book that can only be READ is a list of everything a student has
+ever got wrong, which is a list nobody opens twice. What empties it is doing
+the questions again — so the book is worked through here, one question at a
+time, or printed as a worksheet and done on paper.
+
+- **THE ANSWER IS NOT ON SCREEN UNTIL THEY HAVE ANSWERED.** It is right there
+  on the card in the book, which is fine for looking something up and useless
+  for practice: a question shown next to its own answer is a question nobody
+  attempts. `prac.revealed` is the one flag that decides it.
+- **"All" means every card the student can SEE.** `mistakesShown()` is the ONE
+  place that set is worked out — the filter chips decide it — and the buttons
+  say which. Practising or printing questions hidden behind a filter is the
+  one outcome nobody could have predicted from the button they pressed.
+- **The ticks are pruned on every render** (`pracPruneSel`), not in each of
+  the paths that can remove a card. "3 selected" outliving the cards it
+  counted is how the wrong questions end up on the sheet.
+- **A blank retry is never marked wrong**, the same rule the marking has
+  carried since it shipped: it has simply not been attempted, and marking one
+  would be the app telling a child they failed a question they never tried.
+- **A correct retry files the mistake under Sorted then and there**, because
+  getting it right is what the book is FOR — and the card's own ↩︎ puts it
+  straight back, which is what makes that safe.
+- **What the question is WORTH, never what it scored.** `pracWorth` shows the
+  total; last time's "0 out of 2" hanging over the retry is the one thing on
+  that screen that could put a child off starting.
+- **The typed answer lives on the SESSION, not in the textarea.** The body is
+  rebuilt on every render, so pressing Check would otherwise wipe the answer
+  being checked the moment the "Marking…" state repaints.
+
+### The printed worksheet
+
+- **"Export as a PDF" is the browser's own Save as PDF, reached through
+  print.** There is no PDF *writer* in this app — pdf.js reads them — and
+  adding one is a third of a megabyte of library for a button every browser
+  and every phone already has.
+- **`printThis(el)` is the ONE door, and the stylesheet keys off `.printMe`
+  rather than an id.** Naming the report by its id worked while it was the
+  only printable thing in the app and hid the worksheet the moment there were
+  two.
+- **Every picture is AWAITED before the dialog opens.** `window.print()` does
+  not wait for an `<img>`, so a sheet printed the instant it is built comes
+  out with the questions missing and a student holding a page of ruled lines.
+  A picture that will not load takes itself off the sheet and the question
+  falls back to its wording.
+- **The ruled space is sized by what the question was worth** (`mwsLines`),
+  floored at two lines and capped at six — a 4-mark answer given two lines is
+  as wrong as a 1-mark answer given a page.
+- The answer key breaks to its **own page**, so the sheet can be handed over
+  without it.
+
 ## House rules
+- After touching **✏️ practising the mistakes or the printed sheet**
+  (`pracSel`, `mistakesShown`, `pracPruneSel`, `pracSelectedIds`, `pracStart`,
+  `pracCheck`, `pracRender`, `pracWorth`, `PRAC_SYS`, `mwsLines`, `mwsBuild`,
+  `mwsExport`, `printThis`, or the `.printMe` print rule), run
+  `node tools/tutor-tests.mjs` **and print one sheet to PDF to look at it**.
+  Every failure is silent and the button still works. A tick that survives a
+  filter change puts a question on the sheet the student never chose; a
+  selection that is not pruned practises a card that is no longer there. The
+  answer revealed before the question has been attempted turns practice into
+  reading. A blank marked wrong is the one mistake this whole app is built not
+  to make. And the pictures not awaited is the quietest of them: the dialog
+  opens, the sheet prints, and the questions are simply not on it.
 - After touching **📊 the report, the marks or the ticks on the page**
   (`MARK_TOPIC_RULE`, `MARK_MARKS_RULE`, `MARK_WHERE_RULE`, `_markPair`,
   `markPairOf`, `_markAt`, `markMarkTally`, `reportTopicKey`, `reportTopics`,

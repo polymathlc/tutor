@@ -12,6 +12,50 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.4.0 — the mistake book can be practised, and printed
+
+A mistake book that can only be **read** is a list of everything a student has ever
+got wrong, which is a list nobody opens twice. What empties it is doing the
+questions again.
+
+### ✏️ Practise
+
+Every card now has a **Practise this** tick, and above them: **Practise all**,
+**Practise the ones you picked**, and a worksheet button.
+
+A session takes them one at a time — the question and its picture, a box to write
+in, and **the answer stays hidden until it has been answered**. It is right there
+on the card in the book, which is fine for looking something up and useless for
+practice: a question shown next to its own answer is a question nobody attempts.
+
+Chung GPT marks the retry and says what has **improved** as well as what is still
+missing. A **correct** retry files the mistake under Sorted then and there — that
+is what the book is for — and the card's own ↩︎ puts it straight back.
+
+- **"All" means every card you can SEE.** The filter chips decide it and the
+  buttons say which. Practising questions hidden behind a filter is the one
+  outcome nobody could predict from the button they pressed.
+- **A blank retry is never marked wrong**, the same rule the marking has carried
+  since it shipped.
+- The chip shows what the question is **worth**, not what it scored last time —
+  "0 out of 2" hanging over a retry is the one thing that could put a child off
+  starting.
+
+### 🖨 A worksheet to print
+
+The picked questions (or all of them) come out as a printed sheet: name, date and
+score fields, each question with **its own picture from the paper it came from**,
+and ruled writing space **sized by what the question was worth**. The answers
+break to their own page, so the sheet can be handed over without them.
+
+"Export as a PDF" is the browser's own **Save as PDF**, reached through print —
+there is no PDF *writer* in this app, and adding one would be a third of a
+megabyte of library for a button every browser and every phone already has.
+
+**Every picture is awaited before the dialog opens.** `window.print()` does not
+wait for an image, so a sheet printed the instant it is built comes out with the
+questions missing and a student holding a page of ruled lines.
+
 ## v1.3.0 — a report, marks on the paper, and a face for Chung GPT
 
 ### 📊 The report
