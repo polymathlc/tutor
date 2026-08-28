@@ -616,7 +616,155 @@ that already has words in it — and passes only inside half a page unit.
 - Like scan's `mobile-check`, it needs `playwright-core` and the Chromium
   already on the machine, so it is a tool you reach for rather than a gate.
 
+## 📊 The report, and the ticks on the page (v1.3.0)
+
+`MARK_TOPIC_RULE` / `MARK_MARKS_RULE` / `MARK_WHERE_RULE` / `_markPair` /
+`markPairOf` / `_markAt` / `markMarkTally` / `reportTopicKey` / `reportTopics`
+/ `reportLost` / `reportRevise` / `markPinFor` / `renderMarksOn` /
+`renderReport` / `reportAsText` (search `THE REPORT` and `The MARKS on the
+page`), plus `#reportModal` and the `.rep*` / `.markPin` CSS.
+
+The marking cards answer *"how did I do on question 12"*. They cannot answer
+the two questions a student and a parent actually have — **how many marks**,
+and **what do I go and revise** — because those are questions about the paper
+as a whole, and thirty cards is not a whole.
+
+- **THE TOPIC CAN ONLY COME FROM THE MARKING READ ITSELF.** This app has no
+  question bank and no syllabus list: it is handed a PDF nobody has ever seen
+  before. So `"topic"` and `"objective"` are asked for per question in the
+  same call that marks it — no second pass, no extra cost.
+- **The one instruction that makes them worth having is the one about
+  CONSISTENCY.** The report GROUPS by topic, so a model that names one topic
+  five slightly different ways reports five topics with one question each and
+  tells the student nothing at all. `MARK_TOPIC_RULE` names that consequence
+  in the prompt, and `reportTopicKey` catches the times it does not listen.
+- **A question the marking could not place is SHOWN, under its own heading**,
+  and never quietly filed under a topic somebody else's question is in. It is
+  also **always last** on the revise list however much was lost on it: *"go
+  and revise Not labelled"* is not advice anybody can act on.
+- **EVERYTHING IN THE REPORT IS PLAIN CODE.** There is no second AI call and
+  there must never be one — the same marked paper has to produce the same
+  report every time it is opened, and a model asked to summarise its own
+  marking talks itself into a different total. Same rule as `akcCompare` in
+  the Maths app and `reportScore` in Scan & Answer.
+- **The ranking is by what was LOST, then by the rate**, because three wrong
+  out of six is more work than one out of one — and **both numbers are
+  printed on the row**, so a student can check the order rather than being
+  asked to trust it. A partial counts half: it is half a misunderstanding.
+- **A topic nobody attempted is UNTRIED, not weak**, and gets its own line. A
+  topic that went perfectly is named as a strength — a report that only ever
+  lists failures is one nobody opens twice.
+
+### The marks
+
+- **`MARK_MARKS_RULE` works out an allocation for EVERY question**, because a
+  marked paper without marks on it is a paper a student cannot read. What the
+  paper prints always wins; the defaults are only for a paper that prints
+  nothing, and **a science MCQ being 2 marks is this centre's own
+  convention** rather than anything a model would know.
+- **`_markPair` settles every contradiction ON THE WAY IN, once.** A correct
+  answer earns the lot, a wrong one earns nothing, a blank earns nothing, and
+  a partial earns something that is neither — an answer that earns neither is
+  not a partial one. Doing it at each of the places that SHOW the marks is
+  how the chip ends up saying "partly right" beside a number saying "wrong".
+- **`markPairOf` is a plain re-read and re-applies none of it**, or a
+  worksheet would quietly re-mark itself every time it was opened.
+- **The marks are the one thing that survives a blank**, and that is not an
+  exception to "a blank is never marked wrong": "0 out of 2" is the
+  allocation the paper printed, not a judgement on an answer nobody wrote.
+  The verdict, the feedback and the cross all still stand down.
+- **Two totals appear on one page and both are labelled.** The headline is
+  what was earned out of what was ATTEMPTED; the table's foot is every mark
+  printed on the paper. Unlabelled they read as a contradiction.
+
+### The ticks and crosses
+
+- **THEY ARE NOT ANNOTATIONS, and that is the load-bearing part.** They are
+  not in `annotations`, so they cannot be dragged, erased or undone, they are
+  not saved into the body, and — the one that matters — `drawAnnsOnCtx` never
+  draws them. Put a tick in `annotations` and the next marking run reads a
+  page already covered in ticks, agrees with them, and no screen anywhere
+  says why the second marking is so much kinder than the first.
+- **`renderMarking` is the ONE hook**, because it is the function every path
+  that changes the marking already calls — including the early return that
+  empties the list, or the last run's ticks stay on the page.
+- **The position is a POINT, 0–1000, and it is NEVER clamped.** Out of range
+  comes back null and no tick is drawn: a clamped point is a guess, and a
+  tick against the wrong question is worse than no tick — which is what the
+  prompt says too.
+- **The symbol carries the verdict and the colour only reinforces it.** A
+  partial is a tick whose NUMBER makes it a partial, so a mono printer and a
+  reader who cannot tell red from green both still get the answer. The
+  report's table follows the same rule, which is why every row prints the
+  word as well as the colour.
+- A blank gets **no pin at all**, with or without a position.
+
+## 🤖 Chung GPT has a face (v1.3.0)
+
+`CHUNG_SVG` / `chungAvatar` / `chungSays` / `renderChungHead` (search
+`CHUNG GPT'S FACE`), and the `.chungAv` / `.cg*` / `.speech` CSS.
+
+The assistant had a name and no face, so every hint arrived as a paragraph of
+grey text. A child working alone at a table reads a face answering them very
+differently from a block of prose.
+
+- **IT IS INLINE SVG, drawn in code**, for exactly the reason the logo
+  carries an inline-SVG fallback: this app is opened on school wifi and on
+  iPads in Lockdown Mode, and a picture that 404s leaves a broken-image icon
+  beside every single thing the assistant says. Drawn, it costs no request,
+  it is sharp at every size, and it animates.
+- **`chungAvatar()` IS THE ONE PLACE THE FACE IS DRAWN** — the panel head, the
+  head of a hint, beside a chat reply and on a marked question's feedback.
+  Four surfaces, one face.
+- **NO `id`, NO GRADIENT, NO FILTER ANYWHERE IN THE DRAWING.** The avatar is
+  on screen a dozen times at once, and an `id` repeated a dozen times means
+  every `url(#…)` after the first resolves against the wrong element — which
+  the Science app's own hero art documents at length. Flat fills only.
+- **The face is drawn once per RUN of messages** (`chungSays(node, withFace)`),
+  the way every chat app does it: a column of five identical faces down the
+  side of a panel is a sheet of stickers, not somebody talking. The
+  alignment is kept either way, so the bubbles stay in one column.
+- **`transform-box: fill-box` is what makes the blink work.** Without it
+  `transform-origin: top` means the top of the whole 64-unit canvas rather
+  than the top of the lid, and the eyelid slides down the face instead of
+  closing over the eye.
+- **`mood` is a class, not a different drawing** — `thinking` while a call is
+  in flight, `happy` beside a correct answer. And it is a **transform**, never
+  the CSS `d:` property: `d: path(...)` is Chromium and Safari only, so the
+  first version smiled in Chrome and nowhere else.
+- Everything that moves stops under `prefers-reduced-motion`.
+- **The PRODUCT is still Study Buddy; the assistant in it is Chung GPT.**
+  `noteSourceLabel` writes `'Study Buddy'` into the shared notebook and the
+  four sibling apps read that word — renaming the app would attribute every
+  note it has ever written to an app none of them has heard of.
+
 ## House rules
+- After touching **📊 the report, the marks or the ticks on the page**
+  (`MARK_TOPIC_RULE`, `MARK_MARKS_RULE`, `MARK_WHERE_RULE`, `_markPair`,
+  `markPairOf`, `_markAt`, `markMarkTally`, `reportTopicKey`, `reportTopics`,
+  `reportLost`, `reportTried`, `reportRevise`, `markPinFor`, `renderMarksOn`,
+  `renderReport`, `reportAsText`, or `_markNewItem`'s new fields), run
+  `node tools/tutor-tests.mjs`. Every failure here is silent and the report
+  still prints. A topic named five ways is five topics with one question each,
+  which is a revise list that tells a student nothing while looking complete.
+  A partial counted whole puts a topic they nearly have above one they do not
+  have at all. Marks settled at the places that SHOW them rather than once on
+  the way in is a chip reading "partly right" beside a number reading
+  "wrong". A blank whose marks are dropped loses the allocation the paper
+  printed; a blank that gets a CROSS is the one mistake this whole app is
+  built not to make. A position that is clamped instead of refused puts a tick
+  against the wrong question. And a tick that ends up in `annotations` is read
+  by the NEXT marking run as the student's own work — the paper marks itself
+  kinder every time, and nothing anywhere says why.
+- After touching **🤖 Chung GPT's face** (`CHUNG_SVG`, `chungAvatar`,
+  `chungSays`, `renderChungHead`, or any `.chungAv` / `.cg*` / `.speech`
+  rule), run `node tools/tutor-tests.mjs` **and look at it in a browser** —
+  a drawing is the one thing reading the source cannot check. An `id` in the
+  SVG is invisible on the first copy and breaks every copy after it. A blink
+  without `transform-box: fill-box` slides an eyelid down the face. A `d:
+  path()` smile works in Chrome and nowhere else. A face per bubble instead
+  of per run is a column of stickers. And a `.speech` that stops supplying
+  its own background is a stray triangle beside some plain text.
 - After touching **📏 the size control or 💾 auto-save** (`ANN_SIZE_KINDS`,
   `annSizeTarget`, `annSizeKind`, `annSizeValue`, `annSizeClamp`,
   `highlightWidthFor`, `setAnnSize`, `annFitTextHeight`, `syncSizeCtl`,

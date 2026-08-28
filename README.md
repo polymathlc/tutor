@@ -12,6 +12,82 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.3.0 — a report, marks on the paper, and a face for Chung GPT
+
+### 📊 The report
+
+Marking finishes and there is now a **📊 My report** button. Every question in
+one table — its topic, what it was testing, what you wrote, what it earned and
+whether it was right — **green, amber or red**, and then a **what to revise**
+list underneath.
+
+- **The topic comes from the marking read itself.** This app has no question
+  bank and no syllabus list: it is handed a PDF nobody has ever seen before, so
+  the topic and the learning objective are asked for in the same call that
+  marks the question. No second pass, no extra cost.
+- **The one instruction that makes them worth having is about consistency.**
+  The report groups by topic, so a model naming one topic five slightly
+  different ways would report five topics with one question each and tell the
+  student nothing at all.
+- **Everything in the report is plain code.** No second AI call, ever — the
+  same marked paper has to give the same report every time it is opened.
+- **Ranked by what was LOST, then by the rate**, because three wrong out of six
+  is more work than one out of one; a partial counts half. Both numbers are
+  printed on the row, so the order can be checked rather than trusted.
+- A topic **nobody attempted** is untried, not weak, and says so. A topic that
+  went **perfectly** is named as a strength. A question the marking could not
+  place is shown under its own heading and always last — *"go and revise Not
+  labelled"* is not advice anybody can act on.
+- It **prints** (a report is a thing a parent reads) and **copies** as text.
+  The colours are forced through on paper, and every row carries the word as
+  well as the colour, so a mono printer and a colour-blind reader both still
+  get the answer.
+
+### ✓ Ticks and crosses on the worksheet itself
+
+The marking used to live only in a side panel. Now the paper comes back with
+**red and green on it**: a tick, a half-tick or a cross at the point where each
+answer was written, **with the marks beside it**.
+
+- **They are not annotations.** They cannot be dragged, erased or undone, and —
+  the one that matters — they are never drawn into the picture the marker
+  re-reads. A tick in with the student's own ink would have the next marking
+  run agree with it, and no screen anywhere would say why the second marking
+  was so much kinder than the first.
+- A **blank gets no cross**, with or without a position — the rule this app has
+  had since it shipped.
+- The position is refused rather than guessed when the marking cannot place it:
+  a tick against the wrong question is worse than no tick.
+- ✓ **Ticks on the page** turns them off.
+
+### 🔢 Real marks
+
+Every question now gets an allocation. **What the paper prints always wins** —
+`[2]`, `(2 marks)`, a figure in the margin. Where it prints nothing, a
+**science MCQ is 2 marks** (this centre's convention) and an open question is
+worth one mark per marking point.
+
+A correct answer earns the lot, a wrong one earns nothing, a partial earns
+something that is neither, and all of that is settled once when the marking
+arrives rather than at each of the places that show it. The marks survive a
+blank — "0 out of 2" is the allocation the paper printed, not a judgement on an
+answer nobody wrote.
+
+### 🤖 Chung GPT has a face
+
+The assistant had a name and no face, so every hint arrived as a paragraph of
+grey text. Now there is a friendly avatar — **drawn in code as inline SVG**, so
+it costs no request at all, stays sharp at every size and works on a school
+network and on an iPad in Lockdown Mode. It blinks, it breathes, it tilts while
+it is thinking, and **the hints and answers come out of it in speech bubbles**.
+
+One face, drawn in one place, on four surfaces: the panel head, the head of a
+hint, beside a chat reply and on a marked question's feedback. It appears once
+per run of messages rather than once per bubble — a column of five identical
+faces is a sheet of stickers, not somebody talking.
+
+The **product** is still Study Buddy; the **assistant** in it is Chung GPT.
+
 ## v1.2.1 — the caret check, audited
 
 Nothing on the screen changed. The harness that decides whether the caret is on the pointer was

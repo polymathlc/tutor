@@ -34,6 +34,14 @@
     --line: #ECECEA;
     --danger: #E53935;
     --ok: #43A047;
+    /* The three verdict colours, named once. The tick on the page, the row
+       in the report's table and the revise card all read them from here —
+       three places painting "wrong" three slightly different reds is exactly
+       the drift a token exists to stop. Nothing anywhere relies on the
+       colour ALONE: every one of those surfaces prints the word too. */
+    --v-ok: #2E7D32;   --v-ok-bg: #EAF6EA;
+    --v-half: #B26A00; --v-half-bg: #FFF4E2;
+    --v-no: #C62828;   --v-no-bg: #FDEDED;
     --radius: 16px;
     --radius-sm: 11px;
     --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.06);
@@ -337,6 +345,25 @@
   @keyframes pinpulse { 0%,100% { box-shadow: 0 0 0 0 rgba(232,165,75,.55); } 50% { box-shadow: 0 0 0 8px rgba(232,165,75,0); } }
   @media (prefers-reduced-motion: reduce) { .hintPin.working { animation: none; } }
 
+  /* ---------- The marks on the page ----------
+     The paper coming back with red and green on it. The SYMBOL carries the
+     verdict and the colour only reinforces it — a marked sheet printed on a
+     mono printer, or read by anyone who cannot tell the red from the green,
+     still says which is which, and a partial is a tick whose NUMBER is what
+     makes it a partial. */
+  .markPin {
+    display: inline-flex; align-items: center; gap: 0.34em; white-space: nowrap;
+    padding: 0 0.42em; border-radius: 999px; font-family: var(--font); font-weight: 700;
+    line-height: 1; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.22);
+    border: 2px solid currentColor; background: #fff;
+  }
+  .markPin b { font-size: 1.15em; line-height: 1; }
+  .markPin span { font-size: 0.78em; font-weight: 700; opacity: .95; }
+  .markPin.ok   { color: var(--v-ok);   background: var(--v-ok-bg); }
+  .markPin.half { color: var(--v-half); background: var(--v-half-bg); }
+  .markPin.no   { color: var(--v-no);   background: var(--v-no-bg); }
+  .markPin:hover { filter: brightness(0.97); }
+
   /* ---------- The buddy panel ----------
      The study buddy sits beside the worksheet on a tablet or a laptop and
      slides up from the bottom on a phone. It is the same panel either way —
@@ -424,6 +451,18 @@
   .verdict.mWrong { background: #FCEDEB; color: #8C2E1D; border-color: #EFC6BF; }
   .verdict.mBlank { background: var(--bg-soft); color: var(--ink-faint); border-color: var(--line); }
   .ansMarks { font-size: 0.73rem; font-weight: 700; color: var(--ink-soft); }
+  .ansMarks.avail { font-weight: 400; color: var(--ink-faint); }
+  .ansTopic {
+    font-size: 0.73rem; font-weight: 700; color: var(--ink-soft);
+    background: var(--bg-soft); border: 1px solid var(--line); border-radius: 999px;
+    padding: 3px 10px; align-self: flex-start; margin-bottom: 10px;
+  }
+  .scoreLine {
+    font-size: 0.95rem; color: var(--ink-soft); margin-bottom: 12px;
+  }
+  .scoreLine b { font-size: 1.3rem; color: var(--ink); }
+  .scoreLine span { font-size: 0.78rem; color: var(--ink-faint); }
+  .markTools { margin: 14px 0 4px; }
   .youBox, .ansBox, .whyBox {
     margin-top: 12px; padding: 12px 14px; border-radius: var(--radius-sm);
     background: var(--bg-soft); border: 1px solid var(--line);
@@ -461,7 +500,9 @@
     white-space: pre-wrap; word-break: break-word;
   }
   .bubble.me { align-self: flex-end; background: var(--accent); border: 1px solid var(--accent-strong); }
-  .bubble.buddy { align-self: flex-start; background: var(--bg-soft); border: 1px solid var(--line); color: var(--ink-soft); }
+  .bubble.buddy { background: var(--bg-soft); border: 1px solid var(--line); color: var(--ink-soft); }
+  .chatThread .chungRow { align-self: flex-start; max-width: 94%; }
+  .chatThread .bubble.buddy { max-width: none; }
   .bubble.pending { color: var(--ink-faint); font-style: italic; }
   .chatRow { display: flex; gap: 9px; align-items: flex-end; }
   .chatRow textarea {
@@ -518,6 +559,178 @@
     pointer-events: none; display: none;
   }
   .cropWin.on { display: block; }
+
+  .boxLabel.withFace { display: flex; align-items: center; gap: 7px; }
+  .boxLabel.withFace .chungAv { width: 20px; height: 20px; }
+
+  /* ---------- Chung GPT ----------
+     The face is drawn in code (see CHUNG_SVG) and everything that moves is
+     here, so the drawing stays a drawing. */
+  .chungAv {
+    flex: none; width: 30px; height: 30px; border-radius: 50%; overflow: hidden;
+    background: #FFF1DC; box-shadow: 0 1px 3px rgba(0,0,0,.16);
+  }
+  .chungAv.chungGap { background: none; box-shadow: none; }
+  .cgSvg { display: block; width: 100%; height: 100%; }
+
+  /* A breath, not a bounce. The whole point is that it reads as alive out of
+     the corner of the eye while a child is reading the words beside it — big
+     enough to see and it becomes the thing being read instead. */
+  .cgFace { animation: cgBob 4.4s ease-in-out infinite; transform-origin: 50% 100%; }
+  @keyframes cgBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-0.7px); } }
+
+  /* THE BLINK. The lid is a skin-coloured rectangle sitting over the eye,
+     scaled from nothing to its full height and back — `transform-box:
+     fill-box` is what makes `transform-origin: top` mean the top of the
+     RECTANGLE rather than the top of the whole 64-unit canvas, without which
+     the lid slides down the face instead of closing over the eye. */
+  .cgLid {
+    transform-box: fill-box; transform-origin: top center;
+    transform: scaleY(0); animation: cgBlink 5.6s infinite;
+  }
+  .cgSvg .cgEye:last-of-type .cgLid { animation-delay: .04s; }
+  @keyframes cgBlink {
+    0%, 94%, 100% { transform: scaleY(0); }
+    96%, 97.6% { transform: scaleY(1); }
+  }
+
+  /* Thinking: a slow nod, and the blinking speeds up. Happy: a wider smile
+     and a little lift. Both are the same drawing. */
+  .chungAv.thinking .cgFace { animation: cgThink 1.5s ease-in-out infinite; }
+  @keyframes cgThink { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
+  .chungAv.thinking .cgLid { animation-duration: 2.4s; }
+  .chungAv.happy .cgMouth {
+    transform-box: fill-box; transform-origin: center top; transform: scale(1.12, 1.35);
+  }
+  .chungAv.happy .cgFace { animation: cgHappy 2.6s ease-in-out infinite; }
+  @keyframes cgHappy { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.4px); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cgFace, .cgLid, .chungAv.thinking .cgFace, .chungAv.happy .cgFace { animation: none; }
+    .cgLid { transform: scaleY(0); }
+  }
+
+  /* THE SPEECH BUBBLE. Two triangles rather than one: the outer draws the
+     border, the inner sits a hair inside it and draws the fill, which is the
+     only way to get a tail with a 1px outline on it in CSS. */
+  .chungRow { display: flex; gap: 9px; align-items: flex-start; }
+  .chungRow + .chungRow { margin-top: 9px; }
+  .speech {
+    position: relative; flex: 1; min-width: 0;
+    background: var(--bg-soft); border: 1px solid var(--line);
+    border-radius: 14px; padding: 11px 14px; margin-top: 0;
+  }
+  .speech::before, .speech::after {
+    content: ''; position: absolute; top: 12px; width: 0; height: 0;
+    border: 7px solid transparent; border-left: 0;
+  }
+  .speech::before { left: -7px; border-right-color: var(--line); }
+  .speech::after { left: -5.6px; border-right-color: var(--bg-soft); }
+  .chungRow.noFace .speech::before, .chungRow.noFace .speech::after { display: none; }
+
+  /* The panel's own head, so the student can see who they are talking to
+     before anyone has said anything. */
+  .bWho { display: flex; align-items: center; gap: 9px; min-width: 0; }
+  .bWho .chungAv { width: 34px; height: 34px; }
+  .bWhoName { font-weight: 700; line-height: 1.2; }
+  .bWhoSub { font-size: 0.68rem; color: var(--ink-faint); line-height: 1.2; }
+
+  /* ---------- The report ---------- */
+  .repHead { margin-bottom: 18px; }
+  .repTitle { font-size: 1.2rem; font-weight: 700; line-height: 1.35; }
+  .repWhen { font-size: 0.8rem; color: var(--ink-faint); margin-top: 5px; }
+  .repScore {
+    border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--bg-soft); padding: 20px 22px; margin-bottom: 26px;
+  }
+  .repBig { font-size: 2.1rem; font-weight: 700; line-height: 1.15; }
+  .repBigSub { font-size: 0.82rem; color: var(--ink-soft); margin-top: 6px; }
+  .repCounts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .repCount {
+    font-size: 0.74rem; font-weight: 700; padding: 4px 11px; border-radius: 999px;
+    border: 1px solid currentColor;
+  }
+  .repCount.vOk    { color: var(--v-ok);   background: var(--v-ok-bg); }
+  .repCount.vHalf  { color: var(--v-half); background: var(--v-half-bg); }
+  .repCount.vNo    { color: var(--v-no);   background: var(--v-no-bg); }
+  .repCount.vBlank { color: var(--ink-faint); background: var(--bg); }
+  .repH { font-size: 1rem; font-weight: 700; margin: 26px 0 12px; }
+
+  /* A six-column table on a phone is a table nobody can read, so it scrolls
+     inside its OWN box rather than making the whole window scroll sideways. */
+  .repScroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-sm); }
+  .repTable { width: 100%; border-collapse: collapse; font-size: 0.8rem; min-width: 720px; }
+  .repTable th {
+    text-align: left; font-weight: 700; font-size: 0.72rem; color: var(--ink-faint);
+    padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  .repTable td { padding: 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .repRow { border-left: 4px solid transparent; }
+  .repRow.vOk    { border-left-color: var(--v-ok); }
+  .repRow.vHalf  { border-left-color: var(--v-half); }
+  .repRow.vNo    { border-left-color: var(--v-no); }
+  .repRow.vBlank { border-left-color: var(--line); }
+  .repRow.vOk td    { background: var(--v-ok-bg); }
+  .repRow.vHalf td  { background: var(--v-half-bg); }
+  .repRow.vNo td    { background: var(--v-no-bg); }
+  .repQn { font-weight: 700; white-space: nowrap; }
+  .repQ { max-width: 260px; color: var(--ink-soft); }
+  .repTopic { max-width: 200px; }
+  .repTopicName { font-weight: 700; }
+  .repObj { font-size: 0.72rem; color: var(--ink-faint); margin-top: 3px; }
+  .repYou { max-width: 180px; }
+  .repMarks { font-weight: 700; white-space: nowrap; text-align: right; }
+  .repVerdict { font-weight: 700; white-space: nowrap; }
+  .repVerdict.vOk { color: var(--v-ok); }
+  .repVerdict.vHalf { color: var(--v-half); }
+  .repVerdict.vNo { color: var(--v-no); }
+  .repVerdict.vBlank { color: var(--ink-faint); }
+  .repTotal td { font-weight: 700; border-top: 2px solid var(--ink); background: var(--bg); }
+
+  .repTopicCard {
+    border: 1px solid var(--line); border-left: 4px solid var(--v-no);
+    border-radius: var(--radius-sm); padding: 16px 18px; margin-bottom: 12px; background: var(--bg);
+  }
+  .repTopicHead { display: flex; align-items: center; gap: 11px; }
+  .repRank {
+    flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--v-no-bg); color: var(--v-no); font-weight: 700; font-size: 0.75rem;
+  }
+  .repTopicTitle { flex: 1; min-width: 0; font-weight: 700; }
+  .repTopicScore { font-size: 0.75rem; color: var(--ink-faint); font-weight: 700; white-space: nowrap; }
+  .repTopicWhy { font-size: 0.76rem; color: var(--ink-soft); margin: 8px 0 0 35px; }
+  .repObjList { margin: 10px 0 0 35px; padding-left: 18px; font-size: 0.82rem; color: var(--ink-soft); }
+  .repObjList li { margin-bottom: 4px; }
+  .repTopicQs { font-size: 0.76rem; font-weight: 700; color: var(--ink-soft); margin: 10px 0 0 35px; }
+  .repNote {
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 14px 16px; margin-bottom: 12px; font-size: 0.84rem; color: var(--ink-soft);
+    background: var(--bg-soft);
+  }
+  .repNote.repGood { border-left: 4px solid var(--v-ok); background: var(--v-ok-bg); }
+
+  /* A report is a thing a parent reads, so it prints. Everything else on the
+     page is taken out, the window stops being a window, and the colours are
+     forced through — a browser drops backgrounds by default, and without
+     them the three verdicts print as three identical rows. The WORD is on
+     every row anyway, which is what makes that safe rather than essential. */
+  @media print {
+    html, body { height: auto; overflow: visible; background: #fff; }
+    body > *:not(#reportModal) { display: none !important; }
+    #reportModal { position: static; display: block !important; padding: 0; background: none; }
+    #reportModal .modalCard {
+      max-width: none; max-height: none; width: auto; box-shadow: none; border-radius: 0; display: block;
+    }
+    #reportModal .modalHead { border: 0; padding: 0 0 12px; }
+    #reportModal .modalBody { overflow: visible; padding: 0; }
+    #reportModal .modalFoot { display: none !important; }
+    .repScroll { overflow: visible; }
+    .repTable { min-width: 0; font-size: 9pt; }
+    .repTable tr, .repTopicCard, .repNote { page-break-inside: avoid; }
+    .repRow td, .repCount, .repRank, .repNote.repGood {
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+  }
 
   /* ---------- Modals ---------- */
   .modalBack {
@@ -652,7 +865,7 @@
       <main>
 
         <div class="card hidden" id="signedOutCard">
-          <h2>Your study buddy, on your own worksheets</h2>
+          <h2>Chung GPT, on your own worksheets</h2>
           <p class="sub" style="margin-top:8px">
             Upload a worksheet as a PDF and work through it here. <span class="aiName">Chung GPT</span> gives you
             hints — what the question is really asking, the concept behind it, the keywords your answer needs —
@@ -670,7 +883,7 @@
               <h2>📌 Set for you</h2>
             </div>
             <p class="sub" style="margin:0 4px 16px">
-              Worksheets your teacher has set. Start one and you get your own copy to write on — your buddy
+              Worksheets your teacher has set. Start one and you get your own copy to write on — Chung GPT
               already has its answer key, so it can mark you against the real thing.
             </p>
             <div id="assignList"></div>
@@ -750,8 +963,8 @@
         <!-- The study buddy -->
         <aside id="buddy">
           <div class="buddyHead">
-            <span class="bTitle">💬 Your study buddy</span>
-            <button class="btn btnSm btnGhost" id="buddyClose" title="Hide the buddy">✕</button>
+            <div class="bWho" id="bWho"></div>
+            <button class="btn btnSm btnGhost" id="buddyClose" title="Hide Chung GPT">✕</button>
           </div>
           <div class="buddyTabs">
             <button class="bTab on" data-bpane="hints">💡 Hints</button>
@@ -782,7 +995,7 @@
           <div class="buddyFoot" id="buddyFoot"></div>
         </aside>
 
-        <button class="btn btnPrimary" id="buddyFab">💬 Buddy</button>
+        <button class="btn btnPrimary" id="buddyFab">💬 Ask Chung GPT</button>
         <!-- Painted by renderVoiceBar(); empty and hidden until the mic is on. -->
         <div id="voiceBar" role="status" aria-live="polite"></div>
       </div>
@@ -834,14 +1047,14 @@
 
       <h3 style="margin-top:24px;font-size:1rem;font-weight:700">How much help would you like?</h3>
       <p class="hint" style="margin-top:5px">
-        This is the furthest the buddy will ever go on this worksheet. It always starts with the smallest hint
+        This is the furthest Chung GPT will ever go on this worksheet. It always starts with the smallest hint
         and only goes further when you ask it to.
       </p>
       <div class="gradeGrid" id="upGradeGrid"></div>
 
       <h3 style="margin-top:24px;font-size:1rem;font-weight:700">🔑 Does it have an answer key?</h3>
       <p class="hint" style="margin-top:5px">
-        If the answers are printed at the back, your buddy finds those pages and <b>puts them away</b> — you
+        If the answers are printed at the back, Chung GPT finds those pages and <b>puts them away</b> — you
         will not see them, and they are not marked. Attach a separate marking scheme here if you have one; it
         is never shown on screen, only used to mark you and to aim the hints.
       </p>
@@ -872,9 +1085,9 @@
     <div class="modalHead"><h2>🔑 The answer key</h2></div>
     <div class="modalBody">
       <p class="sub">
-        An answer key is for your buddy, not for you. Any page ticked here is <b>taken out of your
+        An answer key is for Chung GPT, not for you. Any page ticked here is <b>taken out of your
         worksheet</b> — you will not see it, it is not marked, and it never turns up in your mistake book —
-        and it is read once so your buddy can mark against it and aim its hints. How much of a hint you are
+        and it is read once so Chung GPT can mark against it and aim its hints. How much of a hint you are
         told is still decided by the help level, exactly as before.
       </p>
       <div class="keyState" id="keyState"></div>
@@ -903,7 +1116,7 @@
     <div class="modalHead"><h2>How much help?</h2></div>
     <div class="modalBody">
       <p class="sub">
-        The buddy always starts with the smallest hint. This says how far it is allowed to go on this worksheet
+        Chung GPT always starts with the smallest hint. This says how far it is allowed to go on this worksheet
         when you keep asking for more.
       </p>
       <div class="gradeGrid" id="gradeGrid"></div>
@@ -984,6 +1197,24 @@
   </div>
 </div>
 
+<!-- ============ The report ============
+     The marked paper read as a whole: every question with its topic, what it
+     earned, and what the topics say to go and revise. Printable, because a
+     report is a thing a parent reads. -->
+<div class="modalBack" id="reportModal">
+  <div class="modalCard tnWide">
+    <div class="modalHead">
+      <h2>📊 My report</h2>
+    </div>
+    <div class="modalBody" id="reportBody"></div>
+    <div class="modalFoot">
+      <button class="btn" id="repCopy">📋 Copy</button>
+      <button class="btn" id="repPrint">🖨 Print</button>
+      <button class="btn btnPrimary" id="repClose">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ AI engine (admin only) ============ -->
 <div class="modalBack" id="engineModal">
   <div class="modalCard">
@@ -1039,7 +1270,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.2.1';
+var APP_VERSION = 'v1.3.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -1334,6 +1565,7 @@ function aiVendorName() {
 }
 window.aiVendorName = aiVendorName;
 function refreshAiEngineNames() {
+  renderChungHead();
   var name = aiEngineName();
   var spans = document.querySelectorAll('.aiName');
   for (var i = 0; i < spans.length; i++) spans[i].textContent = name;
@@ -1966,6 +2198,7 @@ function applyScale() {
   });
   updateToolCursor();
   syncHintPinSizes();
+  syncMarkPins();
   scheduleRaster();
 }
 function scheduleRaster() {
@@ -2089,6 +2322,7 @@ function renderOverlay(p) {
     }
   }
   renderPinsOn(p);
+  renderMarksOn(p);
 }
 
 function annNode(a) {
@@ -2920,7 +3154,7 @@ function renderKeyChip() {
   chip.textContent = '🔑 ' + (bits.length ? bits.join(' · ') : 'Answer key');
   chip.classList.toggle('on', keyHasAnything());
   chip.title = keyHasAnything()
-    ? 'Your buddy has this worksheet\'s answer key. Tap to see what it is using.'
+    ? 'Chung GPT has this worksheet\'s answer key. Tap to see what it is using.'
     : 'Attach this worksheet\'s answer key, or mark a page as one.';
 }
 
@@ -3123,7 +3357,7 @@ async function keyAutoScan(defer) {
   applyKeyVisibility();
   setDirty(true);
   toast('🔑 ' + found.length + ' answer-key page' + (found.length === 1 ? '' : 's') +
-        ' put away — your buddy will use ' + (found.length === 1 ? 'it' : 'them') +
+        ' put away — Chung GPT will use ' + (found.length === 1 ? 'it' : 'them') +
         ', you will not see ' + (found.length === 1 ? 'it' : 'them') + '. Tap 🔑 to change that.', 7000);
   if (!defer) await keyRefreshRows(epoch);
 }
@@ -3148,11 +3382,11 @@ async function keyRefreshRows(epoch) {
     if (epoch !== wsEpoch) return;
     wsKey.rows = rows;
     setDirty(true);
-    if (rows.length) toast('🔑 ' + rows.length + ' answers read from the key — your buddy has them now.', 5000);
-    else toast('🔑 Nothing could be read off the answer key — your buddy will work the answers out itself.', 6000);
+    if (rows.length) toast('🔑 ' + rows.length + ' answers read from the key — Chung GPT has them now.', 5000);
+    else toast('🔑 Nothing could be read off the answer key — Chung GPT will work the answers out itself.', 6000);
   } catch (e) {
     console.warn('The answer key could not be read', e);
-    toast('The answer key could not be read — your buddy will work the answers out itself.', 6000);
+    toast('The answer key could not be read — Chung GPT will work the answers out itself.', 6000);
   } finally {
     wsKey.reading = false;
     renderKeyChip();
@@ -3304,7 +3538,7 @@ function renderKeyModal() {
   if (st) {
     var bits = [];
     bits.push(wsKey.rows.length
-      ? '✅ Your buddy has <b>' + wsKey.rows.length + ' answers</b> from this key. It uses them to mark and to ' +
+      ? '✅ Chung GPT has <b>' + wsKey.rows.length + ' answers</b> from this key. It uses them to mark and to ' +
         'aim its hints — the help level still decides how much of one you are told.'
       : (wsKey.reading ? '⏳ Reading the key…'
         : 'No answers have been read yet. Tick the key pages above, or attach the key as its own PDF.'));
@@ -3354,7 +3588,7 @@ var _markRun = 0;
 
 function aiAvailable(quietly) {
   if (!window.askGemini || !window.aiReady || !window.aiReady()) {
-    if (!quietly) toast('Your buddy is not available — check your connection and reload the page.', 5000);
+    if (!quietly) toast('Chung GPT is not available — check your connection and reload the page.', 5000);
     return false;
   }
   return true;
@@ -3485,7 +3719,7 @@ async function askHintAt(p, pt) {
     h.working = false;
     if (!out.rungs.length) {
       hints = hints.filter(function (x) { return x.id !== h.id; });
-      toast('Your buddy could not find a question there — tap right on the question you are stuck on.', 5000);
+      toast('Chung GPT could not find a question there — tap right on the question you are stuck on.', 5000);
     } else {
       h.question = out.question;
       h.number = out.number;
@@ -3553,6 +3787,92 @@ function renderPinsOn(p) {
 }
 function syncHintPinSizes() { pages.forEach(renderPinsOn); }
 
+/* ---- The MARKS on the page ----
+   A tick or a cross where the answer was written, with what it earned beside
+   it. Marking that lives only in a side panel is marking a student has to go
+   and look up; this is the paper coming back with red and green on it, which
+   is the thing they actually want to see.
+
+   THEY ARE NOT ANNOTATIONS, and that is the load-bearing part. They are not
+   in `annotations`, so they cannot be dragged, erased or undone, they are
+   not saved into the body, and — the one that matters — `drawAnnsOnCtx`
+   never draws them, so the picture the marker reads has no marking of its
+   own on it. Put a tick in `annotations` and the next run marks a page that
+   is already covered in ticks, agrees with them, and no screen anywhere says
+   why the second marking is so much kinder than the first.
+
+   Sized like the hint pins: screen pixels divided by the zoom, so a tick
+   stays the same size on the page at fit-width and at 400%. */
+var showMarkPins = true;
+
+function markPinFor(it) {
+  if (!it.marked || !it.at) return null;
+  var pair = markPairOf(it);
+  var v = it.verdict === 'correct' ? 'ok' : it.verdict === 'wrong' ? 'no' : it.verdict === 'partial' ? 'half' : '';
+  if (!v) return null;
+  return {
+    cls: v,
+    // The symbol carries the verdict on its own, so the colour is never the
+    // only thing saying it — the same rule the report's table follows, and
+    // the reason a partial reads as a tick with the marks doing the talking
+    // rather than as a green tick nobody can tell from a full one.
+    sym: v === 'no' ? '✗' : '✓',
+    marks: pair ? (markPretty(pair.awarded) + '/' + markPretty(pair.total)) : '',
+    title: 'Q' + (it.number || '') + ' — ' + (it.verdict === 'correct' ? 'correct'
+      : it.verdict === 'partial' ? 'partly right' : 'not right') +
+      (pair ? ' (' + markPretty(pair.awarded) + ' of ' + markPretty(pair.total) + ')' : '')
+  };
+}
+
+function renderMarksOn(p) {
+  var svg = p.svg;
+  Array.prototype.slice.call(svg.querySelectorAll('g[data-mark]')).forEach(function (n) { n.remove(); });
+  if (!showMarkPins) return;
+  marking.items.forEach(function (it, i) {
+    if ((it.atPage || it.page) !== p.num) return;
+    var pin = markPinFor(it);
+    if (!pin) return;
+    var g = el('g', { 'data-mark': String(i) });
+    var h = 24 / Math.max(0.25, scale);
+    var w = h * (pin.marks ? 3.4 : 1.5);
+    // The point is where a teacher would START the tick, so the chip runs
+    // rightwards from it — except within its own width of the right-hand
+    // edge, where `.pageWrap`'s overflow would simply cut it in half.
+    var x = p.baseW * (it.at.x / 1000);
+    var y = p.baseH * (it.at.y / 1000);
+    if (x + w > p.baseW - 2) x = Math.max(0, x - w);
+    var fo = el('foreignObject', { x: x, y: y - h / 2, width: w, height: h });
+    fo.style.overflow = 'visible';
+    var d = document.createElement('div');
+    d.className = 'markPin ' + pin.cls;
+    d.style.height = h + 'px';
+    d.style.fontSize = (h * 0.5) + 'px';
+    d.title = pin.title;
+    var sy = document.createElement('b');
+    sy.textContent = pin.sym;
+    d.appendChild(sy);
+    if (pin.marks) {
+      var mk = document.createElement('span');
+      mk.textContent = pin.marks;
+      d.appendChild(mk);
+    }
+    d.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+    d.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      openBuddy('marking');
+    });
+    fo.appendChild(d);
+    g.appendChild(fo);
+    svg.appendChild(g);
+  });
+}
+function syncMarkPins() { pages.forEach(renderMarksOn); }
+function toggleMarkPins() {
+  showMarkPins = !showMarkPins;
+  syncMarkPins();
+  renderMarking();
+}
+
 /* ================= Marking =================
    Scan & Answer's rules, applied to a worksheet the student wrote on rather
    than a photograph of one. The rules are the same because the job is:
@@ -3569,15 +3889,58 @@ var MARK_RULE =
   'Where they HAVE answered: "studentAnswer" is what they wrote, transcribed as it stands (say "unclear" where ' +
   'the handwriting genuinely cannot be read); "verdict" is exactly one of "correct", "partial" or "wrong" — ' +
   '"partial" for an answer that is right as far as it goes but is missing a required step, unit, keyword or one ' +
-  'part of a two-part question; "marks" is what you would award as "awarded/total" ("2/3") when the paper prints ' +
-  'a mark allocation and an EMPTY STRING when it does not; and "feedback" is 1 to 3 sentences spoken TO the ' +
+  'part of a two-part question; and "feedback" is 1 to 3 sentences spoken TO the ' +
   'student — what they got right, exactly where it went wrong, and what to do instead. Say what was good about a ' +
   'correct answer rather than only "correct". Never be unkind; never be vague. ' +
-  'Where the question is still BLANK: "studentAnswer", "verdict", "marks" and "feedback" are ALL empty strings. ' +
+  'Where the question is still BLANK: "studentAnswer", "verdict" and "feedback" are ALL empty strings — but ' +
+  '"marks" is still "0/total", because the marks were there to be had. ' +
   'A blank is not a wrong answer — it has simply not been attempted. A page may hold both, and usually does. ' +
   'An attempt that has been crossed out and replaced is not the answer — mark what they clearly meant to stand. ' +
   '"answer" is ALWAYS your own correct answer, whether they attempted the question or not, and it never changes ' +
   'to agree with what they wrote. ';
+
+/* WHAT TOPIC THIS QUESTION BELONGS TO — and the one instruction that makes
+   the answer worth having. This app has no question bank and no syllabus
+   list: it is handed a PDF nobody has ever seen before, so a topic can only
+   come from the marking read itself. The report then GROUPS by it, which is
+   the whole point — so a model that names one topic five slightly different
+   ways reports five topics with one question each and tells the student
+   nothing at all. Naming that consequence in the prompt is what stops it. */
+var MARK_TOPIC_RULE =
+  '"topic" is the syllabus topic the question tests, named in two to five words as a teacher would write it on a ' +
+  'scheme of work: "Fractions: addition and subtraction", "Photosynthesis", "Subject-verb agreement", "汉语拼音". ' +
+  'USE THE SAME WORDING FOR EVERY QUESTION ON THIS PAPER THAT TESTS THE SAME THING. The topics are grouped and ' +
+  'counted afterwards to tell the student what to revise, so five spellings of one topic report five topics with ' +
+  'one question each and are worth nothing. Name the topic the question BELONGS TO; do not describe the question. ' +
+  '"objective" is what the student has to be able to DO to answer it, in ONE sentence beginning with a verb: ' +
+  '"Add two fractions with different denominators." Where a question does not plainly belong to a topic, leave ' +
+  'BOTH empty rather than invent one. ';
+
+/* THE MARKS. A marked paper without marks on it is a paper a student cannot
+   read, so a mark allocation is worked out for EVERY question rather than
+   only for the ones that print one. What the paper prints always wins; the
+   defaults below are only for a paper that prints nothing, and the science
+   MCQ one is this centre's own convention. */
+var MARK_MARKS_RULE =
+  '"marks" is ALWAYS "awarded/total" — never an empty string, and never a word. "total" is the mark allocation ' +
+  'the paper PRINTS for that question wherever it prints one: "[2]", "(2 marks)", "2m", a figure in the margin. ' +
+  'Where the paper prints NOTHING: a multiple-choice question in SCIENCE is worth 2 marks, any other ' +
+  'multiple-choice question is worth 1, and an open question is worth one mark for each separate marking point ' +
+  'its answer needs. "awarded" is what this student earns out of that total: the full total for "correct", 0 for ' +
+  '"wrong", and something in between for "partial" — never 0 and never the full total, because an answer that ' +
+  'earns neither is not a partial one. A question with NOTHING written is "0/total": the total still stands, ' +
+  'because the marks were there to be had. ';
+
+/* WHERE ON THE PAGE THE ANSWER IS, so the tick can be put beside it. Same
+   0-1000 convention the family's other apps use for a rectangle, but a
+   POINT: it is one number pair to get wrong instead of four, and a tick a
+   little off the mark still plainly belongs to its question. */
+var MARK_WHERE_RULE =
+  '"at" is WHERE ON THE PAGE the student\'s answer sits, as [y, x] measured from the top-left of that page as ' +
+  'whole numbers from 0 to 1000 — the point a teacher would put a tick, which is the END of the answer line, ' +
+  'blank or box, or just right of the option the student chose. For a question with nothing written, it is where ' +
+  'the answer WOULD go. Where you genuinely cannot place it, return an empty array rather than a guess: a tick ' +
+  'against the wrong question is worse than no tick at all. ';
 
 var MARK_SYS =
   'You are an experienced Singapore tuition teacher (P3 to Secondary 1) marking a student\'s own worksheet. The ' +
@@ -3586,8 +3949,9 @@ var MARK_SYS =
   '"question":"the printed wording","options":[{"label":"1","text":"…"}],"option":"2","answer":"(2) the option\'s ' +
   'wording","explanation":"why this is the answer, and how to get there","studentAnswer":"what they wrote, or an ' +
   'empty string","verdict":"correct | partial | wrong, or an empty string when nothing was written",' +
-  '"marks":"2/3 when the paper prints a mark allocation, otherwise an empty string",' +
-  '"feedback":"what to say to the student about what they wrote, or an empty string"}]}. ' +
+  '"marks":"awarded/total, as \'2/3\'","at":[520,180],' +
+  '"feedback":"what to say to the student about what they wrote, or an empty string",' +
+  '"topic":"the syllabus topic","objective":"what the student must be able to do"}]}. ' +
   'Rules: one entry for every question actually PRINTED on the attached pictures, in the order they appear, ' +
   'keeping the paper\'s own numbering in "number" ("16", "3a"). ONE ENTRY PER LETTERED PART: a question printed ' +
   'as 8(a) and 8(b) is TWO entries, because they are answered separately. EVERY question is covered, whatever ' +
@@ -3605,6 +3969,9 @@ var MARK_SYS =
   'working when there is working to show. ' +
   'Work every question out properly before you answer it: set the working out step by step, then check the ' +
   'arithmetic back against the numbers printed on the page. ' +
+  MARK_TOPIC_RULE +
+  MARK_MARKS_RULE +
+  MARK_WHERE_RULE +
   MARK_RULE +
   'Plain text only in every field: no markdown, no bullets, no line breaks.';
 
@@ -3648,11 +4015,68 @@ var MARK_VERDICTS = { correct: 1, partial: 1, wrong: 1 };
    behind it is dropped along with the feedback that came with it. A red
    cross on a question nobody attempted is the one mistake this feature can
    make, and this is the single place that stops it. */
+/* A mark allocation bigger than this is a misread, not a question. */
+var MARK_TOTAL_MAX = 100;
+
+/* "2/3" -> two numbers, ON THE WAY IN, once. Everything that could make the
+   marks disagree with the verdict printed beside them is settled here rather
+   than at each of the places that show them: a correct answer earns the lot,
+   a wrong one earns nothing, a blank earns nothing, and a partial earns
+   something that is neither — an answer that earns neither is not a partial
+   one. Half marks are kept because they are real on a real paper.
+   Unparseable comes back null and NOTHING is shown, which is what every
+   worksheet marked before this existed does. */
+function _markPair(v, verdict, marked) {
+  var m = /^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/.exec(String(v == null ? '' : v));
+  if (!m) return null;
+  var total = Math.round(parseFloat(m[2]) * 2) / 2;
+  if (!(total > 0) || total > MARK_TOTAL_MAX) return null;
+  var awarded = Math.round(parseFloat(m[1]) * 2) / 2;
+  if (!(awarded >= 0)) awarded = 0;
+  if (!marked || verdict === 'wrong') awarded = 0;
+  else if (verdict === 'correct') awarded = total;
+  if (awarded > total) awarded = total;
+  if (marked && verdict === 'partial' && total >= 2 && (awarded <= 0 || awarded >= total)) {
+    awarded = Math.max(0.5, Math.floor(total / 2));
+  }
+  return { awarded: awarded, total: total };
+}
+function _markNum(n) { return (Math.round(n * 2) / 2).toString(); }
+
+/* THE ONE PLACE a stored marks string becomes numbers again. It does NOT
+   re-apply the rules above — those were settled once, when the marking came
+   in — so this stays a plain read and a worksheet cannot quietly re-mark
+   itself every time it is opened. */
+function markPairOf(it) {
+  var m = /^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/.exec(String((it && it.marks) || ''));
+  if (!m) return null;
+  var total = parseFloat(m[2]);
+  if (!(total > 0)) return null;
+  return { awarded: parseFloat(m[1]), total: total };
+}
+
+/* WHERE THE TICK GOES, as [y, x] from 0 to 1000. Out of range or malformed
+   comes back null and no tick is drawn at all — never clamped into the page,
+   because a clamped point is a guess and a tick against the wrong question is
+   worse than no tick, which is what the prompt says too. */
+function _markAt(v) {
+  if (!Array.isArray(v) || v.length < 2) return null;
+  var y = Number(v[0]), x = Number(v[1]);
+  if (!isFinite(x) || !isFinite(y)) return null;
+  if (x < 0 || x > 1000 || y < 0 || y > 1000) return null;
+  return { y: y, x: x };
+}
+
 function _markFields(r) {
   var studentAnswer = _mkStr(r && r.studentAnswer, 900);
   var verdict = String(r && r.verdict == null ? '' : r.verdict).toLowerCase().trim();
   if (!MARK_VERDICTS[verdict]) verdict = '';
   var marked = !!studentAnswer;
+  // The MARKS are the one thing here that survives a blank, and they are not
+  // an exception to the rule above: "0 out of 2" is the allocation the paper
+  // printed, not a judgement on an answer nobody wrote. The verdict, the
+  // feedback and the cross all still stand down.
+  var pair = _markPair(r && r.marks, marked ? verdict : '', marked);
   return {
     marked: marked,
     studentAnswer: studentAnswer,
@@ -3660,7 +4084,7 @@ function _markFields(r) {
     // as marked, with no verdict chip — half a mark is better than silently
     // dropping the student's work off the card.
     verdict: marked ? verdict : '',
-    marks: marked ? _mkStr(r && r.marks, 12) : '',
+    marks: pair ? (_markNum(pair.awarded) + '/' + _markNum(pair.total)) : '',
     feedback: marked ? _mkStr(r && r.feedback, 1200) : ''
   };
 }
@@ -3701,6 +4125,10 @@ function _markNewItem(r, pageNums) {
     option: option,
     answer: answer,
     explanation: _mkStr(r.explanation, 2400),
+    topic: _mkStr(r.topic, 70),
+    objective: _mkStr(r.objective, 220),
+    at: _markAt(r.at),
+    atPage: real,
     marked: mk.marked,
     studentAnswer: mk.studentAnswer,
     verdict: mk.verdict,
@@ -3727,6 +4155,15 @@ function _markFoldRows(rows, pageNums, into) {
       if (it.option && !prev.option) prev.option = it.option;
       if (it.answer) prev.answer = it.answer;
       if (it.explanation) prev.explanation = it.explanation;
+      if (it.topic) prev.topic = it.topic;
+      if (it.objective) prev.objective = it.objective;
+      // The marks and the tick's position come from this half whether or not
+      // it is the half that was written on: the allocation belongs to the
+      // whole question, and a question that runs over a page break is
+      // answered on the SECOND page far more often than on the first — so
+      // the pin takes that half's page with it.
+      if (it.marks) prev.marks = it.marks;
+      if (it.at) { prev.at = it.at; prev.atPage = it.atPage; }
       if (it.type === 'mcq') prev.type = 'mcq';
       // The student may have written on either half of a question that runs
       // over the page, so the marking is merged rather than replaced — but
@@ -3736,7 +4173,6 @@ function _markFoldRows(rows, pageNums, into) {
         prev.marked = true;
         if (it.studentAnswer) prev.studentAnswer = it.studentAnswer;
         if (it.verdict) prev.verdict = it.verdict;
-        if (it.marks) prev.marks = it.marks;
         if (it.feedback) prev.feedback = it.feedback;
       }
       return;
@@ -3795,13 +4231,13 @@ function markProgress(done, total, text) {
 
 async function runMarking() {
   if (!pages.length) { toast('Open a worksheet first.'); return; }
-  if (marking.running) { toast('Your buddy is still marking — one moment…'); return; }
+  if (marking.running) { toast('Chung GPT is still marking — one moment…'); return; }
   // At the top help level an untouched worksheet is a legitimate run — that
   // level exists for going through a paper afterwards. Below it, marking a
   // blank worksheet returns nudges and nothing else, so say why rather than
   // spending a minute proving it.
   if (!annotations.length && guidanceDepth(wsMeta.guidance) < HINT_RUNGS.length) {
-    toast('Write your answers on the worksheet first — at this help level your buddy marks what you wrote ' +
+    toast('Write your answers on the worksheet first — at this help level Chung GPT marks what you wrote ' +
           'rather than filling it in for you.', 5500);
     return;
   }
@@ -3895,6 +4331,133 @@ function markTally() {
     else if (it.verdict === 'wrong') c.wrong++;
   });
   return c;
+}
+
+/* =====================================================================
+   THE REPORT — the marked paper read as a table, and what to revise
+
+   The cards under the Marking tab answer "how did I do on question 12".
+   They cannot answer the two questions a student and a parent actually have
+   — HOW MANY MARKS, and WHAT DO I GO AND REVISE — because those are
+   questions about the paper as a whole, and thirty cards is not a whole.
+
+   Everything here is worked out in PLAIN CODE from the marking that has
+   already happened. There is no second AI call and there must never be one:
+   the same marked paper has to produce the same report every time it is
+   opened, and a model asked to summarise its own marking talks itself into
+   a different total. That is the rule `akcCompare` carries in the Maths app
+   and `reportScore` carries in Scan & Answer, and it is the same rule.
+   ===================================================================== */
+
+/* A question the marking could not place under a topic is SHOWN, under its
+   own heading, and never quietly filed under a topic somebody else's
+   question is in. */
+var REPORT_UNLABELLED = 'Not labelled';
+
+/* THE MARKS OVER THE WHOLE PAPER. `attempted` and `blank` split the total
+   because those are two different sentences: "18 out of 24" reads as a bad
+   paper when 6 of those marks are questions nobody got to, and the app has
+   said since it shipped that a blank is not a wrong answer. A worksheet
+   marked before the marks existed reports `has: false` and the report simply
+   does not show a score — never a zero. */
+function markMarkTally() {
+  var t = { awarded: 0, total: 0, attempted: 0, blank: 0, has: false };
+  marking.items.forEach(function (it) {
+    var p = markPairOf(it);
+    if (!p) return;
+    t.has = true;
+    t.total += p.total;
+    t.awarded += p.awarded;
+    if (it.marked) t.attempted += p.total; else t.blank += p.total;
+  });
+  return t;
+}
+/* 1.5 rather than 1.5000000000001, and "2" rather than "2.0". */
+function markPretty(n) { return String(Math.round(n * 100) / 100); }
+
+/* Two spellings of one topic are one topic. The prompt asks the model to
+   name a topic the same way every time it comes up; this is what makes the
+   grouping survive the times it does not. */
+function reportTopicKey(name) {
+  return String(name == null ? '' : name).toLowerCase()
+    .replace(/[\s　]+/g, ' ')
+    .replace(/[.,;:!?。、，；：！？]+$/, '')
+    .trim();
+}
+
+/* THE PAPER GROUPED BY TOPIC. Written against a plain object rather than a
+   Map to match the rest of this file, so every key is prefixed — an unlucky
+   topic called "constructor" would otherwise find one on the prototype and
+   count its questions into an object that is not a group. */
+function reportTopics() {
+  var by = {}, order = [];
+  marking.items.forEach(function (it) {
+    var name = String(it.topic || '').trim();
+    var k = '#' + (reportTopicKey(name) || ' none');
+    var g = by[k];
+    if (!g) {
+      g = by[k] = { key: k, name: name || REPORT_UNLABELLED, labelled: !!name,
+                    objectives: [], seenObj: {},
+                    correct: 0, partial: 0, wrong: 0, blank: 0,
+                    awarded: 0, total: 0, items: [] };
+      order.push(g);
+    }
+    g.items.push(it);
+    var obj = String(it.objective || '').trim();
+    var ok = '#' + obj.toLowerCase();
+    if (obj && !g.seenObj[ok]) { g.seenObj[ok] = 1; g.objectives.push(obj); }
+    if (!it.marked) g.blank++;
+    else if (it.verdict === 'correct') g.correct++;
+    else if (it.verdict === 'partial') g.partial++;
+    else if (it.verdict === 'wrong') g.wrong++;
+    var p = markPairOf(it);
+    if (p) { g.awarded += p.awarded; g.total += p.total; }
+  });
+  return order;
+}
+
+/* How much of a topic went wrong. A partial counts half: it is half a
+   misunderstanding, and counting it as a whole one would put a topic the
+   student nearly has above one they do not have at all. */
+function reportLost(g) { return g.wrong + g.partial / 2; }
+function reportTried(g) { return g.correct + g.partial + g.wrong; }
+
+/* WHAT TO REVISE. Ranked by how much was actually LOST rather than by the
+   rate, because three wrong out of six is more work than one out of one —
+   and then by the rate, so two topics that lost the same amount put the one
+   the student understands least first. Both numbers are printed on the row,
+   so a student can check the order for themselves rather than being asked to
+   trust it.
+
+   A topic nobody attempted is NOT weak — it is untried, which is a different
+   thing to tell someone, so it gets its own list. And a topic that went
+   perfectly is named too: a report that only ever lists failures is one
+   nobody wants to open. */
+function reportRevise() {
+  var topics = reportTopics();
+  var weak = [], untried = [], strong = [];
+  topics.forEach(function (g) {
+    if (reportLost(g) > 0) weak.push(g);
+    else if (reportTried(g) === 0 && g.blank > 0) untried.push(g);
+    else if (reportTried(g) > 0) strong.push(g);
+  });
+  weak.sort(function (a, b) {
+    /* "Go and revise Not labelled" is not advice anybody can act on, so the
+       questions the marking could not place go LAST however much was lost on
+       them. They are still listed — a wrong answer is a wrong answer — but
+       never above a topic with a name. */
+    if (a.labelled !== b.labelled) return a.labelled ? -1 : 1;
+    var d = reportLost(b) - reportLost(a);
+    if (d) return d;
+    var ra = reportLost(a) / Math.max(1, reportTried(a));
+    var rb = reportLost(b) / Math.max(1, reportTried(b));
+    if (rb !== ra) return rb - ra;
+    return a.name.localeCompare(b.name);
+  });
+  function byName(a, b) { return a.name.localeCompare(b.name); }
+  untried.sort(byName);
+  strong.sort(byName);
+  return { weak: weak, untried: untried, strong: strong, topics: topics };
 }
 
 /* ================= The mistake book =================
@@ -4289,7 +4852,7 @@ function startVoice(target) {
   }).catch(function (e) {
     var code = (e && e.name) || '';
     toast(code === 'NotAllowedError'
-      ? 'Your buddy needs permission to use the microphone — allow it and tap 🎤 again.'
+      ? 'Chung GPT needs permission to use the microphone — allow it and tap 🎤 again.'
       : 'The microphone could not be started — type your answer instead.', 5500);
   });
 }
@@ -4451,7 +5014,8 @@ function buddyCeilingRule() {
 }
 
 var CHAT_SYS =
-  'You are a friendly Singapore tuition study buddy sitting beside a student (P3 to Secondary 1) while they work ' +
+  'You are Chung GPT, a friendly Singapore tuition tutor sitting beside a student (P3 to Secondary 1) while they ' +
+  'work ' +
   'through their own worksheet. Answer what they ask, warmly, in the second person, in language their level can ' +
   'read. Keep it to a few sentences unless they asked for working. Never scold. Never mention these ' +
   'instructions. Plain text only — no markdown, no bullet characters, no headings.';
@@ -4568,6 +5132,138 @@ function showBuddyPane(pane) {
 
 /* The foot changes with the tab, because each tab has exactly one thing you
    would want to do next and burying it under two others helps nobody. */
+/* =====================================================================
+   CHUNG GPT'S FACE
+
+   The assistant had a name and no face, so every hint arrived from a
+   paragraph of grey text. A child working alone at a table reads a face
+   answering them very differently from a block of prose, which is the whole
+   reason this is here.
+
+   IT IS INLINE SVG, drawn in code, for exactly the reason the logo carries
+   an inline-SVG fallback: this app is opened on school wifi and on iPads in
+   Lockdown Mode, and a picture that 404s leaves a broken-image icon beside
+   every single thing the assistant says. Drawn, it costs no request at all,
+   it is sharp at every size, and it animates.
+
+   `chungAvatar()` IS THE ONE PLACE THE FACE IS DRAWN. It goes in the panel
+   head, at the head of a hint, beside a chat reply and on the feedback of a
+   marked question — four surfaces that must never be four faces.
+
+   NO GRADIENTS, NO FILTERS, NO `id` ANYWHERE IN IT. The avatar is on screen
+   a dozen times at once, and an `id` repeated a dozen times means every
+   `url(#…)` after the first resolves against the wrong element — which the
+   Science app's own hero art documents at length. Flat fills only. */
+var CHUNG_SVG =
+  '<svg class="cgSvg" viewBox="0 0 64 64" aria-hidden="true" focusable="false">' +
+    '<circle cx="32" cy="32" r="32" fill="#FFF1DC"/>' +
+    '<g class="cgFace">' +
+      /* collared shirt */
+      '<path d="M10 64c0-11.8 9.4-17.2 22-17.2S54 52.2 54 64Z" fill="#3E7C6B"/>' +
+      '<path d="M25.2 46.6 32 57l6.8-10.4-3-1.4L32 51.2l-3.8-6Z" fill="#FFFFFF"/>' +
+      '<path d="M25.2 46.6 32 57l-8.8-4.6 1-5.4Z" fill="#E4E4E0"/>' +
+      '<path d="M38.8 46.6 32 57l8.8-4.6-1-5.4Z" fill="#E4E4E0"/>' +
+      /* neck, with a little shadow under the jaw */
+      '<path d="M26.2 37h11.6v9.2c0 3.4-11.6 3.4-11.6 0Z" fill="#E9BE95"/>' +
+      '<path d="M26.2 37h11.6v2.4c-3.4 2-8.2 2-11.6 0Z" fill="#E0B189"/>' +
+      /* ears, then the head */
+      '<ellipse cx="17.9" cy="29.6" rx="2.6" ry="3.6" fill="#F5D2B0"/>' +
+      '<ellipse cx="46.1" cy="29.6" rx="2.6" ry="3.6" fill="#F5D2B0"/>' +
+      '<ellipse cx="32" cy="27.4" rx="14.1" ry="15.6" fill="#F7D8B6"/>' +
+      /* HAIR. The crown first, then the fringe swept across from his own
+         right, then the tufts the photo has standing up at the front — one
+         flat cap of black reads as a helmet, and it is the sweep and the
+         spikes that make it hair. */
+      '<path d="M17.7 29.4C16.4 15.6 23.2 7.8 32 7.8s15.6 7.8 14.3 21.6'
+        + 'c-.7-5.6-2.2-9.6-4.4-11.8-4 3.6-13.6 4.2-19.4 1-2 2.4-3.9 5.6-4.8 10.8Z" fill="#241C18"/>' +
+      '<path d="M22.2 18.6c3.5 3.4 9.6 4 14.6 1.4-3.2 3.4-9.2 4-14.6-1.4Z" fill="#241C18"/>' +
+      '<path d="M35.4 19.8c2.6 1.4 5 3.4 6.5 6-.6-3.6-2.3-6.2-4.6-7.6Z" fill="#241C18"/>' +
+      '<path d="M24.6 8.4c2.6-2.6 6-2.8 7.6-.6-2.8-.6-5.4 0-7.6.6Z" fill="#241C18"/>' +
+      '<path d="M33.4 6.8c3.4-.2 6.4 1.4 8 4-2.4-2-5.2-3.2-8-3.2Z" fill="#241C18"/>' +
+      /* a strand of shine, so the black is hair rather than a hole */
+      '<path d="M24.6 12.4c2-2 4.6-3.2 7.4-3.4-2.6.8-5 2.2-6.6 4.2Z" fill="#3D322B"/>' +
+      /* eyebrows */
+      '<path d="M22.6 22.4c1.9-1.3 4.6-1.4 6.6-.3" stroke="#2C221D" stroke-width="1.6" fill="none" stroke-linecap="round"/>' +
+      '<path d="M34.8 22.1c2-1.1 4.7-1 6.6.3" stroke="#2C221D" stroke-width="1.6" fill="none" stroke-linecap="round"/>' +
+      /* the eyes, each with the lid that blinks sitting straight over it */
+      '<g class="cgEye">' +
+        '<ellipse cx="25.5" cy="28.6" rx="2.7" ry="2.9" fill="#2B2019"/>' +
+        '<circle cx="26.5" cy="27.6" r=".95" fill="#FFFFFF"/>' +
+        '<rect class="cgLid" x="22.6" y="25.4" width="5.8" height="6.4" fill="#F7D8B6"/>' +
+      '</g>' +
+      '<g class="cgEye">' +
+        '<ellipse cx="38.5" cy="28.6" rx="2.7" ry="2.9" fill="#2B2019"/>' +
+        '<circle cx="39.5" cy="27.6" r=".95" fill="#FFFFFF"/>' +
+        '<rect class="cgLid" x="35.6" y="25.4" width="5.8" height="6.4" fill="#F7D8B6"/>' +
+      '</g>' +
+      /* the glasses, over the eyes: a light champagne frame with the faintly
+         warm lenses the photograph has */
+      '<g stroke="#C7A47F" stroke-width="1.35" fill="#F2F7E4" fill-opacity=".34">' +
+        '<rect x="18.6" y="23.6" width="13.1" height="9.8" rx="3"/>' +
+        '<rect x="32.3" y="23.6" width="13.1" height="9.8" rx="3"/>' +
+      '</g>' +
+      '<path d="M31.7 27.4h.6M18.6 26.8l-2.5 1.4M45.4 26.8l2.5 1.4" stroke="#C7A47F" ' +
+        'stroke-width="1.35" fill="none" stroke-linecap="round"/>' +
+      /* cheeks, and a smile that is visible at 30px */
+      '<ellipse cx="21.8" cy="36.4" rx="3" ry="1.8" fill="#E8846F" fill-opacity=".28"/>' +
+      '<ellipse cx="42.2" cy="36.4" rx="3" ry="1.8" fill="#E8846F" fill-opacity=".28"/>' +
+      '<path class="cgMouth" d="M26.6 38c3 3.8 7.8 3.8 10.8 0" stroke="#8E4636" stroke-width="2" ' +
+        'fill="none" stroke-linecap="round"/>' +
+    '</g>' +
+  '</svg>';
+
+/* `mood` is a class, not a different drawing: 'thinking' while a call is in
+   flight, 'happy' beside a correct answer, '' the rest of the time. One
+   face, four expressions' worth of CSS. */
+function chungAvatar(mood, size) {
+  var d = document.createElement('div');
+  d.className = 'chungAv' + (mood ? ' ' + mood : '');
+  if (size) { d.style.width = size + 'px'; d.style.height = size + 'px'; }
+  d.innerHTML = CHUNG_SVG;      // a constant in this file — never model output
+  d.title = aiEngineName();
+  return d;
+}
+
+/* A row of "the avatar said this": the face, then a bubble with a tail
+   pointing back at it. `withFace` is false for the second and later bubbles
+   in a run, because a column of five identical faces down the side of a
+   panel is noise rather than a conversation — the standard chat convention,
+   and the alignment is kept either way so the bubbles stay in one column. */
+function chungSays(node, withFace, mood) {
+  var row = document.createElement('div');
+  row.className = 'chungRow' + (withFace ? '' : ' noFace');
+  if (withFace) row.appendChild(chungAvatar(mood));
+  else {
+    var sp = document.createElement('div');
+    sp.className = 'chungAv chungGap';
+    row.appendChild(sp);
+  }
+  node.classList.add('speech');
+  row.appendChild(node);
+  return row;
+}
+
+/* Who the student is talking to, at the top of the panel. Painted once at
+   startup and again whenever the engine names are refreshed, so the name on
+   the panel and the name in every sentence below it come from the same
+   `aiEngineName()`. */
+function renderChungHead() {
+  var box = $('bWho');
+  if (!box) return;
+  box.innerHTML = '';
+  box.appendChild(chungAvatar('', 34));
+  var t = document.createElement('div');
+  var n = document.createElement('div');
+  n.className = 'bWhoName';
+  n.textContent = aiEngineName();
+  var sub = document.createElement('div');
+  sub.className = 'bWhoSub';
+  sub.textContent = 'here to help you work it out';
+  t.appendChild(n);
+  t.appendChild(sub);
+  box.appendChild(t);
+}
+
 function renderBuddyFoot() {
   var foot = $('buddyFoot');
   foot.innerHTML = '';
@@ -4595,7 +5291,7 @@ function renderBuddyFoot() {
     var ta = document.createElement('textarea');
     ta.id = 'chatInput';
     ta.rows = 1;
-    ta.placeholder = 'Ask your buddy anything…';
+    ta.placeholder = 'Ask Chung GPT anything…';
     ta.addEventListener('input', function () {
       ta.style.height = 'auto';
       ta.style.height = Math.min(120, ta.scrollHeight) + 'px';
@@ -4641,7 +5337,7 @@ function renderHints() {
   var allowed = rungsAllowed(wsMeta.guidance);
   var ground = groundingSummary();
   line.innerHTML =
-    'Help level: <b>' + escHtml(guidanceLabel(wsMeta.guidance)) + '</b> — your buddy goes as far as ' +
+    'Help level: <b>' + escHtml(guidanceLabel(wsMeta.guidance)) + '</b> — Chung GPT goes as far as ' +
     '<b>' + escHtml(allowed[allowed.length - 1].label) + '</b> and no further. ' +
     (ground.length
       ? 'Grounded in ' + escHtml(ground.join(', ')) + '.'
@@ -4654,7 +5350,7 @@ function renderHints() {
     pad.className = 'emptyPad';
     pad.innerHTML = '<div class="padIcon">💡</div>' +
       '<div class="padTitle">Stuck on a question?</div>' +
-      '<div class="padSub">Tap 💡 then tap the question on the page. Your buddy starts with the smallest hint ' +
+      '<div class="padSub">Tap 💡 then tap the question on the page. Chung GPT starts with the smallest hint ' +
       'and only goes further when you ask.</div>';
     box.appendChild(pad);
     return;
@@ -4698,7 +5394,7 @@ function hintCard(h, i) {
 
   // Only the rungs the student has actually climbed to. The rest of the
   // ladder is there but not read out — that is the whole idea.
-  h.rungs.slice(0, h.shown).forEach(function (r) {
+  h.rungs.slice(0, h.shown).forEach(function (r, ri) {
     var spec = HINT_RUNGS.find(function (x) { return x.key === r.key; }) || { label: r.key };
     var d = document.createElement('div');
     d.className = 'rung';
@@ -4709,7 +5405,9 @@ function hintCard(h, i) {
     txt.className = 'rungText';
     txt.textContent = r.text;     // model output — never innerHTML
     d.appendChild(lab);
-    d.appendChild(txt);
+    // The face goes on the FIRST rung of a card only: five faces down one
+    // hint is a column of stickers, not somebody talking.
+    d.appendChild(chungSays(txt, ri === 0));
     if (r.keywords && r.keywords.length) {
       var kw = document.createElement('div');
       kw.className = 'rungKw';
@@ -4775,11 +5473,14 @@ function renderMarking() {
       pad.className = 'emptyPad';
       pad.innerHTML = '<div class="padIcon">✅</div>' +
         '<div class="padTitle">Finished the worksheet?</div>' +
-        '<div class="padSub">Your buddy reads every question, marks what you wrote and answers what you left ' +
+        '<div class="padSub">Chung GPT reads every question, marks what you wrote and answers what you left ' +
         'blank. Anything you got wrong goes into your mistake book.</div>';
       list.appendChild(pad);
     }
     renderBuddyFoot();
+    // Re-running the marking empties the list first, so the ticks from the
+    // last run have to come off the page here as well as be redrawn below.
+    syncMarkPins();
     return;
   }
 
@@ -4799,6 +5500,23 @@ function renderMarking() {
         t.appendChild(b);
       });
     sum.appendChild(t);
+
+    /* THE MARKS, when the marking worked them out. Stated as what was earned
+       out of what was ATTEMPTED, with the marks nobody got to named
+       separately — "18 out of 30" reads as a poor paper when 8 of those
+       marks are questions the student never reached, and this app has said
+       since it shipped that a blank is not a wrong answer. */
+    var mt = markMarkTally();
+    if (mt.has) {
+      var sc = document.createElement('div');
+      sc.className = 'scoreLine';
+      sc.innerHTML = '<b>' + markPretty(mt.awarded) + ' / ' + markPretty(mt.attempted) + '</b> marks' +
+        (mt.blank > 0
+          ? ' <span>on what you attempted · ' + markPretty(mt.blank) + ' more were there to be had</span>'
+          : ' <span>on this paper</span>');
+      sum.appendChild(sc);
+    }
+
     var full = guidanceDepth(wsMeta.guidance) >= HINT_RUNGS.length;
     var line = document.createElement('div');
     line.className = 'buddyNudge';
@@ -4808,10 +5526,26 @@ function renderMarking() {
           (full ? 'with the answer below.' : 'with a place to start below. Go and try them, then tap 💡 if you get stuck.')
         : '.');
     sum.appendChild(line);
+
+    var row = document.createElement('div');
+    row.className = 'rowBtns markTools';
+    var rep = document.createElement('button');
+    rep.className = 'btn btnPrimary btnSm';
+    rep.textContent = '📊 My report';
+    rep.addEventListener('click', openReport);
+    row.appendChild(rep);
+    var tk = document.createElement('button');
+    tk.className = 'btn btnSm';
+    tk.textContent = showMarkPins ? '✓ Ticks on the page' : '✓ Ticks are off';
+    tk.title = 'Show or hide the ticks and crosses on the worksheet itself';
+    tk.addEventListener('click', toggleMarkPins);
+    row.appendChild(tk);
+    sum.appendChild(row);
   }
 
   marking.items.forEach(function (it) { list.appendChild(markCard(it)); });
   renderBuddyFoot();
+  syncMarkPins();
 }
 
 function verdictChip(it) {
@@ -4842,13 +5576,29 @@ function markCard(it) {
   pg.textContent = it.endPage > it.page ? 'Pages ' + it.page + '–' + it.endPage : 'Page ' + it.page;
   head.appendChild(pg);
   head.appendChild(verdictChip(it));
-  if (it.marks) {
+  /* The marks chip says what was EARNED, so it only goes on a question that
+     was attempted: "0/2" over an untouched question is a nought against a
+     student who was never marked, which is the one thing the whole marking
+     path is built not to do. A blank says what was there to be had instead. */
+  var pair = markPairOf(it);
+  if (pair) {
     var mk = document.createElement('span');
-    mk.className = 'ansMarks';
-    mk.textContent = it.marks;
+    mk.className = 'ansMarks' + (it.marked ? '' : ' avail');
+    mk.textContent = it.marked
+      ? markPretty(pair.awarded) + '/' + markPretty(pair.total)
+      : markPretty(pair.total) + (pair.total === 1 ? ' mark' : ' marks');
+    mk.title = it.marked ? 'What you earned' : 'What this question is worth';
     head.appendChild(mk);
   }
   card.appendChild(head);
+
+  if (it.topic) {
+    var tp = document.createElement('div');
+    tp.className = 'ansTopic';
+    tp.textContent = it.topic;
+    if (it.objective) tp.title = it.objective;
+    card.appendChild(tp);
+  }
 
   if (it.question) {
     var q = document.createElement('div');
@@ -4858,7 +5608,7 @@ function markCard(it) {
   }
   if (it.marked) {
     card.appendChild(boxNode('What you wrote', it.studentAnswer, 'youBox'));
-    if (it.feedback) card.appendChild(boxNode('Your buddy says', it.feedback, 'whyBox'));
+    if (it.feedback) card.appendChild(boxNode(aiEngineName() + ' says', it.feedback, 'whyBox', true));
   }
   if (it.answer) card.appendChild(boxNode('The answer', it.answer, 'ansBox'));
   // A blank question below the top help level comes back with a nudge where
@@ -4879,12 +5629,15 @@ function markCard(it) {
   return card;
 }
 
-function boxNode(label, text, cls) {
+function boxNode(label, text, cls, face) {
   var d = document.createElement('div');
   d.className = cls;
   var l = document.createElement('div');
-  l.className = 'boxLabel';
-  l.textContent = label;
+  l.className = 'boxLabel' + (face ? ' withFace' : '');
+  if (face) l.appendChild(chungAvatar('', 20));
+  var lt = document.createElement('span');
+  lt.textContent = label;
+  l.appendChild(lt);
   var t = document.createElement('div');
   t.className = 'boxText';
   t.textContent = text;     // model output — never innerHTML
@@ -4900,6 +5653,278 @@ function scrollToPage(num) {
 }
 
 /* ---- Chat ---- */
+/* ---- The report ----
+   Built from `reportRevise()` and `markMarkTally()` and nothing else, so
+   what is on the screen, what is printed and what is copied are three
+   renderings of one calculation rather than three calculations. */
+function openReport() {
+  renderReport();
+  $('reportModal').classList.add('open');
+}
+function closeReport() { $('reportModal').classList.remove('open'); }
+
+function repCell(row, text, cls) {
+  var td = document.createElement('td');
+  if (cls) td.className = cls;
+  td.textContent = text;          // model output — never innerHTML
+  row.appendChild(td);
+  return td;
+}
+/* The verdict as a WORD and a symbol, never as a colour alone. A report is
+   printed, photographed and forwarded to a parent, and it has to survive a
+   mono printer and a reader who cannot tell the red from the green. */
+var REPORT_VERDICT = {
+  correct: { cls: 'vOk',   text: '✓ Correct' },
+  partial: { cls: 'vHalf', text: '~ Partly' },
+  wrong:   { cls: 'vNo',   text: '✗ Wrong' }
+};
+function repVerdict(it) {
+  if (!it.marked) return { cls: 'vBlank', text: '– Blank' };
+  return REPORT_VERDICT[it.verdict] || { cls: 'vBlank', text: 'Marked' };
+}
+
+function renderReport() {
+  var body = $('reportBody');
+  body.innerHTML = '';
+  var rev = reportRevise();
+  var mt = markMarkTally();
+  var c = markTally();
+
+  var head = document.createElement('div');
+  head.className = 'repHead';
+  var h = document.createElement('div');
+  h.className = 'repTitle';
+  h.textContent = docName || 'This worksheet';
+  head.appendChild(h);
+  var when = document.createElement('div');
+  when.className = 'repWhen';
+  when.textContent = 'Marked ' + new Date(marking.runAt || Date.now()).toLocaleDateString(undefined,
+    { day: 'numeric', month: 'long', year: 'numeric' }) +
+    (wsMeta.subject ? ' · ' + subjectLabel(wsMeta.subject) : '') +
+    (wsMeta.level ? ' · ' + wsMeta.level : '');
+  head.appendChild(when);
+  body.appendChild(head);
+
+  /* The score, big, at the top — it is the first thing anyone opening this
+     wants and the last thing they should have to hunt for. */
+  var score = document.createElement('div');
+  score.className = 'repScore';
+  if (mt.has) {
+    var big = document.createElement('div');
+    big.className = 'repBig';
+    big.textContent = markPretty(mt.awarded) + ' / ' + markPretty(mt.attempted);
+    score.appendChild(big);
+    var sub = document.createElement('div');
+    sub.className = 'repBigSub';
+    sub.textContent = 'marks on what was attempted' +
+      (mt.blank > 0 ? ' · ' + markPretty(mt.blank) + ' more marks were there to be had' : '') +
+      (mt.attempted > 0 ? ' · ' + Math.round((mt.awarded / mt.attempted) * 100) + '%' : '');
+    score.appendChild(sub);
+  }
+  var counts = document.createElement('div');
+  counts.className = 'repCounts';
+  [['vOk', c.correct, 'correct'], ['vHalf', c.partial, 'partly right'],
+   ['vNo', c.wrong, 'wrong'], ['vBlank', c.blank, 'left blank']].forEach(function (r) {
+    if (!r[1]) return;
+    var b = document.createElement('span');
+    b.className = 'repCount ' + r[0];
+    b.textContent = r[1] + ' ' + r[2];
+    counts.appendChild(b);
+  });
+  score.appendChild(counts);
+  body.appendChild(score);
+
+  /* ---- every question ---- */
+  var h2 = document.createElement('h3');
+  h2.className = 'repH';
+  h2.textContent = 'Every question';
+  body.appendChild(h2);
+
+  var scroll = document.createElement('div');
+  scroll.className = 'repScroll';
+  var table = document.createElement('table');
+  table.className = 'repTable';
+  var thead = document.createElement('thead');
+  var hr = document.createElement('tr');
+  ['Q', 'Question', 'Topic and what it tests', 'What you wrote', 'Marks', 'Result'].forEach(function (t) {
+    var th = document.createElement('th');
+    th.textContent = t;
+    hr.appendChild(th);
+  });
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  var tbody = document.createElement('tbody');
+  marking.items.forEach(function (it) {
+    var v = repVerdict(it);
+    var tr = document.createElement('tr');
+    tr.className = 'repRow ' + v.cls;
+    repCell(tr, it.number ? 'Q' + it.number : '', 'repQn');
+    repCell(tr, it.question || '', 'repQ');
+    var td = document.createElement('td');
+    td.className = 'repTopic';
+    var tn = document.createElement('div');
+    tn.className = 'repTopicName';
+    tn.textContent = it.topic || REPORT_UNLABELLED;
+    td.appendChild(tn);
+    if (it.objective) {
+      var ob = document.createElement('div');
+      ob.className = 'repObj';
+      ob.textContent = it.objective;
+      td.appendChild(ob);
+    }
+    tr.appendChild(td);
+    repCell(tr, it.marked ? it.studentAnswer : '—', 'repYou');
+    var pair = markPairOf(it);
+    repCell(tr, pair ? (it.marked ? markPretty(pair.awarded) + '/' + markPretty(pair.total)
+                                  : '–/' + markPretty(pair.total)) : '', 'repMarks');
+    repCell(tr, v.text, 'repVerdict ' + v.cls);
+    tbody.appendChild(tr);
+  });
+  if (mt.has) {
+    var tot = document.createElement('tr');
+    tot.className = 'repTotal';
+    repCell(tot, '', '');
+    repCell(tot, 'Total on the paper', 'repQ');
+    repCell(tot, '', '');
+    repCell(tot, '', '');
+    repCell(tot, markPretty(mt.awarded) + '/' + markPretty(mt.total), 'repMarks');
+    repCell(tot, '', '');
+    tbody.appendChild(tot);
+  }
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+  body.appendChild(scroll);
+
+  /* ---- what to revise ---- */
+  var h3 = document.createElement('h3');
+  h3.className = 'repH';
+  h3.textContent = 'What to revise';
+  body.appendChild(h3);
+
+  if (!rev.weak.length && !rev.untried.length) {
+    var none = document.createElement('p');
+    none.className = 'sub';
+    none.textContent = rev.strong.length
+      ? 'Nothing went wrong on this paper. Every topic on it came back right.'
+      : 'Nothing to revise yet — mark some questions first.';
+    body.appendChild(none);
+  }
+
+  rev.weak.forEach(function (g, i) {
+    body.appendChild(repTopicCard(g, i + 1, 'weak'));
+  });
+
+  if (rev.untried.length) {
+    var u = document.createElement('div');
+    u.className = 'repNote';
+    u.textContent = 'You did not attempt anything on ' +
+      rev.untried.map(function (g) { return g.name; }).join(', ') +
+      '. That is not a weakness — but it is not practice either, so try those next.';
+    body.appendChild(u);
+  }
+  if (rev.strong.length) {
+    var st = document.createElement('div');
+    st.className = 'repNote repGood';
+    st.textContent = 'Solid on ' + rev.strong.map(function (g) { return g.name; }).join(', ') +
+      ' — everything you attempted there was right.';
+    body.appendChild(st);
+  }
+}
+
+function repTopicCard(g, rank, kind) {
+  var card = document.createElement('div');
+  card.className = 'repTopicCard ' + kind;
+  var head = document.createElement('div');
+  head.className = 'repTopicHead';
+  var n = document.createElement('span');
+  n.className = 'repRank';
+  n.textContent = String(rank);
+  head.appendChild(n);
+  var nm = document.createElement('div');
+  nm.className = 'repTopicTitle';
+  nm.textContent = g.name;
+  head.appendChild(nm);
+  var sc = document.createElement('span');
+  sc.className = 'repTopicScore';
+  sc.textContent = g.total > 0 ? markPretty(g.awarded) + '/' + markPretty(g.total) + ' marks' : '';
+  head.appendChild(sc);
+  card.appendChild(head);
+
+  /* The counts the ranking was worked out FROM, printed on the row it
+     ranked. A student who cannot see why one topic is above another has been
+     asked to trust the order; one who can, can argue with it. */
+  var line = document.createElement('div');
+  line.className = 'repTopicWhy';
+  var bits = [];
+  if (g.wrong) bits.push(g.wrong + ' wrong');
+  if (g.partial) bits.push(g.partial + ' partly right');
+  if (g.correct) bits.push(g.correct + ' right');
+  if (g.blank) bits.push(g.blank + ' blank');
+  line.textContent = bits.join(' · ');
+  card.appendChild(line);
+
+  if (g.objectives.length) {
+    var ul = document.createElement('ul');
+    ul.className = 'repObjList';
+    g.objectives.slice(0, 6).forEach(function (o) {
+      var li = document.createElement('li');
+      li.textContent = o;
+      ul.appendChild(li);
+    });
+    card.appendChild(ul);
+  }
+  var qs = g.items.filter(function (it) {
+    return it.marked && (it.verdict === 'wrong' || it.verdict === 'partial');
+  }).map(function (it) { return it.number ? 'Q' + it.number : ''; }).filter(Boolean);
+  if (qs.length) {
+    var go = document.createElement('div');
+    go.className = 'repTopicQs';
+    go.textContent = 'Go back to ' + qs.join(', ');
+    card.appendChild(go);
+  }
+  return card;
+}
+
+/* The same report as plain text, for pasting into a message. Built from the
+   same two calls as the screen — a second walk of `marking.items` here is a
+   second chance to disagree with the table somebody is reading. */
+function reportAsText() {
+  var rev = reportRevise();
+  var mt = markMarkTally();
+  var c = markTally();
+  var out = [];
+  out.push((docName || 'This worksheet') + ' — report');
+  if (mt.has) {
+    out.push(markPretty(mt.awarded) + ' / ' + markPretty(mt.attempted) + ' marks on what was attempted' +
+      (mt.blank > 0 ? ' (' + markPretty(mt.blank) + ' more were there to be had)' : ''));
+  }
+  out.push(c.correct + ' correct · ' + c.partial + ' partly right · ' + c.wrong + ' wrong · ' + c.blank + ' blank');
+  out.push('');
+  out.push('EVERY QUESTION');
+  marking.items.forEach(function (it) {
+    var pair = markPairOf(it);
+    out.push([
+      (it.number ? 'Q' + it.number : '-'),
+      repVerdict(it).text,
+      pair ? (it.marked ? markPretty(pair.awarded) + '/' + markPretty(pair.total) : '-/' + markPretty(pair.total)) : '',
+      (it.topic || REPORT_UNLABELLED)
+    ].filter(Boolean).join('  |  '));
+  });
+  out.push('');
+  out.push('WHAT TO REVISE');
+  if (!rev.weak.length) out.push('Nothing went wrong on this paper.');
+  rev.weak.forEach(function (g, i) {
+    out.push((i + 1) + '. ' + g.name + ' — ' + g.wrong + ' wrong, ' + g.partial + ' partly right, ' +
+      g.correct + ' right' + (g.total > 0 ? ' (' + markPretty(g.awarded) + '/' + markPretty(g.total) + ' marks)' : ''));
+    g.objectives.slice(0, 6).forEach(function (o) { out.push('   • ' + o); });
+  });
+  if (rev.untried.length) {
+    out.push('');
+    out.push('Not attempted at all: ' + rev.untried.map(function (g) { return g.name; }).join(', '));
+  }
+  return out.join('\n');
+}
+
 function renderChat() {
   var box = $('chatThread');
   box.innerHTML = '';
@@ -4913,11 +5938,15 @@ function renderChat() {
     box.appendChild(pad);
     return;
   }
-  chat.forEach(function (m) {
+  chat.forEach(function (m, i) {
     var b = document.createElement('div');
     b.className = 'bubble ' + (m.who === 'me' ? 'me' : 'buddy') + (m.pending ? ' pending' : '');
-    b.textContent = (m.who === 'buddy' && m.pending ? '✨ ' : '') + m.text;
-    box.appendChild(b);
+    b.textContent = m.text;
+    if (m.who === 'me') { box.appendChild(b); return; }
+    // Chung GPT's own replies come out of his mouth. The face is drawn once
+    // per RUN of his messages, the way every chat app does it.
+    var prev = chat[i - 1];
+    box.appendChild(chungSays(b, !prev || prev.who === 'me', m.pending ? 'thinking' : ''));
   });
   box.lastChild.scrollIntoView({ block: 'end' });
 }
@@ -5003,7 +6032,7 @@ function mistakeCard(m) {
     body.appendChild(q);
   }
   if (m.studentAnswer) body.appendChild(boxNode('What you wrote', m.studentAnswer, 'youBox'));
-  if (m.feedback) body.appendChild(boxNode('Your buddy says', m.feedback, 'whyBox'));
+  if (m.feedback) body.appendChild(boxNode('Chung GPT says', m.feedback, 'whyBox'));
   if (m.answer) body.appendChild(boxNode('The answer', m.answer, 'ansBox'));
   if (m.explanation) body.appendChild(boxNode('Why', m.explanation, 'whyBox'));
   card.appendChild(body);
@@ -5046,7 +6075,7 @@ function renderWorksheets() {
     pad.className = 'emptyPad';
     pad.innerHTML = '<div class="padIcon">📄</div>' +
       '<div class="padTitle">No worksheets yet</div>' +
-      '<div class="padSub">Upload a PDF and start working through it with your buddy beside you.</div>';
+      '<div class="padSub">Upload a PDF and start working through it with Chung GPT beside you.</div>';
     box.appendChild(pad);
     return;
   }
@@ -6246,6 +7275,30 @@ $('notesBtn').addEventListener('click', openNotesModal);
 $('notesClose').addEventListener('click', function () { $('notesModal').classList.remove('open'); });
 $('engineBtn').addEventListener('click', openEngineModal);
 $('engineClose').addEventListener('click', function () { $('engineModal').classList.remove('open'); });
+
+$('repClose').addEventListener('click', closeReport);
+$('repPrint').addEventListener('click', function () { window.print(); });
+$('repCopy').addEventListener('click', function () {
+  var text = reportAsText();
+  // The clipboard API needs a secure context and a permission a school
+  // browser may simply refuse, so a refusal falls back to the textarea trick
+  // rather than to a button that quietly did nothing.
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    toast(ok ? 'Report copied' : 'Could not copy — select the text and copy it by hand');
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { toast('Report copied'); }, fallback);
+  } else fallback();
+});
 $('qnCancel').addEventListener('click', function () { $('quickNoteModal').classList.remove('open'); });
 $('qnSave').addEventListener('click', quickNoteSave);
 
