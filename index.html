@@ -310,6 +310,11 @@
   .pageWrap svg.overlay.hintMode { cursor: help; }
   .pageWrap svg.overlay.speakMode { cursor: crosshair; }
   .keyChip.on { border-color: var(--accent-deep, #1E88E5); color: var(--accent-deep, #1E88E5); font-weight: 700; }
+  /* A worksheet the teacher SET says whose key it is and opens nothing.
+     `default` rather than `not-allowed`: it is not a button that is
+     refusing, it is a label. */
+  .keyChip.locked { cursor: default; opacity: .9; }
+  .keyChip.locked:hover { background: var(--bg); }
   .keyList { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; margin-top: 10px; }
   .keyRow {
     display: flex; align-items: center; gap: 11px; padding: 9px 11px;
@@ -1281,6 +1286,34 @@
   </div>
 </div>
 
+<!-- ============ Setting a worksheet for the class (admin only) ============ -->
+<div class="modalBack" id="pushModal">
+  <div class="modalCard">
+    <div class="modalHead"><h2 id="pushTitle">📌 Set for my students</h2></div>
+    <div class="modalBody">
+      <p class="sub" id="pushSub">
+        Every signed-in student sees it on their home screen and gets their own copy to write on.
+        Its answer key goes with it — for their buddy, never for them.
+      </p>
+      <h3 style="margin-top:22px;font-size:1rem;font-weight:700">How much help may they have?</h3>
+      <div class="gradeGrid" id="pushGradeGrid"></div>
+      <h3 style="margin-top:22px;font-size:1rem;font-weight:700">Can they change it?</h3>
+      <button class="obChoice" id="pushLockOn">
+        <div class="obChoiceTitle">🔒 No — everyone works at this level</div>
+        <div class="obChoiceSub">The help level is yours. Nobody in the class can turn it up.</div>
+      </button>
+      <button class="obChoice" id="pushLockOff">
+        <div class="obChoiceTitle">✏️ Yes — they can set their own</div>
+        <div class="obChoiceSub">This is where they start. A student who is stuck can ask for more.</div>
+      </button>
+    </div>
+    <div class="modalFoot">
+      <button class="btn" id="pushCancel">Cancel</button>
+      <button class="btn btnPrimary" id="pushGo">Set it</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ Crop dialog ============ -->
 <div class="modalBack" id="cropModal">
   <div class="modalCard tnWide">
@@ -1475,7 +1508,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.7.0';
+var APP_VERSION = 'v1.8.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -1588,7 +1621,7 @@ function subjectLabel(s) {
 /* What the notes are being applied to right now — the open worksheet's own
    level and subject. `noteAppliesHere` reads this object exactly as Ans Key
    reads its own `wsMeta` and Scan & Answer reads its pickers. */
-var wsMeta = { level: '', subject: '', guidance: 'method' };
+var wsMeta = { level: '', subject: '', guidance: 'method', assignmentId: '', setBy: '', guidanceLocked: false };
 
 /* ================= THE HELP LADDER =================
    The whole app turns on this. A student handed the answer has learned
@@ -2349,7 +2382,7 @@ async function loadPdf(bytes, name) {
   marking = { items: [], runAt: null, running: false };
   chat = [];
   keyReset();
-  wsMeta = { level: '', subject: '', guidance: HINT_DEFAULT };
+  wsMeta = { level: '', subject: '', guidance: HINT_DEFAULT, assignmentId: '', setBy: '', guidanceLocked: false };
   setDirty(false);
 
   // pdf.js transfers (detaches) the buffer it is given — hand it a copy.
@@ -3341,6 +3374,31 @@ function applyKeyVisibility() {
   scheduleRaster();
 }
 
+/* ---- WHOSE KEY IS IT? ----
+   A worksheet the TEACHER set carries the teacher's answer key, and on that
+   copy the key is not the student's to touch. This is not a tidiness rule:
+   the 🔑 window lists every page with a tick beside it, so a student who can
+   open it can UNTICK a key page and read the marking scheme — which is the
+   one thing the whole feature exists to prevent, reached through its own
+   settings window.
+
+   So on a set worksheet the window does not open, and the three things
+   inside it that could change the key all refuse. The chip stays, saying
+   what it is and nothing more: pages really are missing from the worksheet,
+   and a page that has quietly disappeared with nothing to explain it is the
+   other thing this feature can get wrong. */
+function keyLocked() {
+  // Note the difference from the HELP LEVEL, which is released when a
+  // worksheet is taken off the class list. This one never is: taking an
+  // assignment down is not a decision to hand out the marking scheme, and
+  // the file is still the class's.
+  return !!(wsMeta.assignmentId || wsKey.shared);
+}
+function keyLockedNote() {
+  return 'That answer key is ' + (wsMeta.setBy ? wsMeta.setBy + '\u2019s' : 'your teacher\u2019s') +
+         ' — Chung GPT marks and hints with it, and it is not part of your worksheet.';
+}
+
 /* ---- The chip that says so ----
    A page that has quietly disappeared from a worksheet is the one thing
    this feature can get wrong, so it is never silent: the chip says how many
@@ -3356,6 +3414,16 @@ function renderKeyChip() {
   if (n) bits.push(n + ' page' + (n === 1 ? '' : 's') + ' hidden');
   if (wsKey.path) bits.push('key PDF');
   if (wsKey.rows.length) bits.push(wsKey.rows.length + ' answers');
+  var lock = keyLocked();
+  chip.classList.toggle('locked', lock);
+  if (lock) {
+    // NOT a list of pages with ticks beside them. What a student needs to
+    // know is that some pages are their teacher's key and the buddy has it.
+    chip.textContent = '🔑 ' + (wsMeta.setBy ? wsMeta.setBy + '\u2019s' : 'Your teacher\u2019s') + ' answer key';
+    chip.classList.add('on');
+    chip.title = keyLockedNote();
+    return;
+  }
   chip.textContent = '🔑 ' + (bits.length ? bits.join(' · ') : 'Answer key');
   chip.classList.toggle('on', keyHasAnything());
   chip.title = keyHasAnything()
@@ -3634,6 +3702,9 @@ async function keyReadPdfAt(path) {
    the attachment and again for the pages found a moment later. */
 async function attachKeyPdf(file, defer) {
   if (!currentDocId) { toast('Save the worksheet first.'); return; }
+  // The whole class reads one key. A student replacing it on their own copy
+  // is their buddy quietly marking against a different paper.
+  if (keyLocked()) { toast(keyLockedNote(), 6000); return; }
   if (!file || (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name))) {
     toast('The answer key has to be a PDF.');
     return;
@@ -3657,6 +3728,7 @@ async function attachKeyPdf(file, defer) {
   }
 }
 async function detachKeyPdf() {
+  if (keyLocked()) { toast(keyLockedNote(), 6000); return; }
   var path = wsKey.path;
   var shared = wsKey.shared;
   wsKey.path = '';
@@ -3718,6 +3790,10 @@ function keyRuleBlock() {
 /* ---- The 🔑 window ---- */
 function openKeyModal() {
   if (!pages.length) return;
+  // Hiding the chip is not the lock: this is reachable from a stale chip
+  // and from the console, and what it opens is a list of the key's own
+  // pages with a tick beside each one.
+  if (keyLocked()) { toast(keyLockedNote(), 6000); return; }
   renderKeyModal();
   $('keyModal').classList.add('open');
 }
@@ -3754,6 +3830,7 @@ function renderKeyModal() {
   if (det) det.classList.toggle('hidden', !wsKey.path);
 }
 function toggleKeyPage(n, on) {
+  if (keyLocked()) { toast(keyLockedNote(), 6000); renderKeyModal(); return; }
   if (on && !pageIsKey(n)) wsKey.pages.push(n);
   if (!on) wsKey.pages = wsKey.pages.filter(function (x) { return x !== n; });
   wsKey.pages.sort(function (a, b) { return a - b; });
@@ -5659,12 +5736,18 @@ function hintCard(h, i) {
       l.innerHTML = '🔒 <span><b>' + escHtml(spec.label) + '</b> — switched off at this help level.</span>';
       card.appendChild(l);
     });
-    if (locked.length) {
+    if (locked.length && !wsMeta.guidanceLocked) {
       var chg = document.createElement('button');
       chg.className = 'btn btnSm rungNext';
       chg.textContent = 'Change the help level';
       chg.addEventListener('click', function () { openGradeModal(); });
       card.appendChild(chg);
+    } else if (locked.length) {
+      // Naming who set it is the difference between a rule and a fault.
+      var why = document.createElement('div');
+      why.className = 'rungLocked';
+      why.innerHTML = '🔒 <span>' + escHtml(guidanceLockedNote(wsMeta.setBy)) + '</span>';
+      card.appendChild(why);
     }
   }
   return card;
@@ -6949,7 +7032,8 @@ function renderWorksheets() {
     meta.className = 'wsMeta';
     if (w.level) meta.appendChild(chipNode(levelLabel(w.level), 'chip chipLevel'));
     if (w.subject) meta.appendChild(chipNode(subjectLabel(w.subject), 'chip'));
-    meta.appendChild(chipNode('💡 ' + guidanceLabel(w.guidance || HINT_DEFAULT), 'chip chipGrade'));
+    var grule = guidanceRule(w);
+    meta.appendChild(chipNode((grule.locked ? '🔒 ' : '💡 ') + guidanceLabel(grule.level), 'chip chipGrade'));
     if (w.score && w.score.attempted) {
       meta.appendChild(chipNode('✅ ' + w.score.correct + '/' + w.score.attempted, 'chip chipScore'));
     }
@@ -6968,11 +7052,15 @@ function renderWorksheets() {
     open.textContent = 'Open';
     open.addEventListener('click', function () { openWorksheet(w.id); });
     foot.appendChild(open);
-    var lvl = document.createElement('button');
-    lvl.className = 'btn btnSm';
-    lvl.textContent = '💡 Help level';
-    lvl.addEventListener('click', function () { openGradeModal(w.id); });
-    foot.appendChild(lvl);
+    // Not drawn when the teacher has locked it — and `openGradeModal`
+    // refuses as well, because a button that is not there is not a lock.
+    if (!grule.locked) {
+      var lvl = document.createElement('button');
+      lvl.className = 'btn btnSm';
+      lvl.textContent = '💡 Help level';
+      lvl.addEventListener('click', function () { openGradeModal(w.id); });
+      foot.appendChild(lvl);
+    }
     // 📌 The teacher's own button, and nobody else's. It is drawn only for
     // the admin AND refused inside pushWorksheet — hiding a button that
     // writes to a collection every student reads is not the lock.
@@ -6981,9 +7069,16 @@ function renderWorksheets() {
       push.className = 'btn btnSm';
       push.textContent = w.pushed ? '📌 Set — take it off' : '📌 Set for my students';
       push.addEventListener('click', function () {
-        if (w.pushed) unpushWorksheet(w.id); else pushWorksheet(w.id);
+        if (w.pushed) unpushWorksheet(w.id); else openPushModal(w.id);
       });
       foot.appendChild(push);
+      if (w.pushed) {
+        var reset = document.createElement('button');
+        reset.className = 'btn btnSm';
+        reset.textContent = '💡 Level for the class';
+        reset.addEventListener('click', function () { openPushModal(w.id); });
+        foot.appendChild(reset);
+      }
     }
     var del = document.createElement('button');
     del.className = 'btn btnSm btnDanger';
@@ -7024,6 +7119,11 @@ function renderWorksheets() {
    ===================================================================== */
 var ASSIGN_COLLECTION = 'tutorAssignments';
 var assignments = [];
+/* Whether `assignments` is an ANSWER or an empty start. It is what tells a
+   worksheet whose assignment is not in the list apart from one whose list
+   has simply not arrived yet — and those two want opposite answers about
+   whether its help level is locked. */
+var assignmentsLoaded = false;
 /* A whole marking scheme with its working can be long, and this is one
    Firestore document. The rows are capped rather than left to grow into a
    write that fails at 1 MB — a push that silently did not happen is the
@@ -7051,6 +7151,7 @@ async function loadAssignments() {
       return yv - xv;
     });
     assignments = out;
+    assignmentsLoaded = true;
   } catch (e) {
     // A read that is denied is not an error worth showing a student: they
     // simply have no worksheets set, which is the ordinary case. It is worth
@@ -7058,6 +7159,9 @@ async function loadAssignments() {
     // like.
     console.warn('Set worksheets could not be read', e);
     assignments = [];
+    // A read that FAILED is not proof that nothing is set, so the fallback
+    // below stays on the copy's own flag rather than unlocking the class.
+    assignmentsLoaded = false;
   }
   renderAssignments();
 }
@@ -7095,6 +7199,7 @@ async function startAssignment(id) {
       level: a.level || '',
       subject: a.subject || '',
       guidance: a.guidance || HINT_DEFAULT,
+      guidanceLocked: !!a.guidanceLocked,
       ownerUid: currentUser.uid,
       ownerEmail: currentUser.email || '',
       ownerName: currentUser.displayName || '',
@@ -7126,14 +7231,52 @@ async function startAssignment(id) {
 /* The teacher's push. It reads the worksheet's own body for the key rows
    rather than the open editor, so a worksheet can be pushed from the card
    without opening it. */
-async function pushWorksheet(id) {
+/* ---- What the class gets: the level, and whether it is theirs to change ----
+   A `confirm()` could ask one question. This asks the two that decide how
+   the worksheet behaves for thirty people, and it is the same dialog for
+   setting one and for changing what an already-set one gives. */
+var pushTarget = null;
+var pushGrade = HINT_DEFAULT;
+var pushLock = true;
+
+function openPushModal(id) {
   if (!isAdmin(currentUser)) return;
   var w = worksheets.find(function (x) { return x.id === id; });
   if (!w) return;
   if (!w.storagePath) { toast('That worksheet has no PDF to share.'); return; }
-  if (!confirm('Set “' + (w.name || 'Untitled') + '” for your students?\n\n' +
-               'Every signed-in student sees it on their home screen and gets their own copy to write on. ' +
-               'Its answer key goes with it — for their buddy, never for them.')) return;
+  pushTarget = id;
+  var live = assignments.find(function (x) { return x.id === id; });
+  pushGrade = (live && live.guidance) || w.guidance || HINT_DEFAULT;
+  pushLock = live ? !!live.guidanceLocked : true;
+  var already = !!(w.pushed || live);
+  $('pushTitle').textContent = already ? '💡 What the class gets' : '📌 Set for my students';
+  $('pushSub').textContent = already
+    ? 'They already have “' + (w.name || 'this worksheet') + '”. This changes the help level ' +
+      'everyone who has started it is on, straight away.'
+    : 'Every signed-in student sees it on their home screen and gets their own copy to write on. ' +
+      'Its answer key goes with it — for their buddy, never for them.';
+  $('pushGo').textContent = already ? 'Save' : 'Set it';
+  fillGradeGrid('pushGradeGrid', pushGrade, function (k) { pushGrade = k; });
+  renderPushLock();
+  $('pushModal').classList.add('open');
+}
+function renderPushLock() {
+  $('pushLockOn').classList.toggle('on', pushLock);
+  $('pushLockOff').classList.toggle('on', !pushLock);
+}
+function pushConfirm() {
+  var id = pushTarget;
+  $('pushModal').classList.remove('open');
+  if (id) pushWorksheet(id, pushGrade, pushLock);
+}
+
+async function pushWorksheet(id, level, locked) {
+  if (!isAdmin(currentUser)) return;
+  var w = worksheets.find(function (x) { return x.id === id; });
+  if (!w) return;
+  if (!w.storagePath) { toast('That worksheet has no PDF to share.'); return; }
+  level = level || w.guidance || HINT_DEFAULT;
+  locked = locked !== false;
   toast('Setting it…', 12000);
   try {
     var body = await readBody(w);
@@ -7143,7 +7286,10 @@ async function pushWorksheet(id) {
       name: w.name || 'Worksheet',
       level: w.level || '',
       subject: w.subject || '',
-      guidance: w.guidance || HINT_DEFAULT,
+      guidance: level,
+      // Read LIVE by every copy when it is locked, so changing it here
+      // changes it for the students who started yesterday too.
+      guidanceLocked: locked,
       storagePath: w.storagePath,
       keyPath: key.path || w.keyPath || '',
       keyName: key.name || '',
@@ -7163,7 +7309,8 @@ async function pushWorksheet(id) {
     w.pushed = true;
     renderWorksheets();
     await loadAssignments();
-    toast('📌 Set — your students will see it on their home screen.' +
+    toast('📌 Set at “' + guidanceLabel(level) + '”' +
+          (locked ? ', locked' : ' — they can change it') + '.' +
           (rows.length ? ' The key went with it (' + rows.length + ' answers).' : ''), 6000);
   } catch (e) {
     console.error(e);
@@ -7216,6 +7363,8 @@ function renderAssignments() {
     var meta = document.createElement('div');
     meta.className = 'wsMeta';
     meta.appendChild(chipNode('📌 Set by ' + (a.byName || ADMIN_DISPLAY_NAME), 'chip chipSet'));
+    meta.appendChild(chipNode((a.guidanceLocked ? '🔒 ' : '💡 ') +
+      guidanceLabel(a.guidance || HINT_DEFAULT), 'chip chipGrade'));
     if (a.level) meta.appendChild(chipNode(levelLabel(a.level), 'chip chipLevel'));
     if (a.subject) meta.appendChild(chipNode(subjectLabel(a.subject), 'chip'));
     if (mine && mine.score && mine.score.attempted) {
@@ -7595,7 +7744,20 @@ async function openWorksheet(id) {
     currentDocId = id;
     wsMeta.level = w.level || '';
     wsMeta.subject = w.subject || '';
-    wsMeta.guidance = w.guidance || HINT_DEFAULT;
+    wsMeta.assignmentId = w.assignmentId || '';
+    wsMeta.setBy = w.setBy || '';
+    // A LOCKED level is read live from the assignment, so on a cold start
+    // the list has to be in hand before it is asked. One query, only for a
+    // worksheet the teacher set, and only when it has not loaded yet —
+    // otherwise the whole session runs at the level the copy happens to
+    // carry and the lock is a lock nobody applied.
+    if (wsMeta.assignmentId && !assignmentsLoaded) { try { await loadAssignments(); } catch (e) {} }
+    // A LOCKED level is the teacher's, live, and it beats whatever is on
+    // this copy — including a level the student set before it was locked.
+    var rule = guidanceRule(w);
+    wsMeta.guidanceLocked = rule.locked;
+    wsMeta.guidance = rule.level;
+    if (rule.by) wsMeta.setBy = rule.by;
     $('wsTitle').textContent = docName;
     setDirty(false);
     renderAllOverlays();
@@ -7767,9 +7929,46 @@ async function handleUpload(file) {
 /* ---- Changing the help level ---- */
 var gradeTarget = null;   // a worksheet id, or null for the open one
 var gradePick = HINT_DEFAULT;
+/* ---- WHOSE HELP LEVEL IS IT? ----
+   The teacher chooses the level when they set a worksheet, and says whether
+   the class may change it. A locked one is read from the ASSIGNMENT rather
+   than from the student's own copy, so a teacher who lowers it mid-lesson
+   lowers it for everyone — a lock read off each copy would only ever govern
+   the students who had not started yet.
+
+   The copy's own `guidanceLocked` is the fallback for the moment before the
+   set list has loaded, and it errs the safe way: a locked worksheet whose
+   assignment is not in hand stays locked. */
+function assignmentFor(w) {
+  var id = w && w.assignmentId;
+  if (!id) return null;
+  return assignments.find(function (x) { return x.id === id; }) || null;
+}
+function guidanceRule(w) {
+  var a = assignmentFor(w);
+  var locked;
+  if (a) locked = !!a.guidanceLocked;
+  // TAKEN OFF THE CLASS LIST is the copy becoming the student's own. Left
+  // on the copy's own flag it would stay locked for ever, at a level
+  // nobody — teacher included — could still change.
+  else if (assignmentsLoaded && w && w.assignmentId) locked = false;
+  else locked = !!(w && w.guidanceLocked);
+  var level = (locked && a && a.guidance) || (w && w.guidance) || HINT_DEFAULT;
+  return { level: level, locked: locked, by: (w && w.setBy) || (a && a.byName) || ADMIN_DISPLAY_NAME };
+}
+function guidanceLockedNote(by) {
+  return 'The help level on this one is ' + (by || ADMIN_DISPLAY_NAME) + '\u2019s to set.';
+}
+
 function openGradeModal(id) {
   gradeTarget = id || null;
   var w = id ? worksheets.find(function (x) { return x.id === id; }) : null;
+  // Hiding the button is not the lock — this is reachable from a stale card
+  // and from the console.
+  if (w ? guidanceRule(w).locked : wsMeta.guidanceLocked) {
+    toast(guidanceLockedNote(w ? guidanceRule(w).by : wsMeta.setBy), 5000);
+    return;
+  }
   gradePick = (w ? w.guidance : wsMeta.guidance) || HINT_DEFAULT;
   fillGradeGrid('gradeGrid', gradePick, function (k) { gradePick = k; });
   $('gradeModal').classList.add('open');
@@ -7778,6 +7977,11 @@ async function saveGrade() {
   var id = gradeTarget || currentDocId;
   $('gradeModal').classList.remove('open');
   if (!id) return;
+  var target = worksheets.find(function (x) { return x.id === id; });
+  if (target ? guidanceRule(target).locked : wsMeta.guidanceLocked) {
+    toast(guidanceLockedNote(target ? guidanceRule(target).by : wsMeta.setBy), 5000);
+    return;
+  }
   try {
     await db.collection(COLLECTION).doc(id).update({ guidance: gradePick });
     if (id === currentDocId) {
@@ -8953,6 +9157,10 @@ $('fileInput').addEventListener('change', function (e) {
 
 $('gradeCancel').addEventListener('click', function () { $('gradeModal').classList.remove('open'); });
 $('gradeSave').addEventListener('click', saveGrade);
+$('pushCancel').addEventListener('click', function () { $('pushModal').classList.remove('open'); });
+$('pushGo').addEventListener('click', pushConfirm);
+$('pushLockOn').addEventListener('click', function () { pushLock = true; renderPushLock(); });
+$('pushLockOff').addEventListener('click', function () { pushLock = false; renderPushLock(); });
 
 $('keyChip').addEventListener('click', openKeyModal);
 $('keyClose').addEventListener('click', function () { $('keyModal').classList.remove('open'); });
