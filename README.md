@@ -12,6 +12,50 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.2.0 — a size you can set, work you cannot lose, and the centre's own logo
+
+### 📏 Change the size of the pen and of the typing
+
+The thickness was a slider that only ever moved the **pen**, and the text size
+was a constant nobody could reach — so a student who wanted bigger handwriting
+had no control at all.
+
+Now there is **▼ 3 ▲** in the toolbar: tap the arrows, or **type the number
+you want**. It means the pen's thickness with a drawing tool in hand and the
+text size with 🅣 or 🎤, and it says which. `[` and `]` step it from the
+keyboard.
+
+It follows what you have **selected**, so tapping a text box you wrote earlier
+and typing 24 makes that box 24 — you never have to delete something and draw
+it again to resize it. A text box grows with its size rather than clipping the
+words in it.
+
+### 💾 Your work saves itself, and keeps trying when it can't
+
+It always auto-saved. What it did not do was **cope with a save that failed**:
+the button went back to saying "Save" and that was that, so one dropped
+connection mid-lesson meant no auto-save for the rest of it — silently.
+
+- A failed save **keeps trying**, waiting a little longer each time.
+- What could not be sent is **kept on this device**, and put back when you
+  next open the worksheet: *"There is work on this device from about 4 minutes
+  ago that never reached the server. Put it back?"* It asks rather than
+  assuming, because your work on another device might be newer.
+- It saves on the way out of the tab on a phone as well as on a laptop.
+- The button now says **three** different things instead of one — ✓ Saved,
+  Save, and **⚠ Not saved** — because you would do something different about
+  each.
+
+### 🎨 The Polymath logo, top left
+
+The centre's own logo in the corner of every screen, and as the icon on the
+browser tab and on a home screen — there was none of either before, so a
+worksheet pinned to an iPad wore a screenshot of itself. It falls back to a
+drawn mark when a school network blocks the image, rather than to a broken
+picture icon.
+
+---
+
 ## v1.1.2 — the caret really lands where you click
 
 v1.1.1 put the box in the right place by **working out** where the caret would

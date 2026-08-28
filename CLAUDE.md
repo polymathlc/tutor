@@ -370,6 +370,112 @@ THE TEACHER SETS`), plus 📌 **Set for my students** on a worksheet card and th
   disappeared half way through, with the marking on it, would be work taken
   away rather than an assignment withdrawn.
 
+## 📏 How big the mark is (v1.2.0)
+
+`ANN_SIZE_KINDS` / `ANN_FONT_TOOLS` / `annSizeTarget` / `annSizeKind` /
+`annSizeValue` / `annSizeClamp` / `highlightWidthFor` / **`setAnnSize`** /
+`annFitTextHeight` / `nudgeAnnSize` / `syncSizeCtl` (search `HOW BIG THE MARK
+IS`), plus `#sizeGroup` in the toolbar and the `.size*` CSS.
+
+The thickness was a `<input type="range">` that only ever moved the PEN, and
+the text size was a constant nobody could reach: a student who wanted bigger
+handwriting had no control at all, and one who wanted 24pt could only aim a
+slider at it.
+
+- **ONE control for two numbers, because to a student it is one question.** A
+  drawing tool's size is a stroke WIDTH and the 🅣 / 🎤's is a FONT size —
+  different units, different sensible ranges, and no phone toolbar has room
+  for two spinners of which one is always useless. So it changes meaning with
+  what is in hand and **says which** (`#sizeLabel` reads "Pen" or "Text").
+- **IT DESCRIBES THE SELECTION FIRST.** Tap a text box written earlier and it
+  shows THAT box's size, and typing a new number changes that box — the same
+  rule `setColor` already follows, and without it a student has to delete
+  something and redraw it to resize it.
+- **The two numbers are remembered SEPARATELY** (`strokeW`, `fontSize`), so
+  pen → text → pen does not come back with a 16px-thick pen, which reads as
+  the app forgetting.
+- **A HIGHLIGHTER'S WIDTH IS DERIVED** (`highlightWidthFor`, the ONE place
+  that relationship lives — it is marking a line of print, not writing on
+  it), so the control shows the PEN number behind it rather than the derived
+  width. Showing 27 and setting it back to 3 would silently triple it, and
+  doing that twice would reach 81.
+- **A box being TYPED IN is never the target.** `annSizeTarget` refuses
+  `selectedId === editingId`: resizing a box out from under the caret
+  mid-word is not something anybody asked for.
+- **`setAnnSize` is the ONE writer** — the arrows, the typed box, `[` / `]`
+  and the spinner keys all land there, so the clamp, the restyle and the
+  repaint cannot drift apart.
+- **A text box GROWS with its size** (`annFitTextHeight`, re-measured off the
+  live element rather than scaled, because how many lines the words take at
+  this width is not a thing arithmetic knows). A size put up on a box that
+  does not grow clips the answer the marking then never sees. It never
+  SHRINKS a box the student dragged taller — that was their decision.
+- **`syncSizeCtl` is painted from `renderAllOverlays`**, the one function
+  every selection change already goes through. Hooking the dozen places that
+  set `selectedId` is how one of them gets missed and the control goes stale
+  on exactly one route — the reasoning Ans Key's `syncLineStyleCtl` carries.
+  It **never writes the box while it is being typed in**, or "24" becomes "2"
+  the moment the 2 is pressed, and an EMPTY box is left alone until `blur`
+  rather than clamped to the minimum, which is what would stop anybody
+  clearing it to type a number at all.
+- On a phone the LABEL gives way and the arrows and the box both stay: the
+  lit tool button already says which size this is, and the arrows are what
+  make it usable with a thumb.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
+## 💾 Auto-save — and what happens when it FAILS (v1.2.0)
+
+`AUTOSAVE_DELAY` / `AUTOSAVE_MAX_DELAY` / `autoSaveDelay` / `scheduleAutoSave`
+/ `setSaveState` / `savingNow` / `saveAgain` / `saveFails` / `flushSave` /
+`localBackupWrite` / `localBackupRead` / `localBackupClear` /
+**`offerLocalBackup`** / `stampOf` / **`applyWorksheetBody`** (search
+`AUTO-SAVE`).
+
+Auto-save existed and worked — **until it didn't**. `performSave`'s catch put
+the button back to "Save" and stopped: `dirty` stayed true, nothing re-armed
+the timer, and the next auto-save waited for the next stroke. So one dropped
+connection mid-lesson left the tab on its own for the rest of it, silently,
+with a button reading the same word it reads when there is nothing to save.
+
+- **A FAILED SAVE RETRIES**, with the wait doubling to `AUTOSAVE_MAX_DELAY` —
+  a tab that cannot reach the server must not spend a lesson retrying every
+  two seconds and flattening a phone, and it must not stop either.
+- **WHAT IT COULD NOT SEND IS KEPT ON THE DEVICE.** That is the whole
+  difference between "auto-save" and "your work is safe": before this, a
+  refused write left the only copy in a tab the student was about to close.
+  It is written on failure and on the way out, and **cleared the moment a
+  save lands** — a rescue, never a cache, so it can never quietly serve stale
+  work in place of the real thing.
+- **IT IS OFFERED, NEVER APPLIED** (`offerLocalBackup`). The server's copy may
+  be NEWER — written from another device or another tab — and overwriting
+  that with whatever this browser was holding is a worse bug than the one
+  this rescues. So it only speaks up when it is genuinely ahead, and then it
+  asks. `stampOf` reads a Firestore stamp, a `Date`, a number or nothing, and
+  **an unreadable one comes back 0 so the backup is offered rather than
+  assumed stale**: the student is the one who knows.
+- **`LOCAL_BACKUP_MAX` bounds it.** localStorage is a few megabytes for the
+  whole origin and a worksheet heavy enough to overflow into Storage can be
+  most of that alone; a body past the cap is dropped rather than allowed to
+  evict everything else in there. The retry is still the real rescue.
+- **`applyWorksheetBody` is the ONE place a saved body becomes the open
+  worksheet.** Opening one and putting a rescued copy back are the same job,
+  and a second copy of that list is one that forgets a field the day another
+  is added to `worksheetBody`. It sets the body-derived state and **nothing
+  else** — not `currentDocId`, not `bodyOverflow` — because the rescue is
+  putting work back into a worksheet that is already open.
+- **BOTH `visibilitychange` AND `pagehide`**, because neither is enough:
+  Safari on iOS very often gives a swiped-away tab `pagehide` and nothing
+  else, and a desktop tab switched away gets `visibilitychange` long before
+  it is closed.
+- **`savingNow` / `saveAgain`**: one write in flight at a time. Auto-save, a
+  hidden tab and a pressed button can all fire within a second, and two
+  writes of the same body racing is how the older one lands last.
+- **The status is three states, not one word.** "Save" used to mean *nothing
+  to save*, *not saved yet* and *the save just failed* alike — three things a
+  student would act on differently. `setSaveState` is the ONE writer, and
+  `setDirty` will not paint a plain "Save" over a ⚠ that is still true.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## ✒️ The caret lands on the I-beam (v1.1.2)
 
 `ANN_TEXT_PAD_X` / `ANN_TEXT_PAD_Y` / `ANN_TEXT_LINE` / `ANN_TEXT_FONT` /
@@ -483,6 +589,24 @@ only inside half a page unit.
   already on the machine, so it is a tool you reach for rather than a gate.
 
 ## House rules
+- After touching **📏 the size control or 💾 auto-save** (`ANN_SIZE_KINDS`,
+  `annSizeTarget`, `annSizeKind`, `annSizeValue`, `annSizeClamp`,
+  `highlightWidthFor`, `setAnnSize`, `annFitTextHeight`, `syncSizeCtl`,
+  `autoSaveDelay`, `scheduleAutoSave`, `setSaveState`, `flushSave`,
+  `localBackup*`, `offerLocalBackup`, `stampOf`, `applyWorksheetBody`, or
+  `performSave`'s catch), run `node tools/tutor-tests.mjs`. Every failure is
+  silent and the app goes on looking right. A size control that stops
+  describing the selection leaves a student redrawing something to resize it;
+  one that shows a highlighter's derived width triples it every time it is
+  touched; one written to mid-keystroke turns "24" into "2"; and a text box
+  that does not grow with its size clips the answer the marking never sees.
+  On the save side the quiet ones are worse: a catch that stops re-arming the
+  timer turns one dropped connection into a lesson with no auto-save at all,
+  a backup applied rather than OFFERED overwrites newer work from another
+  device with whatever this browser was holding, a backup that is not cleared
+  on success is stale work waiting to be offered back, and a second copy of
+  `applyWorksheetBody` is one that forgets a field the day another is added
+  to `worksheetBody`.
 - After touching **the text box's placement** (`ANN_TEXT_PAD_X`,
   `ANN_TEXT_PAD_Y`, `ANN_TEXT_LINE`, `ANN_TEXT_FONT`, `ANN_CARET_PROBE`,
   `textCaretRect`, `textCaretModel`, `textCaretDelta`,
