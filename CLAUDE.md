@@ -508,10 +508,20 @@ that was reported.
   character, because an invisible literal is one a later edit silently drops.
 - **`textCaretModel` is the FALLBACK, for a browser that hands back no rect at
   all**, and it **REFUSES rather than guess** when the line-height will not
-  parse: `line-height: normal` computes to the string, and the real normal
-  line box is nothing like `fontSize * ANN_TEXT_LINE` — modelling it with that
-  multiplier was **36/36 placements off, worst −3.95**, which is worse than not
-  correcting at all. Keep the constants in step with `.annText` anyway.
+  parse. `line-height: normal` computes to the string, and the real normal
+  line box is nothing like `fontSize * ANN_TEXT_LINE`. Measured, guessing with
+  that multiplier lands in the **same place** as refusing (16px: −2.297
+  guessed against −2.313 refused; identical at 34 and 48), so the guess buys
+  nothing and **pretends to have corrected** — which is the half that matters:
+  a correction that is really a guess hides the fact that the measurement
+  failed. Keep the constants in step with `.annText` anyway.
+- **KNOWN HAZARD in `textCaretRect`, and it is written on the function.**
+  U+200B is a BREAK OPPORTUNITY, so while the probe is in a box whose first
+  word is longer than the box the div is a line TALLER (47.19 → 68.78 →
+  47.19 once it comes out). Nothing is harmed today — only the probe's own
+  rect is read, and every caller reads `scrollHeight` after the probe has
+  gone — but anything that later reads a layout property inside that window
+  gets an answer about a box that does not exist.
 - **THE TWO COORDINATE SYSTEMS ARE THE TRAP.** `getBoundingClientRect` comes
   back in SCREEN pixels; `getComputedStyle` comes back in the SVG's own USER
   units, because the div is laid out inside a `foreignObject` and the whole
@@ -555,10 +565,11 @@ that was reported.
 it loads the REAL `.annText` rule and the REAL placement functions out of
 `index.html`, builds the same `foreignObject`-inside-a-scaled-SVG the app
 builds, clicks at a known point and then measures the caret's own rectangle
-in the browser. It sweeps seven zooms × six font sizes × seven points
-including all four edges (336 placements), a `devicePixelRatio: 2` pass, three
-stylesheet variants and the flattened picture against the screen, and passes
-only inside half a page unit.
+in the browser. It sweeps eight zooms × seven font sizes × seven points
+including all four edges (392 placements), a `devicePixelRatio: 2` pass, three
+stylesheet variants, the flattened picture against the screen, and **72
+placements of the SPOKEN answer** — the one path that puts a box on a div
+that already has words in it — and passes only inside half a page unit.
 
 - **IT MEASURED NOTHING FOR ITS FIRST 168 GREEN TICKS, and that is the
   cautionary tale of this whole section.** `range.setStart(div, 0)` on an
@@ -570,7 +581,22 @@ only inside half a page unit.
   probe is not a nicety: **without the zero-width space there is no
   measurement at all**, and a fallback that fires is now reported and FAILS the
   run rather than passing quietly.
-- **`--selftest` breaks the placement eight ways and requires each to go red**,
+- **THE VERDICT IS READ OFF A REFERENCE THAT SHARES NO MECHANISM WITH THE
+  CODE**, which is the other half of that lesson. `textCaretRect` answers with
+  a zero-width space and a `Range`; ask the harness the same question the same
+  way and the two agree because they are the same trick, not because the caret
+  is anywhere in particular. So the judged measurement is a **real glyph's
+  inline box** read with `getBoundingClientRect` — different probe, different
+  API, same truth — and the two are asserted to AGREE on every placement. A
+  disagreement fails the run: one of them is then lying and the check is worth
+  nothing until it is known which.
+- **A PROBE LEFT IN THE BOX IS AN ANSWER WITH A U+200B IN IT.**
+  `commitActiveTextEdit` reads `div.innerText`, so it would be saved, marked
+  and filed in the mistake book, invisibly. The harness asserts the box is
+  empty again after every placement.
+- **`--selftest` breaks the placement twelve ways and requires each to go
+  red**, over BOTH sweeps (a mutant that only shows in one of them is still
+  caught — the appended-probe one shows only in the spoken sweep),
   and **`sub()` THROWS when a mutant matches nothing.** That is the
   load-bearing half: a mutant is a string replacement against code that is
   being edited, so a rename turns it into a no-op — and a no-op reports "not
@@ -582,9 +608,11 @@ only inside half a page unit.
   red in BOTH directions — while the code was leaning one way, the drift that
   cancelled the lean was not caught, which was itself evidence the lean was
   real. And **"the caret is MODELLED again instead of measured"** is the alarm
-  on this section's own history: it reproduces v1.1.1 exactly, 112 placements
-  off at worst −0.95, and without it the bias could come back under 336 green
-  ticks.
+  on this section's own history: it reproduces v1.1.1 exactly, and without it
+  the bias could come back under a screenful of green ticks. **"The probe is
+  appended"** is the fourth: it is invisible on the empty box the text tool
+  makes and puts the spoken answer a whole line out, which is why that sweep
+  had to exist at all.
 - Like scan's `mobile-check`, it needs `playwright-core` and the Chromium
   already on the machine, so it is a tool you reach for rather than a gate.
 
@@ -623,8 +651,11 @@ only inside half a page unit.
   no screenshot shows and only a `Range` catches. Mix
   `getBoundingClientRect`'s screen pixels with `getComputedStyle`'s user units
   and it is perfect at 100% and wrong on every iPad in the centre, which is why
-  the sweep is seven zooms and not one. Take the width floor away and a box
-  near the right edge wraps every word onto its own line. **And add a rule to
+  the sweep is eight zooms and not one. Take the width floor away and a box
+  near the right edge wraps every word onto its own line. Leave the probe in
+  the box and it is saved into the student's own answer, invisibly. Append it
+  instead of putting it first and the empty box the text tool makes is
+  perfect while every spoken answer is a whole line out. **And add a rule to
   the placement without adding its mutant to `--selftest` — or rename a
   variable a mutant names and let it match nothing — and you have added a tick
   rather than a check.**

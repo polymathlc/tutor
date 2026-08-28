@@ -1039,7 +1039,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.2.0';
+var APP_VERSION = 'v1.2.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -2545,6 +2545,14 @@ function commitActiveTextEdit() {
 // literal is one a later edit silently drops.
 var ANN_CARET_PROBE = '\u200B';
 
+/* WHILE THE PROBE IS IN, THE BOX IS NOT ITSELF. U+200B is a BREAK
+   OPPORTUNITY, so in a box whose first word is longer than the box the
+   browser now has somewhere to break and the div is a line taller
+   (measured: 47.19 -> 68.78 -> 47.19 again once it comes out). Nothing
+   here is harmed by that — only the probe's OWN rect is read, and every
+   caller reads scrollHeight after the probe has gone — but anything that
+   later reads a layout property inside this window gets an answer about a
+   box that does not exist. Take the probe out first. */
 function textCaretRect(div) {
   var doc = div && div.ownerDocument;
   if (!doc || !doc.createRange) return null;
@@ -2570,8 +2578,11 @@ function textCaretRect(div) {
 
    It REFUSES rather than guess when the line-height will not parse.
    `line-height: normal` computes to the string, and the real normal line box
-   is nothing like `fontSize * ANN_TEXT_LINE` — modelling it with that
-   multiplier is worse than not correcting at all. */
+   is nothing like `fontSize * ANN_TEXT_LINE`. Measured, guessing with that
+   multiplier lands in the SAME PLACE as refusing (16px: -2.297 guessed
+   against -2.313 refused; identical at 34 and 48) — so it buys nothing and
+   pretends to have corrected, which is the half that matters: a correction
+   that is really a guess hides the fact that the measurement failed. */
 function textCaretModel(div, kx, ky) {
   if (!window.getComputedStyle) return null;
   var r = div.getBoundingClientRect();

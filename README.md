@@ -12,6 +12,31 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.2.1 — the caret check, audited
+
+Nothing on the screen changed. The harness that decides whether the caret is on the pointer was
+audited and hardened, and two things it turned up are now written down.
+
+- **The verdict is read off a reference that shares no mechanism with the code.** `textCaretRect`
+  answers with a zero-width space and a `Range`; the harness asked the same question the same way,
+  so the two agreed because they were the same trick. It now measures a **real glyph's inline box**
+  with `getBoundingClientRect` — different probe, different API — and asserts the two agree on every
+  placement. That is the exact shape of the fault this file had once already.
+- **The spoken answer is swept too** (72 placements). Everything else places an *empty* box, so
+  nothing was exercising the one path that puts a box on a div that already has words in it — and
+  a probe appended rather than put first is invisible on an empty box and a whole line out on that
+  one.
+- **A probe left in the box would be saved into the answer**, marked, and filed in the mistake
+  book, invisibly. The harness now asserts the box is empty again after every placement.
+- Twelve mutants (was eight), sizes 8 and 96 added — the real ends of the size control.
+- **Two corrections.** The fallback's refusal to guess at `line-height: normal` was described as
+  being better than guessing; measured, guessing lands in the *same place*. It is kept because it
+  stops the app pretending to have corrected, which is the half that matters. And U+200B is a
+  **break opportunity**, so while the probe is in a box whose first word is longer than the box the
+  div is a line taller — harmless today, and now written on the function.
+
+392 + 72 placements, worst **0.003 across / −0.014 down**, every mutant caught.
+
 ## v1.2.0 — a size you can set, work you cannot lose, and the centre's own logo
 
 ### 📏 Change the size of the pen and of the typing

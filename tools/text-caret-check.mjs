@@ -44,6 +44,10 @@ const CONSTS = between('var ANN_TEXT_PAD_X', '/* Unrotated frame', 'the text met
 // would leave it out and the page would throw.
 const PLACE = between('var ANN_CARET_PROBE', 'function attachOverlayHandlers', 'the placement maths');
 const DRAW  = between('function drawAnnsOnCtx(ctx, kx, ky, anns, pageNum)', '\n/* ==', 'the flatten');
+/* 🎤 The spoken answer places a box the same way — but on a div that ALREADY
+   HAS WORDS IN IT, which is the one case the text tool never produces and
+   therefore the one nothing here was exercising. */
+const SPOKEN = between('function placeSpokenAnswer(p, pt, text)', '\nfunction ', 'the spoken placement');
 const FONTVAR = between('    --font:', ';', 'the font stack').replace('    --font:', '').trim();
 
 /* A page is 595 x 842 (A4 at 72dpi), which is what pdf.js hands back. */
@@ -54,7 +58,9 @@ const TOL = 0.5;          // half a CSS pixel — below what any screen can show
    non-integer CSS width, so the layout lands on sub-pixel boundaries the
    round numbers never reach. */
 const ZOOMS = [0.5, 0.75, 1, 1.2, 1.3333, 1.6, 2.5, 4];
-const SIZES = [9, 12, 16, 22, 34, 48];
+/* The ends are the real ends: the size control accepts 8 to 96, so those
+   are placements a student can actually make, not hypotheticals. */
+const SIZES = [8, 12, 16, 22, 34, 48, 96];
 /* Corners and edges as well as the middle: the width floor and any clamp
    show up there and nowhere else. */
 const POINTS = [
@@ -137,6 +143,31 @@ const MUTANTS = [
      so a drift is a box you can see in one place and grab in another. */
   { name: 'the foreignObject is left behind when the model moves',
     place: p => sub(p, "        fo.setAttribute('x', a.x);", '') },
+  /* THE PROBE ITSELF. textCaretRect is now the thing that answers "where is
+     the caret", and nothing above perturbs its internals — only whether it
+     is called. These four do. */
+  { name: 'the probe is left in the box instead of being taken out',
+    place: p => sub(p, 'if (probe.parentNode) probe.parentNode.removeChild(probe);', '') },
+  { name: 'the caret is measured at the TOP of its box, not the middle',
+    place: p => sub(p, 'out = { x: r.left, mid: r.top + r.height / 2 };',
+                    'out = { x: r.left, mid: r.top };') },
+  /* The probe goes in as the FIRST child so it lands in the first line box.
+     Appended, it lands in the LAST — identical for the empty box the text
+     tool makes, and a whole answer out for the box placeSpokenAnswer
+     measures, which already has words in it. */
+  { name: 'the probe is appended, so a box with words in it measures its last line',
+    place: p => sub(p, 'div.insertBefore(probe, div.firstChild);', 'div.appendChild(probe);') },
+  /* The fallback refuses when the line-height will not parse. Restoring the
+     guess is only visible if something forces the fallback path at all. */
+  /* NOT a mutant of the refusal — of the MODEL, which this also forces. Kept
+     apart from the one below so the two cannot be confused: restoring the
+     guess on its own is invisible while textCaretRect keeps answering, and
+     that is worth knowing rather than papering over. */
+  { name: 'the fallback both guesses at line-height: normal AND is forced into use',
+    place: p => sub(sub(p, 'var lh = parseFloat(cs.lineHeight);\n  if (!(lh > 0)) return null;',
+                    'var lh = parseFloat(cs.lineHeight);\n  if (!(lh > 0)) lh = (parseFloat(cs.fontSize) || 16) * ANN_TEXT_LINE;'),
+                    'var caret = textCaretRect(div) || textCaretModel(div, kx, ky);',
+                    'var caret = textCaretModel(div, kx, ky);') },
   { name: 'the width floor is gone, so a box at the right edge collapses',
     place: p => sub(p, 'return round2(Math.max(80, Math.min(320, p.baseW - x - 12)));',
                     'return round2(Math.min(320, p.baseW - x - 12));') }
@@ -262,6 +293,33 @@ window.__run = function (zoom, fs, px, py) {
     probe.parentNode.removeChild(probe);
     return out;
   }
+  /* WHAT THE BOX LOOKS LIKE THE INSTANT THE PLACEMENT LETS GO OF IT.
+     The app measures the caret by putting a U+200B in the box and taking it
+     out again. A probe that is not taken out is invisible on screen, and
+     commitActiveTextEdit reads div.innerText — so it would be saved into the
+     answer and travel to the marking. Nothing else here would ever see it. */
+  var residue = { nodes: div.childNodes.length, text: div.textContent };
+
+  /* A SECOND OPINION THAT SHARES NO MECHANISM WITH THE CODE.
+     The app asks the browser for a caret rect with a zero-width space and a
+     Range. If this file asks the same question the same way, the two agree
+     because they are the same trick, not because the caret is where it
+     should be — the exact shape of the fault this file already had once.
+     So the reference is a REAL GLYPH's inline box: the caret is drawn the
+     height of the font's box on its line, which is precisely the box an
+     inline span occupies, and it is measured with getBoundingClientRect
+     rather than with a Range. Different probe, different API, same truth. */
+  function measureBySpan(div) {
+    var sp = document.createElement('span');
+    sp.textContent = 'n';
+    div.insertBefore(sp, div.firstChild);
+    var r = sp.getBoundingClientRect();
+    var out = (r && r.height > 0) ? { left: r.left, top: r.top, height: r.height } : null;
+    sp.parentNode.removeChild(sp);
+    return out;
+  }
+  var sr = measureBySpan(div);
+
   var cr = measureCaret(div);
   if (!cr) {
     // Last resort, and it is REPORTED: this branch shares its arithmetic with
@@ -285,6 +343,16 @@ window.__run = function (zoom, fs, px, py) {
     dx: (cr.left - wantX) / kx,
     dy: ((cr.top + cr.height / 2) - wantY) / ky,
     caretH: cr.height / ky,
+    /* The independent reference, in page units, and how far the two
+       techniques disagree. They must agree — if they ever do not, one of
+       them is lying and the whole check is worthless until it is known
+       which. */
+    spanDx: sr ? (sr.left - wantX) / kx : null,
+    spanDy: sr ? ((sr.top + sr.height / 2) - wantY) / ky : null,
+    agree: sr ? Math.max(Math.abs((sr.left - (cr.left)) / kx),
+                         Math.abs(((sr.top + sr.height / 2) - (cr.top + cr.height / 2)) / ky)) : null,
+    residueNodes: residue.nodes,
+    residueText: residue.text,
     boxW: a.w, boxX: a.x, boxY: a.y,
     fallback: !!cr.fallback,
     /* The fix moves the foreignObject's attributes by hand instead of
@@ -304,7 +372,7 @@ async function sweep(opts) {
   const zooms = opts.zooms || ZOOMS, sizes = opts.sizes || SIZES, points = opts.points || POINTS;
   const bad = [];
   const bySize = new Map();
-  let n = 0, fellBack = 0, worst = { off: -1 };
+  let n = 0, fellBack = 0, worst = { off: -1 }, worstAgree = 0;
   for (const zoom of zooms) {
     for (const fs of sizes) {
       for (const pt of points) {
@@ -314,10 +382,28 @@ async function sweep(opts) {
         const where = `zoom ${Math.round(zoom * 100)}% · ${fs}px · ${pt.at}`;
         if (r.err) { bad.push(`${where}: ${r.err}`); continue; }
         if (r.fallback) fellBack++;
-        const off = Math.max(Math.abs(r.dx), Math.abs(r.dy));
-        if (off > worst.off) worst = { off, dx: r.dx, dy: r.dy, where };
+        // A probe left in the box would be saved into the answer.
+        if (r.residueNodes !== 0 || r.residueText !== '') {
+          bad.push(`${where}: the placement left ${r.residueNodes} node(s) in the box ` +
+                   `(${JSON.stringify(r.residueText)}) — a probe that is not taken out is saved`);
+          continue;
+        }
+        if (r.spanDy === null) {
+          bad.push(`${where}: the independent span reference could not be measured`);
+          continue;
+        }
+        if (r.agree > TOL) {
+          bad.push(`${where}: the two techniques disagree by ${r.agree.toFixed(3)} — ` +
+                   'the zero-width space and a real glyph are not landing in the same line box');
+          continue;
+        }
+        // The placement is judged on the INDEPENDENT measurement, not on the
+        // one that shares its mechanism with the code.
+        const off = Math.max(Math.abs(r.spanDx), Math.abs(r.spanDy));
+        if (off > worst.off) worst = { off, dx: r.spanDx, dy: r.spanDy, where };
+        if (r.agree > worstAgree) worstAgree = r.agree;
         const prev = bySize.get(fs);
-        if (!prev || Math.abs(r.dy) > Math.abs(prev)) bySize.set(fs, r.dy);
+        if (!prev || Math.abs(r.spanDy) > Math.abs(prev)) bySize.set(fs, r.spanDy);
         // The model and the DOM must say the same thing about the box.
         if (Math.abs(r.domX - r.boxX) > 0.001 || Math.abs(r.domY - r.boxY) > 0.001 ||
             Math.abs(r.domW - Math.max(r.boxW, 40)) > 0.001) {
@@ -331,7 +417,7 @@ async function sweep(opts) {
       }
     }
   }
-  return { n, bad, fellBack, worst, bySize };
+  return { n, bad, fellBack, worst, bySize, worstAgree };
 }
 
 let code = 0;
@@ -340,6 +426,7 @@ await load(PLACE);
 const real = await sweep();
 console.log(`\n✒️  ${real.n} placements measured in a real browser` +
             `  (tolerance ${TOL}px, in page units)`);
+console.log(`   worst disagreement between the two ways of measuring: ${real.worstAgree.toFixed(4)}`);
 console.log(`   worst: ${real.worst.dx.toFixed(3)} across / ${real.worst.dy.toFixed(3)} down` +
             `  at ${real.worst.where}`);
 /* Per font size, because the error is a property of the SIZE and of nothing
@@ -551,6 +638,142 @@ console.log(`   where the words agree, the picture puts them ${flatWorst.dx.toFi
             `${flatWorst.dy.toFixed(3)} down from the screen (worst, at ${FLAT_KY.toFixed(3)}x)`);
 if (flatBad.length) code = 1;
 
+/* ====================================================================
+   🎤 THE SPOKEN ANSWER — the same placement on a box that already has
+   words in it. Everything above places an EMPTY box, so nothing above can
+   tell the first line box from the last one, and nothing above exercises
+   the height being read at the width the box ends up with.
+   ==================================================================== */
+async function loadSpoken(PLACE) {
+  await page.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>
+  :root { --font: ${FONTVAR}; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #fff; }
+  #stage { position: absolute; left: 40px; top: 30px; }
+  .pageWrap { position: relative; background: #fff; }
+  svg.overlay { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+${CSS_TEXT}
+  </style></head><body>
+<div id="stage"><div class="pageWrap" id="wrap"><svg class="overlay" id="svg"
+   viewBox="0 0 ${BASE_W} ${BASE_H}" preserveAspectRatio="none"></svg></div></div>
+<script>
+var SVG_NS = 'http://www.w3.org/2000/svg';
+function el(name, attrs) {
+  var n = document.createElementNS(SVG_NS, name);
+  if (attrs) for (var k in attrs) n.setAttribute(k, attrs[k]);
+  return n;
+}
+function round2(n) { return Math.round(n * 100) / 100; }
+${CONSTS}
+var fontSize = 16, color = '#1A1A1A';
+var annotations = [], editingId = null, selectedId = null, pages = [];
+function newAnnId() { return 'a' + (annotations.length + 1); }
+function pushUndo() {} function setDirty() {} function toast() {}
+function annFrame(a) {
+  var h = a.type === 'text' ? Math.max(a.h || 0, (a.fontSize || 16) * 1.8) : (a.h || 0);
+  return { x: a.x || 0, y: a.y || 0, w: a.w || 0, h: h };
+}
+function renderOverlay(p) {
+  p.svg.innerHTML = '';
+  annotations.forEach(function (a) {
+    var g = el('g', { 'data-id': a.id });
+    var fr = annFrame(a);
+    var fo = el('foreignObject', { x: fr.x, y: fr.y, width: Math.max(fr.w, 40), height: fr.h });
+    fo.style.overflow = 'visible';
+    var div = document.createElement('div');
+    div.className = 'annText';
+    div.style.fontSize = (a.fontSize || 16) + 'px';
+    div.style.color = a.color;
+    div.textContent = a.text || '';
+    div.contentEditable = (editingId === a.id) ? 'true' : 'false';
+    fo.appendChild(div);
+    g.appendChild(fo);
+    p.svg.appendChild(g);
+  });
+}
+${PLACE}
+${SPOKEN}
+window.__spoke = function (zoom, fs, px, py, text) {
+  annotations = []; selectedId = null; fontSize = fs;
+  var wrap = document.getElementById('wrap');
+  wrap.style.width = (${BASE_W} * zoom) + 'px';
+  wrap.style.height = (${BASE_H} * zoom) + 'px';
+  var p = { num: 1, baseW: ${BASE_W}, baseH: ${BASE_H}, svg: document.getElementById('svg') };
+  pages = [p];
+  placeSpokenAnswer(p, { x: px, y: py }, text);
+  var a = annotations[0];
+  if (!a) return { err: 'nothing was placed' };
+  var div = p.svg.querySelector('.annText');
+  if (!div) return { err: 'no box was drawn' };
+  var residue = { nodes: div.childNodes.length, text: div.textContent };
+
+  // the FIRST line's inline box, measured with a real glyph
+  var sp = document.createElement('span'); sp.textContent = 'n';
+  div.insertBefore(sp, div.firstChild);
+  var r = sp.getBoundingClientRect();
+  sp.parentNode.removeChild(sp);
+
+  var pr = p.svg.getBoundingClientRect();
+  var kx = pr.width / ${BASE_W}, ky = pr.height / ${BASE_H};
+  // the height the box SHOULD have, at the width it actually ended up with
+  var want = div.scrollHeight;
+  return {
+    dx: (r.left - (pr.left + px * kx)) / kx,
+    dy: ((r.top + r.height / 2) - (pr.top + py * ky)) / ky,
+    residueNodes: residue.nodes,
+    strayProbe: residue.text.indexOf(ANN_CARET_PROBE) >= 0,
+    textKept: residue.text === text,
+    h: a.h, wantH: Math.max(fs * 1.8, want), w: a.w
+  };
+};
+</script></body></html>`);
+}
+
+const SPOKEN_CASES = [
+  { t: 'the water evaporated', at: 'one line' },
+  { t: 'The water evaporated from the beaker because the surroundings were hotter ' +
+       'than the water, so it turned into water vapour and escaped.', at: 'several lines' },
+  { t: 'photosynthesisandrespirationandtranspirationalltogether', at: 'a word longer than the box' },
+  { t: 'first line\nsecond line\nthird line', at: 'dictated newlines' }
+];
+async function spokenSweep() {
+  const bad = [];
+  let n = 0, worst = { off: -1 };
+  for (const zoom of [0.75, 1, 2.5]) {
+    for (const fs of [12, 16, 34]) {
+      for (const pt of [{ x: 300, y: 400, at: 'the middle' }, { x: 123.45, y: 456.78, at: 'a fractional point' }]) {
+        for (const c of SPOKEN_CASES) {
+          n++;
+          const r = await page.evaluate(([z, f, x, y, t]) => window.__spoke(z, f, x, y, t),
+                                        [zoom, fs, pt.x, pt.y, c.t]);
+          const where = `zoom ${Math.round(zoom * 100)}% · ${fs}px · ${pt.at} · ${c.at}`;
+          if (r.err) { bad.push(`${where}: ${r.err}`); continue; }
+          if (r.strayProbe) { bad.push(`${where}: a caret probe was left in the spoken answer`); continue; }
+          if (!r.textKept) { bad.push(`${where}: the spoken words were changed by the placement`); continue; }
+          const off = Math.max(Math.abs(r.dx), Math.abs(r.dy));
+          if (off > worst.off) worst = { off, dx: r.dx, dy: r.dy, where };
+          if (off > TOL) { bad.push(`${where}: the first line is ${r.dx.toFixed(2)} across / ${r.dy.toFixed(2)} down`); continue; }
+          // the height must be the height of the words AT THE FINAL WIDTH
+          if (Math.abs(r.h - r.wantH) > 1) bad.push(`${where}: the box is ${r.h} tall but its words need ${r.wantH} at width ${r.w}`);
+        }
+      }
+    }
+  }
+  return { n, bad, worst };
+}
+
+await loadSpoken(PLACE);
+const spoke = await spokenSweep();
+console.log('\n--- the spoken answer, placed on a box that already has words ---');
+if (spoke.bad.length) {
+  console.log(`  ✗ ${spoke.bad.length}/${spoke.n} wrong`);
+  spoke.bad.slice(0, 8).forEach(x => console.log('      ' + x));
+  code = 1;
+} else {
+  console.log(`  ✓ all ${spoke.n} land on the pointer, worst ${spoke.worst.dx.toFixed(3)} across / ` +
+              `${spoke.worst.dy.toFixed(3)} down`);
+}
+
 if (selftest) {
   console.log('\n--- self-test: each of these must go RED ---');
   await load(PLACE);
@@ -558,10 +781,18 @@ if (selftest) {
      does. "Some placements are off" is not evidence once the baseline itself
      is off: it would mark every mutant caught, including one that changed
      nothing at all. */
-  const baseFails = new Set(real.bad);
+  /* Both sweeps, because they cover different code: the empty box the text
+     tool makes, and the box with words in it that the spoken answer makes.
+     A mutant that only shows up in one of them is still caught. */
+  const baseFails = new Set([...real.bad, ...spoke.bad]);
   for (const m of MUTANTS) {
-    await load(m.place(PLACE));
+    const mutated = m.place(PLACE);
+    await load(mutated);
     const r = await sweep();
+    await loadSpoken(mutated);
+    const rs = await spokenSweep();
+    r.bad = r.bad.concat(rs.bad);
+    r.n += rs.n;
     const fresh = r.bad.filter(b => !baseFails.has(b));
     if (fresh.length) {
       console.log(`  ✓ caught: ${m.name}`);
