@@ -958,7 +958,87 @@ worksheet's own first page.
   for something impossible is worse than saying nothing.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 🔒 A WORKSHEET THE TEACHER SET IS THE TEACHER'S (v1.8.0)
+
+`keyLocked` / `keyLockedNote` (search `WHOSE KEY IS IT?`) and
+`assignmentFor` / `guidanceRule` / `guidanceLockedNote` / `assignmentsLoaded`
+(search `WHOSE HELP LEVEL IS IT?`), plus `openPushModal` / `renderPushLock` /
+`pushConfirm` and the `#pushModal`.
+
+Two things on a set worksheet belong to the teacher, and they are **locked in
+deliberately different ways**.
+
+### The answer key — locked, and never released
+
+- **THE 🔑 WINDOW IS A LIST OF EVERY PAGE WITH A TICK BESIDE IT.** So a
+  student who can open it can UNTICK a key page and read the marking scheme
+  — the one thing this feature exists to prevent, reached through its own
+  settings window. That was the hole: `keyPages` travelled to the student's
+  copy and were hidden, and the window that hid them was wide open.
+- **Four ways in, and all four refuse**: `openKeyModal`, `toggleKeyPage`,
+  `attachKeyPdf`, `detachKeyPdf`. Hiding the chip is not the lock — every one
+  of those is reachable from a stale chip and from the console.
+- **The chip STAYS, and says whose key it is.** Pages really are missing from
+  the worksheet, and `renderKeyChip` exists precisely because a page that has
+  quietly disappeared is the other thing this feature can get wrong. What it
+  must not do is enumerate them: on a locked worksheet it names the teacher
+  and stops, and it is a label rather than a button.
+- **It is NEVER released.** Taking a worksheet off the class list is not a
+  decision to hand out the marking scheme, and the file is still the class's
+  — so `keyLocked` reads `wsMeta.assignmentId || wsKey.shared` and nothing
+  else. That is the deliberate difference from the help level below.
+
+### The help level — locked, and released when the worksheet comes off
+
+- **The teacher chooses it when they set the worksheet, and says whether the
+  class may change it.** `openPushModal` is the same dialog for setting one
+  and for changing what an already-set one gives; a `confirm()` could ask one
+  question and this asks the two that decide how the worksheet behaves for
+  thirty people.
+- **A LOCKED level is read LIVE from the assignment**, never from the
+  student's copy. A lock read off each copy would only ever govern the
+  students who had not started yet, so pressing 💡 Level for the class would
+  do nothing for the ones already working. It also means the teacher's level
+  beats a level the student set for themselves **before** it was locked,
+  which is the whole point of a lock.
+- **`assignmentsLoaded` is what tells "not loaded yet" from "taken off the
+  list"**, and those two want opposite answers. Off the list → the copy is
+  the student's own and the lock falls away, or it would stay locked for ever
+  at a level nobody, teacher included, could still change. Not loaded → the
+  copy's own flag stands, so it errs locked. **A read that FAILED sets it
+  back to false**, because a denied read is not proof that nothing is set.
+- **`openWorksheet` awaits the class list** when the worksheet has an
+  `assignmentId` and the list has not arrived. Everything downstream reads
+  `wsMeta.guidance`, so getting it wrong at open time is a whole session run
+  at the wrong level with the lock never applied.
+- **The button is not drawn AND the handler refuses** — `openGradeModal` and
+  `saveGrade` both ask. A student is told **who** set it rather than left
+  with a control that does nothing.
+- An assignment pushed before this shipped has no `guidanceLocked` field and
+  reads as **unlocked**: nobody's class is locked down by a deploy, and one
+  tap on 💡 Level for the class locks it.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## House rules
+- After touching **🔒 what the teacher keeps** (`keyLocked`, `keyLockedNote`,
+  `renderKeyChip`'s locked branch, the guards in `openKeyModal` /
+  `toggleKeyPage` / `attachKeyPdf` / `detachKeyPdf`, `assignmentFor`,
+  `guidanceRule`, `assignmentsLoaded`, `openPushModal`, `pushWorksheet`'s
+  `level` / `locked`, or `startAssignment`'s copy of them), run
+  `node tools/tutor-tests.mjs`. The key half fails in the way that matters
+  most in this whole app: drop any one of the four guards and a student can
+  open the 🔑 window on their copy, untick a page and read the marking
+  scheme — through the feature's own settings window, on a screen that looks
+  exactly as it should. Let the locked chip go back to listing what is
+  hidden and it tells them which pages to go looking for. Release the key
+  when a worksheet comes off the class list and taking an assignment down
+  becomes a way to hand the answers out. The level half is quieter and still
+  wrong: read the lock off the copy instead of the assignment and 💡 Level
+  for the class does nothing for anyone who has already started; forget
+  `assignmentsLoaded` and either a cold start unlocks the whole class for a
+  moment or a withdrawn worksheet stays locked for ever at a level nobody
+  can change; and skip the await in `openWorksheet` and the session runs at
+  whatever level the copy happens to carry.
 - After touching **🗂 the worksheet cover** (`COVER_W`, `COVER_Q`,
   `COVER_MAX`, `coverOf`, `makeCoverDataUrl`, `ensureCover`, `coverSheets`,
   `coverNode`, the `.wsCover` / `.wsSheet` / `.wsFace` rules, or where the

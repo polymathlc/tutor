@@ -12,6 +12,37 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.8.0 — a worksheet you set stays the way you set it
+
+Two things on a worksheet the teacher has **set for the class** are the
+teacher's, and this makes both of them true.
+
+**The answer key.** The 🔑 window lists every page with a tick beside it — so
+a student who could open it could untick a key page and read the marking
+scheme, which is the one thing the whole feature exists to prevent, reached
+through its own settings window. On a set worksheet that window does not
+open, and marking a page, attaching a key and removing one all refuse. The
+chip stays, because pages really are missing from the worksheet and a student
+deserves to know why — it says *whose* key it is, and nothing else. Taking a
+worksheet off the class list does **not** release it: that is not a decision
+to hand out the marking scheme.
+
+**The help level.** Setting a worksheet now asks two questions rather than
+one: how much help the class may have, and whether they can change it.
+
+- 🔒 **Locked** — everybody works at the level you chose. There is no 💡 Help
+  level button on their card, and every other way to it refuses.
+- ✏️ **Free** — that is where they start, and a student who is stuck can ask
+  for more.
+
+A locked level is read **live from the assignment**, so pressing 💡 **Level
+for the class** changes it for everyone who started it yesterday too — not
+just for whoever has yet to begin. And when a worksheet is taken off the
+class list, its help level goes back to being the student's own: a copy
+locked for ever at a level nobody could change would be the worse fault.
+
+---
+
 ## v1.7.0 — you can see which paper it is
 
 A list of file names is a list nobody can read at a glance: *Term 1 Paper 2*

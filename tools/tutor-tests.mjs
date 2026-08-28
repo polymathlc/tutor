@@ -77,6 +77,7 @@ const SRC_SAVE   = between('/* ================= AUTO-SAVE =================',
 const SRC_PRAC   = between('var pracSel = {};',
                            '/* THE ONE PLACE ANYTHING IN THIS APP IS COPIED', 'practising the mistakes');
 const SRC_PEOPLE = between('var PEOPLE_COL =', 'function renderAuth() {', 'the first sign-in and the roster');
+const SRC_GUIDE  = between('/* ---- WHOSE HELP LEVEL IS IT? ----', 'function openGradeModal(', 'the help-level lock');
 const SRC_COVER  = between('var COVER_W =', "/* ---- The worksheet list ---- */", 'the worksheet cover');
 
 /* ---- A sandbox with just enough world to evaluate them ---- */
@@ -119,6 +120,8 @@ const sandbox = {
   mistakes: [], mistFilter: 'open', levelLabel: v => v, subjectLabel: () => 'Science',
   // The cover reads the pages the STUDENT has, and writes one small field.
   worksheets: [], COLLECTION: 'tutorWorksheets', studentPages: () => [],
+  // The two locks on a worksheet the teacher SET.
+  assignments: [], assignmentsLoaded: false,
   mistakeImageUrl: () => Promise.resolve(''), setMistakeCleared: noop, renderMistakes: noop,
   aiAvailable: () => true, loadTeachingNotes: () => Promise.resolve(),
   chungAvatar: () => ({ style: {}, classList: { add: noop } }), chungSays: n => n,
@@ -130,7 +133,7 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
                 '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
-                '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER,
+                '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER + '\n' + SRC_GUIDE,
                 sandbox, { filename: 'index.html' });
 const S = sandbox;
 
@@ -639,9 +642,10 @@ ok('deleting a copy never deletes the class\'s shared PDF',
 /* Setting work for the class writes to a collection every student reads, so
    hiding the button is not the lock. */
 ok('only the teacher can set a worksheet, checked in the handler',
-   /function pushWorksheet\(id\) \{\s*if \(!isAdmin\(currentUser\)\) return;/.test(html.replace(/\s+/g, ' ').replace(/async function/g, 'function')) ||
-   /async function pushWorksheet\(id\) \{[\s\S]{0,120}if \(!isAdmin\(currentUser\)\) return;/.test(html),
+   /async function pushWorksheet\([^)]*\) \{[\s\S]{0,120}if \(!isAdmin\(currentUser\)\) return;/.test(html),
    'pushWorksheet does not re-check isAdmin');
+ok('…and in the dialog that opens it',
+   /function openPushModal\([^)]*\) \{[\s\S]{0,80}if \(!isAdmin\(currentUser\)\) return;/.test(html));
 
 /* ---- 🎙️ One transcription door, and one model ---- */
 /* Named once in CODE. The comment above it names it too, which is the
@@ -1500,6 +1504,115 @@ ok('…and they peek out under the front page rather than beside it',
    /\.wsSheet \{[\s\S]{0,200}bottom: -\d+px; height: \d+px;/.test(html));
 ok('a browser with no aspect-ratio still gets a face with a height',
    /@supports not \(aspect-ratio[\s\S]{0,80}\.wsFace \{ height:/.test(html));
+
+/* =====================================================================
+   N. A SET WORKSHEET IS THE TEACHER'S — the key, and the help level
+   ===================================================================== */
+section('What the teacher keeps');
+
+/* ---- The answer key ---- */
+S.wsMeta = { level: '', subject: '', guidance: 'method', assignmentId: '', setBy: '', guidanceLocked: false };
+S.wsKey = { pages: [], rows: [], path: '', name: '', scanned: false, shared: false, reading: false };
+eq('a worksheet of your own: the key is yours', S.keyLocked(), false);
+S.wsMeta.assignmentId = 'a1';
+eq('one the teacher SET: it is theirs', S.keyLocked(), true);
+S.wsMeta.assignmentId = '';
+S.wsKey.shared = true;
+eq('…and a key that came with the class copy is too', S.keyLocked(), true);
+
+/* The 🔑 window lists every page with a TICK beside it, so a student who can
+   open it can untick a key page and read the marking scheme — the one thing
+   this whole feature exists to prevent, reached through its own settings
+   window. Every way in refuses, because hiding a chip is not a lock. */
+[['openKeyModal', /function openKeyModal\(\)[\s\S]{0,400}?if \(keyLocked\(\)\)/],
+ ['toggleKeyPage', /function toggleKeyPage\([^)]*\) \{\s*if \(keyLocked\(\)\)/],
+ ['detachKeyPdf', /async function detachKeyPdf\(\) \{[\s\S]{0,200}?if \(keyLocked\(\)\)/],
+ ['attachKeyPdf', /async function attachKeyPdf\([^)]*\) \{[\s\S]{0,300}?if \(keyLocked\(\)\)/]
+].forEach(function (p) {
+  ok(p[0] + ' refuses on a worksheet the teacher set', p[1].test(html));
+});
+
+/* Taking a worksheet off the class list is not a decision to hand out the
+   marking scheme, so — unlike the help level below — this lock is never
+   released. */
+ok('the key stays the teacher\'s even when the worksheet comes off the list',
+   /function keyLocked\(\)[\s\S]{0,400}return !!\(wsMeta\.assignmentId \|\| wsKey\.shared\);/.test(html));
+
+/* The chip must not turn into the page list in words. */
+const chipStub = { textContent: '', title: '', classList: {
+  cls: {}, toggle(c, on) { this.cls[c] = !!on; }, add(c) { this.cls[c] = true; },
+  contains(c) { return !!this.cls[c]; } } };
+/* An earlier section replaced `$` with an element factory, so the chip is
+   handed over through that same door rather than through document. */
+const prevDollar = S.$;
+S.$ = () => chipStub;
+S.view = 'ws';
+S.pages = [{ num: 1 }, { num: 2 }, { num: 3 }];
+S.wsKey = { pages: [2, 3], rows: [{ number: '1', answer: '(3)' }], path: 'p.pdf', name: 'key',
+            scanned: true, shared: true, reading: false };
+S.wsMeta.setBy = 'Mr Chung';
+S.renderKeyChip();
+ok('a locked chip says WHOSE key it is', /Mr Chung/.test(chipStub.textContent));
+ok('…and never which pages are missing',
+   !/hidden/.test(chipStub.textContent) && !/\b2\b/.test(chipStub.textContent));
+eq('…and it is marked as a label rather than a button', chipStub.classList.contains('locked'), true);
+S.wsKey.shared = false;
+S.wsMeta.assignmentId = '';
+S.renderKeyChip();
+ok('a worksheet of your own still says what it has',
+   /hidden/.test(chipStub.textContent) && !chipStub.classList.contains('locked'));
+S.$ = prevDollar;
+
+/* ---- The help level ---- */
+S.assignments = [];
+S.assignmentsLoaded = false;
+eq('a worksheet of your own is not locked',
+   S.guidanceRule({ guidance: 'method' }), { level: 'method', locked: false, by: 'Mr Chung' });
+
+S.assignments = [{ id: 'a1', guidance: 'nudge', guidanceLocked: true, byName: 'Mr Chung' }];
+S.assignmentsLoaded = true;
+const lockedRule = S.guidanceRule({ assignmentId: 'a1', guidance: 'answer' });
+eq('a locked one is locked', lockedRule.locked, true);
+/* The teacher's level beats the copy's — INCLUDING a level the student set
+   for themselves before it was locked, which is the whole point of a lock. */
+eq('…at the teacher\'s level, not the copy\'s', lockedRule.level, 'nudge');
+
+S.assignments = [{ id: 'a1', guidance: 'nudge', guidanceLocked: false, byName: 'Mr Chung' }];
+const freeRule = S.guidanceRule({ assignmentId: 'a1', guidance: 'answer' });
+eq('an unlocked one is the student\'s own', freeRule.locked, false);
+eq('…so the level they chose stands', freeRule.level, 'answer');
+
+/* Taken off the class list, the copy becomes the student's own. Left on the
+   copy's own flag it would stay locked for ever, at a level nobody — the
+   teacher included — could still change. */
+S.assignments = [];
+S.assignmentsLoaded = true;
+eq('a worksheet taken off the list is unlocked',
+   S.guidanceRule({ assignmentId: 'a1', guidance: 'method', guidanceLocked: true }).locked, false);
+/* …but "the list has not arrived" is not "the list is empty". */
+S.assignmentsLoaded = false;
+eq('…and a list that has not loaded yet does not unlock anything',
+   S.guidanceRule({ assignmentId: 'a1', guidance: 'method', guidanceLocked: true }).locked, true);
+ok('a read that FAILED is never mistaken for an empty list',
+   /assignments = \[\];[\s\S]{0,300}assignmentsLoaded = false;/.test(html));
+
+ok('the level is read LIVE from the assignment, so changing it reaches the class',
+   /guidanceLocked: locked/.test(html) && /function assignmentFor\(w\)/.test(html));
+ok('openGradeModal refuses a locked one',
+   /function openGradeModal\([^)]*\) \{[\s\S]{0,400}?guidanceRule\(w\)\.locked : wsMeta\.guidanceLocked/.test(html));
+ok('…and so does saving it',
+   /async function saveGrade\(\)[\s\S]{0,500}?guidanceRule\(target\)\.locked : wsMeta\.guidanceLocked/.test(html));
+ok('the card does not draw a button the student cannot use',
+   /if \(!grule\.locked\) \{[\s\S]{0,200}Help level/.test(html));
+ok('a student is told WHO set it rather than left with a dead control',
+   /function guidanceLockedNote\(by\)/.test(html));
+ok('a copy starts locked or free as the assignment says',
+   /guidanceLocked: !!a\.guidanceLocked/.test(html));
+/* The level is read live, so on a cold start the list has to be in hand
+   before it is asked — otherwise the whole session runs at whatever level
+   the copy happens to carry and the lock is a lock nobody applied. */
+ok('opening a set worksheet waits for the class list before it reads the level',
+   /if \(wsMeta\.assignmentId && !assignmentsLoaded\) \{[^}]*loadAssignments\(\)/.test(html));
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'
