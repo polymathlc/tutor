@@ -635,6 +635,28 @@
   .bWhoName { font-weight: 700; line-height: 1.2; }
   .bWhoSub { font-size: 0.68rem; color: var(--ink-faint); line-height: 1.2; }
 
+  /* ---------- First sign-in ---------- */
+  .obSectionHead {
+    font-size: 0.74rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--ink-faint); margin: 22px 0 10px;
+  }
+  .obField { margin-bottom: 12px; }
+  .obStudentRow { display: flex; gap: 8px; align-items: flex-end; }
+  .obStudentRow .obField { flex: 1; min-width: 0; }
+  .obDrop { flex: none; min-height: 44px; margin-bottom: 12px; }
+  /* Neither route is preselected and neither is louder than the other: an
+     agreement to pay something has to be CHOSEN, not arrived at by pressing
+     whichever button was highlighted. */
+  .obChoice {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    border: 2px solid var(--line); border-radius: var(--radius); background: var(--bg);
+    padding: 16px 18px; margin-top: 12px; font-family: var(--font); color: var(--ink);
+  }
+  .obChoice:hover { border-color: var(--ink-faint); }
+  .obChoice.on { border-color: var(--accent-deep); background: var(--bg-soft); }
+  .obChoiceTitle { font-weight: 700; font-size: 0.98rem; }
+  .obChoiceSub { font-size: 0.83rem; color: var(--ink-soft); line-height: 1.6; margin-top: 6px; }
+
   /* ---------- Practising the mistakes ---------- */
   .mistTools { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin-bottom: 18px; }
   .mwsKeyToggle {
@@ -915,7 +937,8 @@
     </div>
     <span id="whoAmI"></span>
     <button class="btn hidden" id="mistakesBtn" title="Every question you got wrong, kept in one place">📕 Mistakes</button>
-    <button class="btn hidden" id="notesBtn" title="The teaching notes every answer and every hint is grounded in">📚 Notes</button>
+    <button class="btn hidden" id="peopleBtn" title="Everyone who has signed in, and whether they are enrolled">👥 People</button>
+  <button class="btn hidden" id="notesBtn" title="The teaching notes every answer and every hint is grounded in">📚 Notes</button>
     <button class="btn hidden" id="engineBtn" title="Which AI engine answers">AI</button>
     <button class="btn btnPrimary" id="signInBtn">Sign in with Google</button>
     <button class="btn hidden" id="signOutBtn">Sign out</button>
@@ -1261,6 +1284,29 @@
   </div>
 </div>
 
+<!-- ============ First sign-in ============
+     No ✕ and Esc does not close it: this is the one thing in the app that
+     has to be answered before it can be used. -->
+<div class="modalBack" id="onboardModal">
+  <div class="modalCard">
+    <div class="modalHead"><h2 id="onboardTitle">Welcome</h2></div>
+    <div class="modalBody" id="onboardBody"></div>
+    <div class="modalFoot" id="onboardFoot"></div>
+  </div>
+</div>
+
+<!-- ============ Who has signed in (admin only) ============ -->
+<div class="modalBack" id="peopleModal">
+  <div class="modalCard tnWide">
+    <div class="modalHead"><h2>👥 Who has signed in</h2></div>
+    <div class="modalBody" id="peopleBody"></div>
+    <div class="modalFoot">
+      <button class="btn" id="peopleCopy">📋 Copy</button>
+      <button class="btn btnPrimary" id="peopleClose">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ Practising the mistakes ============ -->
 <div class="modalBack" id="pracModal">
   <div class="modalCard">
@@ -1352,7 +1398,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.4.0';
+var APP_VERSION = 'v1.5.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -6578,6 +6624,29 @@ function mwsBuild(list, withKey) {
   return sheet;
 }
 
+/* THE ONE PLACE ANYTHING IN THIS APP IS COPIED. The clipboard API needs a
+   secure context and a permission a school browser may simply refuse, so a
+   refusal falls back to the textarea trick rather than to a button that
+   quietly did nothing. */
+function copyText(text, okMsg) {
+  text = String(text || '');
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    toast(ok ? (okMsg || 'Copied') : 'Could not copy — select the text and copy it by hand');
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { toast(okMsg || 'Copied'); }, fallback);
+  } else fallback();
+}
+
 /* THE ONE PLACE ANYTHING IN THIS APP IS PRINTED. The print stylesheet hides
    every direct child of <body> that is not `.printMe`, so two things that
    both wanted to print would otherwise hide each other — which is exactly
@@ -7734,6 +7803,457 @@ function renderMissingLibs() {
     '<div class="rowBtns"><button class="btn btnPrimary" onclick="location.reload()">Reload</button></div>';
 }
 
+/* =====================================================================
+   WHO IS USING THIS — the first sign-in, and the centre's roster
+
+   THE ROSTER IS THE ONE THE CENTRE ALREADY HAS. `studentProfiles` is the
+   Ans Key annotator's own collection, already admin-readable and already
+   writable by the account it belongs to, and the Scan app reads the same
+   list. A second roster here would be a second list to keep in step, and
+   the first thing anybody would notice is a student who exists in one app
+   and not the other. It also means NO FIRESTORE RULES CHANGE: those rules
+   are shared with four other apps and live in another repository, so a
+   feature that needs one is a feature that waits.
+
+   Because it is shared, this app writes its own answers under ONE
+   namespaced field (`tutorOnboard`) and never touches the fields the other
+   apps own. `name` is the one exception and it is written ONLY WHEN EMPTY:
+   a name a teacher typed in Ans Key must not be replaced by whatever a
+   parent typed here, and a row with no name at all is worse than either.
+   ===================================================================== */
+var PEOPLE_COL = 'studentProfiles';
+
+/* Bump this to ask the whole roster again — a changed fee, a changed
+   question. The stored answer records the version it was given under, so
+   an old answer to an old question is never counted as an answer to a new
+   one. */
+var ONBOARD_VERSION = 1;
+var APP_FEE = '$100 a month';
+
+var _onboardWait = null;     // resolves when they may use the app
+var _onboardDraft = null;
+var _peopleRows = null;
+
+function peopleRef(uid) { return db.collection(PEOPLE_COL).doc(uid); }
+
+/* Has this account answered THIS version of the questions? A profile that
+   could not be read comes in as null and the answer is NO — never let
+   somebody through on an error, because the alternative is an account that
+   silently skips the fee question for good. */
+function onboardNeeds(profile) {
+  if (!profile) return true;
+  var o = profile.tutorOnboard;
+  if (!o || typeof o !== 'object') return true;
+  return !(Number(o.v) >= ONBOARD_VERSION);
+}
+
+/* What is actually stored. Blank names are dropped rather than saved: a
+   roster row reading "Student:" is worse than one that says nothing, and
+   the dialog will not let them past without at least one real name. */
+function onboardClean(draft) {
+  var d = draft || {};
+  var names = (d.students || []).map(function (n) { return String(n || '').trim(); })
+                                .filter(Boolean).slice(0, 8);
+  return {
+    v: ONBOARD_VERSION,
+    parent: String(d.parent || '').trim().slice(0, 80),
+    students: names,
+    enrolled: !!d.enrolled,
+    // Only the NOT-enrolled route is agreeing to pay anything, so the flag
+    // is stored on its own rather than inferred from `enrolled` later: this
+    // is a billing commitment and the admin's list reads it directly.
+    payingFee: !d.enrolled,
+    fee: d.enrolled ? '' : APP_FEE,
+    at: new Date().toISOString()
+  };
+}
+function onboardValid(draft) {
+  var c = onboardClean(draft);
+  return !!(c.parent && c.students.length && (draft.enrolled === true || draft.enrolled === false));
+}
+
+/* THE GATE. Called from the auth hook for a signed-in student. It resolves
+   when they may use the app — which is immediately for an admin, and for
+   anyone who has already answered. */
+async function onboardRequire(user) {
+  if (!user || !db) return;
+  // The teacher is not a student, so they are not asked and they do not get
+  // a row: their own roster is a list of the people they teach.
+  if (isAdmin(user)) return;
+  var profile = null, readFailed = false;
+  try {
+    var snap = await peopleRef(user.uid).get();
+    profile = snap.exists ? (snap.data() || {}) : null;
+  } catch (e) {
+    readFailed = true;
+    console.warn('roster: profile could not be read', e);
+  }
+  if (!onboardNeeds(profile) && !readFailed) {
+    noteSignedIn(user, profile);
+    return;
+  }
+  await onboardOpen(user, profile);
+}
+
+/* Every sign-in is recorded, so the teacher's list is who has actually been
+   in rather than who once filled a form in. Namespaced fields and a MERGE:
+   the other two apps own everything else on this row. */
+function noteSignedIn(user, profile) {
+  var patch = {
+    email: user.email || '',
+    tutorLastSeen: firebase.firestore.FieldValue.serverTimestamp()
+  };
+  // Only when the row has no name at all — see the note at the top.
+  var known = String((profile && profile.name) || '').trim();
+  if (!known) {
+    var o = (profile && profile.tutorOnboard) || {};
+    var first = (o.students && o.students[0]) || user.displayName || '';
+    if (first) patch.name = String(first).trim().slice(0, 80);
+  }
+  peopleRef(user.uid).set(patch, { merge: true }).catch(function (e) {
+    // A roster that cannot be written is not a reason to stop somebody
+    // working. It is worth knowing about, and nothing more.
+    console.warn('roster: sign-in could not be recorded', e);
+  });
+}
+
+function onboardOpen(user, profile) {
+  var o = (profile && profile.tutorOnboard) || {};
+  _onboardDraft = {
+    parent: String(o.parent || '').trim(),
+    students: (o.students && o.students.length ? o.students.slice() : [String(user.displayName || '').trim()]),
+    enrolled: null,
+    step: 1
+  };
+  if (!_onboardDraft.students.length) _onboardDraft.students = [''];
+  $('onboardModal').classList.add('open');
+  onboardRender();
+  return new Promise(function (res) { _onboardWait = res; });
+}
+function onboardFinish() {
+  $('onboardModal').classList.remove('open');
+  var done = _onboardWait;
+  _onboardWait = null;
+  _onboardDraft = null;
+  if (done) done();
+}
+
+async function onboardSave(user) {
+  var d = _onboardDraft;
+  if (!d || !onboardValid(d)) return;
+  var clean = onboardClean(d);
+  var patch = { tutorOnboard: clean, email: user.email || '',
+                tutorLastSeen: firebase.firestore.FieldValue.serverTimestamp() };
+  try {
+    var snap = await peopleRef(user.uid).get();
+    var known = String((snap.exists && snap.data().name) || '').trim();
+    if (!known && clean.students[0]) patch.name = clean.students[0];
+  } catch (e) { /* the name is a nicety; the answers are not */ }
+  try {
+    await peopleRef(user.uid).set(patch, { merge: true });
+  } catch (e) {
+    // A WRITE that failed lets them through and asks again next time.
+    // Trapping somebody behind a dialog they have already answered — on a
+    // dropped connection, of all things — is far worse than asking twice.
+    console.warn('roster: answers could not be saved', e);
+    toast('Saved on this device only — we will ask again next time.', 5000);
+  }
+  onboardFinish();
+}
+
+/* ---- The dialog ----
+   Two steps, because they are two different questions and putting a fee in
+   the same breath as "what is your name" reads as a form rather than as
+   something to agree to. It has NO close button and Esc does not shut it:
+   this is the one thing in the app that must be answered. */
+function onboardRender() {
+  var d = _onboardDraft;
+  if (!d) return;
+  var body = $('onboardBody');
+  var foot = $('onboardFoot');
+  body.innerHTML = '';
+  foot.innerHTML = '';
+
+  if (d.step === 1) {
+    $('onboardTitle').textContent = 'Welcome to Study Buddy';
+    var lead = document.createElement('p');
+    lead.className = 'sub';
+    lead.textContent = 'Just two quick questions, once. Chung GPT works through your own worksheets with you ' +
+      'and keeps everything you get wrong so you can come back to it.';
+    body.appendChild(lead);
+
+    body.appendChild(obField('Parent or guardian’s name', 'obParent', d.parent, function (v) {
+      d.parent = v;
+      obSyncNext();
+    }));
+
+    var sh = document.createElement('div');
+    sh.className = 'obSectionHead';
+    sh.textContent = d.students.length > 1 ? 'The students' : 'The student';
+    body.appendChild(sh);
+
+    d.students.forEach(function (nm, i) {
+      var row = document.createElement('div');
+      row.className = 'obStudentRow';
+      row.appendChild(obField(i === 0 ? 'Student’s name' : 'Another student', 'obStu' + i, nm, function (v) {
+        d.students[i] = v;
+        obSyncNext();
+      }));
+      if (d.students.length > 1) {
+        var rm = document.createElement('button');
+        rm.className = 'btn btnSm btnGhost obDrop';
+        rm.textContent = '✕';
+        rm.title = 'Take this one off';
+        rm.addEventListener('click', function () {
+          d.students.splice(i, 1);
+          onboardRender();
+        });
+        row.appendChild(rm);
+      }
+      body.appendChild(row);
+    });
+
+    if (d.students.length < 8) {
+      var add = document.createElement('button');
+      add.className = 'btn btnSm';
+      add.textContent = '+ Add another student';
+      add.addEventListener('click', function () {
+        d.students.push('');
+        onboardRender();
+      });
+      body.appendChild(add);
+    }
+
+    var next = document.createElement('button');
+    next.className = 'btn btnPrimary';
+    next.id = 'obNext';
+    next.textContent = 'Next';
+    next.addEventListener('click', function () { d.step = 2; onboardRender(); });
+    foot.appendChild(next);
+    obSyncNext();
+    return;
+  }
+
+  /* Step 2 — the fee. Both routes are laid out plainly and neither is
+     preselected: an agreement to pay something must be chosen, never
+     arrived at by pressing the button that happened to be highlighted. */
+  $('onboardTitle').textContent = 'Are you enrolled at Polymath?';
+  var p1 = document.createElement('p');
+  p1.className = 'sub';
+  p1.textContent = 'Study Buddy is free while you are a student at Polymath Learning Centre. It is also open to ' +
+    'anyone else, for a monthly fee.';
+  body.appendChild(p1);
+
+  [[true, '🎓 Yes — we are at Polymath',
+    'Free while you are enrolled. Nothing to pay for the app.'],
+   [false, '💳 No — not enrolled',
+    'Study Buddy is ' + APP_FEE + '. A parent or guardian is agreeing to that now, and Polymath will be in ' +
+    'touch about payment — nothing is charged through the app.']].forEach(function (row) {
+    var b = document.createElement('button');
+    b.className = 'obChoice' + (d.enrolled === row[0] ? ' on' : '');
+    var t = document.createElement('div');
+    t.className = 'obChoiceTitle';
+    t.textContent = row[1];
+    var sub = document.createElement('div');
+    sub.className = 'obChoiceSub';
+    sub.textContent = row[2];
+    b.appendChild(t);
+    b.appendChild(sub);
+    b.addEventListener('click', function () { d.enrolled = row[0]; onboardRender(); });
+    body.appendChild(b);
+  });
+
+  var note = document.createElement('p');
+  note.className = 'hint';
+  note.style.marginTop = '14px';
+  note.textContent = 'Your worksheets and your work are your own. Polymath can see who has signed in and which ' +
+    'of these two you chose.';
+  body.appendChild(note);
+
+  var back = document.createElement('button');
+  back.className = 'btn btnGhost';
+  back.textContent = '← Back';
+  back.addEventListener('click', function () { d.step = 1; onboardRender(); });
+  foot.appendChild(back);
+
+  var go = document.createElement('button');
+  go.className = 'btn btnPrimary';
+  go.textContent = d.enrolled === false ? 'Agree and start' : 'Start';
+  go.disabled = !onboardValid(d);
+  go.addEventListener('click', function () {
+    go.disabled = true;
+    go.textContent = 'Saving…';
+    onboardSave(currentUser);
+  });
+  foot.appendChild(go);
+}
+
+function obField(label, id, value, onInput) {
+  var wrap = document.createElement('div');
+  wrap.className = 'field obField';
+  var l = document.createElement('label');
+  l.setAttribute('for', id);
+  l.textContent = label;
+  var i = document.createElement('input');
+  i.type = 'text';
+  i.id = id;
+  i.value = value || '';
+  i.autocomplete = 'off';
+  i.addEventListener('input', function () { onInput(i.value); });
+  wrap.appendChild(l);
+  wrap.appendChild(i);
+  return wrap;
+}
+/* Next is disabled rather than hidden, so the reason it cannot be pressed is
+   the empty box directly above it rather than a button that came and went. */
+function obSyncNext() {
+  var b = $('obNext');
+  if (!b || !_onboardDraft) return;
+  var c = onboardClean(_onboardDraft);
+  b.disabled = !(c.parent && c.students.length);
+}
+
+/* =====================================================================
+   THE TEACHER'S LIST — who has signed in
+
+   Read straight out of the shared roster. A row with no name is still
+   shown, under its email: somebody who signed in and closed the dialog is
+   exactly the person a teacher wants to see, and dropping them would hide
+   the one case worth chasing.
+   ===================================================================== */
+function personRow(id, p) {
+  var o = (p && p.tutorOnboard) || {};
+  var students = (o.students || []).filter(Boolean);
+  return {
+    id: id,
+    name: String((p && p.name) || '').trim(),
+    email: String((p && p.email) || '').trim(),
+    parent: String(o.parent || '').trim(),
+    students: students,
+    answered: Number(o.v) >= 1,
+    enrolled: !!o.enrolled,
+    paying: !!o.payingFee,
+    fee: String(o.fee || ''),
+    seen: stampOf(p && p.tutorLastSeen),
+    managed: !!(p && p.managed)
+  };
+}
+/* Newest sign-in first: a list a teacher opens to see who has been in is a
+   list about NOW, and a row nobody has signed in on at all sorts last
+   rather than salting the top with the roster's older entries. */
+function peopleSort(rows) {
+  return rows.slice().sort(function (a, b) {
+    if (b.seen !== a.seen) return b.seen - a.seen;
+    return (a.name || a.email || '~').localeCompare(b.name || b.email || '~');
+  });
+}
+
+async function peopleLoad(force) {
+  if (_peopleRows && !force) return _peopleRows;
+  var snap = await db.collection(PEOPLE_COL).get();
+  var rows = [];
+  snap.forEach(function (d) { rows.push(personRow(d.id, d.data() || {})); });
+  _peopleRows = peopleSort(rows);
+  return _peopleRows;
+}
+
+function openPeople() {
+  if (!isAdmin(currentUser)) return;
+  $('peopleModal').classList.add('open');
+  renderPeople('loading');
+  peopleLoad(true).then(function () { renderPeople(); }).catch(function (e) {
+    console.warn('roster: could not be read', e);
+    renderPeople(String((e && e.message) || 'the roster could not be read'));
+  });
+}
+
+function renderPeople(state) {
+  var body = $('peopleBody');
+  body.innerHTML = '';
+  if (state === 'loading') {
+    body.innerHTML = '<p class="sub">Reading the roster…</p>';
+    return;
+  }
+  if (typeof state === 'string' && state) {
+    body.innerHTML = '<p class="sub">The roster could not be read: ' + escHtml(state) + '</p>';
+    return;
+  }
+  var rows = _peopleRows || [];
+  var signedIn = rows.filter(function (r) { return r.seen > 0; });
+  var paying = rows.filter(function (r) { return r.paying; });
+
+  var sum = document.createElement('div');
+  sum.className = 'repCounts';
+  [[signedIn.length + ' signed in', ''],
+   [rows.filter(function (r) { return r.enrolled; }).length + ' enrolled', 'vOk'],
+   [paying.length + ' paying ' + APP_FEE, 'vHalf'],
+   [rows.filter(function (r) { return r.seen > 0 && !r.answered; }).length + ' not answered', 'vBlank']]
+    .forEach(function (c) {
+      var b = document.createElement('span');
+      b.className = 'repCount ' + c[1];
+      b.textContent = c[0];
+      sum.appendChild(b);
+    });
+  body.appendChild(sum);
+
+  if (!rows.length) {
+    body.innerHTML += '<p class="sub" style="margin-top:16px">Nobody has signed in yet.</p>';
+    return;
+  }
+
+  var scroll = document.createElement('div');
+  scroll.className = 'repScroll';
+  scroll.style.marginTop = '16px';
+  var t = document.createElement('table');
+  t.className = 'repTable';
+  var head = document.createElement('tr');
+  ['Student', 'Parent or guardian', 'Email', 'Enrolled', 'Last signed in'].forEach(function (h) {
+    var th = document.createElement('th');
+    th.textContent = h;
+    head.appendChild(th);
+  });
+  var thead = document.createElement('thead');
+  thead.appendChild(head);
+  t.appendChild(thead);
+  var tb = document.createElement('tbody');
+  rows.forEach(function (r) {
+    var tr = document.createElement('tr');
+    tr.className = 'repRow ' + (r.paying ? 'vHalf' : r.enrolled ? 'vOk' : 'vBlank');
+    repCell(tr, r.students.length ? r.students.join(', ') : (r.name || '—'), 'repTopicName');
+    repCell(tr, r.parent || '—', '');
+    repCell(tr, r.email || '—', 'repObj');
+    var st = r.managed ? 'Added by hand'
+      : !r.answered ? 'Not answered yet'
+      : r.enrolled ? '🎓 Enrolled — free'
+      : '💳 ' + (r.fee || APP_FEE);
+    repCell(tr, st, 'repVerdict ' + (r.paying ? 'vHalf' : r.enrolled ? 'vOk' : 'vBlank'));
+    repCell(tr, r.seen ? new Date(r.seen).toLocaleString(undefined,
+      { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never', 'repObj');
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+  scroll.appendChild(t);
+  body.appendChild(scroll);
+
+  if (paying.length) {
+    var note = document.createElement('div');
+    note.className = 'repNote';
+    note.style.marginTop = '16px';
+    note.textContent = paying.length + ' account' + (paying.length === 1 ? ' has' : 's have') +
+      ' agreed to ' + APP_FEE + ' and will need invoicing — nothing is charged through the app.';
+    body.appendChild(note);
+  }
+}
+
+function peopleAsText() {
+  return (_peopleRows || []).map(function (r) {
+    return [r.students.join(', ') || r.name || '(no name)', r.parent || '(no parent)', r.email,
+            r.managed ? 'added by hand' : !r.answered ? 'not answered'
+              : r.enrolled ? 'enrolled (free)' : 'paying ' + (r.fee || APP_FEE),
+            r.seen ? new Date(r.seen).toISOString() : 'never'].join('\t');
+  }).join('\n');
+}
+
 function renderAuth() {
   if (!libsReady()) { renderMissingLibs(); return; }
   var signedIn = !!currentUser;
@@ -7742,6 +8262,7 @@ function renderAuth() {
   $('signedOutCard').classList.toggle('hidden', signedIn);
   $('homeSignedIn').classList.toggle('hidden', !signedIn);
   $('mistakesBtn').classList.toggle('hidden', !signedIn);
+  $('peopleBtn').classList.toggle('hidden', !isAdmin(currentUser));
   $('whoAmI').textContent = signedIn
     ? (isAdmin(currentUser) ? ADMIN_DISPLAY_NAME : (currentUser.displayName || currentUser.email || ''))
     : '';
@@ -7782,9 +8303,20 @@ if (auth) auth.onAuthStateChanged(function (user) {
   renderWorksheets();
   renderMistakes();
   if (user) {
+    // The data loads behind the gate, so the app is ready the moment the
+    // questions are answered. What the gate stops is USING it — the dialog
+    // covers the screen and cannot be dismissed.
     loadTeachingNotes(true);
     loadWorksheets();
     loadMistakes();
+    onboardRequire(user).catch(function (e) {
+      // A gate that throws must not be a gate nobody can get past.
+      console.warn('first sign-in: could not be asked', e);
+      onboardFinish();
+    });
+  } else {
+    _peopleRows = null;
+    onboardFinish();
   }
 });
 
@@ -7840,29 +8372,13 @@ $('notesClose').addEventListener('click', function () { $('notesModal').classLis
 $('engineBtn').addEventListener('click', openEngineModal);
 $('engineClose').addEventListener('click', function () { $('engineModal').classList.remove('open'); });
 
+$('peopleBtn').addEventListener('click', openPeople);
+$('peopleClose').addEventListener('click', function () { $('peopleModal').classList.remove('open'); });
+$('peopleCopy').addEventListener('click', function () { copyText(peopleAsText(), 'Roster copied'); });
+
 $('repClose').addEventListener('click', closeReport);
 $('repPrint').addEventListener('click', function () { printThis($('reportModal')); });
-$('repCopy').addEventListener('click', function () {
-  var text = reportAsText();
-  // The clipboard API needs a secure context and a permission a school
-  // browser may simply refuse, so a refusal falls back to the textarea trick
-  // rather than to a button that quietly did nothing.
-  function fallback() {
-    var ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    var ok = false;
-    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-    document.body.removeChild(ta);
-    toast(ok ? 'Report copied' : 'Could not copy — select the text and copy it by hand');
-  }
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(function () { toast('Report copied'); }, fallback);
-  } else fallback();
-});
+$('repCopy').addEventListener('click', function () { copyText(reportAsText(), 'Report copied'); });
 $('qnCancel').addEventListener('click', function () { $('quickNoteModal').classList.remove('open'); });
 $('qnSave').addEventListener('click', quickNoteSave);
 
@@ -7971,7 +8487,10 @@ document.addEventListener('keydown', function (e) {
     return;
   }
   if (e.key === 'Escape') {
-    document.querySelectorAll('.modalBack.open').forEach(function (m) { m.classList.remove('open'); });
+    // Every dialog but the first-sign-in gate. That one has to be answered.
+    document.querySelectorAll('.modalBack.open:not(#onboardModal)').forEach(function (m) {
+      m.classList.remove('open');
+    });
     commitActiveTextEdit();
     return;
   }

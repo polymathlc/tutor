@@ -12,6 +12,50 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.5.0 — who is using this
+
+On a **first sign-in** the app asks two things and then gets out of the way.
+
+**Who you are.** The parent or guardian's name, and the student's name — with
+**+ Add another student**, because one account is very often one family.
+
+**Whether you are enrolled at Polymath.** Enrolled is **free**. Not enrolled is
+**$100 a month**, agreed to by a parent or guardian. Neither route is
+preselected and neither is louder than the other: an agreement to pay something
+has to be *chosen*, never arrived at by pressing whichever button happened to be
+highlighted. Nothing is charged through the app and it says so — what is
+recorded is the agreement.
+
+### 👥 Who has signed in
+
+An admin-only list: the students and their parent, the email, whether they are
+enrolled or on the fee, and when they were last in — newest first, because a
+list you open to see who has been in is a list about *now*. It says how many
+accounts have agreed to the fee and will need invoicing, and it copies out.
+
+An account that signed in and **closed the dialog is shown**, saying it has not
+answered — that is exactly the person worth chasing, and dropping the row would
+hide the one case that matters.
+
+### The things that make it safe
+
+- **The roster is the one the centre already has.** `studentProfiles` is the Ans
+  Key annotator's collection, which the Scan app already reads too. A second
+  roster would be a second list to keep in step, and the first thing anybody
+  would notice is a student who exists in one app and not the other.
+- **It needed no Firestore rules change** — those rules are shared with four
+  other apps and live in another repository, so a feature that needs one is a
+  feature that waits.
+- This app writes **one namespaced field** and merges. `name` is the single
+  exception and is written **only when empty**: a name a teacher typed in Ans
+  Key must not be replaced by whatever a parent typed here.
+- **A failed read asks.** Letting somebody through on a read error is an account
+  that silently skips the fee question for good.
+- **A failed write lets them through and asks next time.** Trapping a family
+  behind a dialog they have already answered — on a dropped connection, of all
+  things — is far worse than asking twice.
+- Bump `ONBOARD_VERSION` to ask the whole roster again.
+
 ## v1.4.0 — the mistake book can be practised, and printed
 
 A mistake book that can only be **read** is a list of everything a student has ever

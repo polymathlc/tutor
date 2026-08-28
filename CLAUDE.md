@@ -796,7 +796,72 @@ time, or printed as a worksheet and done on paper.
 - The answer key breaks to its **own page**, so the sheet can be handed over
   without it.
 
+## 👥 The first sign-in, and who has signed in (v1.5.0)
+
+`PEOPLE_COL` / `ONBOARD_VERSION` / `APP_FEE` / `onboardNeeds` / `onboardClean`
+/ `onboardValid` / `onboardRequire` / `noteSignedIn` / `onboardSave` /
+`personRow` / `peopleSort` / `peopleLoad` / `renderPeople` (search `WHO IS
+USING THIS`), plus `#onboardModal`, `#peopleModal` and the `.ob*` CSS.
+
+On a first sign-in the app asks two things and then gets out of the way: who
+the parent and the student are (**more students can be added** — one account
+is often one family), and **whether they are enrolled at Polymath**. Enrolled
+is free; not enrolled is **$100 a month**, agreed to by a parent or guardian.
+
+- **THE ROSTER IS THE ONE THE CENTRE ALREADY HAS.** `studentProfiles` is the
+  Ans Key annotator's collection, already admin-readable and already writable
+  by the account it belongs to, and the Scan app reads the same list. A second
+  roster here would be a second list to keep in step, and the first thing
+  anybody would notice is a student who exists in one app and not the other.
+- **IT NEEDED NO FIRESTORE RULES CHANGE**, and that is not luck — it is what
+  made it worth doing this way. Those rules live in `polymathlc/math` and are
+  shared with four other apps, so a feature that needs one is a feature that
+  waits.
+- **This app writes ONE namespaced field** (`tutorOnboard`) and never touches
+  what the other apps own. `name` is the single exception and is written
+  **only when it is empty**: a name a teacher typed in Ans Key must not be
+  replaced by whatever a parent typed here, and a row with no name at all is
+  worse than either. Every write is a **merge**.
+- **A failed READ asks.** Letting somebody through on a read error is an
+  account that silently skips the fee question for good.
+- **A failed WRITE lets them through and asks again next time.** Trapping
+  somebody behind a dialog they have already answered — on a dropped
+  connection, of all things — is far worse than asking twice. Same for a gate
+  that throws: `onboardRequire`'s caller catches and opens the door.
+- **Bump `ONBOARD_VERSION` to ask the whole roster again** — a changed fee, a
+  changed question. The stored answer records the version it was given under,
+  so an old answer to an old question is never counted as an answer to a new
+  one.
+- **The teacher is not asked and does not get a row.** Their own list is a
+  list of the people they teach.
+- **`payingFee` is stored as its own flag**, not inferred from `enrolled`
+  later. It is a billing commitment and the teacher's list reads it directly.
+- **Neither route is preselected and neither is louder.** An agreement to pay
+  something has to be CHOSEN, never arrived at by pressing whichever button
+  happened to be highlighted. The dialog has no ✕ and Esc does not close it —
+  it is the one thing in the app that must be answered.
+- **Nothing is charged through the app, and it says so.** There is no payment
+  processor here; what is recorded is the agreement, and the teacher's list
+  says how many accounts need invoicing.
+- **Every sign-in is recorded** (`tutorLastSeen`), so 👥 is who has actually
+  been in rather than who once filled a form in — and an account that signed
+  in and closed the dialog is shown, saying it has not answered, because that
+  is exactly the person worth chasing.
+
 ## House rules
+- After touching **👥 the first sign-in or the roster** (`PEOPLE_COL`,
+  `ONBOARD_VERSION`, `APP_FEE`, `onboardNeeds`, `onboardClean`, `onboardValid`,
+  `onboardRequire`, `noteSignedIn`, `onboardSave`, `personRow`, `peopleSort`,
+  `renderPeople`, or the Esc exemption), run `node tools/tutor-tests.mjs`.
+  This one writes into a collection FOUR other apps read, and every way it
+  goes wrong is quiet. A write that is not a merge, or a `name` written over
+  one a teacher typed in Ans Key, corrupts their roster from over here. A read
+  error treated as "already answered" is an account that skips the fee
+  question for good; a write error treated as fatal traps a family behind a
+  dialog they have already answered. And a second collection invented instead
+  of reusing `studentProfiles` needs a rules deploy from another repository —
+  which fails CLOSED, so the reads come back empty and nothing on any screen
+  says why.
 - After touching **✏️ practising the mistakes or the printed sheet**
   (`pracSel`, `mistakesShown`, `pracPruneSel`, `pracSelectedIds`, `pracStart`,
   `pracCheck`, `pracRender`, `pracWorth`, `PRAC_SYS`, `mwsLines`, `mwsBuild`,
