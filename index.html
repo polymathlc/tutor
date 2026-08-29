@@ -1528,7 +1528,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.9.1';
+var APP_VERSION = 'v1.10.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -8337,7 +8337,7 @@ var ONBOARD_VERSION = 2;
 var APP_FEE = '$100 a month';
 
 /* ---- EVERY STUDENT HAS A LEVEL, AND P3 IS SCIENCE ONLY ----
-   The centre takes P3 to P5, and there is no P3 maths class. A student
+   The centre takes P3 to P6, and there is no P3 maths class. A student
    tagged P3 Mathematics is a student whose worksheet list is empty for ever
    with nothing on any screen saying why: the filter simply never matches,
    and an empty list looks exactly like somebody who has not uploaded
@@ -8349,14 +8349,16 @@ var APP_FEE = '$100 a month';
    dialog. A rule enforced in three of them is not a rule. `polymathlc/anskey`
    carries the identical rule over the identical collection; ship a change to
    it in both. */
-var STUDENT_LEVELS = ['P3', 'P4', 'P5'];
+var STUDENT_LEVELS = ['P3', 'P4', 'P5', 'P6'];
 var STUDENT_SUBJECTS = [
   { value: 'science', label: 'Science' },
   { value: 'math',    label: 'Mathematics' },
   { value: 'both',    label: 'Both' }
 ];
-/* A level from outside the range — a P6 row set up in Ans Key before this
-   narrowed — keeps every subject rather than being silently re-tagged. */
+/* ONLY P3 is special. Every other level — including one from outside the
+   range, such as a Sec 1 row set up in Ans Key — keeps every subject rather
+   than being silently re-tagged, which is why adding P6 was one entry in
+   STUDENT_LEVELS and nothing else. */
 function levelSubjects(level) {
   return level === 'P3' ? ['science'] : STUDENT_SUBJECTS.map(function (x) { return x.value; });
 }
