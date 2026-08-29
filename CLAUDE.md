@@ -1136,7 +1136,76 @@ deliberately different ways**.
   tap on 💡 Level for the class locks it.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## ↻ A SECOND ATTEMPT, AND 🖨 THE PAPER ON PAPER (v1.11.0)
+
+`practiseAgainAvailable` / `practiseAgain` / `attempts` (search `PRACTISING IT
+AGAIN`), and `PRINT_MAX_SIDE` / `printKeyAllowed` / `printHasKeyPages` /
+`printWorksheet` / `openPrintModal` (search `PRINTING THE PAPER`), plus
+`#printBtn`, `#printModal` and `#printSheet`.
+
+**Marking a paper puts the answer to every question on the screen**, so
+without a way back there is exactly ONE honest attempt at any worksheet: open
+it again tomorrow and the answers are still sitting above the questions.
+
+- **THE HINTS GO WITH THE MARKING, and that is the half that is easy to
+  miss.** A hint climbed to the top of the ladder holds the answer just as
+  plainly as a marked card does, so clearing one and leaving the other hides
+  the answers in one panel and keeps them in the next.
+- **THE MISTAKE BOOK STAYS, and it is what makes clearing the rest safe.**
+  Everything they got wrong is already filed with a picture of the question —
+  that IS the record of the attempt being cleared. The chat stays too: it is a
+  conversation, and under the help ceiling it never held the answer unless the
+  level allowed it anyway.
+- **THREE THINGS MAKE THE DESTRUCTIVE HALF SAFE and none is optional**: it
+  ASKS first, naming what goes and what stays; the ink is pushed onto the
+  **undo stack BEFORE** it is cleared, so one Ctrl+Z is the whole attempt
+  back; and nothing is written until the student has confirmed. This is the
+  only button in the app that throws a student's own work away.
+- **`attempts` is what stops it being invisible.** A cleared paper and a paper
+  never started look identical, so the card and the marking pane say which go
+  this is.
+- It is **not offered mid-run**: clearing half a marking run leaves marking
+  for questions that no longer have any ink behind them.
+
+**🖨 Print** is the worksheet; **🔑 Print with the answer key** is the worksheet
+plus the key pages.
+
+- **A PLAIN PRINT GOES THROUGH `studentPages()`**, the ONE place "the pages
+  the student has" is decided. Read `pages` here and the marking scheme comes
+  out of the printer — the leak the whole 🔑 section exists to prevent,
+  through a side door, on paper, where it cannot be un-seen.
+- **THE KEY OBEYS `keyLocked()`, IN THE HANDLER AND NOT ONLY ON THE BUTTON.**
+  On a worksheet the teacher set, printing the key is simply another door to
+  the marking scheme — the one the 🔑 window was shut to stop. Hiding a button
+  has never been the lock in this app.
+- **WHAT IS ON THE SCREEN IS WHAT PRINTS**: the pages go out composited with
+  the student's own ink, because that is what "print this worksheet" means for
+  a worksheet you have been writing on. Wanting a clean copy is what ↻
+  Practise again is for.
+- **EVERY PAGE IS DECODED BEFORE THE DIALOG OPENS.** `window.print()` does not
+  wait for an `<img>` — the same lesson the mistake worksheet learned, and the
+  failure is a printed sheet with the questions missing.
+- **`#printSheet` IS A DIRECT CHILD OF BODY.** The print stylesheet hides
+  `body > *:not(.printMe)`, so a sheet nested inside the app is hidden along
+  with everything around it: a print dialog with nothing in it, on a page that
+  looks perfectly right.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## House rules
+- After touching **↻ Practise again or 🖨 Print** (`practiseAgainAvailable`,
+  `practiseAgain`, `attempts`, `printKeyAllowed`, `printHasKeyPages`,
+  `printWorksheet`, `openPrintModal`, `PRINT_MAX_SIDE`, the `#printSheet`
+  markup or the `@media print` rules), run `node tools/tutor-tests.mjs` **and
+  print one worksheet to PDF to look at it**. The loud half is silent and the
+  quiet half is worse: a plain print that reads `pages` instead of
+  `studentPages()` hands the marking scheme out on paper, and a key print that
+  stops asking `keyLocked()` does it on a worksheet that is not even the
+  student's. On the other side, clearing the marking and leaving the hints
+  hides the answers in one panel and keeps them in the next; clearing without
+  `pushUndo()` first, or without asking, makes one mis-tap the end of an
+  hour's work with nothing to bring it back; touching the mistake book deletes
+  the record of the very attempt being cleared; and pages that are not decoded
+  before the dialog opens print as a stack of blank sheets.
 - After touching **🔒 what the teacher keeps** (`keyLocked`, `keyLockedNote`,
   `renderKeyChip`'s locked branch, the guards in `openKeyModal` /
   `toggleKeyPage` / `attachKeyPdf` / `detachKeyPdf`, `assignmentFor`,

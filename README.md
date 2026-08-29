@@ -12,6 +12,35 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.11.0 — ↻ Practise again, and 🖨 Print
+
+**The answers go back off the paper.** Marking a worksheet puts the answer to every question on
+the screen, which is exactly what a student wants the moment it is marked and exactly what they do
+not want the next time they sit down with the same paper — so until now there was only ever one
+honest attempt at any worksheet. **↻ Practise again**, at the bottom of the ✅ Marking panel, starts
+a fresh attempt: the marking goes, the hints go with it (a hint climbed to the top holds the answer
+just as plainly), and everything written on the pages is cleared, so the paper is blank again.
+
+- **Your mistake book keeps every question you got wrong**, with its picture. That is the record of
+  the attempt being cleared, and it is why clearing the rest is safe.
+- **The chat stays**, because it is a conversation rather than an answer sheet.
+- **It asks first**, naming what goes and what stays — and **Ctrl+Z brings the whole attempt back**
+  if you change your mind, because your work is pushed onto the undo stack before anything is
+  cleared.
+- The worksheet card and the marking panel say **↻ Attempt 2**, so a second go is visible rather
+  than looking like a paper you never started.
+
+**🖨 Print**, in the worksheet bar, prints the pages exactly as they are on screen with everything
+you have written on them. Two buttons:
+
+- **🖨 Print the worksheet** — the pages the student has, and **never a page marked as the answer
+  key**.
+- **🔑 Print with the answer key** — the whole thing, key pages included. On a worksheet the teacher
+  set, this is **theirs**: the button is not drawn for a student and printing is refused if it is
+  reached anyway, exactly as the 🔑 window is.
+
+Want a clean copy to do again? ↻ Practise again first, then print.
+
 ## v1.10.1 — the answer key really does stay off the students' screens
 
 Marking pages as the answer key and then setting the worksheet for a class **sent it out with no
