@@ -41,13 +41,16 @@ a card in front of thirty children. `ADMIN_DISPLAY_NAME` is what the centre call
   their OWN copy, which is a different thing, and nothing displays it.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
-## 👤 EVERY STUDENT HAS A LEVEL, AND P3 IS SCIENCE ONLY (v1.9.0)
+## 👤 EVERY STUDENT HAS A LEVEL, AND P3 IS SCIENCE ONLY (v1.9.0, P6 added v1.10.0)
 
 `STUDENT_LEVELS` / `STUDENT_SUBJECTS` / `levelSubjects` / `subjectOkForLevel` / `studentSubject` /
 `studentSubjectList` / `studentComplete` / `normStudents` / `activeStudent` / `canSeeWorksheet`
 (search `EVERY STUDENT HAS A LEVEL`), plus step 2 of the onboarding gate.
 
-The centre takes **P3 to P5**, and **P3 is SCIENCE ONLY** — there is no P3 maths class.
+The centre takes **P3 to P6**, and **P3 is SCIENCE ONLY** — there is no P3 maths class. Every
+other level takes Maths, Science or both, so **P3 is the only special case in `levelSubjects`** —
+adding P6 in v1.10.0 was one entry in `STUDENT_LEVELS` and nothing else, which is what that one
+door is for.
 
 - **A student tagged P3 Mathematics is a student whose worksheet list is empty for ever**, with
   nothing on any screen saying why: the filter simply never matches, and an empty list looks exactly
@@ -69,8 +72,8 @@ The centre takes **P3 to P5**, and **P3 is SCIENCE ONLY** — there is no P3 mat
 - **`studentSubject` is how a stored pair is READ.** A P3 student saved as `both` means Science;
   reading it raw is what hands them the maths worksheets the centre does not teach. It can only ever
   NARROW what they see, which is the safe direction for a rule about who sees what.
-- **A level from outside the range keeps every subject and stays on the chips.** A P6 row set up in
-  Ans Key before this narrowed is not silently re-tagged.
+- **A level from outside the range keeps every subject and stays on the chips.** A Sec 1 row set
+  up in Ans Key is not silently re-tagged.
 - **`normStudents` is the ONE reader**: students were plain NAMES before v1.9.0 and are
   `{ name, level, subject }` now, and both shapes come out of it the same way. Every screen that
   lists students goes through it, or a row answered under v1 reads as nobody and the teacher's list

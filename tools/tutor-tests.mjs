@@ -1244,18 +1244,23 @@ eq('everything answered is', S.onboardValid({ parent: 'p', students: okStu, enro
    ===================================================================== */
 section('The levels, and what each one takes');
 
-eq('the centre takes P3 to P5', S.STUDENT_LEVELS, ['P3', 'P4', 'P5']);
+eq('the centre takes P3 to P6', S.STUDENT_LEVELS, ['P3', 'P4', 'P5', 'P6']);
 eq('three subjects are offered', S.STUDENT_SUBJECTS.map(function (x) { return x.value; }),
    ['science', 'math', 'both']);
 eq('P3 offers Science and nothing else', S.levelSubjects('P3'), ['science']);
 eq('P4 offers all three', S.levelSubjects('P4'), ['science', 'math', 'both']);
+eq('P6 offers all three', S.levelSubjects('P6'), ['science', 'math', 'both']);
+ok('P6 + Mathematics is allowed', S.subjectOkForLevel('P6', 'math'));
+ok('P6 + Both is allowed', S.subjectOkForLevel('P6', 'both'));
 ok('P3 + Mathematics is refused', !S.subjectOkForLevel('P3', 'math'));
 ok('P3 + Both is refused', !S.subjectOkForLevel('P3', 'both'));
 ok('P5 + Mathematics is allowed', S.subjectOkForLevel('P5', 'math'));
-/* A P6 row set up in Ans Key before the range narrowed keeps every subject
-   rather than being silently re-tagged. */
-eq('a level from outside the range keeps all three', S.levelSubjects('P6'),
+/* ONLY P3 is special. A level from outside the range — a Sec 1 row set up
+   in Ans Key — keeps every subject rather than being silently re-tagged. */
+eq('a level from outside the range keeps all three', S.levelSubjects('S1'),
    ['science', 'math', 'both']);
+eq('a P6 student stored as "both" is left alone',
+   S.studentSubject({ level: 'P6', subject: 'both' }), 'both');
 
 eq('a P3 student stored as "both" MEANS Science',
    S.studentSubject({ level: 'P3', subject: 'both' }), 'science');

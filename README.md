@@ -12,6 +12,15 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.10.0 — P6 is a level too
+
+Students can be **P6** now, taking Mathematics, Science or both — the same as P4 and P5.
+
+It was one entry in the list of levels and nothing else. **P3 is the only level with a special
+case**, so every level added after it gets all three subjects without a second edit: the chips, the
+upload dialog and the worksheet filter picked it up on their own. Ans Key has the same change, on
+the same roster.
+
 ## v1.9.1 — set by Mr Chung
 
 A worksheet set for a class said **"Set by Zhi Kai Chung"** — the name off the Google account it
