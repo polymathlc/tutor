@@ -453,6 +453,13 @@
   .buddyPane { display: none; }
   .buddyPane.on { display: block; }
   .buddyFoot { border-top: 1px solid var(--line); padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px)); }
+  /* Wraps rather than squeezing: on a narrow panel two buttons side by side
+     shrink until neither word fits. */
+  .footRow { display: flex; gap: 8px; flex-wrap: wrap; }
+  /* 140px is the floor at which both words still fit: below it they wrap
+     onto two rows rather than squeezing "Mark it again" onto two lines
+     inside a button that is too narrow for it. */
+  .footRow .btn { flex: 1 1 140px; min-width: 0; }
   .buddyNudge {
     font-size: 0.8rem; color: var(--ink-soft); background: var(--bg-soft);
     border: 1px solid var(--line); border-radius: var(--radius-sm);
@@ -880,8 +887,22 @@
      forced through — a browser drops backgrounds by default, and without
      them the three verdicts print as three identical rows. The WORD is on
      every row anyway, which is what makes that safe rather than essential. */
+  /* The pages waiting to be printed. Hidden on screen — `printThis` gives it
+     `.printMe` for the length of the dialog and nothing else on the page
+     prints. */
+  #printSheet.hidden { display: none; }
+  .printPage { display: block; width: 100%; }
+
   @media print {
     html, body { height: auto; overflow: visible; background: #fff; }
+    /* One page per sheet, and never a page split across two. The last one
+       carries no break, or every print ends on a blank sheet. */
+    #printSheet.printMe { display: block !important; }
+    .printPage {
+      width: 100%; max-width: 100%; break-inside: avoid; page-break-inside: avoid;
+      break-after: page; page-break-after: always;
+    }
+    .printPage:last-child { break-after: auto; page-break-after: auto; }
     /* The ONE element being printed carries `.printMe`. Naming the report by
        its id worked while it was the only printable thing in the app and
        hid the worksheet the moment there were two. */
@@ -1127,6 +1148,7 @@
         </div>
 
         <button class="btn btnSm keyChip hidden" id="keyChip" title="This worksheet's answer key">🔑 Answer key</button>
+        <button class="btn btnSm" id="printBtn" title="Print this worksheet">🖨 Print</button>
         <button class="btn btnSm" id="saveBtn" title="Save your work">Save</button>
       </div>
 
@@ -1484,6 +1506,32 @@
   </div>
 </div>
 
+<!-- ============ Print ============ -->
+<div class="modalBack" id="printModal">
+  <div class="modalCard">
+    <div class="modalHead"><h2>🖨 Print</h2></div>
+    <div class="modalBody">
+      <p class="sub">
+        The pages print exactly as they are on screen, with anything you have written on them. Want a
+        clean copy to do again? Use ↻ Practise again first, then print.
+      </p>
+      <div class="rowBtns" style="flex-direction:column;align-items:stretch">
+        <button class="btn btnPrimary btnBig" id="printPlain">🖨 Print the worksheet</button>
+        <button class="btn btnBig hidden" id="printWithKey">🔑 Print with the answer key</button>
+      </div>
+      <p class="hint" id="printKeyNote" style="margin-top:14px"></p>
+    </div>
+    <div class="modalFoot">
+      <button class="btn" id="printCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Where the pages are put to be printed. A DIRECT CHILD OF BODY, because
+     the print stylesheet hides `body > *:not(.printMe)` — a sheet nested
+     inside the app would be hidden along with everything around it. -->
+<div id="printSheet" class="hidden"></div>
+
 <div id="toast"></div>
 <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
 <input type="file" id="keyFileInput" accept="application/pdf,.pdf" hidden>
@@ -1528,7 +1576,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.10.1';
+var APP_VERSION = 'v1.11.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -2401,6 +2449,7 @@ async function loadPdf(bytes, name) {
   hints = [];
   marking = { items: [], runAt: null, running: false };
   chat = [];
+  attempts = 1;
   keyReset();
   wsMeta = { level: '', subject: '', guidance: HINT_DEFAULT, assignmentId: '', setBy: '', guidanceLocked: false };
   setDirty(false);
@@ -3879,6 +3928,10 @@ function toggleKeyPage(n, on) {
 var hints = [];        // [{ id, page, x, y, question, rungs: [], shown, at }]
 var chat = [];         // [{ who: 'me' | 'buddy', text }]
 var marking = { items: [], runAt: null, running: false };
+/* Which go this is at the open worksheet. 1 until ↻ Practise again says
+   otherwise, so a worksheet that predates the button reads as a first
+   attempt rather than as no attempt at all. */
+var attempts = 1;
 var aiBusy = false;
 var buddyPane = 'hints';
 
@@ -4175,6 +4228,158 @@ function toggleMarkPins() {
   showMarkPins = !showMarkPins;
   syncMarkPins();
   renderMarking();
+}
+
+/* ================= PRINTING THE PAPER =================
+   Two buttons, because they are two different things to want and a single
+   one would have to guess: **Print** is the worksheet, and **Print with the
+   answer key** is the worksheet plus the pages the key is on.
+
+   WHAT IS ON THE SCREEN IS WHAT PRINTS. The pages go out composited with
+   whatever the student has written on them, because that is what "print this
+   worksheet" means for a worksheet you have been writing on — and it is the
+   rule the whole family already follows. Wanting a clean copy to do again is
+   what ↻ Practise again is for: clear it, then print.
+
+   THE KEY OBEYS THE SAME LOCK THE 🔑 WINDOW DOES. On a worksheet the teacher
+   set, the answer key is theirs and printing it is simply another door to the
+   marking scheme — the one the 🔑 window was shut to stop. So
+   `printKeyAllowed()` asks `keyLocked()`, the button is not drawn when it
+   says no, AND `printWorksheet` refuses as well: hiding a button has never
+   been the lock in this app.
+
+   THE PAGES ARE AWAITED BEFORE THE DIALOG OPENS. `window.print()` does not
+   wait for an `<img>`, so a sheet printed the instant it is built comes out
+   blank — the same lesson the mistake worksheet learned. Each page is
+   rasterised, composited and decoded first. */
+var PRINT_MAX_SIDE = 1700;   // a page big enough to read 9pt print off paper
+
+function printKeyAllowed() {
+  return !keyLocked() || isAdmin(currentUser);
+}
+/* Is there a key to print at all? Only the PAGES matter here — an attached
+   key PDF is a separate file this app never renders, and transcribed rows
+   are text rather than paper. */
+function printHasKeyPages() { return wsKey.pages.length > 0; }
+
+async function printWorksheet(withKey) {
+  if (!pages.length) { toast('Open a worksheet first.'); return; }
+  if (withKey && !printKeyAllowed()) { toast(keyLockedNote(), 6000); return; }
+  var wanted = withKey ? pages.slice() : studentPages();
+  if (!wanted.length) { toast('There are no pages to print.'); return; }
+  $('printModal').classList.remove('open');
+  commitActiveTextEdit();
+  toast('Getting the pages ready…', 20000);
+  var sheet = $('printSheet');
+  sheet.innerHTML = '';
+  try {
+    for (var i = 0; i < wanted.length; i++) {
+      var p = wanted[i];
+      await ensurePageRaster(p);
+      var data = compositeJpeg(p, PRINT_MAX_SIDE, 0.92);
+      if (!data) continue;
+      var img = document.createElement('img');
+      img.className = 'printPage';
+      img.alt = 'Page ' + p.num;
+      img.src = 'data:image/jpeg;base64,' + data;
+      sheet.appendChild(img);
+      // Decoded, not merely assigned: an undecoded picture prints as a gap.
+      try { await img.decode(); } catch (e) { await new Promise(function (r) { img.onload = img.onerror = r; }); }
+    }
+    if (!sheet.firstChild) { toast('Those pages could not be prepared for printing.', 5000); return; }
+    toast('');
+    usageNote('paper', docName || '');
+    printThis(sheet);
+  } catch (e) {
+    console.error(e);
+    toast('Could not print: ' + ((e && e.message) || e), 6000);
+  }
+}
+
+function openPrintModal() {
+  if (!pages.length) { toast('Open a worksheet first.'); return; }
+  var keyBtn = $('printWithKey');
+  var note = $('printKeyNote');
+  var can = printHasKeyPages() && printKeyAllowed();
+  keyBtn.classList.toggle('hidden', !can);
+  var n = wsKey.pages.length;
+  note.textContent = !printHasKeyPages()
+    ? 'No pages are marked as the answer key on this worksheet.'
+    : can
+      ? n + ' page' + (n === 1 ? ' is' : 's are') + ' marked as the answer key.'
+      : keyLockedNote();
+  $('printPlain').textContent = '🖨 Print the worksheet' +
+    (printHasKeyPages() ? ' (' + studentPages().length + ' page' + (studentPages().length === 1 ? '' : 's') + ')' : '');
+  $('printModal').classList.add('open');
+}
+
+/* ================= PRACTISING IT AGAIN =================
+   Marking a paper puts the answer to every question on the screen, which is
+   exactly what a student wants the moment it is marked and exactly what they
+   do NOT want the next time they sit down with the same paper. Without a way
+   back there is only one honest attempt at any worksheet: open it again and
+   the answers are still there, above the questions.
+
+   ↻ Practise again is that way back. It puts the paper into a fresh attempt:
+
+   • THE MARKING GOES, so no answer is on screen — that is the whole point,
+     and it takes the ticks off the pages with it.
+   • THE HINTS GO TOO. A hint card that has been climbed to the top holds the
+     answer just as plainly as a marked card does, and leaving them would
+     hide the answers in one panel while keeping them in the next.
+   • THE STUDENT'S OWN INK GOES, because a paper you cannot write on again is
+     not a paper you can practise on. This is the destructive half, so it is
+     the half everything else is arranged around (see below).
+   • THE MISTAKE BOOK STAYS. Everything they got wrong is already filed with
+     a picture of the question, and that is the record of this attempt — the
+     one thing here worth keeping, and the reason clearing the rest is safe.
+   • THE CHAT STAYS. It is a conversation rather than an answer sheet, and
+     under the help ceiling it never held the answer unless the level allowed
+     it anyway — losing it would cost more than it protects.
+
+   THREE THINGS MAKE THE DESTRUCTIVE HALF SAFE, and none of them is optional:
+   it ASKS first, naming what goes and what stays; the ink is pushed onto the
+   UNDO STACK before it is cleared, so Ctrl+Z brings the whole attempt back;
+   and nothing is written until the student has confirmed. A worksheet wiped
+   by a mis-tap with no way back would be worse than never having the button.
+
+   `attempts` is what stops it being invisible: the card and the marking pane
+   say which go this is, so a student can see they have been here before. */
+function practiseAgainAvailable() {
+  return !!(currentDocId && !marking.running &&
+            (marking.items.length || hints.length || annotations.length));
+}
+
+async function practiseAgain() {
+  if (!practiseAgainAvailable()) return;
+  var bits = [];
+  if (annotations.length) bits.push('everything you wrote on it');
+  if (marking.items.length) bits.push('the marking and the answers');
+  if (hints.length) bits.push('the hints you opened');
+  if (!confirm('Start this worksheet again?\n\nThis clears ' + bits.join(', ') +
+               ', so you can do it as if it were new.\n\nYour mistake book keeps every question ' +
+               'you got wrong, and Ctrl+Z brings your work back if you change your mind.')) return;
+
+  // The ink goes onto the undo stack BEFORE it is cleared, so one Ctrl+Z is
+  // the whole attempt back. It is the only copy there is once this is saved.
+  if (annotations.length) pushUndo();
+  annotations = [];
+  hints = [];
+  marking = { items: [], runAt: null, running: false };
+  attempts = (parseInt(attempts, 10) || 1) + 1;
+  selectedId = null;
+  editingId = null;
+
+  renderAllOverlays();     // takes the hint pins off with the ink
+  syncMarkPins();          // …and the ticks
+  renderHints();
+  renderMarking();
+  renderChat();
+  setDirty(true);
+  await performSave(true);
+  renderWorksheets();
+  usageNote('again', docName || '');
+  toast('↻ Attempt ' + attempts + ' — the paper is blank again. Your mistake book kept what you got wrong.', 6000);
 }
 
 /* ================= Marking =================
@@ -5593,13 +5798,26 @@ function renderBuddyFoot() {
     });
     foot.appendChild(b);
   } else if (buddyPane === 'marking') {
+    var row2 = document.createElement('div');
+    row2.className = 'footRow';
+    // ↻ comes FIRST and is the quieter of the two: it is the destructive one,
+    // and the button somebody reaches for by reflex should be the one that
+    // marks rather than the one that wipes.
+    if (practiseAgainAvailable()) {
+      var again = document.createElement('button');
+      again.className = 'btn';
+      again.textContent = '↻ Practise again';
+      again.title = 'Clear the marking, the hints and your writing, and do this worksheet again';
+      again.addEventListener('click', practiseAgain);
+      row2.appendChild(again);
+    }
     var m = document.createElement('button');
     m.className = 'btn btnPrimary';
-    m.style.width = '100%';
     m.disabled = marking.running;
     m.textContent = marking.running ? 'Marking…' : (marking.items.length ? '✅ Mark it again' : '✅ Mark my work');
     m.addEventListener('click', runMarking);
-    foot.appendChild(m);
+    row2.appendChild(m);
+    foot.appendChild(row2);
   } else {
     var row = document.createElement('div');
     row.className = 'chatRow';
@@ -7057,6 +7275,11 @@ function renderWorksheets() {
     if (w.score && w.score.attempted) {
       meta.appendChild(chipNode('✅ ' + w.score.correct + '/' + w.score.attempted, 'chip chipScore'));
     }
+    // Which go this is, so ↻ Practise again is not an invisible button: a
+    // paper cleared with nothing anywhere saying it happened reads as work
+    // that went missing.
+    var tries = Math.max(1, parseInt(w.attempts, 10) || 1);
+    if (tries > 1) meta.appendChild(chipNode('↻ Attempt ' + tries, 'chip'));
     card.appendChild(meta);
 
     var when = document.createElement('div');
@@ -7541,6 +7764,7 @@ async function performSave(quiet) {
       subject: wsMeta.subject || '',
       guidance: wsMeta.guidance || HINT_DEFAULT,
       score: scoreOf(),
+      attempts: attempts,
       pageCount: pdfDoc ? pdfDoc.numPages : 0,
       // Summary only: the card needs to say "the buddy has the key" without
       // reading the whole body, and a push copies these across. The rows
@@ -7796,6 +8020,7 @@ async function openWorksheet(id) {
     applyWorksheetBody(body, w);
     bodyOverflow = !!w.bodyPath;
     currentDocId = id;
+    attempts = Math.max(1, parseInt(w.attempts, 10) || 1);
     wsMeta.level = w.level || '';
     wsMeta.subject = w.subject || '';
     wsMeta.assignmentId = w.assignmentId || '';
@@ -8997,7 +9222,9 @@ var USAGE_EVENTS = {
   mark:     { label: 'Marked a worksheet', count: 'marked' },
   practice: { label: 'Practised a mistake', count: 'practice' },
   cleared:  { label: 'Sorted a mistake', count: 'cleared' },
-  sheet:    { label: 'Printed a worksheet', count: 'sheets' },
+  sheet:    { label: 'Printed a mistake sheet', count: 'sheets' },
+  paper:    { label: 'Printed the worksheet', count: 'papers' },
+  again:    { label: 'Started a worksheet again', count: 'again' },
   report:   { label: 'Opened the report', count: 'reports' }
 };
 function usageLabel(key) {
@@ -9117,7 +9344,8 @@ function usageOf(p) {
     correct: n('correct'), partial: n('partial'), wrong: n('wrong'), blank: n('blank'),
     awarded: n('awarded'), total: n('total'),
     practice: n('practice'), practiceRight: n('practiceRight'),
-    cleared: n('cleared'), sheets: n('sheets'), reports: n('reports'),
+    cleared: n('cleared'), sheets: n('sheets'), papers: n('papers'),
+    again: n('again'), reports: n('reports'),
     activeDays: n('activeDays'), lastDay: String(u.lastDay || ''),
     // Accuracy over questions that were ATTEMPTED. A blank was not an
     // attempt, and counting it as one reports a child who ran out of time
@@ -9128,7 +9356,8 @@ function usageOf(p) {
        folded in here it would show a grid of twelve zeros instead, which
        reads as a broken panel rather than as a student who has not started. */
     any: !!(n('worksheets') || n('marked') || n('hints') || n('rungs') || n('chats') ||
-            n('practice') || n('cleared') || n('sheets') || n('reports'))
+            n('practice') || n('cleared') || n('sheets') || n('papers') ||
+            n('again') || n('reports'))
   };
 }
 function usageAccuracy(u) {
@@ -9335,7 +9564,8 @@ function openPersonUsage(id) {
    ['Right', acc === null ? '—' : acc + '%'],
    ['Hints', u.hints], ['Extra help taken', u.rungs], ['Questions asked', u.chats],
    ['Mistakes practised', u.practice], ['Got right on the retry', u.practiceRight],
-   ['Sorted', u.cleared], ['Sheets printed', u.sheets], ['Days used', u.activeDays]]
+   ['Sorted', u.cleared], ['Sheets printed', u.sheets], ['Papers printed', u.papers],
+   ['Done again', u.again], ['Days used', u.activeDays]]
     .forEach(function (row) {
       var b = document.createElement('div');
       b.className = 'usageBox';
@@ -9634,6 +9864,10 @@ $('zoomInBtn').addEventListener('click', function () { zoomBy(1.2); });
 $('zoomOutBtn').addEventListener('click', function () { zoomBy(1 / 1.2); });
 $('fitBtn').addEventListener('click', fitWidth);
 $('saveBtn').addEventListener('click', function () { performSave(); });
+$('printBtn').addEventListener('click', openPrintModal);
+$('printCancel').addEventListener('click', function () { $('printModal').classList.remove('open'); });
+$('printPlain').addEventListener('click', function () { printWorksheet(false); });
+$('printWithKey').addEventListener('click', function () { printWorksheet(true); });
 $('sizeUp').addEventListener('click', function () { nudgeAnnSize(1); });
 $('sizeDown').addEventListener('click', function () { nudgeAnnSize(-1); });
 /* `input`, not `change`: the mark should follow the number as it is typed.

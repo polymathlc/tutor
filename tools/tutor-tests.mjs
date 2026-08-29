@@ -1823,6 +1823,126 @@ ok('a copy starts locked or free as the assignment says',
 ok('opening a set worksheet waits for the class list before it reads the level',
    /if \(wsMeta\.assignmentId && !assignmentsLoaded\) \{[^}]*loadAssignments\(\)/.test(html));
 
+/* =====================================================================
+   ↻ PRACTISING IT AGAIN
+   ---------------------------------------------------------------------
+   Marking puts the answer to every question on the screen, so without a way
+   back there is exactly ONE honest attempt at any worksheet. This is the
+   way back — and it is the only DESTRUCTIVE button a student has, which is
+   what every check below is really about. Each failure is silent:
+
+   • Clearing the marking and leaving the hints hides the answers in one
+     panel and keeps them in the next — a climbed hint IS the answer.
+   • Clearing without pushing the ink onto the undo stack first makes one
+     mis-tap the end of an hour's work, with nothing to bring it back.
+   • Wiping before the student has confirmed is the same thing with no
+     mis-tap needed.
+   • Touching the mistake book would delete the record of the very attempt
+     being cleared, which is the one thing here worth keeping.
+   ===================================================================== */
+section('↻ Practise again');
+
+const AGAIN = between('function practiseAgainAvailable()', '/* ================= Marking',
+                      'the practise-again section');
+
+ok('it asks before it clears anything', /if \(!confirm\(/.test(AGAIN));
+ok('…and returns without writing when the answer is no',
+   /if \(!confirm\([\s\S]{0,400}?\)\) return;/.test(AGAIN));
+/* The ink is the only copy there is once the save lands. */
+ok('the ink goes onto the undo stack BEFORE it is cleared',
+   AGAIN.indexOf('pushUndo()') !== -1 &&
+   AGAIN.indexOf('pushUndo()') < AGAIN.indexOf('annotations = [];'),
+   'without this a mis-tap is an hour of work gone with nothing to bring it back');
+ok('the marking goes', /marking = \{ items: \[\], runAt: null, running: false \};/.test(AGAIN));
+ok('the hints go with it', /hints = \[\];/.test(AGAIN),
+   'a hint climbed to the top holds the answer just as plainly as a marked card');
+ok('and so does the ink', /annotations = \[\];/.test(AGAIN));
+/* The two things that must NOT go. */
+ok('the mistake book is never touched',
+   !/mistakes/.test(AGAIN) || !/mistakes\s*=\s*\[\]/.test(AGAIN),
+   'the book is the record of the attempt being cleared');
+ok('the chat is never cleared', !/chat\s*=\s*\[\]/.test(AGAIN) && !/chatLog\s*=\s*\[\]/.test(AGAIN));
+/* The ticks and the hint pins are drawn from marking/hints but live on the
+   page, so both painters have to be re-run or last attempt's marks stay on
+   a paper that is otherwise blank. */
+ok('the ticks and the pins are repainted', /syncMarkPins\(\)/.test(AGAIN) &&
+   /renderAllOverlays\(\)/.test(AGAIN));
+ok('the new attempt is saved rather than left in the tab', /performSave\(/.test(AGAIN));
+/* Invisible, this is a button that appears to do nothing on a paper that
+   was already blank — and a student cannot tell a second go from a first. */
+ok('the attempt is counted', /attempts = \(parseInt\(attempts, 10\) \|\| 1\) \+ 1;/.test(AGAIN));
+ok('…and stored on the worksheet', /attempts: attempts,/.test(html));
+ok('…read back when it is opened',
+   /attempts = Math\.max\(1, parseInt\(w\.attempts, 10\) \|\| 1\);/.test(html));
+ok('…reset when another PDF is loaded', /attempts = 1;/.test(html));
+ok('…and shown on the worksheet card',
+   /'↻ Attempt ' \+ tries/.test(html));
+/* Nothing to clear, or a marking run in flight, and the button is not there:
+   one that wipes half a run leaves marking for questions that no longer
+   have any ink behind them. */
+ok('it is offered only when there is something to clear',
+   /marking\.items\.length \|\| hints\.length \|\| annotations\.length/.test(AGAIN));
+ok('…and never mid-run', /!marking\.running/.test(AGAIN));
+ok('the marking pane draws it', /practiseAgainAvailable\(\)/.test(html) &&
+   /again\.addEventListener\('click', practiseAgain\)/.test(html));
+
+/* =====================================================================
+   🖨 PRINTING THE PAPER
+   ---------------------------------------------------------------------
+   Print is the worksheet; Print with the answer key is the worksheet plus
+   the key pages. The whole 🔑 section exists to keep a marking scheme off a
+   student's screen, and a print button is simply another door to it — so
+   the lock is asked here too, in the HANDLER and not only on the button.
+   ===================================================================== */
+section('🖨 Printing');
+
+const PRINT = between('var PRINT_MAX_SIDE', '/* ================= PRACTISING IT AGAIN',
+                      'the printing section');
+
+/* THE ONE THAT MATTERS: printing the key on a worksheet the teacher set. */
+ok('printing the key obeys the same lock the 🔑 window does',
+   /function printKeyAllowed\(\) \{\s*return !keyLocked\(\) \|\| isAdmin\(currentUser\);/.test(PRINT));
+ok('…and the handler refuses, rather than trusting the button',
+   /if \(withKey && !printKeyAllowed\(\)\) \{[^}]*keyLockedNote\(\)/.test(PRINT),
+   'hiding a button has never been the lock in this app');
+ok('…while the button is not drawn either',
+   /var can = printHasKeyPages\(\) && printKeyAllowed\(\);/.test(PRINT) &&
+   /keyBtn\.classList\.toggle\('hidden', !can\);/.test(PRINT));
+ok('…and a student is told whose key it is',
+   /: keyLockedNote\(\);/.test(PRINT));
+
+/* A plain print must go through the ONE place "the pages the student has" is
+   decided. Print `pages` and the marking scheme comes out of the printer. */
+ok('a plain print prints studentPages(), never every page',
+   /var wanted = withKey \? pages\.slice\(\) : studentPages\(\);/.test(PRINT),
+   'reading `pages` here prints the marking scheme');
+ok('…and the button says how many that is',
+   /studentPages\(\)\.length \+ ' page'/.test(PRINT));
+
+/* window.print() does not wait for an <img>: the mistake sheet learned this
+   the hard way and printed a page of ruled lines with no questions on it. */
+ok('every page is decoded before the dialog opens', /await img\.decode\(\)/.test(PRINT));
+ok('…with a fallback for a browser that has no decode()',
+   /img\.onload = img\.onerror = r/.test(PRINT));
+ok('the pages are rasterised through the one door', /await ensurePageRaster\(p\)/.test(PRINT));
+ok('…and composited, so what the student wrote prints with them',
+   /compositeJpeg\(p, PRINT_MAX_SIDE/.test(PRINT));
+ok('a sheet that came out empty says so rather than opening a blank dialog',
+   /if \(!sheet\.firstChild\)/.test(PRINT));
+ok('the box being typed in is committed first', /commitActiveTextEdit\(\)/.test(PRINT));
+
+/* printThis hides `body > *:not(.printMe)`, so a sheet nested anywhere in
+   the app is hidden along with everything around it — a print dialog with
+   nothing in it, on a page that looks perfectly right. */
+ok('it prints through the one door', /printThis\(sheet\)/.test(PRINT));
+ok('#printSheet is a DIRECT CHILD of body',
+   /\n<div id="printSheet" class="hidden"><\/div>/.test(html),
+   'nested inside the app it is hidden by the print stylesheet along with its parents');
+ok('…and hidden on screen', /#printSheet\.hidden \{ display: none; \}/.test(html));
+ok('one page per sheet, and the last one carries no break',
+   /\.printPage \{[\s\S]{0,200}break-after: page;/.test(html) &&
+   /\.printPage:last-child \{ break-after: auto/.test(html));
+
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'
   : '✓ all ' + checks + ' checks passed'));
