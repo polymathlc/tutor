@@ -12,6 +12,16 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.9.1 — set by Mr Chung
+
+A worksheet set for a class said **"Set by Zhi Kai Chung"** — the name off the Google account it
+was set from. It says **Set by Mr Chung** now, which is what the centre calls its teacher and what
+the rest of the app has always said.
+
+Worksheets already set say it too. The name is worked out when the card is drawn rather than only
+when the worksheet is set, so the ones already on students' screens are right without being set
+again. The same goes for the answer-key line and the note that says whose the help level is.
+
 ## v1.9.0 — every student says what they are doing
 
 The first-sign-in questions now have a middle step: **what level each student is, and what subject

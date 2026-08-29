@@ -15,6 +15,32 @@ Guidance for Claude when working in this repo.
   is a student, and a student's device runs the hints and the marking itself. Only the admin sees
   the 📚 Teaching notes window and the AI engine dialog, and only the admin ever writes a note.
 
+## 📌 The teacher is "Mr Chung", not the name on their Google account (v1.9.1)
+
+`setterName()` (search `WHO SET IT, as a student reads it`).
+
+A worksheet set for a class came back saying **"Set by Zhi Kai Chung"** — the display name off the
+admin's Google sign-in. That is a personal detail from an OAuth profile, and it has no business on
+a card in front of thirty children. `ADMIN_DISPLAY_NAME` is what the centre calls its teacher, and
+`setterName()` is the one door to it.
+
+- **It is a FUNCTION over the stored value, not only a fix at the write.** Every assignment set
+  before this carries the full name, so a write-side fix alone would leave the worksheets already
+  on thirty screens saying the wrong thing for ever.
+- **It can answer without consulting the value at all**, because setting work is the admin's and
+  nobody else's — `pushWorksheet` checks `isAdmin` and the box is hidden besides — so every setter
+  that has ever been stored IS the one teacher. **Give the centre a second teacher and this is the
+  ONE place that has to learn to tell them apart.**
+- **Five student-facing surfaces go through it**: the 📌 chip on the class card, the copy's own
+  `setBy`, the answer-key line and its 🔑 chip, and the locked-help-level note. A surface reading
+  `byName` or `wsMeta.setBy` raw is a surface that shows the Google name on everything already set,
+  while the one beside it says Mr Chung.
+- **The write is put right too** (`byName: setterName()`), so the stored data stops carrying a
+  personal name at all.
+- `ownerName` is deliberately left as the account's own display name: that is the student's name on
+  their OWN copy, which is a different thing, and nothing displays it.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 👤 EVERY STUDENT HAS A LEVEL, AND P3 IS SCIENCE ONLY (v1.9.0)
 
 `STUDENT_LEVELS` / `STUDENT_SUBJECTS` / `levelSubjects` / `subjectOkForLevel` / `studentSubject` /

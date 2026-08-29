@@ -1738,7 +1738,34 @@ ok('…and so does saving it',
 ok('the card does not draw a button the student cannot use',
    /if \(!grule\.locked\) \{[\s\S]{0,200}Help level/.test(html));
 ok('a student is told WHO set it rather than left with a dead control',
-   /function guidanceLockedNote\(by\)/.test(html));
+   /function guidanceLockedNote\(\)[\s\S]{0,160}setterName\(\)/.test(html));
+
+/* =====================================================================
+   THE TEACHER IS "MR CHUNG", NOT THE NAME ON THEIR GOOGLE ACCOUNT
+   ---------------------------------------------------------------------
+   A worksheet set for a class came back saying "Set by Zhi Kai Chung" —
+   the display name off the admin's sign-in, which is a personal detail
+   with no business on a card in front of thirty children. ADMIN_DISPLAY_NAME
+   is what the centre calls its teacher and `setterName` is the one door to
+   it, so a surface cannot say one thing while another says the other.
+   ===================================================================== */
+ok('there is one door for the teacher\u2019s name',
+   /function setterName\(\) \{ return ADMIN_DISPLAY_NAME; \}/.test(html));
+/* A write-side fix alone leaves every worksheet already set saying the full
+   name for ever, so the READ goes through the door too. */
+ok('nothing student-facing prints the stored setter raw',
+   !/byName \|\| ADMIN_DISPLAY_NAME/.test(html) &&
+   !/wsMeta\.setBy \+ '\\u2019s'/.test(html),
+   'a surface reading byName/setBy directly shows the Google account name on everything already set');
+ok('…and the class card names the teacher through it',
+   /'📌 Set by ' \+ setterName\(\)/.test(html));
+ok('…as do the answer-key line and its chip',
+   (html.match(/setterName\(\) \+ '\\u2019s'/g) || []).length >= 2);
+/* The stored value is put right going forward as well, so the data stops
+   carrying a personal name at all. */
+ok('the assignment stores the centre\u2019s name, not the account\u2019s',
+   /byName: setterName\(\),/.test(html) && !/byName: currentUser\.displayName/.test(html));
+ok('and so does the copy handed to a student', /setBy: setterName\(\),/.test(html));
 ok('a copy starts locked or free as the assignment says',
    /guidanceLocked: !!a\.guidanceLocked/.test(html));
 /* The level is read live, so on a cold start the list has to be in hand

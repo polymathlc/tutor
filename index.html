@@ -1528,7 +1528,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.9.0';
+var APP_VERSION = 'v1.9.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -3415,7 +3415,7 @@ function keyLocked() {
   return !!(wsMeta.assignmentId || wsKey.shared);
 }
 function keyLockedNote() {
-  return 'That answer key is ' + (wsMeta.setBy ? wsMeta.setBy + '\u2019s' : 'your teacher\u2019s') +
+  return 'That answer key is ' + (wsMeta.setBy ? setterName() + '\u2019s' : 'your teacher\u2019s') +
          ' — Chung GPT marks and hints with it, and it is not part of your worksheet.';
 }
 
@@ -3439,7 +3439,7 @@ function renderKeyChip() {
   if (lock) {
     // NOT a list of pages with ticks beside them. What a student needs to
     // know is that some pages are their teacher's key and the buddy has it.
-    chip.textContent = '🔑 ' + (wsMeta.setBy ? wsMeta.setBy + '\u2019s' : 'Your teacher\u2019s') + ' answer key';
+    chip.textContent = '🔑 ' + (wsMeta.setBy ? setterName() + '\u2019s' : 'Your teacher\u2019s') + ' answer key';
     chip.classList.add('on');
     chip.title = keyLockedNote();
     return;
@@ -5766,7 +5766,7 @@ function hintCard(h, i) {
       // Naming who set it is the difference between a rule and a fault.
       var why = document.createElement('div');
       why.className = 'rungLocked';
-      why.innerHTML = '🔒 <span>' + escHtml(guidanceLockedNote(wsMeta.setBy)) + '</span>';
+      why.innerHTML = '🔒 <span>' + escHtml(guidanceLockedNote()) + '</span>';
       card.appendChild(why);
     }
   }
@@ -7228,7 +7228,7 @@ async function startAssignment(id) {
       // student tidying up their own copy.
       sharedPdf: true,
       assignmentId: a.id,
-      setBy: a.byName || ADMIN_DISPLAY_NAME,
+      setBy: setterName(),
       keyPages: Array.isArray(a.keyPages) ? a.keyPages : [],
       keyPath: a.keyPath || '',
       keyAnswers: (a.keyRows || []).length,
@@ -7321,7 +7321,8 @@ async function pushWorksheet(id, level, locked) {
       // read. It is the teacher's blank paper, never a student's work.
       cover: coverOf(w),
       byUid: currentUser.uid,
-      byName: currentUser.displayName || ADMIN_DISPLAY_NAME,
+      // The centre's name for its teacher, never the Google account's own.
+      byName: setterName(),
       active: true,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -7382,7 +7383,7 @@ function renderAssignments() {
     card.appendChild(h);
     var meta = document.createElement('div');
     meta.className = 'wsMeta';
-    meta.appendChild(chipNode('📌 Set by ' + (a.byName || ADMIN_DISPLAY_NAME), 'chip chipSet'));
+    meta.appendChild(chipNode('📌 Set by ' + setterName(), 'chip chipSet'));
     meta.appendChild(chipNode((a.guidanceLocked ? '🔒 ' : '💡 ') +
       guidanceLabel(a.guidance || HINT_DEFAULT), 'chip chipGrade'));
     if (a.level) meta.appendChild(chipNode(levelLabel(a.level), 'chip chipLevel'));
@@ -7999,10 +8000,28 @@ function guidanceRule(w) {
   else if (assignmentsLoaded && w && w.assignmentId) locked = false;
   else locked = !!(w && w.guidanceLocked);
   var level = (locked && a && a.guidance) || (w && w.guidance) || HINT_DEFAULT;
-  return { level: level, locked: locked, by: (w && w.setBy) || (a && a.byName) || ADMIN_DISPLAY_NAME };
+  return { level: level, locked: locked, by: setterName() };
 }
-function guidanceLockedNote(by) {
-  return 'The help level on this one is ' + (by || ADMIN_DISPLAY_NAME) + '\u2019s to set.';
+/* WHO SET IT, as a student reads it.
+   The centre's teacher is "Mr Chung" on every student-facing surface — that
+   is what ADMIN_DISPLAY_NAME is for. A Google account's own display name
+   ("Zhi Kai Chung") is a personal detail off a sign-in, and it has no
+   business on a worksheet card in front of a class.
+
+   It is a FUNCTION over the stored value rather than only a fix at the
+   write, because every assignment set before this carries the full name and
+   would go on showing it for ever — a write-side fix would leave the
+   worksheets already on thirty screens saying the wrong thing.
+
+   It can answer without consulting the value at all because setting work is
+   the admin's and nobody else's (`pushWorksheet` checks `isAdmin` and the
+   box is hidden besides), so every setter that has ever been stored IS the
+   one teacher. Give the centre a second teacher and this is the ONE place
+   that has to learn to tell them apart. */
+function setterName() { return ADMIN_DISPLAY_NAME; }
+
+function guidanceLockedNote() {
+  return 'The help level on this one is ' + setterName() + '\u2019s to set.';
 }
 
 function openGradeModal(id) {
@@ -8011,7 +8030,7 @@ function openGradeModal(id) {
   // Hiding the button is not the lock — this is reachable from a stale card
   // and from the console.
   if (w ? guidanceRule(w).locked : wsMeta.guidanceLocked) {
-    toast(guidanceLockedNote(w ? guidanceRule(w).by : wsMeta.setBy), 5000);
+    toast(guidanceLockedNote(), 5000);
     return;
   }
   gradePick = (w ? w.guidance : wsMeta.guidance) || HINT_DEFAULT;
@@ -8024,7 +8043,7 @@ async function saveGrade() {
   if (!id) return;
   var target = worksheets.find(function (x) { return x.id === id; });
   if (target ? guidanceRule(target).locked : wsMeta.guidanceLocked) {
-    toast(guidanceLockedNote(target ? guidanceRule(target).by : wsMeta.setBy), 5000);
+    toast(guidanceLockedNote(), 5000);
     return;
   }
   try {
