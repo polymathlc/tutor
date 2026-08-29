@@ -605,7 +605,23 @@
   }
   .mistBody { padding: 18px 20px; display: flex; flex-direction: column; gap: 9px; }
   .mistMeta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .mistQ { font-size: 0.87rem; line-height: 1.6; color: var(--ink-soft); }
+  /* `pre-line`, because a text block that lists labelled statements is one
+     line each and run together it stops being a list. The rebuild keeps
+     those line breaks on purpose (`_mbText`); this is what shows them. */
+  .mistQ { font-size: 0.87rem; line-height: 1.6; color: var(--ink-soft); white-space: pre-line; }
+  /* A figure INSIDE a rebuilt question, where it was printed — not the
+     full-bleed picture across the top of the card, which is a different
+     thing and is styled as `.mistShot` above. */
+  .mqFig {
+    display: block; max-width: 100%; max-height: 300px; object-fit: contain;
+    margin: 4px 0; background: #fff;
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+  }
+  /* The options a question offers, printed under the blocks — because the
+     rebuild is told to leave word options out of them (they are held on the
+     mistake itself, and this is where they go back). */
+  .mqOpts { display: flex; flex-direction: column; gap: 4px; margin: 2px 0; }
+  .mqOpt { font-size: 0.87rem; line-height: 1.55; color: var(--ink-soft); }
   .mistFoot { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 20px 18px; }
   .mistFilters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
   .filterChip {
@@ -774,7 +790,14 @@
     display: block; width: 100%; border: 1px solid var(--line); border-radius: var(--radius-sm);
     margin: 12px 0; background: #fff;
   }
-  .pracQ { font-size: 0.95rem; line-height: 1.7; margin: 12px 0 4px; }
+  .pracQ { font-size: 0.95rem; line-height: 1.7; margin: 12px 0 4px; white-space: pre-line; }
+  /* A figure inside a rebuilt question is `max-width`, never `width`:
+     `.pracShot` above is a whole page and fills the panel, and stretching a
+     small diagram to the same width blows it up into a blur. */
+  .pracFig {
+    display: block; max-width: 100%; margin: 12px 0; background: #fff;
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+  }
   .pracAnswer {
     width: 100%; min-height: 90px; resize: vertical; font-size: 16px; line-height: 1.6;
     background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius-sm);
@@ -799,7 +822,9 @@
   .mwsQ { margin-bottom: 20pt; page-break-inside: avoid; break-inside: avoid; }
   .mwsQHead { font-size: 10.5pt; font-weight: 700; margin-bottom: 6pt; }
   .mwsQHead span { font-weight: 400; color: #555; }
-  .mwsQText { font-size: 11pt; line-height: 1.6; margin-bottom: 8pt; }
+  .mwsQText { font-size: 11pt; line-height: 1.6; margin-bottom: 8pt; white-space: pre-line; }
+  .mwsOpts { margin: 0 0 8pt; }
+  .mwsOpt { font-size: 10.5pt; line-height: 1.65; }
   .mwsShot { display: block; max-width: 100%; max-height: 95mm; margin: 0 0 8pt; }
   .mwsRules { margin-top: 4pt; }
   .mwsRule { border-bottom: 1px solid #999; height: 22pt; }
@@ -1576,7 +1601,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.11.0';
+var APP_VERSION = 'v1.12.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -4978,12 +5003,757 @@ function reportRevise() {
   return { weak: weak, untried: untried, strong: strong, topics: topics };
 }
 
+/* =====================================================================
+   🧩 REPRODUCING THE QUESTION — the Learning Portal's Rapid add, ported
+   ---------------------------------------------------------------------
+   A picture of the page a question was printed on is the question as it
+   really was, and it is unbeatable for LAYOUT — but it is a whole page: the
+   question above it, the question below it, and the student's own working
+   over the top. Printed on a practice sheet it is a photocopy of the paper
+   with one question somewhere in it.
+
+   So the question is READ INTO ORDERED BLOCKS instead — the wording as
+   text, with an "image" block wherever a figure belongs, each figure cut
+   out of the page by its own rectangle. That is the Science portal's ⚡
+   Rapid add, by way of Scan & Answer's port of it, and the identifiers here
+   are deliberately the SAME ones (`_mbBoxOk`, `_mbTightenRect`,
+   `_mbCleanBlocks`, `MB_*`) so that a fix in either app copies straight
+   across rather than being re-derived.
+
+   THIS APP CROPS A CLEAN PAGE, WHICH IS THE ONE THING SCAN & ANSWER CANNOT
+   DO. That app only ever has a photograph of a worksheet somebody has
+   already written on. This one holds the PDF, so the page is re-rendered
+   from it with no annotations on it at all: the crop is sharp, square, and
+   carries none of the student's own answer. A question handed back for
+   practice with last week's wrong answer written across it is not a
+   question anybody can practise, so every tier here is clean and the
+   student's own answer is kept as TEXT and shown beside it.
+
+   IT IS ITS OWN CALL, and that is deliberate. The marking run is already
+   doing two hard things at once — marking what is written, answering what
+   is not — on a prompt tuned for both, and bolting a block specification
+   onto MARK_SYS would buy a better practice sheet at the price of worse
+   marking. This runs afterwards, on the handful of questions actually being
+   FILED, and asks one thing.
+
+   IT CAN NEVER COST THE MISTAKE. Every failure returns null and the entry
+   is filed exactly as it would have been before this existed. THREE TIERS,
+   best first, the same shape as the answer key's three sources:
+     ① the question set out again in blocks,
+     ② the whole-question crop,
+     ③ the whole page.
+
+   THE RATION IS PER RUN. A paper where every question is wrong must not
+   quietly spend twenty vision calls, so the budget is spent BEFORE the call
+   (a failure cannot buy another try) and refilled in `fileMistakes` and
+   nowhere else.
+   ===================================================================== */
+
+var MB_BUILD_MAX = 10;          // questions rebuilt per marking run
+var MB_FIG_MAX = 4;             // figures kept from one question
+var MB_BLOCK_MAX = 16;          // blocks kept from one question
+var MB_BLOCK_CHARS = 900;       // one text block
+var _mbBuildBudget = MB_BUILD_MAX;
+
+var MB_CROP_MAX_SIDE = 1400;
+/* A whole question is READ, not just looked at, so it keeps more pixels than
+   a figure does: the wording is often 9pt, and print that survives a glance
+   at 1400px does not survive being answered from. */
+var MB_QCROP_MAX_SIDE = 2000;
+
+/* ---- Cutting the figure out of the page ----
+   The rectangle is the model's own, [ymin,xmin,ymax,xmax] as integers 0–1000
+   measured on the page the question is printed on — the convention every
+   reader in this family already uses. A box that is missing, malformed,
+   minute or very nearly the whole page is a selection that FAILED, and a
+   failed selection returns nothing rather than a crop of the wrong half of
+   the paper. */
+function _mbBoxOk(box, whole) {
+  if (!Array.isArray(box) || box.length !== 4) return false;
+  var n = box.map(Number);
+  if (!n.every(function (v) { return isFinite(v) && v >= 0 && v <= 1000; })) return false;
+  if (n[2] - n[0] < 25 || n[3] - n[1] < 25) return false;                     // too small to be anything
+  /* A FIGURE that fills the page is a selection that failed — nothing was
+     picked out. A whole QUESTION that fills the page is perfectly ordinary:
+     an open-ended question with a big diagram and six ruled lines really is
+     the whole sheet, and refusing it would throw away exactly the questions
+     worth trying again. So the test is skipped for a question box, which is
+     what `whole` says. */
+  if (!whole && (n[2] - n[0]) / 1000 > 0.94 && (n[3] - n[1]) / 1000 > 0.94) return false;
+  return true;
+}
+
+/* =====================================================================
+   ✂️ THE FIGURE, AND NOT THE SENTENCE ABOVE IT
+   ---------------------------------------------------------------------
+   A model's rectangle is a guess made by eye, and the way it is wrong is
+   always the same: it overshoots up or down and takes a line of the
+   question's own WORDING with it. The sheet then prints the figure with half
+   a sentence stuck to its top edge and the tail of the next one underneath.
+
+   BOTH PASSES ARE PIXEL WORK, NOT ANOTHER AI CALL. They are free, instant
+   and deterministic — the same picture always comes out the same way.
+
+   ① GROW OUT OF WHAT IT CUT THROUGH. An edge sitting on ink is an edge
+   halfway through a label, so it moves outward until it stands in clear
+   paper. Generous sideways, because a label and its leader line stick far
+   out of the drawing they name; mean vertically, because what sits above and
+   below a figure is nearly always the question's wording.
+
+   ② CUT OFF WHAT IS PLAINLY PROSE, and then ③ pull the edges in to the ink.
+
+   THE THRESHOLD IS MEASURED, NOT ASSUMED. A PDF page re-rendered here is
+   white at 255 and a fixed line would do — but the PDF is very often a
+   SCAN of a paper worksheet, where the paper is grey and the lighting slopes
+   across the sheet, and a fixed line then reads the whole page as ink: the
+   trimmer finds one band covering everything and does nothing at all, with
+   nothing on screen to say it has stopped working. So the paper's own white
+   is measured off the picture (the 98th percentile of the luma) and ink is
+   what falls well under it.
+
+   IT FAILS SAFE, ALWAYS. Every pass hands back the rectangle it was given
+   the moment it is not confident. A slightly loose crop is a figure with a
+   stray line over it; a confident wrong one is a figure with its own labels
+   cut off, and only one of those can be seen for what it is on paper.
+   ===================================================================== */
+
+var MB_INK_RATIO = 0.74;        // ink is this fraction of the paper's own white, or darker
+var MB_INK_FLOOR = 48;          // …but never call almost-black-only "ink"
+var MB_INK_CEIL = 205;          // …and never call the paper itself ink
+var MB_ANALYSE_MAX_SIDE = 1100; // the probe is downscaled: this is measurement, not the crop
+var MB_PAD_FRAC = 0.015;        // breathing space, measured on the BOX and never on the page
+var MB_PAD_MIN = 6;
+var MB_GROW_X = 0.16;           // how far an edge may move out of ink, as a fraction of the box
+var MB_GROW_Y = 0.05;
+var MB_TRIM_BANDS = 3;          // lines of prose taken off one side at most
+var MB_TRIM_MAX = 0.22;         // …and never more than this much of the crop
+var MB_TRIM_KEEP = 0.5;         // …and never leaving less than this much of it
+var MB_MAXRUN_FRAC = 0.30;      // a run of ink longer than this much of the band is a STROKE
+var MB_RUNS_MIN = 6;            // …and a line of print breaks into at least this many pieces
+var MB_RULE_FRAC = 0.55;        // a row carrying a run this wide is a printed RULE
+/* FOUR, not three. A perfectly ordinary boxed diagram is a rule at the top,
+   a rule at the bottom and a divider across the middle — three, and at three
+   the pass would stand down on half the figures it was written to clean. */
+var MB_RULE_GROUPS = 4;
+
+/* The paper's own white, as the 98th percentile of the luma. The top 2% is
+   given away deliberately: a specular highlight off a glossy sheet is 255
+   and is not what the page is made of, so the maximum would put the line too
+   high on exactly the pictures that need it lowest. */
+function _mbInkLevel(hist, total) {
+  if (!hist || !total) return MB_INK_CEIL;
+  var want = total * 0.98, seen = 0, white = 255;
+  for (var v = 0; v < 256; v++) {
+    seen += hist[v] || 0;
+    if (seen >= want) { white = v; break; }
+  }
+  var thr = Math.round(white * MB_INK_RATIO);
+  return Math.max(MB_INK_FLOOR, Math.min(MB_INK_CEIL, thr));
+}
+function _mbLumaHist(data) {
+  var hist = new Array(256), total = 0, i;
+  for (i = 0; i < 256; i++) hist[i] = 0;
+  for (i = 0; i + 3 < data.length; i += 4) {
+    if (data[i + 3] < 60) continue;                 // a hole is not paper and is not ink
+    var l = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+    hist[l < 0 ? 0 : (l > 255 ? 255 : Math.round(l))]++;
+    total++;
+  }
+  return { hist: hist, total: total };
+}
+/* Ink per row and per column, in ONE pass over ONE readback — which is what
+   lets both passes below be plain arithmetic on plain arrays, and therefore
+   testable without a browser. */
+function _mbInkProfile(data, w, h, thr) {
+  var rows = new Array(h), cols = new Array(w), x, y;
+  for (x = 0; x < w; x++) cols[x] = 0;
+  for (y = 0; y < h; y++) {
+    var n = 0, minX = -1, maxX = -1, runs = 0, run = 0, maxRun = 0, prev = 0;
+    var base = y * w * 4;
+    for (x = 0; x < w; x++) {
+      var i = base + x * 4;
+      var on = (data[i + 3] > 60 &&
+                data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114 < thr) ? 1 : 0;
+      if (on) {
+        n++; cols[x]++;
+        if (minX < 0) minX = x;
+        maxX = x;
+        if (!prev) { runs++; run = 1; } else run++;
+        if (run > maxRun) maxRun = run;
+      } else run = 0;
+      prev = on;
+    }
+    rows[y] = { n: n, minX: minX, maxX: maxX, runs: runs, maxRun: maxRun };
+  }
+  return { rows: rows, cols: cols };
+}
+
+/* ① Walk one edge outward until it stands in clear paper. An edge already
+   clear does not move, and an edge that never finds clear paper within its
+   allowance stays exactly where it was — moving it to the allowance's end
+   would be growing blindly, which is the flat pad this replaces. */
+function _mbClearEdge(counts, from, dir, limit, inkMin) {
+  if (!counts || !counts.length) return from;
+  for (var i = from; dir > 0 ? i < limit : i > limit; i += dir) {
+    if (i < 0 || i >= counts.length) break;
+    if ((counts[i] || 0) <= inkMin) return i;
+  }
+  return from;
+}
+
+/* ② The rows of prose above and below.
+
+   A BAND IS PROSE ON FIVE COUNTS, and the last two are what stop a table or
+   a graph being eaten a row at a time:
+     · it is ONE LINE TALL — taller is the figure, thinner is a rule;
+     · its ink spans most of the width — a caption or an axis title is
+       narrow, and it survives;
+     · it is not solid, so a filled bar is not mistaken for a sentence;
+     · IT HAS NO LONG STROKE in it. Every scanline through a line of print
+       crosses letters, so the longest unbroken run of ink is a few pixels;
+       an axis, a table border, a leader line or the top of a rectangle lays
+       a run right across the band. Density alone cannot see that — a
+       hairline rule is a fraction of a percent of its row's pixels, so the
+       "not solid" test passes it happily and the trimmer takes the top off
+       the table it was pointed at;
+     · IT IS MADE OF MANY SHORT PIECES. A line of print breaks into dozens of
+       separate runs; a stroke or a blob is one or two.
+
+   AND A FRAMED TABLE IS NOT TRIMMED AT ALL. Four full-width rules in one
+   crop is a ruled table, whose every row is short, wide and full of letters
+   — prose on every count that reads a row on its own. The whole pass stands
+   down rather than handing back the bottom two thirds of it, which is the
+   one wrong crop that looks completely convincing.
+
+   A RUN OF CONSECUTIVE LINES goes together. Two lines of a question sit a
+   few pixels apart, far less than the clear band that separates the wording
+   from the figure — so a trimmer that insists on clear paper after the FIRST
+   line finds none, stops, and leaves both on the picture. The cut is
+   remembered only where a run reached real whitespace, so a band with
+   nothing but figure after it is still never touched. */
+function _mbRuleGroups(rows, w, h, from, to) {
+  var groups = 0, run = 0;
+  for (var y = from; y <= to; y++) {
+    var r = rows[y];
+    var isRule = !!r && r.maxRun >= w * MB_RULE_FRAC;
+    if (isRule && !run) groups++;
+    run = isRule ? 1 : 0;
+  }
+  return groups;
+}
+function _mbTrimTextRows(rows, w, h, pageH) {
+  var out = { top: 0, bot: h - 1 };
+  if (!rows || w < 40 || h < 60) return out;
+  /* A framed table is the figure, and every one of its rows reads as prose. */
+  if (_mbRuleGroups(rows, w, h, 0, h - 1) >= MB_RULE_GROUPS) return out;
+
+  var inkMin = Math.max(2, w * 0.004);
+  var joinGap = Math.max(2, Math.round(pageH * 0.003));   // an i-dot is not a new line
+  var gapMin = Math.max(5, Math.round(pageH * 0.007));    // paper that really separates two things
+  var minBandH = Math.max(4, Math.round(pageH * 0.005));  // thinner is a rule or a border — keep it
+  var maxBandH = Math.max(minBandH + 1, Math.round(pageH * 0.030)); // taller is the figure — keep it
+  var maxTrim = h * MB_TRIM_MAX, minKeep = h * MB_TRIM_KEEP;
+
+  function inked(ry) { return ry >= 0 && ry < h && rows[ry].n > inkMin; }
+  function band(from, dir, limit) {
+    var s = from;
+    while (s !== limit && !inked(s)) s += dir;
+    if (s === limit || s < 0 || s >= h) return null;
+    var e = s, gap = 0, minX = w, maxX = 0, maxFrac = 0, maxRun = 0, runs = [], ry;
+    for (ry = s; ry !== limit; ry += dir) {
+      if (inked(ry)) {
+        e = ry; gap = 0;
+        if (rows[ry].minX >= 0 && rows[ry].minX < minX) minX = rows[ry].minX;
+        if (rows[ry].maxX > maxX) maxX = rows[ry].maxX;
+        if (rows[ry].n / w > maxFrac) maxFrac = rows[ry].n / w;
+        if ((rows[ry].maxRun || 0) > maxRun) maxRun = rows[ry].maxRun || 0;
+        runs.push(rows[ry].runs || 0);
+      } else if (++gap > joinGap) break;
+    }
+    var after = 0;
+    for (ry = e + dir; ry !== limit && !inked(ry); ry += dir) after++;
+    runs.sort(function (a, b) { return a - b; });
+    return {
+      start: s, end: e, size: Math.abs(e - s) + 1,
+      inkW: maxX - minX + 1, maxFrac: maxFrac, maxRun: maxRun,
+      medRuns: runs.length ? runs[runs.length >> 1] : 0,
+      after: after
+    };
+  }
+  function isProse(b) {
+    if (!b) return false;
+    if (b.size < minBandH || b.size > maxBandH) return false;   // one line of type, no more
+    if (b.inkW < w * 0.55) return false;                        // a caption is narrow — keep it
+    if (b.maxFrac > 0.6) return false;                          // a solid bar is not a sentence
+    if (b.maxRun > b.inkW * MB_MAXRUN_FRAC) return false;       // an axis, a rule, a border
+    if (b.medRuns < MB_RUNS_MIN) return false;                  // letters, not one long stroke
+    return true;
+  }
+  /* A run of prose lines, and the cut is only ever taken where the run met
+     clear paper. `null` back means nothing here was safe to remove. */
+  function eat(from, dir, limit) {
+    var at = from, cut = null;
+    for (var k = 0; k < MB_TRIM_BANDS; k++) {
+      var b = band(at, dir, limit);
+      if (!isProse(b)) break;
+      if (b.after >= gapMin) cut = b.end + dir * (1 + Math.min(b.after, gapMin));
+      at = b.end + dir;
+      if (dir > 0 ? at >= limit : at <= limit) break;
+    }
+    return cut;
+  }
+  var t = eat(0, 1, h);
+  if (t !== null && t <= maxTrim && (out.bot - t + 1) >= minKeep) out.top = t;
+  var b2 = eat(h - 1, -1, out.top - 1);
+  if (b2 !== null && (h - 1 - b2) <= maxTrim && (b2 - out.top + 1) >= minKeep) out.bot = b2;
+
+  /* ③ AND THEN THE BLANK PAPER ITSELF. Whatever survives, the edges are
+     pulled in to the first and last row that has any ink in it at all. It is
+     the one move here that cannot be wrong — it removes measured empty paper
+     and nothing else. */
+  var f = out.top, l = out.bot;
+  while (f < l && !inked(f)) f++;
+  while (l > f && !inked(l)) l--;
+  if (l - f + 1 >= 8) { out.top = f; out.bot = l; }
+  return out;
+}
+
+/* Both passes, over one readback. Takes the rectangle in IMAGE pixels and
+   hands back a rectangle in image pixels — the same one it was given
+   whenever anything at all is not right. */
+function _mbTightenRect(src, W, H, r, opts) {
+  try {
+    var grow = (opts && opts.grow !== false);
+    var trim = (opts && opts.trim !== false);
+    if (!grow && !trim) return r;
+    // The probe covers the box PLUS everywhere an edge is allowed to move
+    // to, so growing is a walk over numbers already in hand rather than a
+    // fresh read of the page for every step.
+    var gx = grow ? Math.round(r.w * MB_GROW_X) : 0;
+    var gy = grow ? Math.round(r.h * MB_GROW_Y) : 0;
+    var px = Math.max(0, Math.floor(r.x - gx)), py = Math.max(0, Math.floor(r.y - gy));
+    var pw = Math.min(W - px, Math.ceil(r.w + gx * 2 + (r.x - px)));
+    var ph = Math.min(H - py, Math.ceil(r.h + gy * 2 + (r.y - py)));
+    if (pw < 40 || ph < 40) return r;
+    var s = Math.min(1, MB_ANALYSE_MAX_SIDE / Math.max(pw, ph));
+    var aw = Math.max(8, Math.round(pw * s)), ah = Math.max(8, Math.round(ph * s));
+    var c = document.createElement('canvas');
+    c.width = aw; c.height = ah;
+    var ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return r;
+    ctx.drawImage(src, px, py, pw, ph, 0, 0, aw, ah);
+    var data = ctx.getImageData(0, 0, aw, ah).data;
+    var lv = _mbLumaHist(data);
+    var thr = _mbInkLevel(lv.hist, lv.total);
+    var prof = _mbInkProfile(data, aw, ah, thr);
+
+    // The box itself, in the probe's coordinates.
+    var kx = aw / pw, ky = ah / ph;
+    var bx = Math.max(0, Math.min(aw - 1, Math.round((r.x - px) * kx)));
+    var by = Math.max(0, Math.min(ah - 1, Math.round((r.y - py) * ky)));
+    var bw = Math.max(1, Math.min(aw - bx, Math.round(r.w * kx)));
+    var bh = Math.max(1, Math.min(ah - by, Math.round(r.h * ky)));
+
+    if (grow) {
+      var colMin = Math.max(1, bh * 0.004), rowMin = Math.max(1, bw * 0.004);
+      var nx = _mbClearEdge(prof.cols, bx, -1, -1, colMin);
+      var nr = _mbClearEdge(prof.cols, bx + bw - 1, 1, aw, colMin);
+      var ny = _mbClearEdge(prof.rows.map(function (o) { return o.n; }), by, -1, -1, rowMin);
+      var nb = _mbClearEdge(prof.rows.map(function (o) { return o.n; }), by + bh - 1, 1, ah, rowMin);
+      bw = (nr - nx) + 1; bx = nx;
+      bh = (nb - ny) + 1; by = ny;
+    }
+    if (trim && bh > 1) {
+      // The trim reads only the rows inside the box, measured across it.
+      var sub = prof.rows.slice(by, by + bh).map(function (o) {
+        var lo = Math.max(o.minX, bx), hi = Math.min(o.maxX, bx + bw - 1);
+        return { n: o.n, minX: o.minX < 0 ? -1 : lo, maxX: o.maxX < 0 ? -1 : hi };
+      });
+      var cut = _mbTrimTextRows(sub, bw, bh, ah);
+      by += cut.top; bh = cut.bot - cut.top + 1;
+    }
+    if (bw < 8 || bh < 8) return r;
+    return {
+      x: px + bx / kx, y: py + by / ky,
+      w: Math.min(W - (px + bx / kx), bw / kx),
+      h: Math.min(H - (py + by / ky), bh / ky)
+    };
+  } catch (e) { console.warn('crop tighten skipped', e); return r; }
+}
+
+/* `whole` is the WHOLE-QUESTION crop: it is MEANT to hold the wording, so
+   neither pass runs on it. `opts.trim === false` is the picture-options
+   band, whose content is (1) (2) (3) (4) — text by definition, and a trimmer
+   pointed at it would take the choices off the picture one line at a time.
+
+   `src` is a canvas or an image, never a URL: this app re-renders the page
+   out of the PDF it already holds, so there is nothing to fetch and nothing
+   to taint. */
+function _mbCropBox(src, box, whole, opts) {
+  if (!src || !_mbBoxOk(box, whole)) return '';
+  var n = box.map(Number);
+  var W = src.naturalWidth || src.width, H = src.naturalHeight || src.height;
+  if (!W || !H) return '';
+  var r = {
+    x: n[1] / 1000 * W,
+    y: n[0] / 1000 * H,
+    w: (n[3] - n[1]) / 1000 * W,
+    h: (n[2] - n[0]) / 1000 * H
+  };
+  if (!whole) r = _mbTightenRect(src, W, H, r, opts);
+  // Breathing space, measured on the BOX. A pad taken off the page is the
+  // same fifty pixels round a postage-stamp figure as round half a sheet.
+  var pad = Math.max(MB_PAD_MIN, Math.round(Math.min(r.w, r.h) * MB_PAD_FRAC));
+  var x = Math.max(0, r.x - pad), y = Math.max(0, r.y - pad);
+  var w = Math.min(W - x, r.w + (r.x - x) + pad);
+  var h = Math.min(H - y, r.h + (r.y - y) + pad);
+  if (w < 24 || h < 24) return '';
+  var s = Math.min(1, (whole ? MB_QCROP_MAX_SIDE : MB_CROP_MAX_SIDE) / Math.max(w, h));
+  var c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w * s));
+  c.height = Math.max(1, Math.round(h * s));
+  var ctx = c.getContext('2d');
+  // A PDF page is transparent where nothing is drawn, and a transparent
+  // canvas flattens to BLACK in a JPEG — the whole crop, ink and all.
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, x, y, w, h, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.9);
+}
+
+/* =====================================================================
+   🔢 FOUR PICTURE OPTIONS ARE ONE PICTURE
+   ---------------------------------------------------------------------
+   A multiple-choice question whose four choices are little DRAWINGS — four
+   shapes, four graphs, four circuits — has options that cannot be written
+   out. Cut out separately they become four pictures stacked down the page:
+   the row they were printed in is gone, they are each a different size, and
+   they stop reading as a set of choices at all — a student answering "(3)"
+   cannot see which one (3) was. ONE rectangle round the lot keeps the
+   paper's own layout, keeps the (1) (2) (3) (4) labels attached to the
+   pictures they name, and is one crop instead of four.
+
+   AND IT IS NEVER TRIMMED. The prose trimmer exists to take lines of text
+   off a figure; an options band is a row of pictures with a number printed
+   under each of them, so pointed at this it works perfectly and takes the
+   choices off one line at a time. `role: 'options'` is what says so.
+
+   THE BLOCK IS AN ORDINARY `image` ON THE WIRE. It is `role` that marks it,
+   so anything that has never heard of picture options draws it as a figure —
+   untidy, and the question is still answerable. A block of a TYPE nobody
+   knows would have been dropped on the floor instead, and the choices with
+   it. That is the same contract Scan & Answer and `cer/mistakes.html` keep;
+   ship a change to the word in all three.
+   ===================================================================== */
+
+var MB_UNION_SLACK = 2.6;       // how much emptier than its parts a union may be
+var MB_UNION_MAX_AREA = 0.55;   // …and it may never be most of the page either
+
+/* One rectangle round several. A model that ignores "one rectangle" and
+   sends four is answered by covering all four rather than by keeping the
+   first — but only when they really do sit together: boxes in opposite
+   corners of the page union to most of the sheet, which is not a set of
+   options, it is a failed reading, and the caller is better off with
+   nothing. */
+function _mbUnionBox(boxes) {
+  var use = (boxes || []).filter(function (b) { return _mbBoxOk(b, true); })
+                         .map(function (b) { return b.map(Number); });
+  if (!use.length) return null;
+  if (use.length === 1) return use[0];
+  var y0 = 1000, x0 = 1000, y1 = 0, x1 = 0, area = 0;
+  use.forEach(function (b) {
+    if (b[0] < y0) y0 = b[0];
+    if (b[1] < x0) x0 = b[1];
+    if (b[2] > y1) y1 = b[2];
+    if (b[3] > x1) x1 = b[3];
+    area += (b[2] - b[0]) * (b[3] - b[1]);
+  });
+  var u = [y0, x0, y1, x1];
+  var uArea = (y1 - y0) * (x1 - x0);
+  if (!area || uArea > area * MB_UNION_SLACK) return null;   // scattered — not one band of options
+  if (uArea / 1000000 > MB_UNION_MAX_AREA) return null;      // most of the page is not an options row
+  return _mbBoxOk(u, true) ? u : null;
+}
+
+/* A block's own wording. `_mkStr` folds every newline away, which is right
+   for a marking field and wrong here: a text block listing labelled
+   statements ("A: …", "B: …") is one line each, and run together it stops
+   being a list. */
+function _mbText(v, cap) {
+  var s = String(v == null ? '' : v).replace(/\r/g, '').replace(/[ \t]+\n/g, '\n')
+            .replace(/\n{3,}/g, '\n\n').trim();
+  return s.length > cap ? s.slice(0, cap) : s;
+}
+
+/* VALIDATE ON ARRIVAL, NEVER AT RENDER: a block that would not draw is one
+   the sheet cannot show, and finding that out on the printed page is too
+   late. A build with NO WORDING at all is refused outright — the tiers below
+   it are better than a question made of pictures with nothing asking
+   anything. */
+function _mbCleanBlocks(raw) {
+  var arr = (raw && Array.isArray(raw.blocks)) ? raw.blocks : (Array.isArray(raw) ? raw : []);
+  var out = [], figs = 0, words = 0, optBoxes = [], optPage = 1;
+  for (var i = 0; i < arr.length && out.length < MB_BLOCK_MAX; i++) {
+    var b = arr[i];
+    if (!b || typeof b !== 'object') continue;
+    if (b.type === 'options') {
+      /* Held back and merged at the end, because "one rectangle round all of
+         them" is a rule the model can only be ASKED to follow — it cannot be
+         made to. The whole-page test is skipped (`true`): a row of options
+         across the foot of a page is a legitimate band, so it is the union's
+         own guard that decides. */
+      if (Array.isArray(b.box_2d)) {
+        optBoxes.push(b.box_2d);
+        var op = parseInt(b.page, 10);
+        if (optBoxes.length === 1 && op >= 1) optPage = op;
+      }
+      continue;
+    }
+    if (b.type === 'image') {
+      if (figs >= MB_FIG_MAX) continue;
+      if (!_mbBoxOk(b.box_2d)) continue;              // a figure box, so the whole-page test applies
+      var pg = parseInt(b.page, 10);
+      out.push({ type: 'image', page: (pg >= 1 ? pg : 1), box: b.box_2d.map(Number) });
+      figs++;
+    } else {
+      var txt = _mbText(b.text, MB_BLOCK_CHARS);
+      if (!txt) continue;
+      out.push({ type: 'text', text: txt });
+      words++;
+    }
+  }
+  if (!words) return [];
+  // The options go LAST whatever order they arrived in — that is where they
+  // are printed, and a block asking the question has to come before them.
+  if (optBoxes.length && out.length < MB_BLOCK_MAX) {
+    var u = _mbUnionBox(optBoxes.slice(0, 8));
+    if (u) out.push({ type: 'image', role: 'options', page: optPage, box: u });
+  }
+  return out;
+}
+
+/* The whole reply: the blocks, and the one rectangle round the question as
+   printed. The question box is asked for HERE rather than in MARK_SYS on
+   purpose — the marking prompt is already doing two hard things at once, and
+   this call is looking at the question closely and drawing rectangles
+   anyway. Past the budget there is no question box either, and the whole
+   page stands in, exactly as it did before any of this existed. */
+function _mbCleanBuild(raw) {
+  var blocks = _mbCleanBlocks(raw);
+  var qbox = (raw && _mbBoxOk(raw.questionBox, true)) ? raw.questionBox.map(Number) : null;
+  var qpage = parseInt(raw && raw.questionPage, 10);
+  return { blocks: blocks, qbox: qbox, qpage: (qpage >= 1 ? qpage : 1) };
+}
+
+/* ---- The clean page ----
+   Rendered out of the PDF with NO annotations on it, at a resolution a crop
+   can be printed from. The on-screen canvas cannot be used for this: it is
+   rasterised at whatever zoom the student is reading at, so at fit-width on
+   a phone a crop off it is a postage stamp — and it carries their own ink.
+
+   AT MOST TWO ARE HELD. One page at this size is tens of megabytes of
+   canvas, and holding a twelve-page paper resident is what makes Safari
+   discard the tab — the same lesson `rasterVisiblePages` already learned.
+   Two, because a question that runs over a page break is measured on both. */
+var RB_PAGE_MAX_SIDE = 2200;
+var RB_PAGE_CACHE = 2;
+var RB_ASK_MAX_SIDE = 1500;     // what the MODEL is shown — it is reading, not printing
+var _rbPages = [];
+
+function rbForgetPages() { _rbPages = []; }
+
+async function rbCleanPage(num) {
+  for (var i = 0; i < _rbPages.length; i++) if (_rbPages[i].num === num) return _rbPages[i].canvas;
+  var p = pages.find(function (pg) { return pg.num === num; });
+  if (!p || !p.page) return null;
+  // pdf.js will not render one page into two canvases at once, and the
+  // on-screen raster may well be in flight — so wait for it rather than
+  // racing it into a blank page.
+  if (p.renderTask) { try { await p.renderTask.promise; } catch (e) {} }
+  try {
+    var s = Math.min(4, Math.max(1, RB_PAGE_MAX_SIDE / Math.max(p.baseW, p.baseH)));
+    var vp = p.page.getViewport({ scale: s });
+    var c = document.createElement('canvas');
+    c.width = Math.floor(vp.width);
+    c.height = Math.floor(vp.height);
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    await p.page.render({ canvasContext: ctx, viewport: vp }).promise;
+    _rbPages.push({ num: num, canvas: c });
+    while (_rbPages.length > RB_PAGE_CACHE) _rbPages.shift();
+    return c;
+  } catch (e) { console.warn('clean page render failed', e); return null; }
+}
+function rbJpeg(canvas, maxSide, q) {
+  var f = Math.min(1, (maxSide || RB_ASK_MAX_SIDE) / Math.max(canvas.width, canvas.height));
+  if (f >= 1) return canvas.toDataURL('image/jpeg', q || 0.86).split(',')[1];
+  var out = document.createElement('canvas');
+  out.width = Math.max(1, Math.round(canvas.width * f));
+  out.height = Math.max(1, Math.round(canvas.height * f));
+  var ctx = out.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, out.width, out.height);
+  ctx.drawImage(canvas, 0, 0, out.width, out.height);
+  return out.toDataURL('image/jpeg', q || 0.86).split(',')[1];
+}
+
+var MB_BUILD_SYS =
+  'You are reproducing ONE question from the attached page of a school worksheet or exam paper, so that a ' +
+  'student can be given it again to try. You are NOT answering it, NOT marking it and NOT rewording it: your ' +
+  'whole job is to set out what is PRINTED, exactly as printed.\n' +
+  'Reply with STRICT JSON only, no markdown, exactly this shape: {"blocks":[{"type":"text","text":"…"},' +
+  '{"type":"image","page":1,"box_2d":[ymin,xmin,ymax,xmax]},' +
+  '{"type":"options","page":1,"box_2d":[ymin,xmin,ymax,xmax]}],' +
+  '"questionBox":[ymin,xmin,ymax,xmax],"questionPage":1}\n' +
+  'EVERY rectangle is [ymin, xmin, ymax, xmax], four whole numbers from 0 to 1000 measured on the WHOLE ' +
+  'attached page: 0,0 is that page\'s top-left corner and 1000,1000 its bottom-right. "page" is which attached ' +
+  'picture it is measured on, 1 for the first attached picture.\n' +
+  'Rules:\n' +
+  '- List the blocks in the SAME order they appear on the page, so the question reads top to bottom.\n' +
+  '- INCLUDE THE SHARED STEM. If this question is a lettered part — 13(a) — the wording that introduces the ' +
+  'whole of question 13, and any figure belonging to it, comes FIRST, then this part\'s own wording. A part ' +
+  'torn away from the stem it depends on cannot be answered at all.\n' +
+  '- Include ONLY this question and its own stem. Nothing from the question before it or the one after it.\n' +
+  '- "text" is the printed wording as plain text. Do not correct it, do not shorten it, do not explain it, and ' +
+  'NEVER write in an answer — not even a hint of one. Keep the part marker "(a)" at the start of the part\'s ' +
+  'own text block, and keep a printed mark allocation such as "[2]" where it is printed.\n' +
+  '- LEAVE OUT the multiple-choice options WHEN THEY ARE WORDS OR NUMBERS: they are held separately and are ' +
+  'printed under your blocks. Leave out the question number printed in the margin, the page header and footer, ' +
+  'and anything anybody has written on the page by hand.\n' +
+  '- WHEN THE OPTIONS ARE PICTURES — four little diagrams, four graphs, four shapes, one per choice — they ' +
+  'cannot be written out, so give ONE block {"type":"options","page":1,"box_2d":[…]} as the LAST block: ONE ' +
+  'rectangle round ALL of the option pictures together, including the (1) (2) (3) (4) labels printed with them ' +
+  'and nothing else. NEVER one rectangle per option — four separate pictures lose the row they were printed in ' +
+  'and stop reading as a set of choices at all. Give this block ONLY when the choices really are pictures.\n' +
+  '- If a text block lists labelled statements (e.g. "A: …", "B: …"), put EACH on its own line, separated with ' +
+  'a real line break.\n' +
+  '- An "image" block is ONE diagram, picture, graph, figure, experimental set-up, map, number line or printed ' +
+  'data table. Put it exactly where it belongs among the text, and draw its rectangle round the figure and its ' +
+  'own labels and caption, leaving the question\'s wording and any neighbouring question OUT of it.\n' +
+  '- OMIT the image block entirely for a question that is only words, and for a figure you cannot locate: a ' +
+  'wrong rectangle keeps somebody else\'s picture and looks exactly like a working one.\n' +
+  '- "questionBox" is ONE rectangle round the WHOLE of this question as it is printed — its wording, its ' +
+  'figure, its options and the space left to answer in — and nothing of the question above or below it. Leave ' +
+  'it out entirely if you cannot place it.\n' +
+  '- Never invent a block. If the question is one sentence, one text block is the whole correct answer.';
+
+/* The pages this question is printed on. A question stitched over a page
+   break is measured on the page its rectangle was drawn on, so both go up
+   and the block's own `page` says which it meant. */
+function _mbPageNums(it) {
+  var out = [it.page];
+  if (it.endPage && it.endPage !== it.page) out.push(it.endPage);
+  return out;
+}
+
+async function _mbBuildBlocks(it) {
+  if (_mbBuildBudget <= 0) return null;
+  if (!window.askGemini || !window.aiReady || !window.aiReady()) return null;
+  var nums = _mbPageNums(it), shots = [], i;
+  for (i = 0; i < nums.length; i++) {
+    var c = await rbCleanPage(nums[i]);
+    if (c) shots.push({ num: nums[i], canvas: c });
+  }
+  if (!shots.length) return null;
+  _mbBuildBudget--;              // spent BEFORE the call, so a failure cannot buy another
+  var ask = 'Reproduce question "' + _mkStr(it.number, 16) + '" from the attached ' +
+    (shots.length > 1 ? 'pictures' : 'picture') + '. For reference, the wording read off it was:\n' +
+    _mkStr(it.question, 1200);
+  try {
+    var raw = await window.askGemini(ask, {
+      system: MB_BUILD_SYS,
+      images: shots.map(function (s) {
+        return { mimeType: 'image/jpeg', data: rbJpeg(s.canvas, RB_ASK_MAX_SIDE, 0.86) };
+      }),
+      json: true,
+      maxOutputTokens: 2600,
+      thinkingLevel: 'low'
+    });
+    var built = _mbCleanBuild(_parseAIJson(raw));
+    built.shots = shots;
+    return built;
+  } catch (e) {
+    console.warn('question rebuild failed', e);
+    return null;
+  }
+}
+
+/* One picture into Storage, and the PATH back — never the download URL.
+   Everything in this app's mistake book is stored as a path and resolved on
+   demand (`mistakeImageUrl`), so a URL stored here would be the one row the
+   deleting and the caching could not see. */
+async function _mbUpload(dataUrl, name) {
+  if (!storage || !dataUrl || !currentUser) return '';
+  var path = MISTAKE_DIR + '/' + currentUser.uid + '/' + name + '.jpg';
+  await storage.ref(path).putString(dataUrl, 'data_url');
+  return path;
+}
+
+/* Each figure is cut from ITS OWN page and uploaded beside the question. A
+   figure that will not crop or will not upload is DROPPED from the blocks
+   rather than left as an empty frame — the wording around it still reads,
+   which is exactly what the whole-question crop cannot fall back on. */
+async function _mbBuildFigures(blocks, shots, id) {
+  var out = [];
+  for (var i = 0; i < blocks.length; i++) {
+    var b = blocks[i];
+    if (b.type !== 'image') { out.push({ type: 'text', text: b.text }); continue; }
+    try {
+      var s = shots[(b.page || 1) - 1] || shots[0];
+      if (!s) continue;
+      var isOpts = b.role === 'options';
+      var crop = _mbCropBox(s.canvas, b.box, false, isOpts ? { trim: false } : null);
+      if (!crop) continue;
+      var path = await _mbUpload(crop, id + '_f' + out.length);
+      if (!path) continue;
+      var made = { type: 'image', path: path };
+      if (isOpts) made.role = 'options';
+      out.push(made);
+    } catch (e) { console.warn('question figure failed', e); }
+  }
+  return out;
+}
+
+/* THE WHOLE PASS, and it swallows everything: a rebuild that did not work
+   must leave the entry exactly as it would have been filed without it. */
+async function mbRebuild(it, id) {
+  try {
+    var built = await _mbBuildBlocks(it);
+    if (!built) return null;
+    var out = { blocks: [], qcrop: '' };
+    if (built.qbox) {
+      var s = built.shots[(built.qpage || 1) - 1] || built.shots[0];
+      if (s) out.qcrop = _mbCropBox(s.canvas, built.qbox, true);
+    }
+    if (built.blocks.length) out.blocks = await _mbBuildFigures(built.blocks, built.shots, id);
+    return out;
+  } catch (e) { console.warn('question rebuild failed', e); return null; }
+}
+
 /* ================= The mistake book =================
-   Every question the student did not get right, kept with a PICTURE of the
-   question — because a worksheet gets handed in and a mistake described in
-   words alone stops making sense a fortnight later. The picture is the page
-   as it was marked, student's own working and all; ✂️ crops it down to just
-   the question when the whole page is too much.
+   Every question the student did not get right, kept so that it can be done
+   AGAIN — because a worksheet gets handed in, and a mistake described in
+   words alone stops making sense a fortnight later.
+
+   WHAT IS KEPT IS THE QUESTION, IN THREE TIERS, BEST FIRST:
+     ① the question SET OUT AGAIN — the wording typeset, with the paper's own
+        figures cut out and put back where they belong (🧩 above);
+     ② the WHOLE QUESTION cut out of the page;
+     ③ the whole page, which is where this started.
+   `mistakeTier` is the ONE place that choice is made, and every consumer
+   asks it: the card, the practice session and the printed sheet. Two
+   readings of it would be a card showing one thing and the sheet printing
+   another, which is exactly the drift the one-door rule exists to stop.
+
+   EVERY TIER IS CLEAN. The picture is re-rendered out of the PDF with no
+   annotations on it, so it carries none of the student's own answer: a
+   question handed back for practice with last week's wrong answer written
+   across it is not a question anybody can practise, and printed on a sheet
+   for a class it is worse. What they wrote is kept as TEXT and shown beside
+   it, which is where it is any use.
 
    Filing is AUTOMATIC. A mistake book that has to be remembered is an empty
    mistake book. What is never filed is a blank — a question nobody attempted
@@ -5012,6 +5782,10 @@ async function fileMistakes() {
   var coll = mistakesCollRef();
   var have = {};
   mistakes.forEach(function (m) { have[m.key] = 1; });
+  // The rebuild ration is refilled HERE and nowhere else. Spent per call
+  // inside `_mbBuildBlocks`, so a paper where every question is wrong costs
+  // ten vision calls and then quietly falls back to the tiers under it.
+  _mbBuildBudget = MB_BUILD_MAX;
   var filed = 0;
   for (var i = 0; i < wrong.length; i++) {
     var it = wrong[i];
@@ -5027,47 +5801,122 @@ async function fileMistakes() {
       page: it.page,
       number: it.number || '',
       question: it.question || '',
+      /* THE OPTIONS TRAVEL WITH THE QUESTION. A multiple-choice question
+         printed with nothing to choose between is a question nobody can
+         answer, and until they were kept here that is exactly what the
+         practice sheet handed out. The rebuild is TOLD to leave word
+         options out of its blocks precisely because they are held here and
+         printed under them — so losing them breaks both halves at once. */
+      type: it.type === 'mcq' ? 'mcq' : 'open',
+      options: (it.options || []).slice(0, 8).map(function (o) {
+        return { label: _mkStr(o && o.label, 4), text: _mkStr(o && o.text, 240) };
+      }),
+      option: _mkStr(it.option, 8),
       studentAnswer: it.studentAnswer || '',
       answer: it.answer || '',
       explanation: it.explanation || '',
       feedback: it.feedback || '',
       verdict: it.verdict,
       marks: it.marks || '',
+      topic: it.topic || '',
+      blocks: [],
       imagePath: '',
+      shot: '',
       cleared: false,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
     try {
+      /* THE DOCUMENT IS WRITTEN FIRST, and everything below it is only ever
+         an extra on it: a Storage bucket that is not there, or rules that
+         refuse the write, must cost the picture and never the mistake. */
       var ref = await coll.add(doc);
-      // The picture is uploaded after the row exists, so a Storage rule that
-      // says no leaves a mistake with no picture rather than no mistake.
-      var url = await mistakeShotFor(it);
-      if (url) {
-        var path = MISTAKE_DIR + '/' + currentUser.uid + '/' + ref.id + '.jpg';
+      var patch = {};
+      try {
+        var built = await mbRebuild(it, ref.id);
+        if (built && built.blocks.length) patch.blocks = built.blocks;
+        if (built && built.qcrop) {
+          var qp = await _mbUpload(built.qcrop, ref.id);
+          if (qp) { patch.imagePath = qp; patch.shot = 'question'; }
+        }
+      } catch (e) { console.warn('Question rebuild could not be saved', e); }
+      if (!patch.imagePath) {
+        // ③ The whole page, which is where this started — and CLEAN, so it
+        // can be practised from and printed like the two tiers above it.
         try {
-          await storage.ref(path).putString(url, 'data_url');
-          await ref.update({ imagePath: path });
+          var url = await mistakeShotFor(it);
+          if (url) {
+            var path = MISTAKE_DIR + '/' + currentUser.uid + '/' + ref.id + '.jpg';
+            await storage.ref(path).putString(url, 'data_url');
+            patch.imagePath = path;
+            patch.shot = 'page';
+          }
         } catch (e) { console.warn('Mistake picture could not be saved', e); }
+      }
+      if (Object.keys(patch).length) {
+        try { await ref.update(patch); }
+        catch (e) { console.warn('Mistake picture could not be recorded', e); }
       }
       filed++;
     } catch (e) { console.warn('Mistake could not be filed', e); }
   }
+  rbForgetPages();
   if (filed) {
     await loadMistakes(true);
     toast('📕 ' + filed + ' question' + (filed === 1 ? '' : 's') + ' added to your mistake book.', 4500);
   }
 }
 
-/* The picture that goes with a mistake. The marking knows which PAGE a
-   question is on and nothing finer, so the whole page is what is kept —
-   honestly, rather than guessing a band and cropping the question in half.
-   The student crops it themselves when the page is too much. */
+/* ③ THE LAST TIER — the whole page, cut out of the PDF with none of the
+   student's ink on it. It used to be `compositeJpeg`, which is the page as
+   it was MARKED: right for looking back at what you wrote, useless for
+   doing the question again and worse on a sheet handed to a class. What
+   they wrote is on the card as text, which is where it can be read. */
 async function mistakeShotFor(it) {
-  var p = pages.find(function (pg) { return pg.num === it.page; });
-  if (!p) return null;
-  await ensurePageRaster(p);
-  var data = compositeJpeg(p, 1400, 0.82);
-  return data ? 'data:image/jpeg;base64,' + data : null;
+  var c = await rbCleanPage(it.page);
+  if (!c) return null;
+  return 'data:image/jpeg;base64,' + rbJpeg(c, 1600, 0.86);
+}
+
+/* ---- WHICH TIER THIS ONE IS, and the ONE place it is decided ----
+   A question shown as blocks must NOT also show its picture: the picture is
+   the same question, so the student is asked it twice and the sheet prints
+   it twice. And a picture that is not on screen must not carry a ✂️ Crop
+   button, which is why the tool asks this too. */
+function mistakeBlocks(m) {
+  var b = (m && Array.isArray(m.blocks)) ? m.blocks : [];
+  return b.filter(function (x) {
+    return x && (x.type === 'text' ? !!x.text : (x.type === 'image' && !!x.path));
+  });
+}
+function mistakeTier(m) {
+  if (mistakeBlocks(m).length) return 'blocks';
+  if (m && m.imagePath) return m.shot === 'question' ? 'question' : 'page';
+  return 'text';
+}
+/* An `image` block wearing `role: "options"` already HOLDS the four choices
+   as a picture, so the word options must not be printed under it as well —
+   for a picture question they are four empty strings, and printed they read
+   as four choices nobody filled in. */
+function mistakeHasPictureOptions(m) {
+  return mistakeBlocks(m).some(function (b) { return b.type === 'image' && b.role === 'options'; });
+}
+function mistakeOptions(m) {
+  if (!m || m.type !== 'mcq' || mistakeHasPictureOptions(m)) return [];
+  return (Array.isArray(m.options) ? m.options : []).filter(function (o) {
+    return o && (o.label || o.text);
+  });
+}
+/* A block figure's download URL, cached on the block itself. Paths are what
+   is stored (see `_mbUpload`), so this is the same resolve `mistakeImageUrl`
+   does for the whole-page picture. */
+async function mistakeBlockUrl(b) {
+  if (!b || b.type !== 'image' || !b.path) return '';
+  if (b._url) return b._url;
+  try { b._url = await storage.ref(b.path).getDownloadURL(); return b._url; }
+  catch (e) { return ''; }
+}
+function mistakeBlockUrls(m) {
+  return Promise.all(mistakeBlocks(m).map(mistakeBlockUrl));
 }
 
 async function loadMistakes(quiet) {
@@ -5114,7 +5963,14 @@ async function deleteMistake(id) {
   mistakes = mistakes.filter(function (x) { return x.id !== id; });
   renderMistakes();
   try {
-    if (m.imagePath) { try { await storage.ref(m.imagePath).delete(); } catch (e) { /* may be gone */ } }
+    // Every picture this mistake owns, not only the one on the card: a block
+    // figure left behind is a file in the bucket that nothing will ever
+    // point at again, and nothing anywhere would say so.
+    var paths = [m.imagePath].concat(mistakeBlocks(m).map(function (b) { return b.path; }));
+    for (var i = 0; i < paths.length; i++) {
+      if (!paths[i]) continue;
+      try { await storage.ref(paths[i]).delete(); } catch (e) { /* may be gone */ }
+    }
     await mistakesCollRef().doc(id).delete();
   } catch (e) { toast('Could not remove it — please try again.'); }
 }
@@ -6577,6 +7433,113 @@ function renderMistTools(show) {
   bar.appendChild(sel);
 }
 
+/* =====================================================================
+   THE ONE PLACE A MISTAKE'S QUESTION IS DRAWN
+   ---------------------------------------------------------------------
+   The card, the practice session and the printed sheet all show the same
+   question, so they all build it here. A second copy of this would be free
+   to drift, and the drift is silent: the card shows the question set out
+   properly, the sheet prints a photograph of the page, and nobody notices
+   until a class is holding it.
+
+   WHAT IS SHOWN FOLLOWS `mistakeTier`, and the tiers are shown COMPLETELY
+   differently on purpose:
+     · blocks   — the question typeset, its figures back where they belong.
+                  No page picture and no repeat of the wording underneath.
+     · question — the crop IS the question, so its wording is NOT printed
+                  above it as well: that is the question asked twice.
+     · page     — the picture is a whole page with other questions on it, so
+                  the wording stays and is what says WHICH question this is.
+     · text     — no picture was ever kept; the wording does all the asking.
+
+   The word options come last at every tier, unless a picture already holds
+   them (`mistakeHasPictureOptions`).
+   ===================================================================== */
+/* `img` is the whole-page or whole-question picture; `fig` is a figure
+   inside a rebuilt question. They are two different things on the card — one
+   is full-bleed across the top, the other sits in among the wording where it
+   was printed — and one thing on the sheet, where both are simply a picture
+   in the flow of the question. */
+var MQ_SKIN = {
+  card:  { text: 'mistQ',    img: 'mistShot',  fig: 'mqFig',   opts: 'mqOpts',  opt: 'mqOpt' },
+  prac:  { text: 'pracQ',    img: 'pracShot',  fig: 'pracFig', opts: 'mqOpts',  opt: 'mqOpt' },
+  sheet: { text: 'mwsQText', img: 'mwsShot',   fig: 'mwsShot', opts: 'mwsOpts', opt: 'mwsOpt' }
+};
+
+function _mqImg(cls, urlOrPromise, onClick) {
+  var img = document.createElement('img');
+  img.className = cls;
+  img.alt = '';
+  // A picture that cannot be fetched — deleted, or a Storage rule that says
+  // no — takes itself off rather than leaving a broken-image frame, which
+  // reads as a broken app when the question itself is perfectly whole.
+  img.addEventListener('error', function () { if (img.parentNode) img.parentNode.removeChild(img); });
+  if (onClick) img.addEventListener('click', onClick);
+  if (typeof urlOrPromise === 'string') { if (urlOrPromise) img.src = urlOrPromise; else return null; }
+  else urlOrPromise.then(function (u) { if (u) img.src = u; else img.remove(); });
+  return img;
+}
+
+/* `opts.noPic` is the card, which draws the tier picture full-bleed across
+   its own top and would otherwise fetch and show it twice. */
+function questionNodes(m, kind, opts) {
+  var skin = MQ_SKIN[kind] || MQ_SKIN.card;
+  opts = opts || {};
+  var out = [];
+  var tier = mistakeTier(m);
+
+  if (tier === 'blocks') {
+    mistakeBlocks(m).forEach(function (b) {
+      if (b.type === 'text') {
+        var t = document.createElement('div');
+        t.className = skin.text;
+        // `white-space: pre-line` in the stylesheet: a text block listing
+        // labelled statements is one line each, and run together it stops
+        // being a list.
+        t.textContent = b.text;
+        out.push(t);
+        return;
+      }
+      var im = _mqImg(skin.fig + (b.role === 'options' ? ' mqOptsPic' : ''),
+                      b._url || mistakeBlockUrl(b));
+      if (im) out.push(im);
+    });
+  } else if (tier === 'question' || tier === 'page') {
+    if (!opts.noPic) {
+      var pic = _mqImg(skin.img, m._url || mistakeImageUrl(m), opts.onPicClick);
+      if (pic) out.push(pic);
+    }
+    if (tier === 'page' && m.question) {
+      var q = document.createElement('div');
+      q.className = skin.text;
+      q.textContent = m.question;
+      out.push(q);
+    }
+  } else if (m.question) {
+    var only = document.createElement('div');
+    only.className = skin.text;
+    only.textContent = m.question;
+    out.push(only);
+  }
+
+  /* `wordOpts`, not `opts`: a `var` of the same name as the parameter is the
+     SAME binding, so it would quietly overwrite the caller's `{ noPic: true }`
+     — and anything added below that read it would get `undefined`. */
+  var wordOpts = mistakeOptions(m);
+  if (wordOpts.length) {
+    var wrap = document.createElement('div');
+    wrap.className = skin.opts;
+    wordOpts.forEach(function (o, i) {
+      var row = document.createElement('div');
+      row.className = skin.opt;
+      row.textContent = '(' + (o.label || (i + 1)) + ')  ' + (o.text || '');
+      wrap.appendChild(row);
+    });
+    out.push(wrap);
+  }
+  return out;
+}
+
 function mistakeCard(m) {
   var card = document.createElement('div');
   card.className = 'mistCard' + (m.verdict === 'partial' ? ' mPartial' : ' mWrong') +
@@ -6598,17 +7561,13 @@ function mistakeCard(m) {
   pick.appendChild(pl);
   card.appendChild(pick);
 
-  if (m.imagePath) {
-    var img = document.createElement('img');
-    img.className = 'mistShot';
-    img.alt = 'The question this mistake came from';
-    img.addEventListener('click', function () { openCrop(m.id); });
-    // A picture that cannot be fetched (deleted, or a Storage rule that says
-    // no) is taken off the card. A broken-image frame with alt text stretched
-    // across it reads as a broken app; the mistake itself is still whole.
-    img.addEventListener('error', function () { if (img.parentNode) img.parentNode.removeChild(img); });
-    mistakeImageUrl(m).then(function (u) { if (u) img.src = u; else img.remove(); });
-    card.appendChild(img);
+  /* The full-bleed picture at the top of the card belongs to the two
+     PICTURE tiers only. A question set out in blocks draws them in the body
+     instead, in among its own wording — where they were printed. */
+  var tier = mistakeTier(m);
+  if (tier === 'question' || tier === 'page') {
+    var img = _mqImg('mistShot', mistakeImageUrl(m), function () { openCrop(m.id); });
+    if (img) { img.alt = 'The question this mistake came from'; card.appendChild(img); }
   }
 
   var body = document.createElement('div');
@@ -6632,12 +7591,9 @@ function mistakeCard(m) {
   meta.appendChild(v);
   body.appendChild(meta);
 
-  if (m.question) {
-    var q = document.createElement('div');
-    q.className = 'mistQ';
-    q.textContent = m.question;
-    body.appendChild(q);
-  }
+  /* The QUESTION, whichever tier it is — but never the picture the card
+     already carries above, which `questionNodes` knows not to repeat. */
+  questionNodes(m, 'card', { noPic: true }).forEach(function (n) { body.appendChild(n); });
   if (m.studentAnswer) body.appendChild(boxNode('What you wrote', m.studentAnswer, 'youBox'));
   if (m.feedback) body.appendChild(boxNode('Chung GPT says', m.feedback, 'whyBox'));
   if (m.answer) body.appendChild(boxNode('The answer', m.answer, 'ansBox'));
@@ -6646,7 +7602,9 @@ function mistakeCard(m) {
 
   var foot = document.createElement('div');
   foot.className = 'mistFoot';
-  if (m.imagePath) {
+  /* ✂️ Crop works on the picture the card is SHOWING. Offered on a question
+     set out in blocks it would crop a picture nobody can see. */
+  if (m.imagePath && tier !== 'blocks') {
     var crop = document.createElement('button');
     crop.className = 'btn btnSm';
     crop.textContent = '✂️ Crop';
@@ -6863,20 +7821,8 @@ function pracRender(finished) {
   });
   body.appendChild(meta);
 
-  if (m.imagePath) {
-    var img = document.createElement('img');
-    img.className = 'pracShot';
-    img.alt = 'The question';
-    img.addEventListener('error', function () { if (img.parentNode) img.parentNode.removeChild(img); });
-    mistakeImageUrl(m).then(function (u) { if (u) img.src = u; else img.remove(); });
-    body.appendChild(img);
-  }
-  if (m.question) {
-    var q = document.createElement('div');
-    q.className = 'pracQ';
-    q.textContent = m.question;
-    body.appendChild(q);
-  }
+  // The same question the card shows and the sheet prints — one renderer.
+  questionNodes(m, 'prac').forEach(function (n) { body.appendChild(n); });
 
   var lab = document.createElement('div');
   lab.className = 'boxLabel';
@@ -6999,18 +7945,10 @@ function mwsBuild(list, withKey) {
       n.appendChild(from);
     }
     q.appendChild(n);
-    if (m._sheetUrl) {
-      var img = document.createElement('img');
-      img.className = 'mwsShot';
-      img.src = m._sheetUrl;
-      img.alt = '';
-      q.appendChild(img);
-    } else if (m.question) {
-      var t = document.createElement('div');
-      t.className = 'mwsQText';
-      t.textContent = m.question;
-      q.appendChild(t);
-    }
+    /* The same question the card shows and the practice session asks — one
+       renderer, so the sheet cannot print something else. Every picture on
+       it was fetched and awaited by `mwsExport` before the dialog opened. */
+    questionNodes(m, 'sheet').forEach(function (node) { q.appendChild(node); });
     var rules = document.createElement('div');
     rules.className = 'mwsRules';
     rules.innerHTML = mwsRules(mwsLines(m));
@@ -7089,21 +8027,27 @@ async function mwsExport(ids, withKey) {
   // The pictures are fetched and AWAITED before the dialog opens. A sheet
   // printed while they are still loading comes out with the questions
   // missing, and the student is left holding a page of ruled lines.
+  /* EVERY picture the sheet will print, at every tier: the whole-page or
+     whole-question crop AND every figure inside a rebuilt question. A block
+     figure left unawaited is a diagram missing off the printed page, which
+     is the same failure the crop already learned and one tier further in. */
   await Promise.all(list.map(function (m) {
-    if (!m.imagePath) { m._sheetUrl = ''; return Promise.resolve(); }
-    return mistakeImageUrl(m).then(function (u) {
-      if (!u) { m._sheetUrl = ''; return; }
-      return new Promise(function (res) {
-        var im = new Image();
-        im.onload = function () { m._sheetUrl = u; res(); };
-        // A picture that will not load takes itself off the sheet and the
-        // question falls back to its wording — a numbered question with
-        // nothing under it is worse than one printed as text.
-        im.onerror = function () { m._sheetUrl = ''; res(); };
-        im.src = u;
-      });
-    });
+    var jobs = mistakeBlocks(m).map(function (b) { return mistakeBlockUrl(b).then(warm); });
+    if (m.imagePath) jobs.push(mistakeImageUrl(m).then(warm));
+    return Promise.all(jobs);
   }));
+  function warm(u) {
+    // A picture that will not decode takes itself off the sheet; the
+    // question falls back to whatever is left of it, which beats a numbered
+    // question with nothing under it.
+    if (!u) return Promise.resolve();
+    return new Promise(function (res) {
+      var im = new Image();
+      im.onload = res;
+      im.onerror = res;
+      im.src = u;
+    });
+  }
   mwsBuild(list, withKey);
   usageNote('sheet', list.length + ' question' + (list.length === 1 ? '' : 's'));
   printThis($('mistSheet'));

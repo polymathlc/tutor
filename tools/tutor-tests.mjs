@@ -79,6 +79,16 @@ const SRC_PRAC   = between('var pracSel = {};',
 const SRC_PEOPLE = between('var PEOPLE_COL =', 'function renderAuth() {', 'the first sign-in and the roster');
 const SRC_GUIDE  = between('/* ---- WHOSE HELP LEVEL IS IT? ----', 'function openGradeModal(', 'the help-level lock');
 const SRC_COVER  = between('var COVER_W =', "/* ---- The worksheet list ---- */", 'the worksheet cover');
+/* The rebuild: the crop machinery ported from Scan & Answer under the SAME
+   identifiers, so that a fix in either app copies straight across. */
+const SRC_REBUILD = between('var MB_BUILD_MAX = 10;',
+                            '/* ================= The mistake book =================', 'the question rebuild');
+const SRC_TIERS   = between('/* ---- WHICH TIER THIS ONE IS',
+                            'async function loadMistakes(quiet) {', 'the three tiers');
+/* The ONE renderer the card, the practice session and the printed sheet all
+   build the question with. The practice tests below drive it for real. */
+const SRC_QNODES  = between('/* =====================================================================\n   THE ONE PLACE A MISTAKE\'S QUESTION IS DRAWN',
+                            'function mistakeCard(m) {', 'the question renderer');
 
 /* ---- A sandbox with just enough world to evaluate them ---- */
 const noop = () => {};
@@ -86,7 +96,8 @@ const domStub = {
   getElementById: () => null,
   querySelectorAll: () => [],
   createElement: () => ({ style: {}, classList: { add: noop, remove: noop, toggle: noop },
-                          appendChild: noop, setAttribute: noop, addEventListener: noop, focus: noop }),
+                          appendChild: noop, setAttribute: noop, addEventListener: noop, focus: noop,
+                          remove: noop }),
   addEventListener: noop
 };
 /* A real map, because the local backup's whole job is what it keeps and what
@@ -118,6 +129,8 @@ const sandbox = {
   worksheetBody: () => '{}',
   // The practice session and the printed sheet reach these at CALL time.
   mistakes: [], mistFilter: 'open', levelLabel: v => v, subjectLabel: () => 'Science',
+  // The rebuild reads these at CALL time only; nothing here calls it.
+  MISTAKE_DIR: 'tutor-mistakes', marking: { items: [] },
   // The cover reads the pages the STUDENT has, and writes one small field.
   worksheets: [], COLLECTION: 'tutorWorksheets', studentPages: () => [],
   // The two locks on a worksheet the teacher SET.
@@ -133,7 +146,8 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
                 '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
-                '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER + '\n' + SRC_GUIDE,
+                '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER + '\n' + SRC_GUIDE +
+                '\n' + SRC_REBUILD + '\n' + SRC_TIERS + '\n' + SRC_QNODES,
                 sandbox, { filename: 'index.html' });
 const S = sandbox;
 
@@ -541,6 +555,331 @@ ok('…never in pinyin and never translated',
    /never in pinyin/i.test(hintZh) && /never translated/i.test(hintZh), hintZh);
 S.wsMeta.subject = 'science';
 
+
+/* =====================================================================
+   🧩 REPRODUCING THE QUESTION — the rebuild, and the three tiers
+   ---------------------------------------------------------------------
+   Every failure in here is SILENT and the mistake is still filed: the app
+   quietly drops back a tier and hands the student a photocopy of a whole
+   page instead of the question set out properly, with nothing on any
+   screen to say so. And the failures in the other direction are worse —
+   a rectangle nobody checked keeps somebody else's question and looks
+   exactly like a working crop, a build with no wording in it is a
+   question made of pictures asking nothing, and a picture-options
+   question that loses its band is four choices nobody can see.
+   ===================================================================== */
+section('The rebuild — what may be cropped at all');
+
+/* A FIGURE that fills the page is a selection that failed: nothing was
+   picked out. A whole QUESTION that fills the page is perfectly ordinary —
+   an open question with a big diagram and six ruled lines really is the
+   whole sheet, and refusing it throws away exactly the questions worth
+   trying again. */
+ok('a sane figure box is accepted', S._mbBoxOk([100, 100, 500, 700]));
+ok('a missing box is refused', !S._mbBoxOk(null) && !S._mbBoxOk(undefined));
+ok('a box of the wrong length is refused', !S._mbBoxOk([1, 2, 3]));
+ok('a box off the page is refused', !S._mbBoxOk([0, 0, 500, 1400]));
+ok('a box with a word in it is refused', !S._mbBoxOk([0, 'x', 500, 700]));
+ok('a minute box is refused', !S._mbBoxOk([500, 500, 510, 510]));
+ok('a FIGURE box filling the page is refused', !S._mbBoxOk([2, 2, 998, 998]));
+ok('…but the same box as a whole QUESTION is accepted', S._mbBoxOk([2, 2, 998, 998], true));
+
+section('The rebuild — four picture options are ONE picture');
+
+eq('one box comes straight back', S._mbUnionBox([[100, 100, 300, 300]]), [100, 100, 300, 300]);
+eq('two boxes side by side union',
+   S._mbUnionBox([[700, 100, 900, 400], [700, 420, 900, 700]]), [700, 100, 900, 700]);
+ok('boxes in opposite corners are refused — that is a failed reading, not a row of options',
+   S._mbUnionBox([[20, 20, 120, 120], [880, 880, 980, 980]]) === null);
+ok('a union that is most of the page is refused',
+   S._mbUnionBox([[10, 10, 480, 480], [520, 520, 990, 990]]) === null);
+ok('a union built out of junk is refused', S._mbUnionBox([null, [1, 2, 3]]) === null);
+ok('nothing in, nothing out', S._mbUnionBox([]) === null);
+
+section('The rebuild — reading a reply back');
+
+/* A build with NO WORDING is refused OUTRIGHT: the tiers under it are
+   better than a question made of pictures with nothing asking anything,
+   and finding that out on the printed page is far too late. */
+eq('a reply with no wording at all is refused',
+   S._mbCleanBlocks({ blocks: [{ type: 'image', page: 1, box_2d: [100, 100, 400, 400] }] }), []);
+eq('an empty reply is refused', S._mbCleanBlocks({}), []);
+eq('junk is refused', S._mbCleanBlocks(null), []);
+
+const built = S._mbCleanBlocks({
+  blocks: [
+    { type: 'text', text: 'Look at the circuit below.' },
+    { type: 'image', page: 1, box_2d: [200, 100, 500, 700] },
+    { type: 'image', page: 1, box_2d: [0, 0, 5, 5] },          // minute — dropped
+    { type: 'text', text: '  (a) Name the part labelled X. [2]  ' }
+  ]
+});
+eq('the blocks come back in the order they were printed',
+   built.map(b => b.type), ['text', 'image', 'text']);
+eq('a figure keeps its own page and rectangle',
+   [built[1].page, built[1].box], [1, [200, 100, 500, 700]]);
+eq('the wording is trimmed but kept', built[2].text, '(a) Name the part labelled X. [2]');
+
+/* `_mkStr` folds every newline away, which is right for a marking field
+   and WRONG here: a text block listing labelled statements is one line
+   each, and run together it stops being a list at all. */
+ok('a statement list keeps its line breaks',
+   S._mbText('A: it melts\nB: it boils', 900) === 'A: it melts\nB: it boils');
+eq('…and a run of blank lines is one gap, not a hole in the question',
+   S._mbText('one\n\n\n\ntwo', 900), 'one\n\ntwo');
+eq('…and it is capped like every other stored field', S._mbText('abcdef', 3), 'abc');
+
+/* The options are held back and merged, because "ONE rectangle round all
+   of them" is a rule a model can be ASKED to follow and cannot be made to.
+   And they go LAST whatever order they arrived in: that is where they are
+   printed, and a block asking the question has to come before them. */
+const withOpts = S._mbCleanBlocks({
+  blocks: [
+    { type: 'options', page: 1, box_2d: [700, 100, 900, 400] },
+    { type: 'options', page: 1, box_2d: [700, 420, 900, 700] },
+    { type: 'text', text: 'Which shape has one line of symmetry?' }
+  ]
+});
+eq('the options land LAST, as one image block', withOpts.map(b => b.type), ['text', 'image']);
+eq('…covering all of them', withOpts[1].box, [700, 100, 900, 700]);
+eq('…and wearing the role that says not to print the words as well',
+   withOpts[1].role, 'options');
+
+/* An options block whose rectangles do not sit together is a failed
+   reading; dropping it leaves an ordinary question rather than a crop of
+   half the sheet filed as the choices. */
+const scattered = S._mbCleanBlocks({
+  blocks: [
+    { type: 'text', text: 'Which one?' },
+    { type: 'options', page: 1, box_2d: [20, 20, 120, 120] },
+    { type: 'options', page: 1, box_2d: [880, 880, 980, 980] }
+  ]
+});
+eq('a scattered options reading is dropped, not filed', scattered.map(b => b.type), ['text']);
+
+/* The question box is asked for in the SAME call, and it is validated as a
+   WHOLE box — a question that fills its page is ordinary. */
+const build1 = S._mbCleanBuild({
+  blocks: [{ type: 'text', text: 'Work it out.' }],
+  questionBox: [5, 5, 995, 995], questionPage: 2
+});
+eq('a whole-question rectangle covering the page is kept', build1.qbox, [5, 5, 995, 995]);
+eq('…on the page it says it is on', build1.qpage, 2);
+ok('a malformed question rectangle is dropped rather than guessed at',
+   S._mbCleanBuild({ blocks: [{ type: 'text', text: 'x' }], questionBox: [1, 2] }).qbox === null);
+eq('a missing question page falls back to the first picture',
+   S._mbCleanBuild({ blocks: [{ type: 'text', text: 'x' }] }).qpage, 1);
+
+section('The rebuild — the ink threshold is MEASURED, not assumed');
+
+/* THE ONE THING THAT COULD NOT BE PORTED AS IT STOOD. A PDF re-rendered
+   here is white at 255 and a fixed "darker than 190" would do — but the
+   PDF is very often a SCAN of a paper worksheet, where the paper is grey.
+   A fixed line then reads the whole page as ink: the trimmer finds one
+   band covering everything and does nothing at all, on every scanned
+   paper, with nothing on screen to say it has stopped working. */
+function hist(map) {
+  const h = new Array(256).fill(0);
+  let total = 0;
+  Object.keys(map).forEach(v => { h[+v] = map[v]; total += map[v]; });
+  return { hist: h, total };
+}
+const white = hist({ 252: 9800, 20: 200 });
+const grey  = hist({ 186: 9800, 20: 200 });
+const wThr = S._mbInkLevel(white.hist, white.total);
+const gThr = S._mbInkLevel(grey.hist, grey.total);
+ok('a white page reads its ink line off its own white', wThr > gThr,
+   'white ' + wThr + ' vs grey ' + gThr);
+ok('a grey scan gets a LOWER line, or the whole page reads as ink', gThr < 186,
+   'the paper itself is 186 and the line came back ' + gThr);
+ok('the line never rises above the paper', wThr <= S.MB_INK_CEIL && gThr <= S.MB_INK_CEIL);
+ok('…and never falls to almost-black-only', wThr >= S.MB_INK_FLOOR && gThr >= S.MB_INK_FLOOR);
+ok('nothing to measure falls back rather than throwing', S._mbInkLevel(null, 0) === S.MB_INK_CEIL);
+
+section('The rebuild — the figure, and not the sentence above it');
+
+/* Rows are the ink profile the pixel pass builds. Prose is one line tall,
+   spans most of the width, is not solid, has NO long stroke in it and
+   breaks into many short pieces — and a framed table is not trimmed at
+   all, because every one of its rows reads as prose on its own. */
+function rowsOf(spec, w) {
+  return spec.map(k => {
+    if (k === 'blank') return { n: 0, minX: -1, maxX: -1, runs: 0, maxRun: 0 };
+    if (k === 'prose') return { n: w * 0.35, minX: 2, maxX: w - 3, runs: 30, maxRun: 4 };
+    if (k === 'rule')  return { n: w * 0.02, minX: 0, maxX: w - 1, runs: 1, maxRun: w - 1 };
+    return { n: w * 0.30, minX: 5, maxX: w - 6, runs: 2, maxRun: w * 0.5 };   // 'fig'
+  });
+}
+const W = 400, PAGE = 1000;
+const proseThenFig = rowsOf(
+  [].concat(Array(9).fill('prose'), Array(14).fill('blank'), Array(160).fill('fig')), W);
+const cut = S._mbTrimTextRows(proseThenFig, W, proseThenFig.length, PAGE);
+ok('a line of prose above the figure is cut off', cut.top > 0,
+   'top came back ' + cut.top + ' of ' + proseThenFig.length);
+ok('…and the figure itself is kept', cut.bot >= proseThenFig.length - 2);
+
+const table = rowsOf(
+  [].concat(['rule'], Array(6).fill('prose'), ['rule'], Array(6).fill('prose'),
+            ['rule'], Array(6).fill('prose'), ['rule'], Array(6).fill('prose')), W);
+const tcut = S._mbTrimTextRows(table, W, table.length, PAGE);
+eq('a framed table is not trimmed at all — every row of it reads as prose',
+   [tcut.top, tcut.bot], [0, table.length - 1]);
+
+const allFig = rowsOf(Array(120).fill('fig'), W);
+const fcut = S._mbTrimTextRows(allFig, W, allFig.length, PAGE);
+eq('a figure with no prose on it is left exactly as it was',
+   [fcut.top, fcut.bot], [0, allFig.length - 1]);
+eq('something too small to analyse is handed straight back',
+   S._mbTrimTextRows(rowsOf(['fig'], 10), 10, 1, PAGE), { top: 0, bot: 0 });
+
+section('The three tiers, and the ONE place the choice is made');
+
+/* A question shown as blocks must NOT also show its picture — that is the
+   same question asked twice, on the card and on the printed sheet alike.
+   And a picture that is not on screen must not carry a ✂️ Crop button. */
+const blocky = { blocks: [{ type: 'text', text: 'Q' }, { type: 'image', path: 'p/a.jpg' }],
+                 imagePath: 'p/whole.jpg', shot: 'question', question: 'Q' };
+eq('blocks beat every picture', S.mistakeTier(blocky), 'blocks');
+eq('a whole-question crop beats the page',
+   S.mistakeTier({ imagePath: 'p/q.jpg', shot: 'question' }), 'question');
+eq('the whole page is the last picture tier',
+   S.mistakeTier({ imagePath: 'p/w.jpg', shot: 'page' }), 'page');
+eq('a mistake filed before any of this reads as the page it kept',
+   S.mistakeTier({ imagePath: 'p/w.jpg' }), 'page');
+eq('with no picture at all the wording does the asking',
+   S.mistakeTier({ question: 'Q' }), 'text');
+
+/* A block that would not draw is not a block. Validating on the way OUT as
+   well as on the way in is what stops a half-written document rendering as
+   an empty frame in the middle of a question. */
+eq('a text block with no text is not a block',
+   S.mistakeBlocks({ blocks: [{ type: 'text', text: '' }] }).length, 0);
+eq('an image block with no path is not a block',
+   S.mistakeBlocks({ blocks: [{ type: 'image', path: '' }] }).length, 0);
+eq('…so a document full of them falls back a tier',
+   S.mistakeTier({ blocks: [{ type: 'image', path: '' }], imagePath: 'p/w.jpg' }), 'page');
+eq('blocks that are not an array are no blocks', S.mistakeBlocks({ blocks: 'x' }).length, 0);
+
+section('The options travel with the question');
+
+/* A multiple-choice question printed with nothing to choose between is a
+   question nobody can answer — and the rebuild is TOLD to leave word
+   options out of its blocks precisely because they are held here and
+   printed under them. */
+const mcq = { type: 'mcq', options: [{ label: '1', text: 'melts' }, { label: '2', text: 'boils' }] };
+eq('an mcq offers its options', S.mistakeOptions(mcq).length, 2);
+eq('an open question offers none', S.mistakeOptions({ type: 'open', options: mcq.options }).length, 0);
+eq('a mistake filed before options were kept offers none', S.mistakeOptions({ type: 'mcq' }).length, 0);
+eq('an empty option is not an option',
+   S.mistakeOptions({ type: 'mcq', options: [{ label: '', text: '' }] }).length, 0);
+
+/* WHEN A PICTURE ALREADY HOLDS THE CHOICES the words must not be printed
+   as well: for a picture question they are four empty strings, and printed
+   they read as four choices nobody filled in. */
+const picOpts = { type: 'mcq', options: [{ label: '1', text: '' }, { label: '2', text: '' }],
+                  blocks: [{ type: 'text', text: 'Which one?' },
+                           { type: 'image', path: 'p/o.jpg', role: 'options' }] };
+ok('a picture-options question says so', S.mistakeHasPictureOptions(picOpts));
+eq('…and its word options are not printed underneath', S.mistakeOptions(picOpts).length, 0);
+ok('an ordinary figure is not an options band',
+   !S.mistakeHasPictureOptions({ blocks: [{ type: 'image', path: 'p/f.jpg' }] }));
+
+
+section('The rebuild, against index.html itself');
+
+/* THE PROMPT IS A TRANSCRIBER WITH A RULER. A reproducer that starts
+   answering, correcting or rewording puts a question into the mistake book
+   that is not the question the student got wrong — and it prints and
+   practises perfectly. */
+const RBSYS = between('var MB_BUILD_SYS =', "/* The pages this question is printed on", 'the rebuild prompt');
+ok('it says it is NOT answering, marking or rewording',
+   /NOT answering it, NOT marking it and NOT rewording it/.test(RBSYS));
+ok('…and never writing an answer in', /NEVER write in an answer/.test(RBSYS));
+ok('it asks for the whole-question rectangle in the SAME call',
+   /"questionBox"/.test(RBSYS) && /"questionPage"/.test(RBSYS));
+ok('every rectangle is the family\'s own 0–1000 convention',
+   /\[ymin, xmin, ymax, xmax\], four whole numbers from 0 to 1000/.test(RBSYS));
+ok('picture options are ONE rectangle round the lot, never one per option',
+   /NEVER one rectangle per option/.test(RBSYS));
+ok('a lettered part carries its shared stem', /INCLUDE THE SHARED STEM/.test(RBSYS));
+ok('word options are left out, because they are held separately',
+   /LEAVE OUT the multiple-choice options WHEN THEY ARE WORDS OR NUMBERS/.test(RBSYS));
+ok('a figure it cannot place is omitted rather than guessed at',
+   /wrong rectangle keeps somebody else\\'s picture/.test(RBSYS));
+
+/* THE RATION IS PER RUN, and it is spent BEFORE the call so a failure
+   cannot buy another try. Left unbounded, a paper where every question is
+   wrong quietly spends a vision call on every one of them. */
+const RBCALL = between('async function _mbBuildBlocks(it) {', 'async function _mbUpload', 'the rebuild call');
+ok('the budget is spent BEFORE the call', RBCALL.indexOf('_mbBuildBudget--') < RBCALL.indexOf('askGemini('));
+ok('…and refused outright once it is gone', /if \(_mbBuildBudget <= 0\) return null;/.test(RBCALL));
+ok('the budget is refilled in fileMistakes and NOWHERE else',
+   (html.match(/_mbBuildBudget = MB_BUILD_MAX/g) || []).length === 2,
+   'once as the declaration, once in fileMistakes');
+ok('the rebuild reads a CLEAN page, never the canvas the student is writing on',
+   /await rbCleanPage\(nums\[i\]\)/.test(RBCALL));
+
+/* A PDF page is transparent where nothing is drawn, and a transparent
+   canvas flattens to BLACK in a JPEG — the whole page, ink and all. The
+   cover already learned this; so has every crop here. */
+const RBPAGE = between('async function rbCleanPage(num) {', 'function rbJpeg(', 'the clean page');
+ok('the clean page is painted white before the PDF is drawn on it',
+   /ctx\.fillStyle = '#fff';\s*\n\s*ctx\.fillRect\(0, 0, c\.width, c\.height\);/.test(RBPAGE));
+ok('…and it waits for the on-screen raster rather than racing it',
+   /if \(p\.renderTask\) \{ try \{ await p\.renderTask\.promise; \}/.test(RBPAGE));
+ok('at most two pages are held, or a twelve-page paper is the tab Safari discards',
+   /while \(_rbPages\.length > RB_PAGE_CACHE\) _rbPages\.shift\(\);/.test(RBPAGE));
+
+/* EVERY TIER IS CLEAN. The whole-page picture used to be `compositeJpeg` —
+   the page as it was MARKED. Right for looking back at what you wrote,
+   useless for doing the question again, and worse on a sheet handed to a
+   class: last week's wrong answer is written across it. */
+const SHOTFOR = between('async function mistakeShotFor(it) {', '/* ---- WHICH TIER THIS ONE IS', 'the page shot');
+ok('the whole-page tier is the CLEAN page', /rbCleanPage\(it\.page\)/.test(SHOTFOR));
+ok('…and never the composited one, which carries the student\'s own answer',
+   !/compositeJpeg/.test(SHOTFOR));
+
+/* THE DOCUMENT IS WRITTEN FIRST and every picture is an extra on it: a
+   Storage bucket that is not there, or rules that refuse the write, must
+   cost the picture and never the mistake. */
+const FILING = between('async function fileMistakes() {', '/* ③ THE LAST TIER', 'filing a mistake');
+ok('the document is added before anything is uploaded',
+   FILING.indexOf('await coll.add(doc)') < FILING.indexOf('mbRebuild('));
+ok('a rebuild that failed cannot cost the mistake',
+   /try \{\s*\n\s*var built = await mbRebuild/.test(FILING));
+ok('the whole page stands in when no question crop was made',
+   /if \(!patch\.imagePath\) \{/.test(FILING));
+
+/* A multiple-choice question printed with nothing to choose between is a
+   question nobody can answer — and the rebuild is TOLD to leave word
+   options out of its blocks precisely because they are held here. */
+ok('the options are filed with the question', /options: \(it\.options \|\| \[\]\)\.slice\(0, 8\)/.test(FILING));
+ok('…along with which of them was right', /option: _mkStr\(it\.option, 8\)/.test(FILING));
+ok('…and whether it is an mcq at all', /type: it\.type === 'mcq' \? 'mcq' : 'open'/.test(FILING));
+
+/* A block figure left behind on a delete is a file in the bucket nothing
+   will ever point at again, and nothing anywhere would say so. */
+const DEL = between('async function deleteMistake(id) {', '/* ================= Cropping a mistake', 'deleting a mistake');
+ok('deleting takes every picture the mistake owns, not only the one on the card',
+   /\[m\.imagePath\]\.concat\(mistakeBlocks\(m\)\.map/.test(DEL));
+
+/* ONE RENDERER. The card, the practice session and the sheet all show the
+   same question; a second copy of it is free to drift, and the drift is
+   silent — the card shows the question set out properly and the sheet
+   prints a photograph of the page. */
+ok('the card builds its question through the one renderer',
+   /questionNodes\(m, 'card', \{ noPic: true \}\)/.test(html));
+ok('the practice session does too', /questionNodes\(m, 'prac'\)/.test(html));
+ok('and so does the printed sheet', /questionNodes\(m, 'sheet'\)/.test(html));
+ok('✂️ Crop is offered only where the picture is actually on screen',
+   /if \(m\.imagePath && tier !== 'blocks'\)/.test(html));
+
+/* Everything in this app's mistake book is stored as a PATH and resolved on
+   demand, so a download URL stored here would be the one row the deleting
+   and the caching could not see. */
+ok('a block figure is stored as a path, never a download URL',
+   /var path = MISTAKE_DIR \+ '\/' \+ currentUser\.uid \+ '\/' \+ name \+ '\.jpg';/.test(html));
+
 /* =====================================================================
    7. Against the FILE itself — the things no unit test can see
    ===================================================================== */
@@ -559,7 +898,11 @@ const UNGROUNDED_BY_DESIGN = {
   KEY_READ_SYS: 'transcribes the paper\'s own answer key. A transcriber told what the answer ought to say ' +
                 'writes that down instead of what is printed, and a key rewritten on the way in is a whole ' +
                 'class marked against something the paper never said.',
-  KEY_EYE_SYS:  'asks which PAGES are the answer key. It returns page numbers, not science said to anybody.'
+  KEY_EYE_SYS:  'asks which PAGES are the answer key. It returns page numbers, not science said to anybody.',
+  MB_BUILD_SYS: 'REPRODUCES a printed question so it can be tried again. It is a transcriber with a ruler: it ' +
+                'sets out what is on the page and draws rectangles round the figures. A reproducer told how ' +
+                'this teacher words an answer rewords the QUESTION, and a question quietly improved on the way ' +
+                'into the mistake book is not the question the student got wrong.'
 };
 const callSites = [...html.matchAll(/window\.askGemini\(/g)].map(m => m.index);
 ok('there are askGemini call sites to check at all', callSites.length >= 3,
@@ -1195,8 +1538,15 @@ ok('…and both printable things go through the one door',
    (html.match(/printThis\(/g) || []).length >= 3);
 ok('the pictures are AWAITED before the print dialog opens',
    /await Promise\.all\(list\.map/.test(html) && /printThis\(\$\('mistSheet'\)\)/.test(html));
+/* EVERY picture the sheet will print, at every tier: the whole-page or
+   whole-question crop AND every figure inside a rebuilt question. A block
+   figure left unawaited is a diagram missing off the printed page — the
+   same failure the crop already learned, one tier further in. */
+ok('the block figures are awaited too, not only the whole-page picture',
+   /mistakeBlocks\(m\)\.map\(function \(b\) \{ return mistakeBlockUrl\(b\)\.then\(warm\); \}\)/.test(html));
 ok('a picture that will not load takes itself off the sheet',
-   /im\.onerror = function \(\) \{ m\._sheetUrl = ''; res\(\); \}/.test(html));
+   /im\.onerror = res;/.test(html) &&
+   /img\.addEventListener\('error', function \(\) \{ if \(img\.parentNode\) img\.parentNode\.removeChild\(img\); \}\)/.test(html));
 /* Getting it right is what the book is for, so a correct retry files it
    under Sorted — and it must be reversible, which is the card's own ↩︎. */
 ok('a correct retry clears the mistake',

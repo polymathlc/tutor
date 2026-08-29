@@ -7,9 +7,10 @@ Guidance for Claude when working in this repo.
   `mathgen--app` Firebase project with Google sign-in. **A student uploads their own worksheet as a
   PDF, writes their answers on it, and works through it with a buddy that HINTS rather than
   answers.** When they are done it MARKS the paper, and every question they did not get right goes
-  into a **mistake book** with a picture of the question that can be cropped down to just that
-  question. `README.md` is the feature log, newest version first — add a section there for anything
-  user-visible.
+  into a **mistake book** — the question SET OUT AGAIN, its wording typeset and the paper's own
+  figures cut out and put back where they belong, so it can be practised one at a time on screen or
+  printed as a worksheet (and saved as a PDF from the print dialog). `README.md` is the feature log,
+  newest version first — add a section there for anything user-visible.
 - Version badge (`APP_VERSION`, shown in the header) is hard-coded — bump it on every change.
 - Roles: `isAdmin()` is the one admin email (`chungzhikai@gmail.com`) — the teacher. Everyone else
   is a student, and a student's device runs the hints and the marking itself. Only the admin sees
@@ -1191,7 +1192,127 @@ plus the key pages.
   looks perfectly right.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 🧩 THE MISTAKE IS THE QUESTION, SET OUT AGAIN (v1.12.0)
+
+`MB_*` / `_mb*` / `rbCleanPage` / `mbRebuild` (search `REPRODUCING THE
+QUESTION`), `mistakeTier` / `mistakeBlocks` / `mistakeOptions` (search `WHICH
+TIER THIS ONE IS`) and `questionNodes` / `MQ_SKIN` (search `THE ONE PLACE A
+MISTAKE'S QUESTION IS DRAWN`).
+
+A mistake used to be kept as a photograph of the **whole page** it was printed
+on — with the two questions either side of it, and the student's own wrong
+answer written across it. Printed on a practice sheet that is a photocopy of
+the paper with one question somewhere in it, which is not a question anybody
+can practise. So the question is read into **ordered blocks** instead: the
+wording typeset, with an `image` block wherever a figure belongs, each figure
+cut out of the page by its own rectangle. That is the Science portal's ⚡
+**Rapid add**, by way of Scan & Answer's port of it.
+
+- **THE IDENTIFIERS ARE DELIBERATELY THE SAME ONES** — `_mbBoxOk`,
+  `_mbTightenRect`, `_mbCleanBlocks`, `_mbUnionBox`, `MB_*`. That is the rule
+  Nova Protocol follows against Realm of Embers: a fix in `polymathlc/scan` or
+  `polymathlc/cer` copies straight across rather than being re-derived, and
+  what genuinely differs here is called out below and nowhere else.
+- **THIS APP CROPS A CLEAN PAGE, WHICH IS THE ONE THING SCAN & ANSWER CANNOT
+  DO.** That app only ever has a photograph of a worksheet somebody has
+  already written on. This one holds the PDF, so `rbCleanPage` re-renders the
+  page out of it with no annotations at all: the crop is sharp, square, and
+  carries none of the student's answer. **Every tier is clean, including the
+  whole page** — `mistakeShotFor` was `compositeJpeg`, the page as it was
+  MARKED, which is right for looking back at what you wrote and useless for
+  doing the question again. What they wrote is kept as TEXT and shown beside
+  it, which is where it can be read.
+- **THREE TIERS, BEST FIRST, and `mistakeTier` is the ONE place the choice is
+  made**: ① the blocks, ② the whole-question crop, ③ the whole page. Every
+  consumer asks it — the card, the practice session, the printed sheet, and
+  the ✂️ Crop button. Two readings of it is a card showing one thing and the
+  sheet printing another, and nothing anywhere would say so.
+  - A question shown as **blocks** must NOT also show its picture: the picture
+    is the same question, so the student is asked it twice.
+  - A **whole-question** crop prints no wording of its own, for the same
+    reason. A **whole page** keeps it, because the page has other questions on
+    it and the wording is what says which one this is.
+  - ✂️ **Crop** is offered only where the picture is actually on screen. On a
+    rebuilt question it would crop a picture nobody can see.
+- **`questionNodes` is the ONE renderer** the card, the practice session and
+  the printed sheet all build the question with. `MQ_SKIN` is three sets of
+  class names over one function, not three functions. A second copy would be
+  free to drift, and the drift is silent.
+- **IT IS ITS OWN CALL, and that is deliberate.** The marking run is already
+  doing two hard things at once — marking what is written, answering what is
+  not — on a prompt tuned for both, and bolting a block specification onto
+  `MARK_SYS` would buy a better practice sheet at the price of worse marking.
+  The **whole-question rectangle is asked for in the rebuild call too**, for
+  the same reason: it is the call already drawing rectangles.
+- **IT CAN NEVER COST THE MISTAKE.** The document is written FIRST and every
+  picture is an extra on it; every failure returns null and the entry is filed
+  exactly as it would have been before any of this existed.
+- **THE RATION IS PER RUN.** `MB_BUILD_MAX` (10), spent **before** the call so
+  a failure cannot buy another try, and refilled in `fileMistakes` and nowhere
+  else. A paper where every question is wrong must not quietly spend twenty
+  vision calls.
+- **THE PROMPT IS EXEMPT FROM THE GROUNDING CENSUS, BY NAME.** `MB_BUILD_SYS`
+  is a transcriber with a ruler: it sets out what is PRINTED and draws
+  rectangles round the figures. A reproducer told how this teacher words an
+  answer rewords the QUESTION, and a question quietly improved on the way into
+  the mistake book is not the question the student got wrong.
+- **THE OPTIONS TRAVEL WITH THE QUESTION** (`type`, `options`, `option`). The
+  rebuild is TOLD to leave word options out of its blocks precisely because
+  they are held on the mistake and printed underneath — so losing them breaks
+  both halves at once, and a multiple-choice question printed with nothing to
+  choose between is a question nobody can answer. `mistakeOptions` is the one
+  door, and it goes quiet when a picture already holds the choices.
+- **`role: 'options'` is the picture-options contract**, shared with
+  `polymathlc/scan` and `cer/mistakes.html`: four little drawings travel as
+  ONE rectangle, because cut out separately they lose the row they were
+  printed in and a student answering "(3)" cannot see which one (3) was. It is
+  a field on a known TYPE rather than a type of its own, so anything that has
+  never heard of it draws a figure — untidy, and still answerable. **Ship a
+  change to the word in all three.**
+- **The ink threshold is MEASURED, not assumed**, and it is the one thing that
+  could not be ported as it stood. A PDF re-rendered here is white at 255 and
+  a fixed line would do — but the PDF is very often a SCAN of a paper
+  worksheet, where the paper is grey, and a fixed line then reads the whole
+  page as ink: the trimmer finds one band covering everything and does nothing
+  at all, with nothing on screen to say it has stopped working.
+- **At most two clean pages are held** (`RB_PAGE_CACHE`). One at 2200px is
+  tens of megabytes of canvas, and holding a twelve-page paper resident is
+  what makes Safari discard the tab — the lesson `rasterVisiblePages` already
+  learned. Two, because a question running over a page break is measured on
+  both.
+- **A block figure is stored as a PATH, never a download URL.** Everything in
+  this book is a path resolved on demand, so a URL stored here would be the
+  one row the deleting and the caching could not see — and `deleteMistake`
+  takes every picture a mistake owns, or a figure is left in the bucket that
+  nothing will ever point at again.
+- **It needed NO Firestore or Storage rules change**: more fields on a
+  document this app already writes, and more files under the folder it already
+  uploads to. Those rules live in `polymathlc/math` and are shared with five
+  apps, so a feature that needs one is a feature that waits.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## House rules
+- After touching **🧩 the question rebuild or the three tiers** (`MB_BUILD_SYS`,
+  `_mbBoxOk`, `_mbInkLevel`, `_mbTrimTextRows`, `_mbTightenRect`, `_mbCropBox`,
+  `_mbUnionBox`, `_mbCleanBlocks`, `_mbCleanBuild`, `_mbText`, `_mbBuildBlocks`,
+  `_mbBuildFigures`, `_mbUpload`, `mbRebuild`, `rbCleanPage`, `rbJpeg`,
+  `mistakeTier`, `mistakeBlocks`, `mistakeOptions`, `mistakeHasPictureOptions`,
+  `questionNodes`, `MQ_SKIN`, or the `blocks` / `shot` / `options` fields
+  `fileMistakes` writes), run `node tools/tutor-tests.mjs`. Every failure here
+  is silent and the mistake is still filed — the app quietly drops back a tier
+  and hands the student a photocopy of a whole page with nothing on any screen
+  to say so. The failures in the other direction are worse: a rectangle nobody
+  checked keeps somebody else's question and looks exactly like a working crop;
+  a build with no wording in it is a question made of pictures asking nothing;
+  four picture options cut out separately lose the row they were printed in, so
+  a student answering "(3)" cannot see which one (3) was; and a fixed ink level
+  reads a scanned paper worksheet as ink from edge to edge, so the trimmer
+  finds one band, does nothing, and never says it stopped working. Two readings
+  of `mistakeTier` is a card showing the question set out properly and a sheet
+  printing a photograph of the page. Word options dropped is a multiple-choice
+  question printed with nothing to choose between. And a whole-page picture
+  that goes back to `compositeJpeg` puts last week's wrong answer across every
+  question on the sheet.
 - After touching **↻ Practise again or 🖨 Print** (`practiseAgainAvailable`,
   `practiseAgain`, `attempts`, `printKeyAllowed`, `printHasKeyPages`,
   `printWorksheet`, `openPrintModal`, `PRINT_MAX_SIDE`, the `#printSheet`
