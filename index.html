@@ -1528,7 +1528,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.10.0';
+var APP_VERSION = 'v1.10.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -7299,6 +7299,33 @@ async function pushWorksheet(id, level, locked) {
   locked = locked !== false;
   toast('Setting it…', 12000);
   try {
+    /* THE ANSWER KEY THAT TRAVELS MUST BE THE ONE ON SCREEN.
+       Two things stood between them, and either one alone sends the marking
+       scheme out to the whole class:
+
+       ① The worksheet the teacher has just been marking up may not be SAVED
+          yet — ticking key pages only schedules an auto-save, and setting it
+          straight afterwards is the obvious thing to do.
+       ② `worksheets` is a LIST FETCHED EARLIER. Its entries carry the body
+          as it was then, so a key marked since is simply not in the object
+          this function was reading. `openWorksheet` already learned this and
+          always opens from the live document; the push never did, so it read
+          `keyPages: []` off a stale row and every student got every page.
+
+       The failure is silent and looks like success: the teacher sees "Set
+       at…", the chip on the student's copy still says whose key it is, and
+       the key pages are all there to scroll through. */
+    if (currentDocId === id && dirty) await performSave(true);
+    try {
+      var fresh = await db.collection(COLLECTION).doc(id).get();
+      if (fresh.exists) w = Object.assign({}, w, fresh.data(), { id: id });
+    } catch (e) {
+      // Reading it live is what makes the key right. Setting a worksheet
+      // whose key we are no longer sure of is the one outcome worth
+      // refusing outright.
+      toast('Could not read that worksheet just now — try setting it again in a moment.', 6000);
+      return;
+    }
     var body = await readBody(w);
     var key = (body && body.key) || {};
     var rows = Array.isArray(key.rows) ? key.rows.slice(0, ASSIGN_ROWS_MAX) : [];
@@ -7313,7 +7340,13 @@ async function pushWorksheet(id, level, locked) {
       storagePath: w.storagePath,
       keyPath: key.path || w.keyPath || '',
       keyName: key.name || '',
-      keyPages: Array.isArray(key.pages) ? key.pages : (w.keyPages || []),
+      // Whichever of the two knows about a key page wins. An EMPTY list in
+      // the body must not override a summary that names pages: between "hide
+      // it" and "show the marking scheme", hiding is the only safe way to be
+      // wrong.
+      keyPages: (Array.isArray(key.pages) && key.pages.length)
+        ? key.pages
+        : (Array.isArray(w.keyPages) ? w.keyPages : []),
       keyRows: rows,
       pageCount: w.pageCount || 0,
       // The teacher's own cover, so a class of thirty costs one render
@@ -7779,6 +7812,18 @@ async function openWorksheet(id) {
     wsMeta.guidanceLocked = rule.locked;
     wsMeta.guidance = rule.level;
     if (rule.by) wsMeta.setBy = rule.by;
+    // A KEY MARKED AFTER THE CLASS STARTED still reaches them. The copy's
+    // own key pages were frozen the moment it was made, so a page the
+    // teacher marked yesterday would stay readable on every copy already
+    // begun — and those are exactly the students who have the paper open.
+    // Read live from the assignment, the same way the locked help level is.
+    //
+    // It only ever ADDS. Un-hiding a page from here would mean one stale
+    // read putting the marking scheme back on screen, and between showing a
+    // page that need not be hidden and showing the answers, only one of
+    // those is worth risking. A page hidden by mistake is un-ticked on the
+    // teacher's own copy.
+    keyPagesFromAssignment(w);
     $('wsTitle').textContent = docName;
     setDirty(false);
     renderAllOverlays();
@@ -7990,6 +8035,25 @@ function assignmentFor(w) {
   if (!id) return null;
   return assignments.find(function (x) { return x.id === id; }) || null;
 }
+/* The key pages the ASSIGNMENT names, folded into the open copy. Additive
+   on purpose — see the note at the call site. */
+function keyPagesFromAssignment(w) {
+  var a = assignmentFor(w);
+  if (!a || !Array.isArray(a.keyPages)) return;
+  var added = 0;
+  a.keyPages.forEach(function (n) {
+    n = parseInt(n, 10);
+    if (!(n >= 1)) return;
+    if (wsKey.pages.indexOf(n) === -1) { wsKey.pages.push(n); added++; }
+  });
+  if (added) {
+    wsKey.pages.sort(function (x, y) { return x - y; });
+    // The copy is written back so the next open does not have to work it out
+    // again — and so the page count and the marking read it too.
+    setDirty(true);
+  }
+}
+
 function guidanceRule(w) {
   var a = assignmentFor(w);
   var locked;

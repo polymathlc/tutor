@@ -41,6 +41,38 @@ a card in front of thirty children. `ADMIN_DISPLAY_NAME` is what the centre call
   their OWN copy, which is a different thing, and nothing displays it.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 🔑 THE KEY THAT TRAVELS IS THE ONE ON SCREEN (v1.10.1)
+
+`pushWorksheet`'s live re-read and `keyPagesFromAssignment` (search `THE ANSWER KEY THAT TRAVELS`
+and `A KEY MARKED AFTER THE CLASS STARTED`).
+
+Setting a worksheet read its body off `worksheets` — **a list fetched earlier**, whose entries
+carry the body as it was then. So a key marked since was not in the object being read, the
+assignment went out with `keyPages: []`, and every student in the class could scroll through the
+marking scheme.
+
+- **It failed silently and looked like success.** The teacher saw *"Set at…"*; the student's copy
+  still wore the 🔑 chip naming whose key it was, above every page of that key. Nothing threw and
+  no screen said anything was wrong.
+- **`openWorksheet` had already learned this** — *"whatever the list is holding can be old news"* —
+  and always opens from the live document. The push never did. **Anything that reads a worksheet's
+  BODY from the list is reading history**; go to the document.
+- **A pending save is flushed first.** Ticking key pages only SCHEDULES an auto-save, and setting
+  the worksheet straight afterwards is the obvious thing to do — so the live document has to be
+  made current before it is read, or reading it live changes nothing.
+- **An empty list never overrides a summary that names pages.** Between hiding a page that need not
+  be hidden and showing the marking scheme, only one of those is a safe way to be wrong.
+- **A read that FAILED refuses to set the worksheet.** Setting one whose key we are no longer sure
+  of is the outcome worth refusing outright.
+- **A key marked AFTER the class started still reaches them** (`keyPagesFromAssignment`). A copy's
+  key pages are frozen when it is made, so without this a page marked yesterday stays readable on
+  every copy already begun — and those are exactly the students who have the paper open. It is read
+  live from the assignment, the same way the locked help level is.
+- **That fold-in only ever ADDS a page, never un-hides one.** One stale read putting the marking
+  scheme back on screen is the worse fault; a page hidden by mistake is un-ticked on the teacher's
+  own copy.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 👤 EVERY STUDENT HAS A LEVEL, AND P3 IS SCIENCE ONLY (v1.9.0, P6 added v1.10.0)
 
 `STUDENT_LEVELS` / `STUDENT_SUBJECTS` / `levelSubjects` / `subjectOkForLevel` / `studentSubject` /
