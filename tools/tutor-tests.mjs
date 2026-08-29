@@ -396,6 +396,50 @@ eq('a text box is never bounded shorter than one line',
    ===================================================================== */
 section('The answer key');
 
+/* =====================================================================
+   THE KEY THAT TRAVELS IS THE ONE ON SCREEN
+   ---------------------------------------------------------------------
+   Setting a worksheet read its body off `worksheets` — a list FETCHED
+   EARLIER, whose entries carry the body as it was then. A key marked since
+   was simply not in the object being read, so the assignment went out with
+   `keyPages: []` and every student in the class could scroll through the
+   marking scheme. It failed silently and looked like success: the teacher
+   saw "Set at…", and the chip on the student's copy still said whose key
+   it was while showing every page of it.
+   ===================================================================== */
+const pushSrc = html.slice(html.indexOf('async function pushWorksheet'),
+                           html.indexOf('async function pushWorksheet') + 4200);
+ok('a pending save is flushed before the key is read',
+   /if \(currentDocId === id && dirty\) await performSave\(true\);/.test(pushSrc),
+   'ticking key pages only SCHEDULES a save, and setting it straight afterwards is the obvious thing to do');
+ok('the worksheet is re-read LIVE, never taken from the list',
+   /db\.collection\(COLLECTION\)\.doc\(id\)\.get\(\)/.test(pushSrc) &&
+   /w = Object\.assign\(\{\}, w, fresh\.data\(\), \{ id: id \}\)/.test(pushSrc),
+   'openWorksheet already opens from the live document; the push has to as well');
+ok('…and the read happens BEFORE the body is taken',
+   pushSrc.indexOf('fresh.data()') < pushSrc.indexOf('var body = await readBody(w)'));
+/* Between "hide it" and "show the marking scheme", hiding is the only safe
+   way to be wrong — so an empty list never overrides one that names pages. */
+ok('an empty key list never overrides a summary that names pages',
+   /\(Array\.isArray\(key\.pages\) && key\.pages\.length\)/.test(pushSrc));
+/* A worksheet whose key we are no longer sure of is not set at all. */
+ok('a read that failed refuses to set the worksheet',
+   /Could not read that worksheet just now[\s\S]{0,120}return;/.test(pushSrc));
+
+/* A copy is made with the key pages frozen in, so a page marked afterwards
+   would stay readable on every copy already begun — and those are exactly
+   the students who have the paper open. */
+ok('a key marked later reaches copies already started',
+   /function keyPagesFromAssignment\(w\)/.test(html) &&
+   /keyPagesFromAssignment\(w\);/.test(html));
+ok('…read live from the assignment, like the locked help level',
+   /function keyPagesFromAssignment[\s\S]{0,200}assignmentFor\(w\)/.test(html));
+ok('…and it only ever ADDS a page, never un-hides one',
+   /function keyPagesFromAssignment[\s\S]{0,600}if \(wsKey\.pages\.indexOf\(n\) === -1\) \{ wsKey\.pages\.push\(n\)/.test(html) &&
+   !/wsKey\.pages = a\.keyPages/.test(html),
+   'one stale read putting the marking scheme back on screen is the worse fault');
+
+
 ok('a page that announces itself is a key page',
    S.keyPageLooksLikeKey('ANSWER KEY\n\n1  (3)\n2  (1)\n3  (4)'));
 ok('…in Chinese too', S.keyPageLooksLikeKey('答案\n\n1 （3）\n2 （1）'));

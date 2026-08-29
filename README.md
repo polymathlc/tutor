@@ -12,6 +12,23 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.10.1 — the answer key really does stay off the students' screens
+
+Marking pages as the answer key and then setting the worksheet for a class **sent it out with no
+key pages at all**, so every student could scroll straight through the marking scheme. It looked
+like it had worked: you saw *"Set at…"*, and their copy still had the 🔑 chip saying it was your
+answer key — sitting above every page of it.
+
+Setting a worksheet was reading it from the list on the home screen, which holds the worksheet as
+it was when the list was fetched — so pages marked since were simply not in what it read. It now
+saves anything still pending and reads the worksheet itself before setting it, and if it cannot
+read it, it refuses to set it rather than sending out a key it is unsure of.
+
+**A key you mark after the class has started now reaches them too.** Their copy takes its key pages
+from the assignment each time it is opened, the same way a locked help level does — so a page you
+marked this morning is hidden for the students who began yesterday, not just for whoever has yet to
+start.
+
 ## v1.10.0 — P6 is a level too
 
 Students can be **P6** now, taking Mathematics, Science or both — the same as P4 and P5.
