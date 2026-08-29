@@ -15,6 +15,62 @@ Guidance for Claude when working in this repo.
   is a student, and a student's device runs the hints and the marking itself. Only the admin sees
   the 📚 Teaching notes window and the AI engine dialog, and only the admin ever writes a note.
 
+## 👤 EVERY STUDENT HAS A LEVEL, AND P3 IS SCIENCE ONLY (v1.9.0)
+
+`STUDENT_LEVELS` / `STUDENT_SUBJECTS` / `levelSubjects` / `subjectOkForLevel` / `studentSubject` /
+`studentSubjectList` / `studentComplete` / `normStudents` / `activeStudent` / `canSeeWorksheet`
+(search `EVERY STUDENT HAS A LEVEL`), plus step 2 of the onboarding gate.
+
+The centre takes **P3 to P5**, and **P3 is SCIENCE ONLY** — there is no P3 maths class.
+
+- **A student tagged P3 Mathematics is a student whose worksheet list is empty for ever**, with
+  nothing on any screen saying why: the filter simply never matches, and an empty list looks exactly
+  like somebody who has not uploaded anything yet. That is the whole reason this is a section.
+- **`levelSubjects` is the ONE place the rule lives**, because a pair is offered, saved and READ in
+  four places here — the onboarding chips, `onboardValid`, `canSeeWorksheet` and the upload dialog.
+  A rule enforced in three of them is not a rule.
+- **It is asked in the EXISTING gate, as step 2**, never a second dialog: one first sign-in, three
+  steps — the names, the levels, the fee. Two modal gates on one sign-in is two things to get past.
+- **`ONBOARD_VERSION` was bumped to 2 so the whole roster is asked again.** That is exactly what
+  that constant is for: a student who answered under v1 has no level, and letting them through
+  would leave the rule true of new students and false of everyone already here.
+- **The chips are BUILT from the rule.** At P3 the subject row holds one chip, so there is nothing
+  to choose wrongly — the rule being *seen* rather than enforced after the fact.
+- **A subject the new level does not offer is DROPPED when the level changes.** Switching from P5
+  Mathematics to P3 must not leave Mathematics selected on a row that no longer contains it, and
+  saved on the next tap of Next. `onboardClean` re-narrows it anyway, so a P3 student cannot be
+  WRITTEN as maths at all.
+- **`studentSubject` is how a stored pair is READ.** A P3 student saved as `both` means Science;
+  reading it raw is what hands them the maths worksheets the centre does not teach. It can only ever
+  NARROW what they see, which is the safe direction for a rule about who sees what.
+- **A level from outside the range keeps every subject and stays on the chips.** A P6 row set up in
+  Ans Key before this narrowed is not silently re-tagged.
+- **`normStudents` is the ONE reader**: students were plain NAMES before v1.9.0 and are
+  `{ name, level, subject }` now, and both shapes come out of it the same way. Every screen that
+  lists students goes through it, or a row answered under v1 reads as nobody and the teacher's list
+  empties itself.
+- **ONE ACCOUNT CAN CARRY SEVERAL STUDENTS**, so there is an ACTIVE one, remembered on the device,
+  and the header says who it is with a tap to switch. Without it the rule could only ever be
+  honoured for the first child on a parent's login, which is not a rule. `activeStudent` CLAMPS the
+  stored index — a student taken off the roster leaves it pointing past the end, and a filter
+  reading `undefined.level` would show nothing at all.
+- **The answer is MIRRORED onto the row's own `level` / `subject`**, which are the fields Ans Key
+  and the Scan app read: they hold one answer rather than a list, so the active student is written
+  there. Without it a student set up here is levelless everywhere else on the shared roster. And a
+  student already set up in Ans Key is **seeded from that row** rather than asked to retype it —
+  only on a single-student account, because with two children there is no way to know whose the
+  row's one pair is.
+- **AN UPLOAD TAKES THE LEVEL OFF THE ACTIVE STUDENT, never a picker.** The level field is hidden
+  for a student: a worksheet tagged with a level they are not is one that vanishes from their own
+  list the moment it is saved. The subject picker is only drawn for a student who really takes both.
+- **A worksheet with NO level is still shown to its owner.** Hiding somebody's own work with no
+  explanation is worse than showing it, and every new upload is tagged, so that case dies out.
+- **The students are dropped on every account change**, or one account's level decides what the
+  next person on the device is shown.
+- `polymathlc/anskey` carries the identical rule over the identical collection
+  (`tools/profile-tests.mjs` there) — **ship a change to it in both**.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## THE HELP CEILING — the thing the whole app turns on
 `HINT_RUNGS` / `GUIDANCE_GRADES` / `guidanceDepth` / `rungsAllowed` / `hintLadderFor` /
 `buddyCeilingRule` / `markBlankRule` (search `THE HELP LADDER` and `THE STUDY BUDDY`).

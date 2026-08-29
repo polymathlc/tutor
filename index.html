@@ -164,6 +164,22 @@
   textarea { resize: vertical; line-height: 1.6; }
   input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent-strong); outline-offset: 1px; }
 
+  /* ---------- Chip rows (the level and subject pickers) ---------- */
+  .chipRow { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
+  .pickChip {
+    font-family: var(--font); font-size: 0.86rem; font-weight: 600; cursor: pointer;
+    padding: 9px 17px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--ink-soft); box-shadow: var(--shadow-btn);
+    transition: background .15s ease, border-color .15s ease, transform .08s ease;
+  }
+  .pickChip:hover { transform: translateY(-1px); }
+  .pickChip.on { background: var(--accent); border-color: var(--accent-strong); color: var(--ink); }
+  .obLevelBlock {
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 16px 18px; margin-top: 14px; background: var(--bg-soft);
+  }
+  .obChipLabel { font-size: 0.74rem; font-weight: 700; color: var(--ink-faint); margin-top: 10px; }
+
   /* ---------- The guidance ladder picker ----------
      Four rungs, picked as one of four cards rather than a dropdown: the
      choice decides how much of the answer the app is ever allowed to give,
@@ -1193,15 +1209,19 @@
         </div>
       </div>
       <div class="fields">
-        <div class="field">
+        <!-- Both are hidden for a student: the level is theirs and the
+             subject picker only appears when they really take more than one.
+             The teacher, who uploads for whoever, keeps both. -->
+        <div class="field hidden" id="upLevelWrap">
           <label for="upLevel">Level</label>
           <select id="upLevel"><option value="">Not sure</option></select>
         </div>
-        <div class="field">
+        <div class="field" id="upSubjectWrap">
           <label for="upSubject">Subject</label>
-          <select id="upSubject"><option value="">Work it out from the paper</option></select>
+          <select id="upSubject"></select>
         </div>
       </div>
+      <p class="hint hidden" id="upWhoLine" style="margin-top:10px"></p>
 
       <h3 style="margin-top:24px;font-size:1rem;font-weight:700">How much help would you like?</h3>
       <p class="hint" style="margin-top:5px">
@@ -1508,7 +1528,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.8.0';
+var APP_VERSION = 'v1.9.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -7680,7 +7700,7 @@ async function loadWorksheets() {
       var bv = b.updatedAt && b.updatedAt.toMillis ? b.updatedAt.toMillis() : 0;
       return bv - av;
     });
-    worksheets = out;
+    worksheets = out.filter(canSeeWorksheet);
   } catch (e) {
     console.warn('Worksheets could not be read', e);
     worksheets = [];
@@ -7840,8 +7860,31 @@ var upKeyFile = null;
 function openUploadModal() {
   if (!currentUser) { signIn(); return; }
   $('upName').value = '';
-  $('upLevel').value = '';
-  $('upSubject').value = '';
+  // A worksheet tagged with a level the student is not is a worksheet that
+  // vanishes from their own list the moment it is saved — so the level is
+  // theirs and is not a choice, and the subject picker is only drawn for a
+  // student who really takes more than one.
+  var st = activeStudent();
+  var subs = (isAdmin(currentUser) || !st)
+    ? SUBJECTS.map(function (x) { return x.value; })
+    : studentSubjectList(st);
+  var sel = $('upSubject');
+  sel.innerHTML = '';
+  subs.forEach(function (v) {
+    var o = document.createElement('option');
+    o.value = v;
+    o.textContent = subjectLabel(v);
+    sel.appendChild(o);
+  });
+  $('upLevelWrap').classList.toggle('hidden', !(isAdmin(currentUser) || !st));
+  $('upSubjectWrap').classList.toggle('hidden', subs.length < 2);
+  var line = $('upWhoLine');
+  if (line) {
+    line.textContent = (isAdmin(currentUser) || !st) ? ''
+      : 'Saved as ' + st.name + '’s ' + levelLabel(st.level) + ' ' +
+        (subs.length > 1 ? 'worksheet, in the subject picked above.' : subjectLabel(subs[0]) + ' worksheet.');
+    line.classList.toggle('hidden', !line.textContent);
+  }
   upGrade = HINT_DEFAULT;
   upKeyFile = null;
   $('upKeyName').textContent = '';
@@ -7860,7 +7903,9 @@ async function handleUpload(file) {
     return;
   }
   var name = $('upName').value.trim() || file.name.replace(/\.pdf$/i, '');
-  var level = $('upLevel').value;
+  // The active student's OWN level, never a picker they could get wrong.
+  var upSt = activeStudent();
+  var level = (!isAdmin(currentUser) && upSt && upSt.level) ? upSt.level : $('upLevel').value;
   var subject = $('upSubject').value;
   // Read while the dialog is still on screen: the fields are cleared the
   // next time it opens, and the upload below has several awaits in it.
@@ -8269,8 +8314,68 @@ var PEOPLE_COL = 'studentProfiles';
    question. The stored answer records the version it was given under, so
    an old answer to an old question is never counted as an answer to a new
    one. */
-var ONBOARD_VERSION = 1;
+var ONBOARD_VERSION = 2;
 var APP_FEE = '$100 a month';
+
+/* ---- EVERY STUDENT HAS A LEVEL, AND P3 IS SCIENCE ONLY ----
+   The centre takes P3 to P5, and there is no P3 maths class. A student
+   tagged P3 Mathematics is a student whose worksheet list is empty for ever
+   with nothing on any screen saying why: the filter simply never matches,
+   and an empty list looks exactly like somebody who has not uploaded
+   anything yet.
+
+   `levelSubjects` is the ONE place that rule lives, because a level/subject
+   pair is offered, saved and READ in four separate places here — the
+   onboarding chips, the validity check, the worksheet filter and the upload
+   dialog. A rule enforced in three of them is not a rule. `polymathlc/anskey`
+   carries the identical rule over the identical collection; ship a change to
+   it in both. */
+var STUDENT_LEVELS = ['P3', 'P4', 'P5'];
+var STUDENT_SUBJECTS = [
+  { value: 'science', label: 'Science' },
+  { value: 'math',    label: 'Mathematics' },
+  { value: 'both',    label: 'Both' }
+];
+/* A level from outside the range — a P6 row set up in Ans Key before this
+   narrowed — keeps every subject rather than being silently re-tagged. */
+function levelSubjects(level) {
+  return level === 'P3' ? ['science'] : STUDENT_SUBJECTS.map(function (x) { return x.value; });
+}
+function subjectOkForLevel(level, subject) {
+  return levelSubjects(level).indexOf(subject) !== -1;
+}
+/* What a stored pair really MEANS. A P3 student saved as "both" means
+   Science — reading it this way can only ever NARROW what they see, which is
+   the safe direction for a rule about who sees which worksheets. */
+function studentSubject(st) {
+  if (!st || !st.subject) return '';
+  return subjectOkForLevel(st.level, st.subject) ? st.subject : levelSubjects(st.level)[0];
+}
+/* 'both' spelled out, so the filter and the upload picker never have to know
+   about the word. */
+function studentSubjectList(st) {
+  var sub = studentSubject(st);
+  return !sub ? [] : sub === 'both' ? ['math', 'science'] : [sub];
+}
+function studentComplete(st) {
+  return !!(st && String(st.name || '').trim() && st.level && studentSubject(st));
+}
+
+/* THE ONE READER for the students on a row. They were plain NAMES before
+   v1.9.0 and are `{ name, level, subject }` now, and both shapes come out of
+   here the same way — an old row read as a name with no level is a row that
+   gets asked the new question, which is exactly what the version bump is
+   for. Every screen that lists students goes through this. */
+function normStudents(raw) {
+  return (Array.isArray(raw) ? raw : []).map(function (v) {
+    if (typeof v === 'string') return { name: v.trim(), level: '', subject: '' };
+    return {
+      name: String((v && v.name) || '').trim(),
+      level: String((v && v.level) || ''),
+      subject: String((v && v.subject) || '')
+    };
+  }).filter(function (st) { return st.name; });
+}
 
 var _onboardWait = null;     // resolves when they may use the app
 var _onboardDraft = null;
@@ -8294,8 +8399,15 @@ function onboardNeeds(profile) {
    the dialog will not let them past without at least one real name. */
 function onboardClean(draft) {
   var d = draft || {};
-  var names = (d.students || []).map(function (n) { return String(n || '').trim(); })
-                                .filter(Boolean).slice(0, 8);
+  var names = normStudents(d.students).slice(0, 8).map(function (st) {
+    return {
+      name: st.name.slice(0, 80),
+      level: st.level,
+      // Stored through the same narrowing read the filter uses, so a P3
+      // student cannot be WRITTEN as maths in the first place.
+      subject: studentSubject(st)
+    };
+  });
   return {
     v: ONBOARD_VERSION,
     parent: String(d.parent || '').trim().slice(0, 80),
@@ -8309,9 +8421,17 @@ function onboardClean(draft) {
     at: new Date().toISOString()
   };
 }
+/* Every student needs a name, a level and a subject their level really
+   offers — one without is one whose worksheet list can never match
+   anything, so there is no point letting them past. */
+function onboardStudentsReady(draft) {
+  var list = normStudents((draft || {}).students);
+  return list.length > 0 && list.every(studentComplete);
+}
 function onboardValid(draft) {
   var c = onboardClean(draft);
-  return !!(c.parent && c.students.length && (draft.enrolled === true || draft.enrolled === false));
+  return !!(c.parent && onboardStudentsReady(draft) &&
+            (draft.enrolled === true || draft.enrolled === false));
 }
 
 /* THE GATE. Called from the auth hook for a signed-in student. It resolves
@@ -8331,10 +8451,56 @@ async function onboardRequire(user) {
     console.warn('roster: profile could not be read', e);
   }
   if (!onboardNeeds(profile) && !readFailed) {
+    adoptStudents(profile);
     noteSignedIn(user, profile);
     return;
   }
   await onboardOpen(user, profile);
+}
+
+/* ---- WHO IS WORKING RIGHT NOW ----
+   One Google account can carry several students — a parent signs in and two
+   children use it. The worksheet filter needs ONE level and ONE subject, so
+   the account has an ACTIVE student, remembered on this device, and the
+   header says who it is with a tap to change. Without it the rule could only
+   ever be honoured for the first child on the account, which is not a rule.
+
+   The index is clamped on the way out, never trusted: a student removed from
+   the roster leaves a stored index pointing past the end of the list, and a
+   filter reading `undefined.level` would show nothing at all. */
+var ACTIVE_KEY = 'tutorActiveStudent';
+var myStudents = [];          // [{ name, level, subject }] for the signed-in account
+var _activeIdx = 0;
+
+function loadActiveIdx() {
+  try { _activeIdx = parseInt(localStorage.getItem(ACTIVE_KEY), 10) || 0; }
+  catch (e) { _activeIdx = 0; }
+}
+function setActiveIdx(i) {
+  _activeIdx = i;
+  try { localStorage.setItem(ACTIVE_KEY, String(i)); } catch (e) {}
+}
+function activeStudent() {
+  if (!myStudents.length) return null;
+  var i = _activeIdx;
+  if (!(i >= 0 && i < myStudents.length)) i = 0;
+  return myStudents[i];
+}
+
+/* ---- Which worksheets are this student's ----
+   Only the ones tagged with their own level AND a subject they take. The
+   teacher sees everything. A worksheet with NO level was uploaded before the
+   rule existed, and hiding somebody's own work with no explanation is worse
+   than showing it — every new upload is tagged from the active student, so
+   that case dies out on its own. */
+function canSeeWorksheet(w) {
+  if (isAdmin(currentUser)) return true;
+  var st = activeStudent();
+  if (!st || !st.level) return true;   // not answered yet — the gate has them anyway
+  if (!w.level) return true;           // uploaded before the rule
+  if (w.level !== st.level) return false;
+  if (!w.subject) return true;
+  return studentSubjectList(st).indexOf(w.subject) !== -1;
 }
 
 /* Every sign-in is recorded, so the teacher's list is who has actually been
@@ -8349,7 +8515,8 @@ function noteSignedIn(user, profile) {
   var known = String((profile && profile.name) || '').trim();
   if (!known) {
     var o = (profile && profile.tutorOnboard) || {};
-    var first = (o.students && o.students[0]) || user.displayName || '';
+    var firstStu = normStudents(o.students)[0];
+    var first = (firstStu && firstStu.name) || user.displayName || '';
     if (first) patch.name = String(first).trim().slice(0, 80);
   }
   peopleRef(user.uid).set(patch, { merge: true }).catch(function (e) {
@@ -8359,19 +8526,48 @@ function noteSignedIn(user, profile) {
   });
 }
 
+/* The row's own level/subject — the fields Ans Key and the Scan app write.
+   Read through the narrowing rule like everything else. */
+function p_level(profile) { return String((profile && profile.level) || ''); }
+function p_subject(profile) {
+  return studentSubject({ level: p_level(profile), subject: String((profile && profile.subject) || '') });
+}
+
 function onboardOpen(user, profile) {
   var o = (profile && profile.tutorOnboard) || {};
+  var known = normStudents(o.students);
+  /* A student already set up in Ans Key has a level and a subject on this
+     very row — the whole point of sharing the roster is that they do not
+     type it again. Seeded only where the answer is MISSING, and only onto a
+     single-student account: with two children on one login there is no way
+     to know which of them the row's one pair belongs to. */
+  if (known.length === 1 && !known[0].level && p_level(profile)) {
+    known[0].level = p_level(profile);
+    known[0].subject = p_subject(profile) || levelSubjects(p_level(profile))[0];
+  }
   _onboardDraft = {
     parent: String(o.parent || '').trim(),
-    students: (o.students && o.students.length ? o.students.slice() : [String(user.displayName || '').trim()]),
-    enrolled: null,
+    // Whatever was answered before comes back with its level and subject
+    // where it had them — an account asked again because the questions
+    // changed must not have to retype the answers that did not.
+    students: known.length ? known : [{ name: String(user.displayName || '').trim(), level: '', subject: '' }],
+    enrolled: (o.enrolled === true || o.enrolled === false) ? o.enrolled : null,
     step: 1
   };
-  if (!_onboardDraft.students.length) _onboardDraft.students = [''];
+  if (!_onboardDraft.students.length) _onboardDraft.students = [{ name: '', level: '', subject: '' }];
   $('onboardModal').classList.add('open');
   onboardRender();
   return new Promise(function (res) { _onboardWait = res; });
 }
+/* The ONE place the signed-in account's students are taken from a roster
+   row, so the header, the filter and the upload can never be reading three
+   different answers. */
+function adoptStudents(profile) {
+  myStudents = normStudents(((profile || {}).tutorOnboard || {}).students);
+  loadActiveIdx();
+  renderAuth();
+}
+
 function onboardFinish() {
   $('onboardModal').classList.remove('open');
   var done = _onboardWait;
@@ -8386,10 +8582,16 @@ async function onboardSave(user) {
   var clean = onboardClean(d);
   var patch = { tutorOnboard: clean, email: user.email || '',
                 tutorLastSeen: firebase.firestore.FieldValue.serverTimestamp() };
+  // The row's OWN `level` and `subject` are the fields Ans Key and the Scan
+  // app read, and they hold one answer rather than a list — so the student
+  // who is actually working is mirrored onto them. Without this a student
+  // set up here would be levelless everywhere else on the shared roster.
+  var lead = clean.students[0];
+  if (lead && lead.level) { patch.level = lead.level; patch.subject = lead.subject; }
   try {
     var snap = await peopleRef(user.uid).get();
     var known = String((snap.exists && snap.data().name) || '').trim();
-    if (!known && clean.students[0]) patch.name = clean.students[0];
+    if (!known && clean.students[0]) patch.name = clean.students[0].name;
   } catch (e) { /* the name is a nicety; the answers are not */ }
   try {
     await peopleRef(user.uid).set(patch, { merge: true });
@@ -8400,7 +8602,14 @@ async function onboardSave(user) {
     console.warn('roster: answers could not be saved', e);
     toast('Saved on this device only — we will ask again next time.', 5000);
   }
+  // The list is already loaded and was filtered against no student at all,
+  // so it is re-filtered now rather than left showing everything until the
+  // next reload.
+  myStudents = normStudents(clean.students);
+  setActiveIdx(0);
   onboardFinish();
+  renderAuth();
+  loadWorksheets();
 }
 
 /* ---- The dialog ----
@@ -8434,11 +8643,11 @@ function onboardRender() {
     sh.textContent = d.students.length > 1 ? 'The students' : 'The student';
     body.appendChild(sh);
 
-    d.students.forEach(function (nm, i) {
+    d.students.forEach(function (st, i) {
       var row = document.createElement('div');
       row.className = 'obStudentRow';
-      row.appendChild(obField(i === 0 ? 'Student’s name' : 'Another student', 'obStu' + i, nm, function (v) {
-        d.students[i] = v;
+      row.appendChild(obField(i === 0 ? 'Student’s name' : 'Another student', 'obStu' + i, st.name, function (v) {
+        d.students[i].name = v;
         obSyncNext();
       }));
       if (d.students.length > 1) {
@@ -8460,7 +8669,7 @@ function onboardRender() {
       add.className = 'btn btnSm';
       add.textContent = '+ Add another student';
       add.addEventListener('click', function () {
-        d.students.push('');
+        d.students.push({ name: '', level: '', subject: '' });
         onboardRender();
       });
       body.appendChild(add);
@@ -8476,7 +8685,109 @@ function onboardRender() {
     return;
   }
 
-  /* Step 2 — the fee. Both routes are laid out plainly and neither is
+  /* Step 2 — the level and the subject, one row per student. It is its own
+     step because it is what the app is FOR: it decides which worksheets each
+     student sees, what level every hint is pitched at, and which of the
+     teacher's notes ground them. Asked in the same breath as the names it
+     would read as a form; asked on its own it reads as the question it is. */
+  if (d.step === 2) {
+    $('onboardTitle').textContent = 'What are they doing?';
+    var lead2 = document.createElement('p');
+    lead2.className = 'sub';
+    lead2.textContent = aiEngineName() + ' pitches every hint at this level and follows Mr Chung’s notes ' +
+      'for this subject — and you only ever see worksheets that match.';
+    body.appendChild(lead2);
+
+    d.students.forEach(function (st, i) {
+      var block = document.createElement('div');
+      block.className = 'obLevelBlock';
+      var who = document.createElement('div');
+      who.className = 'obSectionHead';
+      who.textContent = st.name || 'This student';
+      block.appendChild(who);
+
+      var lvlLab = document.createElement('div');
+      lvlLab.className = 'obChipLabel';
+      lvlLab.textContent = 'Level';
+      block.appendChild(lvlLab);
+      var lvlRow = document.createElement('div');
+      lvlRow.className = 'chipRow';
+      // Built from STUDENT_LEVELS, plus their own stored level when it is no
+      // longer offered — a P6 row set up in Ans Key must still show what it
+      // is rather than reading as wiped.
+      var levels = STUDENT_LEVELS.slice();
+      if (st.level && levels.indexOf(st.level) === -1) levels.push(st.level);
+      levels.forEach(function (l) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'pickChip' + (l === st.level ? ' on' : '');
+        b.textContent = levelLabel(l);
+        b.addEventListener('click', function () {
+          st.level = l;
+          // A subject the new level does not offer cannot stay picked:
+          // switching from P5 Mathematics to P3 must not leave Mathematics
+          // selected on a row that no longer contains it, and saved on the
+          // next tap of Next.
+          var allow = levelSubjects(l);
+          if (allow.length === 1) st.subject = allow[0];
+          else if (st.subject && allow.indexOf(st.subject) === -1) st.subject = '';
+          onboardRender();
+        });
+        lvlRow.appendChild(b);
+      });
+      block.appendChild(lvlRow);
+
+      var subLab = document.createElement('div');
+      subLab.className = 'obChipLabel';
+      subLab.textContent = 'Subject';
+      block.appendChild(subLab);
+      var subRow = document.createElement('div');
+      subRow.className = 'chipRow';
+      if (!st.level) {
+        var wait = document.createElement('p');
+        wait.className = 'hint';
+        wait.textContent = 'Pick a level first.';
+        block.appendChild(wait);
+      } else {
+        // At P3 this row holds ONE chip, which is the rule being seen rather
+        // than enforced after the fact — there is nothing to choose wrongly.
+        var allowed = levelSubjects(st.level);
+        STUDENT_SUBJECTS.forEach(function (sub) {
+          if (allowed.indexOf(sub.value) === -1) return;
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'pickChip' + (sub.value === st.subject ? ' on' : '');
+          b.textContent = sub.label;
+          b.addEventListener('click', function () { st.subject = sub.value; onboardRender(); });
+          subRow.appendChild(b);
+        });
+        block.appendChild(subRow);
+        if (allowed.length === 1) {
+          var why = document.createElement('p');
+          why.className = 'hint';
+          why.textContent = levelLabel(st.level) + ' is ' + subjectLabel(allowed[0]) + ' only at the centre.';
+          block.appendChild(why);
+        }
+      }
+      body.appendChild(block);
+    });
+
+    var back2 = document.createElement('button');
+    back2.className = 'btn btnGhost';
+    back2.textContent = '← Back';
+    back2.addEventListener('click', function () { d.step = 1; onboardRender(); });
+    foot.appendChild(back2);
+    var next2 = document.createElement('button');
+    next2.className = 'btn btnPrimary';
+    next2.id = 'obNextLevels';
+    next2.textContent = 'Next';
+    next2.addEventListener('click', function () { d.step = 3; onboardRender(); });
+    foot.appendChild(next2);
+    obSyncLevels();
+    return;
+  }
+
+  /* Step 3 — the fee. Both routes are laid out plainly and neither is
      preselected: an agreement to pay something must be chosen, never
      arrived at by pressing the button that happened to be highlighted. */
   $('onboardTitle').textContent = 'Are you enrolled at Polymath?';
@@ -8515,7 +8826,7 @@ function onboardRender() {
   var back = document.createElement('button');
   back.className = 'btn btnGhost';
   back.textContent = '← Back';
-  back.addEventListener('click', function () { d.step = 1; onboardRender(); });
+  back.addEventListener('click', function () { d.step = 2; onboardRender(); });
   foot.appendChild(back);
 
   var go = document.createElement('button');
@@ -8553,6 +8864,14 @@ function obSyncNext() {
   if (!b || !_onboardDraft) return;
   var c = onboardClean(_onboardDraft);
   b.disabled = !(c.parent && c.students.length);
+}
+/* Step 2's Next, which wants every student to have a level and a subject.
+   Disabled rather than hidden, so the reason is the empty chip row directly
+   above it rather than a button that came and went. */
+function obSyncLevels() {
+  var b = $('obNextLevels');
+  if (!b || !_onboardDraft) return;
+  b.disabled = !onboardStudentsReady(_onboardDraft);
 }
 
 /* =====================================================================
@@ -8747,8 +9066,14 @@ function usageRecent(p) {
    ===================================================================== */
 function personRow(id, p) {
   var o = (p && p.tutorOnboard) || {};
-  var students = (o.students || []).filter(Boolean);
+  // normStudents, so a row answered before v1.9.0 (plain names) and one
+  // answered after (name, level and subject) both read the same way here.
+  var learners = normStudents(o.students);
+  var students = learners.map(function (st) {
+    return st.level ? st.name + ' (' + levelLabel(st.level) + ' ' + subjectLabel(studentSubject(st)) + ')' : st.name;
+  });
   return {
+    learners: learners,
     id: id,
     name: String((p && p.name) || '').trim(),
     email: String((p && p.email) || '').trim(),
@@ -9012,9 +9337,21 @@ function renderAuth() {
   $('homeSignedIn').classList.toggle('hidden', !signedIn);
   $('mistakesBtn').classList.toggle('hidden', !signedIn);
   $('peopleBtn').classList.toggle('hidden', !isAdmin(currentUser));
-  $('whoAmI').textContent = signedIn
-    ? (isAdmin(currentUser) ? ADMIN_DISPLAY_NAME : (currentUser.displayName || currentUser.email || ''))
-    : '';
+  // A student's level and subject are on screen, not buried in a menu: they
+  // decide which worksheets reach them, so being wrong about it is something
+  // they should be able to notice. With more than one student on the account
+  // it is also the switch.
+  var who = '';
+  var st = activeStudent();
+  if (signedIn && isAdmin(currentUser)) who = ADMIN_DISPLAY_NAME;
+  else if (signedIn && st) {
+    who = st.name + ' · ' + levelLabel(st.level) + ' ' + subjectLabel(studentSubject(st));
+    if (myStudents.length > 1) who += ' ▾';
+  } else if (signedIn) who = currentUser.displayName || currentUser.email || '';
+  $('whoAmI').textContent = who;
+  var canSwitch = signedIn && !isAdmin(currentUser) && myStudents.length > 1;
+  $('whoAmI').title = canSwitch ? 'Switch student' : '';
+  $('whoAmI').style.cursor = canSwitch ? 'pointer' : '';
   applyNotesVisibility();
   refreshAiEngineNames();
 }
@@ -9046,6 +9383,9 @@ if (auth) auth.onAuthStateChanged(function (user) {
   stopTeachingNotes();
   worksheets = [];
   mistakes = [];
+  // One account's students must never decide what the next person to sign in
+  // on the same device is shown.
+  myStudents = [];
   currentDocId = null;
   showView('home');
   renderAuth();
@@ -9083,7 +9423,9 @@ if (auth) auth.onAuthStateChanged(function (user) {
   });
   // Both subject pickers are filled from SUBJECTS, so the four subjects are
   // declared exactly once — never hand-write an <option>.
-  ['upSubject', 'qnSubject'].forEach(function (id) {
+  // upSubject is built per student in openUploadModal — what may be chosen
+  // depends on the level of whoever is working.
+  ['qnSubject'].forEach(function (id) {
     var sel = $(id);
     if (!sel) return;
     SUBJECTS.forEach(function (s) {
@@ -9134,6 +9476,20 @@ $('repPrint').addEventListener('click', function () { printThis($('reportModal')
 $('repCopy').addEventListener('click', function () { copyText(reportAsText(), 'Report copied'); });
 $('qnCancel').addEventListener('click', function () { $('quickNoteModal').classList.remove('open'); });
 $('qnSave').addEventListener('click', quickNoteSave);
+
+/* Switching student re-filters the list and re-tags what is uploaded next.
+   It is a plain rotation rather than a menu: with two children on one login
+   a tap is the whole interaction, and there is nothing to find. */
+$('whoAmI').addEventListener('click', function () {
+  if (!currentUser || isAdmin(currentUser) || myStudents.length < 2) return;
+  var next = (_activeIdx + 1) % myStudents.length;
+  setActiveIdx(next);
+  renderAuth();
+  loadWorksheets();
+  var st = activeStudent();
+  if (st) toast('Now showing ' + st.name + '’s ' + levelLabel(st.level) + ' ' +
+                subjectLabel(studentSubject(st)) + ' worksheets.', 4000);
+});
 
 $('uploadBtn').addEventListener('click', openUploadModal);
 $('upCancel').addEventListener('click', function () { $('uploadModal').classList.remove('open'); });

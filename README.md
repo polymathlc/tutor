@@ -12,6 +12,28 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.9.0 — every student says what they are doing
+
+The first-sign-in questions now have a middle step: **what level each student is, and what subject
+they take.** Everyone already signed up is asked again, once, because a student without a level is
+a student the rest of this cannot work for.
+
+- **P3, P4 or P5**, and **P3 is Science only** — there is no P3 maths class at the centre, so at P3
+  the subject row holds a single chip and says why. Pick P5 Mathematics and then change your mind
+  to P3 and the Mathematics choice goes with it, rather than being quietly saved.
+- **Science, Mathematics, or Both** at P4 and P5.
+- **You only ever see worksheets of your own level and subject.** A P4 Science student does not see
+  the P5 papers, and a P4 Maths student does not see the Science ones.
+- **An upload is tagged with your level automatically.** There is no level box to get wrong, because
+  a worksheet tagged with someone else's level is one that disappears from your own list the moment
+  you save it. The subject picker only appears if you take both.
+- **One login, several children.** A parent who put two students on the account gets both, each with
+  their own level and subject, and the header says whose worksheets are on screen — tap it to
+  switch.
+- **A student already set up in Ans Key does not type it twice.** It is the same roster row, so
+  their level and subject come across, and what is answered here goes back so Ans Key and Scan &
+  Answer see it too.
+
 ## v1.8.0 — a worksheet you set stays the way you set it
 
 Two things on a worksheet the teacher has **set for the class** are the

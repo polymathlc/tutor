@@ -1179,10 +1179,28 @@ eq('an answer to THIS version is not asked again',
 eq('rubbish where the answers should be is asked',
    S.onboardNeeds({ tutorOnboard: 'yes' }), true);
 
-const c1 = S.onboardClean({ parent: '  Mrs Tan  ', students: ['Wei Ling', '   ', '', 'Wei Jie'], enrolled: true });
+/* Since v1.9.0 a student is { name, level, subject } rather than a bare
+   name — and both shapes still go in, because a row answered before that is
+   read back through the same door. */
+const c1 = S.onboardClean({ parent: '  Mrs Tan  ',
+  students: [{ name: 'Wei Ling', level: 'P5', subject: 'math' }, { name: '   ' }, { name: '' },
+             { name: 'Wei Jie', level: 'P4', subject: 'science' }],
+  enrolled: true });
 eq('the parent is trimmed', c1.parent, 'Mrs Tan');
 /* A roster row reading "Student:" is worse than one that says nothing. */
-eq('blank student names are dropped rather than stored', c1.students, ['Wei Ling', 'Wei Jie']);
+eq('blank student names are dropped rather than stored',
+   c1.students.map(function (x) { return x.name; }), ['Wei Ling', 'Wei Jie']);
+eq('…and each one keeps their level and subject',
+   c1.students.map(function (x) { return x.level + ' ' + x.subject; }), ['P5 math', 'P4 science']);
+/* A P3 student cannot be WRITTEN as maths in the first place. */
+eq('a P3 student is stored as Science whatever was picked',
+   S.onboardClean({ parent: 'p', students: [{ name: 'Ken', level: 'P3', subject: 'both' }], enrolled: true })
+    .students[0].subject, 'science');
+/* Plain names from before v1.9.0 still read, with no level — which is what
+   makes the version bump ask them the new question. */
+eq('a row answered before the levels existed still reads',
+   S.onboardClean({ parent: 'p', students: ['Old Name'], enrolled: true }).students,
+   [{ name: 'Old Name', level: '', subject: '' }]);
 eq('an enrolled family is not paying anything', c1.payingFee, false);
 eq('…and no fee is recorded against them', c1.fee, '');
 eq('the version it was answered under is stored with it', c1.v, S.ONBOARD_VERSION);
@@ -1199,13 +1217,128 @@ eq('eight students is the most that can be added',
 
 /* Neither route may be arrived at by default: an agreement to pay something
    has to be chosen. */
+const okStu = [{ name: 'a', level: 'P5', subject: 'math' }];
 eq('no parent name is not a complete answer',
-   S.onboardValid({ parent: '', students: ['a'], enrolled: true }), false);
+   S.onboardValid({ parent: '', students: okStu, enrolled: true }), false);
 eq('no student name is not a complete answer',
-   S.onboardValid({ parent: 'p', students: ['  '], enrolled: true }), false);
+   S.onboardValid({ parent: 'p', students: [{ name: '  ', level: 'P5', subject: 'math' }], enrolled: true }), false);
 eq('not saying whether you are enrolled is not a complete answer',
-   S.onboardValid({ parent: 'p', students: ['a'], enrolled: null }), false);
-eq('both answers and a name is', S.onboardValid({ parent: 'p', students: ['a'], enrolled: false }), true);
+   S.onboardValid({ parent: 'p', students: okStu, enrolled: null }), false);
+/* EVERY STUDENT MUST HAVE A LEVEL. One without is one whose worksheet list
+   can never match anything, so there is no point letting them past. */
+eq('a student with no level is not a complete answer',
+   S.onboardValid({ parent: 'p', students: [{ name: 'a' }], enrolled: false }), false);
+eq('…and neither is one with no subject',
+   S.onboardValid({ parent: 'p', students: [{ name: 'a', level: 'P5' }], enrolled: false }), false);
+eq('…and one of SEVERAL missing a level holds the whole thing up',
+   S.onboardValid({ parent: 'p', students: okStu.concat([{ name: 'b' }]), enrolled: false }), false);
+eq('everything answered is', S.onboardValid({ parent: 'p', students: okStu, enrolled: false }), true);
+
+/* =====================================================================
+   EVERY STUDENT HAS A LEVEL, AND P3 IS SCIENCE ONLY
+   ---------------------------------------------------------------------
+   A student tagged P3 Mathematics is a student whose worksheet list is
+   empty for ever with nothing on any screen saying why: the filter simply
+   never matches, and an empty list looks exactly like somebody who has not
+   uploaded anything yet.
+   ===================================================================== */
+section('The levels, and what each one takes');
+
+eq('the centre takes P3 to P5', S.STUDENT_LEVELS, ['P3', 'P4', 'P5']);
+eq('three subjects are offered', S.STUDENT_SUBJECTS.map(function (x) { return x.value; }),
+   ['science', 'math', 'both']);
+eq('P3 offers Science and nothing else', S.levelSubjects('P3'), ['science']);
+eq('P4 offers all three', S.levelSubjects('P4'), ['science', 'math', 'both']);
+ok('P3 + Mathematics is refused', !S.subjectOkForLevel('P3', 'math'));
+ok('P3 + Both is refused', !S.subjectOkForLevel('P3', 'both'));
+ok('P5 + Mathematics is allowed', S.subjectOkForLevel('P5', 'math'));
+/* A P6 row set up in Ans Key before the range narrowed keeps every subject
+   rather than being silently re-tagged. */
+eq('a level from outside the range keeps all three', S.levelSubjects('P6'),
+   ['science', 'math', 'both']);
+
+eq('a P3 student stored as "both" MEANS Science',
+   S.studentSubject({ level: 'P3', subject: 'both' }), 'science');
+eq('a P5 student stored as "math" is left alone',
+   S.studentSubject({ level: 'P5', subject: 'math' }), 'math');
+eq('no subject stays empty rather than being guessed at',
+   S.studentSubject({ level: 'P5', subject: '' }), '');
+eq('"both" is spelled out for the filter and the upload picker',
+   S.studentSubjectList({ level: 'P5', subject: 'both' }), ['math', 'science']);
+eq('a P3 student takes Science whatever is stored',
+   S.studentSubjectList({ level: 'P3', subject: 'both' }), ['science']);
+ok('a student with no level is not complete', !S.studentComplete({ name: 'a' }));
+ok('a student with no name is not complete', !S.studentComplete({ level: 'P5', subject: 'math' }));
+ok('a full one is', S.studentComplete({ name: 'a', level: 'P5', subject: 'math' }));
+
+/* ONE reader for both shapes, or a row answered before v1.9.0 reads as no
+   students at all and the teacher's list empties itself. */
+eq('plain names from before v1.9.0 still read',
+   S.normStudents(['Ana', ' ', 'Ben']),
+   [{ name: 'Ana', level: '', subject: '' }, { name: 'Ben', level: '', subject: '' }]);
+eq('objects read too',
+   S.normStudents([{ name: ' Ana ', level: 'P4', subject: 'both' }]),
+   [{ name: 'Ana', level: 'P4', subject: 'both' }]);
+eq('rubbish reads as nobody', S.normStudents('yes'), []);
+
+section('Only your own level and subject');
+S.currentUser = { email: 'kid@example.com' };
+S.myStudents = [{ name: 'Ana', level: 'P5', subject: 'science' }];
+S.setActiveIdx(0);
+ok('a P5 Science worksheet is theirs', S.canSeeWorksheet({ level: 'P5', subject: 'science' }));
+ok('a P4 Science worksheet is not', !S.canSeeWorksheet({ level: 'P4', subject: 'science' }));
+ok('a P5 Maths worksheet is not', !S.canSeeWorksheet({ level: 'P5', subject: 'math' }));
+S.myStudents = [{ name: 'Ana', level: 'P5', subject: 'both' }];
+ok('a "both" student gets the maths one', S.canSeeWorksheet({ level: 'P5', subject: 'math' }));
+ok('…and the science one', S.canSeeWorksheet({ level: 'P5', subject: 'science' }));
+S.myStudents = [{ name: 'Ken', level: 'P3', subject: 'both' }];
+ok('a P3 student stored as "both" does NOT get the maths worksheet',
+   !S.canSeeWorksheet({ level: 'P3', subject: 'math' }),
+   'the centre teaches no P3 maths — reading the stored word raw is what hands it over');
+/* Hiding somebody's own work with no explanation is worse than showing it,
+   and every new upload is tagged, so this case dies out. */
+S.myStudents = [{ name: 'Ana', level: 'P5', subject: 'science' }];
+ok('a worksheet uploaded before the rule is still shown to its owner',
+   S.canSeeWorksheet({ name: 'old one' }));
+S.currentUser = { email: 'chungzhikai@gmail.com' };
+ok('the teacher sees everything', S.canSeeWorksheet({ level: 'P3', subject: 'math' }));
+S.currentUser = null;
+
+section('Who is working right now');
+S.myStudents = [{ name: 'Ana', level: 'P5', subject: 'science' },
+                { name: 'Ben', level: 'P3', subject: 'science' }];
+S.setActiveIdx(1);
+eq('the active student is the one chosen', S.activeStudent().name, 'Ben');
+/* A student taken off the roster leaves a stored index pointing past the
+   end, and a filter reading `undefined.level` would show nothing at all. */
+S.myStudents = [{ name: 'Ana', level: 'P5', subject: 'science' }];
+eq('an index past the end falls back to the first, never undefined',
+   S.activeStudent().name, 'Ana');
+S.myStudents = [];
+eq('no students at all is null rather than a throw', S.activeStudent(), null);
+
+section('The rule, against index.html itself');
+ok('the version bump is what asks everyone again',
+   /var ONBOARD_VERSION = 2;/.test(html),
+   'a student answered under v1 has no level, so the gate has to re-ask');
+ok('the chips are built from the rule, not typed into the markup',
+   !/<button[^>]*class="pickChip"/.test(html));
+ok('a subject the new level does not offer is dropped when the level changes',
+   /allow\.indexOf\(st\.subject\) === -1\) st\.subject = ''/.test(html));
+ok('…and a level with one subject picks it outright',
+   /if \(allow\.length === 1\) st\.subject = allow\[0\]/.test(html));
+/* The row's own level/subject are what Ans Key and the Scan app read. */
+ok('the answer is mirrored onto the fields the other apps read',
+   /patch\.level = lead\.level; patch\.subject = lead\.subject;/.test(html));
+ok('a student already set up in Ans Key does not retype their level',
+   /known\.length === 1 && !known\[0\]\.level && p_level\(profile\)/.test(html));
+ok('the list is filtered by the rule', /worksheets = out\.filter\(canSeeWorksheet\);/.test(html));
+/* A worksheet tagged with a level the student is not is one that vanishes
+   from their own list the moment it is saved. */
+ok('an upload takes the level off the active student, never a picker',
+   /var level = \(!isAdmin\(currentUser\) && upSt && upSt\.level\) \? upSt\.level/.test(html));
+ok('the students are dropped on every account change',
+   /myStudents = \[\];[\s\S]{0,120}currentDocId = null;/.test(html));
 
 section('Who has signed in');
 
@@ -1247,7 +1380,7 @@ ok('the gate cannot be dismissed with Esc',
 /* Trapping somebody behind a dialog they have already answered — on a
    dropped connection, of all things — is worse than asking twice. */
 ok('a write that failed lets them through and asks again next time',
-   /roster: answers could not be saved[\s\S]{0,300}onboardFinish\(\)/.test(html));
+   /roster: answers could not be saved[\s\S]{0,600}onboardFinish\(\)/.test(html));
 ok('a gate that throws is not a gate nobody can get past',
    /onboardRequire\(user\)\.catch[\s\S]{0,200}onboardFinish\(\)/.test(html));
 ok('the teacher is not asked, and does not get a row',
