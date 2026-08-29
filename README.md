@@ -12,6 +12,48 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.12.0 — 🧩 The mistake is the question, set out again
+
+**A mistake used to be kept as a photograph of the whole page it was printed on** — with the two
+questions either side of it, and the student's own wrong answer written across it. Printed on a
+practice sheet that is a photocopy of the paper with one question somewhere in it, which is not a
+question anybody can practise.
+
+**So the question is read into ordered blocks instead.** The wording is typeset, and wherever a
+figure belongs there is a picture of that figure, cut out of the page by its own rectangle. It is
+the Science portal's ⚡ **Rapid add**, by way of the Scan app's port of it, and the identifiers are
+deliberately the same ones so that a fix in any of the three copies straight across.
+
+**Three tiers, best first**, and a question is shown at the best one it has:
+
+1. **the question set out again** — typeset wording, the paper's own diagrams back in place;
+2. **the whole question**, cut out of the page;
+3. **the whole page**, which is where this started.
+
+**Every tier is clean.** The page is re-rendered out of the PDF with no annotations on it, so
+nothing here carries the student's own answer — a question handed back for practice with last
+week's wrong answer written across it cannot be practised, and printed for a class it is worse.
+What they wrote is kept as text and shown beside the question, which is where it can be read.
+
+**The options travel with the question now.** A multiple-choice question was being filed with
+nothing to choose between: the reproduction is told to leave word options out of its blocks
+*because* they are printed underneath, so they had to be kept. When the four choices are pictures
+— four shapes, four graphs — they travel as **one** rectangle round the lot, because cut out
+separately they lose the row they were printed in and a student answering "(3)" cannot see which
+one (3) was.
+
+**One renderer.** The card, the ✏️ practice session and the 🖨 printed sheet all build the question
+through the same function, so the sheet cannot print something the card never showed. Every
+picture on the sheet — including every figure inside a rebuilt question — is fetched and awaited
+before the print dialog opens.
+
+Under the hood: the reproduction is its own AI call, on the handful of questions actually being
+filed, budgeted at ten per marking run and spent before the call so a failure cannot buy another
+try. Every failure returns nothing and the mistake is filed exactly as it would have been before
+any of this existed. It needed no Firestore or Storage rules change.
+
+---
+
 ## v1.11.0 — ↻ Practise again, and 🖨 Print
 
 **The answers go back off the paper.** Marking a worksheet puts the answer to every question on
