@@ -90,6 +90,9 @@ const SRC_TIERS   = between('/* ---- WHICH TIER THIS ONE IS',
 const SRC_QNODES  = between('/* =====================================================================\n   THE ONE PLACE A MISTAKE\'S QUESTION IS DRAWN',
                             'function mistakeCard(m) {', 'the question renderer');
 
+const SRC_PALM   = between('var stylusOnly = (function () {',
+                           'function attachOverlayHandlers(p) {', 'palm rejection and touch navigation');
+
 /* ---- A sandbox with just enough world to evaluate them ---- */
 const noop = () => {};
 const domStub = {
@@ -141,13 +144,15 @@ const sandbox = {
   boxNode: () => ({}), escHtml: v => String(v),
   bodyByteLength: j => String(j).length,
   setTimeout, clearTimeout, Blob: class { constructor(p) { this.size = String(p).length; } },
-  Math, JSON, Date, String, Number, Array, Object, parseInt, parseFloat, isNaN, Promise
+  Math, JSON, Date, String, Number, Array, Object, parseInt, parseFloat, isNaN, Promise,
+  // The touch-navigation engine keeps its live fingers in a Map.
+  Map, Set
 };
 vm.createContext(sandbox);
 vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
                 '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
                 '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER + '\n' + SRC_GUIDE +
-                '\n' + SRC_REBUILD + '\n' + SRC_TIERS + '\n' + SRC_QNODES,
+                '\n' + SRC_REBUILD + '\n' + SRC_TIERS + '\n' + SRC_QNODES + '\n' + SRC_PALM,
                 sandbox, { filename: 'index.html' });
 const S = sandbox;
 
@@ -2292,6 +2297,92 @@ ok('…and hidden on screen', /#printSheet\.hidden \{ display: none; \}/.test(ht
 ok('one page per sheet, and the last one carries no break',
    /\.printPage \{[\s\S]{0,200}break-after: page;/.test(html) &&
    /\.printPage:last-child \{ break-after: auto/.test(html));
+
+/* =====================================================================
+   ✍️ THE STYLUS, THE PALM AND THE FINGERS
+   ---------------------------------------------------------------------
+   None of this can be caught by reading a screenshot: a palm threshold set
+   below a fingertip eats ordinary scrolling, one set too high lets the heel
+   of a hand draw across the worksheet, and a stroke that does not release
+   its pointer locks every later touch out of the page for the rest of the
+   session — on a screen that looks perfectly right.
+   ===================================================================== */
+section('The stylus, the palm and the fingers');
+
+const PALM = between("var stylusOnly = (function () {", 'function setStylusOnly(', 'palm rejection');
+ok('pencil-only mode is ON unless the device says otherwise',
+   /v === null \? true : v === '1'/.test(PALM),
+   'a palm that can draw ruins a worksheet before anyone notices');
+ok('the palm threshold sits above a fingertip',
+   /var PALM_CONTACT = (5[5-9]|[6-9]\d);/.test(PALM),
+   'iPads report ordinary fingers at up to ~45px — below that, finger scrolling gets eaten');
+ok('a palm is a CONTACT PATCH, and only a touch can be one',
+   /e\.pointerType === 'touch' && \(e\.width > PALM_CONTACT \|\| e\.height > PALM_CONTACT\)/.test(PALM),
+   'a stylus reports a tiny patch; testing size alone would reject nothing and testing kind alone everything');
+
+const DOWN = between("svg.addEventListener('pointerdown', function (e) {", "if (tool === 'hint')", 'the pointerdown gate');
+ok('a palm starts nothing at all', /if \(isPalmTouch\(e\)\) \{ e\.preventDefault\(\); return; \}/.test(DOWN));
+ok('a second touch cannot hijack a stroke in progress',
+   /activePointerId !== null && e\.pointerId !== activePointerId/.test(DOWN));
+ok('…but a stale gesture is cleared rather than locking the page for good',
+   /cancelStaleGesture\(\)/.test(DOWN),
+   'a pointerup the browser swallowed would otherwise refuse every later touch');
+ok('a touch the navigation engine has taken never reaches a tool',
+   /e\.pointerType === 'touch' && nav\.mode/.test(DOWN));
+ok('in pencil-only mode a finger on a drawing tool does not draw',
+   /stylusOnly && e\.pointerType === 'touch' && isDrawTool\(tool\)/.test(DOWN));
+ok('the first stylus down switches the mode back on',
+   /e\.pointerType === 'pen' && !pencilSeen/.test(DOWN),
+   'whoever has just picked a pencil up is about to rest a hand on the screen');
+
+const MOVE = between("svg.addEventListener('pointermove', function (e) {", 'function endStroke(e) {', 'pointermove');
+ok('only the pointer that started the stroke may continue it',
+   /activePointerId !== null && e\.pointerId !== activePointerId\) return;/.test(MOVE));
+const ENDS = between('function endStroke(e) {', "svg.addEventListener('pointerup', endStroke);", 'endStroke');
+ok('a palm LIFTING OFF does not end the stroke the pencil is drawing',
+   /activePointerId !== null && e\.pointerId !== activePointerId\) return;/.test(ENDS));
+ok('…and the pointer is released when the real one lifts',
+   /activePointerId = null;/.test(ENDS),
+   'a pointer never released locks every later touch out of the page');
+
+/* 💡 hint, 🎤 speak and 🖱️ select are deliberately NOT draw tools: those are
+   a tap and a drag of something already on the page, and a finger doing
+   either is not a palm about to ruin the worksheet. */
+ok('the pen and the eraser are tools a finger must not drive',
+   S.isDrawTool('pen') && S.isDrawTool('highlight') && S.isDrawTool('eraser') && S.isDrawTool('text'));
+ok('…and the hint, the mic and select are not',
+   !S.isDrawTool('hint') && !S.isDrawTool('speak') && !S.isDrawTool('select'));
+
+const NAV = between('function navBind() {', '/* Two-finger double-tap', 'the navigation engine');
+ok('the engine is bound in CAPTURE, ahead of the page overlay',
+   /pointerdown', function \(e\) \{[\s\S]*?\}, true\);/.test(NAV),
+   'bound after it, a second finger could never take a stroke over into a pinch');
+ok('a resting palm navigates nothing either', /if \(isPalmTouch\(e\)\) return;/.test(NAV));
+ok('a second finger on a young stroke throws the accidental dot away',
+   /abortYoungStroke\(e\.timeStamp\)/.test(NAV));
+ok('…and on an established one KEEPS the ink and pinches',
+   /commitTouchStrokeForNav\(\)/.test(NAV),
+   'the ink already drawn is the student’s own work');
+ok('one finger pans only in pencil-only mode, and only on a drawing tool',
+   /nav\.pts\.size === 1 && stylusOnly && isDrawTool\(tool\)/.test(NAV));
+ok('the pinch is collected into one zoom per frame',
+   /scheduleNavZoom\(\)/.test(NAV),
+   'a zoom per pointermove is a forced layout twice a frame on a twenty-page document — that IS the lag');
+ok('the browser’s own touch scroll stands down while the engine pans',
+   /if \(nav\.mode\) e\.preventDefault\(\)/.test(NAV),
+   'the two together double-scroll and fight each other');
+ok('a flick carries on with momentum', /startNavMomentum\(\)/.test(NAV));
+ok('the pages sharpen up once the gesture is over', /scheduleRaster\(\)/.test(NAV));
+
+ok('the browser’s own pinch-zoom is taken off the scroller',
+   /#viewerArea \{[^}]{0,800}touch-action: pan-x pan-y;/.test(html),
+   'left on, it zooms the whole app instead of the worksheet and fights the gesture');
+ok('the mode is remembered on the device',
+   /localStorage\.setItem\('tutorStylusOnly'/.test(html));
+ok('the button is a MODE, not a tool',
+   /<button class="toolBtn" id="stylusBtn"/.test(html) &&
+   !/id="stylusBtn"[^>]*data-tool/.test(html),
+   'the tool buttons are wired and lit by data-tool; a mode wearing one would be set as a tool');
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'

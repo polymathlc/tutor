@@ -1291,7 +1291,81 @@ cut out of the page by its own rectangle. That is the Science portal's ⚡
   apps, so a feature that needs one is a feature that waits.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## ✍️ THE STYLUS, THE PALM AND THE FINGERS (v1.13.0)
+
+`stylusOnly` / `PALM_CONTACT` / `isPalmTouch` / `isDrawTool` / `claimPointer` /
+`cancelStaleGesture` / `abortYoungStroke` / `commitTouchStrokeForNav` / `nav` /
+`navBind` / `zoomAt` / `startNavMomentum` / `setStylusOnly` (search `THE STYLUS,
+THE PALM AND THE FINGERS`), plus the ✍️ button in the toolbar and
+`touch-action: pan-x pan-y` on `#viewerArea`.
+
+**Ported whole from `polymathlc/anskey`** — the same iPad, flat on a table, an
+Apple Pencil in one hand and the heel of the other resting on the page. Keep
+the two in step; a fix to either belongs in both.
+
+- **PENCIL-ONLY MODE IS ON FROM THE START**, and that default is the feature: a
+  palm that can draw ruins a worksheet before anyone notices, and a student who
+  has just watched it happen has no idea what to press. Turning it off is one
+  tap on ✍️, remembered per device — and **the first time a real stylus touches
+  down it comes back on**, because whoever has just picked a pencil up is about
+  to rest a hand on the screen.
+- **A PALM IS A CONTACT PATCH.** iPads report ordinary fingertips at up to
+  ~45px, so `PALM_CONTACT` (55) has to sit above that: set it lower and
+  ordinary finger scrolling is eaten instead, which is the same feature failing
+  the other way round.
+- **ONE POINTER AT A TIME, AND A PALM LIFTING OFF MUST NOT END THE STROKE.**
+  `activePointerId` does both jobs, and it is claimed exactly where the pointer
+  is CAPTURED — the eraser, the move and the draw — never on a tap that returns
+  (💡 hint, 🎤 speak, 🅣 text), which would leave it claimed with no pointerup
+  coming. A gesture whose end never arrived would lock every later touch out of
+  the page for the rest of the session, so a fresh PRIMARY pointer of the same
+  kind clears the stale one (`cancelStaleGesture`) rather than being refused.
+- **`isDrawTool` deliberately excludes 💡 hint, 🎤 speak and 🖱️ select.** Those
+  are a tap and a drag of something already on the page; a finger doing either
+  is not a palm about to ruin the worksheet, and handing them to the pan engine
+  would make them unusable without a pencil.
+- **A SECOND FINGER MEANS NAVIGATE, AND THE INK IS NOT THE PRICE.** Under 300ms
+  the stroke is an accidental dot and is thrown away (`abortYoungStroke`); over
+  it, the stroke is real work — it is COMMITTED as one undo step and the two
+  fingers get the pinch (`commitTouchStrokeForNav`). Leaving it running instead
+  is what makes the second finger appear dead.
+- **THE ENGINE IS BOUND IN CAPTURE ON `#viewerArea`**, ahead of the page
+  overlay, which is the only reason a second finger can take a stroke over into
+  a pinch at all.
+- **The pinch is collected into ONE zoom per animation frame** (`scheduleNavZoom`
+  / `endNavZoom`). A zoom per `pointermove` resizes every page and then reads
+  the scroll back — a forced layout twice a frame on a twenty-page document,
+  which IS the lag. `endNavZoom` flushes the last few milliseconds so the page
+  lands exactly where the fingers left it.
+- **`touch-action: pan-x pan-y` on the scroller is load-bearing**: it keeps the
+  ordinary scroll in the margins either side of a page and takes the browser's
+  own pinch-zoom away. Left on, a pinch zooms the whole app instead of the
+  worksheet and fights the gesture the whole way.
+- **`zoomAt` clears `fittedWidth`** — a pinch is a decision, and the next
+  window resize must not undo it. That rule is older than this block and is the
+  reason `fittedWidth` exists.
+- The ✍️ button carries **no `data-tool`**: it is a MODE, and the tool buttons
+  are wired and lit by that attribute. `S` toggles it, and is handled before the
+  tool table for the same reason.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## House rules
+- After touching **✍️ the stylus, the palm and the fingers** (`stylusOnly`,
+  `PALM_CONTACT`, `isPalmTouch`, `isDrawTool`, `claimPointer`,
+  `cancelStaleGesture`, `abortYoungStroke`, `commitTouchStrokeForNav`, `nav`,
+  `navBind`, `zoomAt`, `startNavMomentum`, `setStylusOnly`, the pointer gates
+  in `attachOverlayHandlers`, or `#viewerArea`'s `touch-action`), run
+  `node tools/tutor-tests.mjs` **and use it with a pencil and a hand on the
+  glass** — no test can feel a gesture. Every failure is silent and the page
+  still draws: a palm threshold under a fingertip eats ordinary scrolling,
+  one over a palm lets the heel of a hand write across the worksheet, a
+  pointer claimed on a tap that returns locks every later touch out of the
+  page for the rest of the session, and a palm allowed to end a stroke cuts
+  the pencil off mid-word. On the other side, a second finger that aborts an
+  established stroke throws the student's own work away to make a pinch
+  work, and one that does not commit it leaves the second finger apparently
+  dead. And `touch-action` left off the scroller zooms the whole app instead
+  of the worksheet.
 - After touching **🧩 the question rebuild or the three tiers** (`MB_BUILD_SYS`,
   `_mbBoxOk`, `_mbInkLevel`, `_mbTrimTextRows`, `_mbTightenRect`, `_mbCropBox`,
   `_mbUnionBox`, `_mbCleanBlocks`, `_mbCleanBuild`, `_mbText`, `_mbBuildBlocks`,

@@ -12,6 +12,29 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.13.0 — ✍️ Write with the pencil, scroll with your fingers
+
+The worksheet is now used the way a notebook app on an iPad is used.
+**Pencil-only mode is on from the start**: the Apple Pencil draws, **your fingers scroll and
+pinch the page**, and **a palm resting on the screen does nothing at all**. One tap on ✍️ (or the
+`S` key) turns it off if you would rather draw with a finger, and the device remembers which way
+you left it — but the first time a real pencil touches down it comes back on by itself, because
+whoever has just picked a pencil up is about to rest a hand on the page.
+
+- **One finger pans**, two fingers pan and **pinch-zoom**, and a flick carries on with momentum.
+- **A second finger landing on a stroke you have only just begun** throws the accidental dot away
+  and scrolls instead; landing on one you have been drawing for a moment **keeps the ink** and
+  hands the two fingers the pinch. Your work is never the price of a gesture.
+- **Two-finger double-tap is undo, three-finger is redo.**
+- A palm cannot start a mark, cannot hijack the stroke the pencil is drawing, and — just as
+  important — **cannot end it by lifting off**.
+- The pages sharpen up again the moment the gesture is over.
+
+The whole engine is the Ans Key annotator's, ported across, so a worksheet feels the same in both
+apps and a fix to either belongs in both.
+
+---
+
 ## v1.12.0 — 🧩 The mistake is the question, set out again
 
 **A mistake used to be kept as a photograph of the whole page it was printed on** — with the two

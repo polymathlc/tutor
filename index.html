@@ -309,6 +309,12 @@
   #viewerArea {
     flex: 1; min-width: 0; overflow: auto; -webkit-overflow-scrolling: touch;
     background: var(--bg-soft); padding: 20px 0 60px;
+    /* The fingers pan and pinch through the engine below, not through the
+       browser: `pan-x pan-y` keeps the ordinary scroll in the margins either
+       side of a page and takes the browser's own pinch-zoom away, which
+       would otherwise fight the gesture and zoom the whole app instead of
+       the worksheet. */
+    touch-action: pan-x pan-y;
   }
   #pagesContainer { display: flex; flex-direction: column; align-items: center; gap: 20px; }
   .pageWrap {
@@ -325,6 +331,10 @@
   .pageWrap svg.overlay.eraserMode { cursor: cell; }
   .pageWrap svg.overlay.hintMode { cursor: help; }
   .pageWrap svg.overlay.speakMode { cursor: crosshair; }
+  /* Pencil-only mode's own button. `.toolBtn.active` already says "this is
+     the one in hand" everywhere else in the bar, so the mode wears the same
+     lit state rather than a second visual language for the same idea. */
+  #stylusBtn.active { color: var(--accent-deep, #1E88E5); }
   .keyChip.on { border-color: var(--accent-deep, #1E88E5); color: var(--accent-deep, #1E88E5); font-weight: 700; }
   /* A worksheet the teacher SET says whose key it is and opens nothing.
      `default` rather than `not-allowed`: it is not a button that is
@@ -1136,6 +1146,10 @@
           <button class="toolBtn" data-tool="ellipse" title="Circle (O)">◯</button>
           <button class="toolBtn" data-tool="eraser" title="Eraser — drag across ink to rub it out (E)">🩹</button>
           <button class="toolBtn" data-tool="select" title="Select and move (V)">🖱️</button>
+          <!-- Pencil-only mode. No data-tool: it is a MODE, not a tool, and
+               the tool buttons are wired and lit by that attribute. -->
+          <button class="toolBtn" id="stylusBtn"
+                  title="Pencil-only mode — the pencil draws, fingers scroll and pinch, a resting palm is ignored (S)">✍️</button>
         </div>
 
         <div class="toolGroup" id="hintTools">
@@ -1601,7 +1615,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.12.0';
+var APP_VERSION = 'v1.13.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -3233,11 +3247,362 @@ function textBoxWidth(p, x) {
   return round2(Math.max(80, Math.min(320, p.baseW - x - 12)));
 }
 
+/* =====================================================================
+   ✍️ THE STYLUS, THE PALM AND THE FINGERS
+   ---------------------------------------------------------------------
+   Ported whole from the Ans Key annotator (`polymathlc/anskey`), because
+   this app is used in exactly the same way: an iPad flat on a table, an
+   Apple Pencil in one hand and the heel of the other hand resting on the
+   page. Keep the two in step.
+
+   THREE THINGS AND EACH IS LOAD-BEARING:
+
+   • PENCIL-ONLY MODE. The pencil draws; a finger on a drawing tool PANS the
+     page instead. It is ON from the start, because a palm that can draw
+     ruins a worksheet before anyone notices, and turning it off is one tap
+     on ✍️ — remembered on the device. The FIRST time a real stylus touches
+     down it switches itself back on: whoever has just picked up a pencil is
+     about to rest a hand on the screen.
+
+   • A PALM IS A CONTACT PATCH, and that is how it is told from a fingertip:
+     iPads report ordinary fingers at up to ~45px, so `PALM_CONTACT` sits
+     above that — below it, ordinary finger scrolling gets eaten instead.
+
+   • ONE POINTER AT A TIME. While a stroke is being drawn every other touch
+     is swallowed rather than allowed to hijack it — and, just as important,
+     a palm LIFTING OFF must not end the stroke the pencil is still drawing.
+     `activePointerId` is what both of those turn on. A gesture whose
+     pointerup never arrived (the browser swallowed it, iPadOS took the
+     touch for a system gesture) would otherwise lock every later touch out
+     of the page for good, so a fresh primary pointer of the same kind
+     clears the stale one instead of being refused.
+
+   The fingers are not merely tolerated, they NAVIGATE: one finger pans in
+   pencil-only mode, two fingers pan and pinch-zoom whatever the tool, and a
+   flick carries on with momentum. Two-finger double-tap is undo and
+   three-finger is redo — the gesture every note-taking app on an iPad has.
+   ===================================================================== */
+
+/* Pencil-only mode, remembered per device. It defaults ON: see above. */
+var stylusOnly = (function () {
+  try {
+    var v = localStorage.getItem('tutorStylusOnly');
+    return v === null ? true : v === '1';
+  } catch (e) { return true; }
+})();
+var pencilSeen = false;        // a stylus has been used this session
+var activePointerId = null;    // the ONE pointer allowed to draw right now
+var activePointerType = null;  // its kind, to tell a stale gesture from a palm
+function claimPointer(e) { activePointerId = e.pointerId; activePointerType = e.pointerType; }
+
+// iPads report ordinary fingertips at contact sizes up to ~45px, so the palm
+// threshold must sit above that or normal finger scrolling gets eaten.
+var PALM_CONTACT = 55;
+function isPalmTouch(e) {
+  return e.pointerType === 'touch' && (e.width > PALM_CONTACT || e.height > PALM_CONTACT);
+}
+
+/* The tools a finger must NOT drive while pencil-only mode is on. 💡 hint,
+   🎤 speak and 🖱️ select are deliberately absent: those are a tap and a drag
+   of something already on the page, and a finger doing either is not a palm
+   about to ruin the worksheet. */
+function isDrawTool(t) {
+  return t === 'pen' || t === 'highlight' || t === 'line' || t === 'arrow' ||
+         t === 'rect' || t === 'ellipse' || t === 'text' || t === 'eraser';
+}
+
+function setStylusOnly(on, quiet) {
+  stylusOnly = !!on;
+  var b = $('stylusBtn');
+  if (b) b.classList.toggle('active', stylusOnly);
+  try { localStorage.setItem('tutorStylusOnly', stylusOnly ? '1' : '0'); } catch (e) {}
+  if (!quiet) {
+    toast(stylusOnly
+      ? '✍️ Pencil-only mode on — the pencil draws, your fingers scroll and pinch.'
+      : '✍️ Pencil-only mode off — a finger can draw again.');
+  }
+}
+
+/* A gesture whose end never reached us would leave its half-drawn stroke on
+   the page and lock every later touch out. Throw the state away and let the
+   new gesture through. */
+function cancelStaleGesture() {
+  if (drawing) {
+    var an = drawing.ann, pg = drawing.page;
+    drawing = null;
+    annotations = annotations.filter(function (x) { return x.id !== an.id; });
+    if (pg) renderOverlay(pg);
+  }
+  erasing = null;
+  moving = null;
+  activePointerId = null;
+  activePointerType = null;
+}
+
+/* A second finger landing on a stroke that has only just begun means the
+   student meant to scroll — throw the accidental dot away rather than
+   leaving a mark nobody wanted. */
+function abortYoungStroke(ts) {
+  if (!drawing || drawing.ptrType !== 'touch' || (ts - drawing.startT) >= 300) return;
+  var an = drawing.ann, pg = drawing.page;
+  drawing = null;
+  activePointerId = null;
+  annotations = annotations.filter(function (x) { return x.id !== an.id; });
+  renderOverlay(pg);
+}
+
+/* …but a second finger arriving on an ESTABLISHED stroke means "navigate",
+   and the ink already drawn is the student's own work: keep it, close the
+   gesture off properly (one stroke, one undo step) and let the pinch take
+   over. A stroke that is nothing but a dot is dropped, exactly as ending it
+   with the pencil would. */
+function commitTouchStrokeForNav() {
+  if (!drawing || drawing.ptrType !== 'touch') return;
+  var an = drawing.ann, pg = drawing.page;
+  drawing = null;
+  activePointerId = null;
+  delete an._ox; delete an._oy;
+  var keep = (an.type === 'pen' || an.type === 'highlight')
+    ? (an.points || []).length >= 2
+    : true;
+  if (keep) {
+    var before = annotations.filter(function (x) { return x.id !== an.id; });
+    pushUndo(JSON.stringify(before));
+    setDirty(true);
+  } else {
+    annotations = annotations.filter(function (x) { return x.id !== an.id; });
+  }
+  renderOverlay(pg);
+}
+
+/* ---- Touch navigation: one finger pans, two pan and pinch ---- */
+var nav = { mode: null, pts: new Map(), cx: 0, cy: 0, dist: 0, vx: 0, vy: 0, lastT: 0 };
+var navMomentum = null;
+
+function navCenterDist() {
+  var arr = [];
+  nav.pts.forEach(function (q) { arr.push(q); });
+  if (!arr.length) return { cx: 0, cy: 0, dist: 0 };
+  var cx = 0, cy = 0;
+  arr.forEach(function (q) { cx += q.x; cy += q.y; });
+  cx /= arr.length; cy /= arr.length;
+  var dist = arr.length >= 2 ? Math.hypot(arr[0].x - arr[1].x, arr[0].y - arr[1].y) : 0;
+  return { cx: cx, cy: cy, dist: dist };
+}
+
+function stopNavMomentum() {
+  if (navMomentum) { cancelAnimationFrame(navMomentum); navMomentum = null; }
+}
+
+/* A flick carries on with decaying velocity after the finger lifts. Without
+   it the page stops dead under the hand, which on a long worksheet is the
+   difference between scrolling and dragging. */
+function startNavMomentum() {
+  var area = $('viewerArea');
+  if (!area) return;
+  var vx = nav.vx, vy = nav.vy;
+  if (Math.abs(vx) < 0.08 && Math.abs(vy) < 0.08) return;
+  var last = performance.now();
+  function step(now) {
+    var dt = Math.min(50, now - last);
+    last = now;
+    area.scrollLeft -= vx * dt;
+    area.scrollTop -= vy * dt;
+    var decay = Math.pow(0.94, dt / 16.7);
+    vx *= decay; vy *= decay;
+    if (Math.abs(vx) > 0.02 || Math.abs(vy) > 0.02) navMomentum = requestAnimationFrame(step);
+    else { navMomentum = null; scheduleRaster(); }
+  }
+  navMomentum = requestAnimationFrame(step);
+}
+
+/* Zoom keeping the point between the fingers fixed on screen.
+   A pinch reports up to 120 moves a second and each one resizes every page
+   and then reads the scroll back — a forced layout twice a frame on a
+   document that can be twenty pages long, which IS the lag. The moves are
+   collected into exactly one zoom per animation frame instead. */
+var navZoom = { ratio: 1, x: 0, y: 0, raf: null };
+function scheduleNavZoom() {
+  if (navZoom.raf) return;
+  navZoom.raf = requestAnimationFrame(flushNavZoom);
+}
+function flushNavZoom() {
+  navZoom.raf = null;
+  var r = navZoom.ratio;
+  navZoom.ratio = 1;
+  if (r !== 1) zoomAt(navZoom.x, navZoom.y, r);
+}
+function endNavZoom() {
+  if (navZoom.raf) { cancelAnimationFrame(navZoom.raf); navZoom.raf = null; }
+  flushNavZoom();   // whatever the last few milliseconds of the pinch asked for
+}
+function zoomAt(clientX, clientY, factor) {
+  var area = $('viewerArea');
+  if (!area) return;
+  var rect = area.getBoundingClientRect();
+  var next = Math.min(4, Math.max(0.25, scale * factor));
+  var f = next / scale;
+  if (f === 1) return;
+  var ox = clientX - rect.left + area.scrollLeft;
+  var oy = clientY - rect.top + area.scrollTop;
+  scale = next;
+  fittedWidth = false;   // a pinch is a decision; the next resize must not undo it
+  applyScale();
+  area.scrollLeft = ox * f - (clientX - rect.left);
+  area.scrollTop = oy * f - (clientY - rect.top);
+}
+
+/* The engine is bound in CAPTURE on the scroller, so it sees a touch before
+   the page overlay under it does — which is what lets a second finger take a
+   stroke over into a pinch. */
+function navBind() {
+  var area = $('viewerArea');
+  if (!area || area._navBound) return;
+  area._navBound = true;
+
+  area.addEventListener('pointerdown', function (e) {
+    if (e.pointerType !== 'touch') return;
+    stopNavMomentum();
+    if (isPalmTouch(e)) return;          // a resting palm navigates nothing
+    nav.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (nav.pts.size === 2 && nav.mode !== 'pinch') {
+      abortYoungStroke(e.timeStamp);
+      // A finger stroke older than that is real work: commit it and let the
+      // two fingers navigate, which is plainly what was meant. Leaving it
+      // running instead is what makes the second finger appear dead.
+      commitTouchStrokeForNav();
+      if (!drawing && !moving && !erasing) {
+        nav.mode = 'pinch';
+        var c = navCenterDist();
+        nav.cx = c.cx; nav.cy = c.cy; nav.dist = c.dist;
+        nav.vx = 0; nav.vy = 0; nav.lastT = e.timeStamp;
+      }
+    } else if (nav.pts.size === 1 && stylusOnly && isDrawTool(tool) && !editingId &&
+               e.target.closest && e.target.closest('svg.overlay')) {
+      // Pencil-only mode: one finger on the page pans it.
+      nav.mode = 'pan';
+      nav.cx = e.clientX; nav.cy = e.clientY;
+      nav.vx = 0; nav.vy = 0; nav.lastT = e.timeStamp;
+    }
+  }, true);
+
+  area.addEventListener('pointermove', function (e) {
+    if (e.pointerType !== 'touch' || !nav.pts.has(e.pointerId)) return;
+    nav.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!nav.mode) return;
+    var c = navCenterDist();
+    var dx = c.cx - nav.cx;
+    var dy = c.cy - nav.cy;
+    var dt = Math.max(1, e.timeStamp - nav.lastT);
+    area.scrollLeft -= dx;
+    area.scrollTop -= dy;
+    nav.vx = 0.75 * (dx / dt) + 0.25 * nav.vx;
+    nav.vy = 0.75 * (dy / dt) + 0.25 * nav.vy;
+    nav.lastT = e.timeStamp;
+    if (nav.mode === 'pinch' && nav.dist > 0 && c.dist > 0) {
+      navZoom.ratio *= c.dist / nav.dist;
+      navZoom.x = c.cx;
+      navZoom.y = c.cy;
+      nav.dist = c.dist;
+      scheduleNavZoom();
+    }
+    nav.cx = c.cx; nav.cy = c.cy;
+  }, true);
+
+  function navEnd(e) {
+    if (e.pointerType !== 'touch' || !nav.pts.has(e.pointerId)) return;
+    nav.pts.delete(e.pointerId);
+    if (!nav.mode) return;
+    if (nav.mode === 'pinch') endNavZoom();   // land exactly where the fingers left it
+    if (nav.pts.size === 0) {
+      startNavMomentum();
+      nav.mode = null;
+      scheduleRaster();     // the pages sharpen up now the gesture is over
+    } else {
+      // Re-anchor on the fingers still down, or the view jumps.
+      var c = navCenterDist();
+      nav.cx = c.cx; nav.cy = c.cy; nav.dist = c.dist;
+      if (nav.pts.size === 1) nav.mode = 'pan';
+    }
+  }
+  document.addEventListener('pointerup', navEnd, true);
+  document.addEventListener('pointercancel', navEnd, true);
+
+  /* While the engine is panning, the browser's own touch scroll must stand
+     down — the two together double-scroll and fight each other. */
+  area.addEventListener('touchmove', function (e) {
+    if (nav.mode) e.preventDefault();
+  }, { passive: false });
+
+  /* Two-finger double-tap = undo, three-finger = redo. */
+  var mtap = { max: 0, t0: 0, moved: false, pts: {} };
+  var lastMultiTap = { count: 0, t: 0 };
+  area.addEventListener('touchstart', function (e) {
+    if (e.touches.length === e.changedTouches.length) {
+      mtap = { max: 0, t0: e.timeStamp, moved: false, pts: {} };
+    }
+    Array.prototype.forEach.call(e.changedTouches, function (t) {
+      mtap.pts[t.identifier] = { x: t.clientX, y: t.clientY };
+    });
+    if (e.touches.length > mtap.max) mtap.max = e.touches.length;
+  }, { passive: true });
+  area.addEventListener('touchmove', function (e) {
+    Array.prototype.forEach.call(e.changedTouches, function (t) {
+      var st = mtap.pts[t.identifier];
+      if (st && Math.hypot(t.clientX - st.x, t.clientY - st.y) > 14) mtap.moved = true;
+    });
+  }, { passive: true });
+  area.addEventListener('touchend', function (e) {
+    if (e.touches.length) return;    // wait until every finger is up
+    var dur = e.timeStamp - mtap.t0;
+    if (mtap.moved || dur > 320 || mtap.max < 2 || mtap.max > 3) return;
+    if (lastMultiTap.count === mtap.max && e.timeStamp - lastMultiTap.t < 500) {
+      lastMultiTap = { count: 0, t: 0 };
+      if (editingId) return;
+      if (mtap.max === 2) {
+        if (undoStack.length) { undo(); toast('↩︎ Undo'); }
+        else toast('Nothing to undo.');
+      } else {
+        if (redoStack.length) { redo(); toast('↪︎ Redo'); }
+        else toast('Nothing to redo.');
+      }
+    } else {
+      lastMultiTap = { count: mtap.max, t: e.timeStamp };
+    }
+  }, { passive: true });
+}
+
 function attachOverlayHandlers(p) {
   var svg = p.svg;
 
   svg.addEventListener('pointerdown', function (e) {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+    /* ---- PALM REJECTION — see ✍️ THE STYLUS, THE PALM AND THE FINGERS ----
+       The first time a real stylus touches down, pencil-only mode comes
+       back on: whoever has just picked a pencil up is about to rest a hand
+       on the screen. */
+    if (e.pointerType === 'pen' && !pencilSeen) {
+      pencilSeen = true;
+      if (!stylusOnly) setStylusOnly(true);
+    }
+    // A palm-sized contact patch starts nothing at all.
+    if (isPalmTouch(e)) { e.preventDefault(); return; }
+    // While one pointer is drawing, every extra touch is swallowed rather
+    // than allowed to hijack the stroke. A fresh PRIMARY pointer of the same
+    // kind can only exist if the last gesture's end was lost — clear the
+    // stale state rather than locking the page for the rest of the session.
+    if (activePointerId !== null && e.pointerId !== activePointerId) {
+      if (e.isPrimary && e.pointerType === activePointerType) cancelStaleGesture();
+      else { e.preventDefault(); return; }
+    }
+    // A touch the navigation engine has taken never reaches a tool.
+    if (e.pointerType === 'touch' && nav.mode) { e.preventDefault(); return; }
+    // In pencil-only mode a finger on a drawing tool PANS the page (the
+    // engine above has already taken it) — the pencil stays the only thing
+    // that makes a mark.
+    if (stylusOnly && e.pointerType === 'touch' && isDrawTool(tool)) return;
+
     var pt = eventPoint(e, p);
 
     // A tap inside the box being typed in just moves the caret. A tap
@@ -3267,6 +3632,7 @@ function attachOverlayHandlers(p) {
     if (tool === 'eraser') {
       e.preventDefault();
       erasing = { page: p, snap: snapshot(), removed: false, lastX: e.clientX, lastY: e.clientY };
+      claimPointer(e);
       svg.setPointerCapture(e.pointerId);
       eraseAlong(e.clientX, e.clientY, e.clientX, e.clientY);
       return;
@@ -3279,6 +3645,7 @@ function attachOverlayHandlers(p) {
       renderAllOverlays();
       if (!id) return;
       e.preventDefault();
+      claimPointer(e);
       svg.setPointerCapture(e.pointerId);
       moving = { page: p, id: id, snap: snapshot(), lastX: pt.x, lastY: pt.y, moved: false };
       return;
@@ -3292,6 +3659,7 @@ function attachOverlayHandlers(p) {
 
     // Everything else draws.
     e.preventDefault();
+    claimPointer(e);
     svg.setPointerCapture(e.pointerId);
     var a = { id: newAnnId(), page: p.num, color: color, width: strokeW };
     if (tool === 'pen' || tool === 'highlight') {
@@ -3311,12 +3679,17 @@ function attachOverlayHandlers(p) {
       a.x = pt.x; a.y = pt.y; a.w = 0; a.h = 0;
       a._ox = pt.x; a._oy = pt.y;
     }
-    drawing = { page: p, ann: a };
+    // `ptrType` and `startT` are what let a second finger tell an accidental
+    // dot from real work when it arrives to pinch — see abortYoungStroke.
+    drawing = { page: p, ann: a, ptrType: e.pointerType, startT: e.timeStamp };
     annotations.push(a);
     renderOverlay(p);
   });
 
   svg.addEventListener('pointermove', function (e) {
+    // Only the pointer that started the gesture may continue it: a palm or a
+    // second finger moving across the page is ignored completely.
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
     if (erasing && erasing.page === p) {
       eraseAlong(erasing.lastX, erasing.lastY, e.clientX, e.clientY);
       erasing.lastX = e.clientX;
@@ -3350,6 +3723,11 @@ function attachOverlayHandlers(p) {
   });
 
   function endStroke(e) {
+    // A palm or a stray finger LIFTING OFF must not end the stroke the
+    // pencil is still drawing.
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
+    activePointerId = null;
+    activePointerType = null;
     if (erasing && erasing.page === p) {
       if (erasing.removed) { pushUndo(erasing.snap); setDirty(true); }
       erasing = null;
@@ -10802,6 +11180,9 @@ cropPointerSetup();
 document.querySelectorAll('.toolBtn[data-tool]').forEach(function (b) {
   b.addEventListener('click', function () { setTool(b.getAttribute('data-tool')); });
 });
+$('stylusBtn').addEventListener('click', function () { setStylusOnly(!stylusOnly); });
+setStylusOnly(stylusOnly, true);   // the button says which mode it is in from the first frame
+navBind();
 $('undoBtn').addEventListener('click', undo);
 $('redoBtn').addEventListener('click', redo);
 $('zoomInBtn').addEventListener('click', function () { zoomBy(1.2); });
@@ -10877,6 +11258,8 @@ document.addEventListener('keydown', function (e) {
   // that wants a fatter pen is on the page, not in the toolbar.
   if (e.key === '[') { e.preventDefault(); nudgeAnnSize(-1); return; }
   if (e.key === ']') { e.preventDefault(); nudgeAnnSize(1); return; }
+  // `s` is the MODE, not a tool, so it is handled before the tool table.
+  if (e.key.toLowerCase() === 's') { e.preventDefault(); setStylusOnly(!stylusOnly); return; }
   var keys = { p: 'pen', h: 'highlight', t: 'text', l: 'line', a: 'arrow', r: 'rect',
                o: 'ellipse', e: 'eraser', v: 'select', d: 'hint', m: 'speak' };
   var want = keys[e.key.toLowerCase()];
