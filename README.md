@@ -12,6 +12,25 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.12.1 — the text box stays open while you are typing in it
+
+Three fixes on top of v1.12.0, all found by re-reading the work rather than by anyone hitting them.
+**v1.12.0 was reported before these landed, so the badge says v1.12.1** — that is what the badge is
+for.
+
+- **The auto-save was closing the text box under you.** Saving an open box has to write the words
+  down *and* it used to end the edit — so two and a half seconds after tapping 🅣, the box you were
+  still finding the keyboard to answer closed itself, and vanished entirely if you had not typed
+  yet. There is no way back into a box in this app; tapping again makes a new one. The save now
+  writes the words and leaves you typing.
+- **Typing marks the worksheet as unsaved.** It did not, so closing the tab mid-sentence saved
+  nothing, and the save landed a fixed 2.5 seconds after you *opened* the box rather than after you
+  stopped writing.
+- **The caret survives the page redrawing under it** — the box keeps the caret, and on an iPad the
+  keyboard, when something else on the page changes.
+
+---
+
 ## v1.12.0 — ✍️ Writing on the page, properly
 
 **The answers go on the page with a stylus, and until now that was the roughest part of the app.**

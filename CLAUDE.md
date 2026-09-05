@@ -1393,6 +1393,12 @@ wrote anything at all. The app reported a clean save.
   auto-save timer never slides to 2.5s after the child STOPS.
 - **Every write reads the box FIRST, before the `dirty` test.** Asking `dirty`
   first is the bug: an uncommitted box need not have made the worksheet dirty.
+- **A KNOWN, DELIBERATE CONSEQUENCE: an untyped box can now be SAVED empty.**
+  The auto-save firing on a box nobody has typed into writes `text: ''` and
+  stores it, where the old full commit deleted it. It is invisible — every
+  LEAVING path still deletes an empty box — and it can only be seen by opening
+  the worksheet on another device while that box sits open. Deleting a box a
+  child has this second tapped into existence is the worse of the two.
 - **A TEST CAN HOLD A BUG IN PLACE.** The first version of the harness check
   here asserted `performSave` calls `commitActiveTextEdit` — pinning the
   property that is right for the Save BUTTON onto the TIMER, without
