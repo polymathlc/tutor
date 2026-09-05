@@ -274,6 +274,11 @@ Everything that decides what the buddy SAYS is a lift from `polymathlc/anskey`, 
 - **The child's work stays here.** Nothing from this app is written into any question bank.
 
 ## The annotation engine is Ans Key's
+**The SHAPES are, and for a long time only the shapes were** — the input
+pipeline was this app's own until v1.12.0, and that is the half a child
+feels. See **✍️ WRITING ON THE PAGE WITH A STYLUS** below for the pipeline;
+this section is the data.
+
 The annotation SHAPES are that app's exactly, so ink written here means the same thing there:
 `pen` / `highlight` / `rect` / `ellipse` / `line` / `arrow` / `text`.
 
@@ -1191,7 +1196,245 @@ plus the key pages.
   looks perfectly right.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## ✍️ WRITING ON THE PAGE WITH A STYLUS (v1.12.0)
+
+`stylusOnly` / `pencilSeen` / `setStylusOnly` / `renderStylusBtn` /
+`PALM_CONTACT` / `isPalmTouch` / `isDrawTool` / `claimPointer` /
+`activePointerId` / `activePointerType` / `cancelStaleGesture` /
+**`redrawTemp`** / **`commitDrawing`** / `pointIn` / `overlayRebuilding` /
+**`bindTextEditNode`**, the whole of `attachOverlayHandlers`, the
+`attachTouchNavigation()` engine, `rasterWaits`, and `#stylusBtn` (search
+`WRITING ON THE PAGE WITH A STYLUS` and `MOVING THE PAGE WITH FINGERS`).
+
+**This is Ans Key's INPUT PIPELINE, ported.** The section above says the
+annotation *engine* is Ans Key's, and that was only ever true of the
+SHAPES — `annHeads`, `annDashName`, `annBounds`, the data a worksheet
+carries between the two apps. The way a stroke got ONTO the page was this
+app's own, and it was the half a child feels. **Ship a change to the
+pipeline to both repos.**
+
+Every fault below is invisible from a screenshot and invisible on a laptop,
+because a mouse has no palm, dispatches one sample per move, and never asks
+to scroll the page it is drawing on.
+
+### 🐛 THE WHOLE PAGE WAS REBUILT ON EVERY POINTERMOVE
+
+`renderOverlay(p)` empties the SVG and re-creates a node for every
+annotation on the page, re-serialising every point of every stroke. A
+stylus dispatches ~120 moves a second, so by the tenth answer each one of
+those cost a rebuild of the previous nine.
+
+- **A LIVE STROKE IS ONE TEMP NODE WHOSE `d` GROWS IN PLACE**
+  (`redrawTemp`), and it is **NOT in `annotations` until it is finished**.
+  In the array it would be rebuilt with everything else on every move —
+  and a gesture iPadOS cancelled would leave a half-stroke in the saved
+  body.
+- **THE SYMPTOM COMPOUNDS, WHICH IS WHY IT READS AS A TIRED IPAD.** A
+  browser dispatches one `pointermove` per frame; blow the frame budget and
+  it dispatches FEWER, so fewer points are captured, so **the handwriting
+  gets more angular the fuller the page gets**.
+- **`commitDrawing` IS THE ONE DOOR**, because a stroke can finish three
+  ways — lifted, cancelled by iPadOS, or handed to the navigation engine
+  when a second finger lands — and all three must keep the ink and push
+  exactly one undo step. It keeps the node already on screen rather than
+  rebuilding the page, which is what makes rapid dots cheap.
+- Measured, in a real browser, on a page holding 30 answers: **772 ms and
+  18,631 nodes for one line of working, against 32 ms and one node.**
+
+### 🐛 A RESTING PALM DREW — AND MERGED INTO THE PEN'S STROKE
+
+There was no palm rejection, no pointer ownership and no pencil-only mode.
+A second contact **overwrote `drawing`**, so the pen's later moves were
+appended to the PALM's point list: a line across the working, in the
+child's own ink, on a page that is then marked from a picture of it. The
+orphaned first stroke was left in `annotations` with no undo entry.
+
+- **`isPalmTouch` refuses a palm-sized contact.** `PALM_CONTACT` is 55
+  because iPads report ordinary fingertips up to ~45px — **a threshold at
+  or below that eats normal finger scrolling, which is a worse bug than the
+  one it fixes**.
+- **`activePointerId` lets ONE pointer own a gesture**, checked on the way
+  down AND on the way across: rejected on `pointerdown` and accepted on
+  `pointermove` is a palm that draws.
+- **A lost up/cancel clears the stale state rather than locking the page.**
+  Without `cancelStaleGesture` a swallowed `pointerup` leaves the app
+  looking frozen with nothing on any screen to say why. `lostpointercapture`
+  is the same reasoning by the other door.
+- **PENCIL-ONLY DEFAULTS *OFF*, AND THAT IS A DELIBERATE DIVERGENCE FROM
+  ANS KEY**, which defaults it on. Ans Key is a teacher's app on a
+  teacher's iPad and the teacher knows where the button is. This one is
+  opened by a nine-year-old on whatever is in the house — very often a
+  phone with no stylus anywhere near it, where pencil-only means tapping
+  the page, nothing happening, and no way of knowing why. **It arms itself
+  the first time a `pointerType === 'pen'` touches down**, which is the
+  moment palm rejection is worth having. Change the default back and the
+  app is broken, silently, for the commonest device it runs on.
+- **`isDrawTool` decides what a finger may not do**, and 🖱️ select, 💡 hint
+  and 🎤 speak are deliberately NOT in it: they make no marks, and a child
+  asking for a hint should not have to find their stylus first.
+
+### 🐛 THE STYLUS'S EXTRA SAMPLES WERE THROWN AWAY
+
+- **`getCoalescedEvents()` or fast handwriting is a chain of straight
+  segments.** A stylus samples far faster than `pointermove` is dispatched
+  and the samples in between are reachable no other way.
+- **The page is measured ONCE per move and the rectangle shared across the
+  samples** (`pointIn`). A `getBoundingClientRect` per sample is a dozen
+  forced layouts inside one event — this app is a step ahead of Ans Key
+  here, which measures per sample.
+- **The points are THINNED at one page unit.** Untinned, one line of
+  working is thousands of points, saved and re-serialised for the rest of
+  the worksheet's life.
+
+### 🐛 A FINGER COULD NOT MOVE THE PAGE AT ALL
+
+The overlay is `touch-action: none` (which is what lets a stroke be drawn
+without the page sliding out from under it) and **nothing had been put in
+the browser's place**. The 24px strips beside the page were the only place
+a finger could scroll from, and **zooming in once took even those away**.
+
+- **`attachTouchNavigation()` is Ans Key's engine**: two fingers pan and
+  pinch, one finger pans in pencil-only mode, a flick decays, and the
+  browser's own scroll is stopped while it drives.
+- **ONE ZOOM PER ANIMATION FRAME** (`scheduleNavZoom`). A pinch reports up
+  to 120 moves a second and each one resizes every page and reads the
+  scroll back — a forced layout twice a frame. That IS the lag.
+- **Every scrap of the pinch counts.** Ignoring changes under a threshold
+  and applying the whole of it at once is what makes a zoom feel steppy.
+- **A second finger on a JUST-started stroke throws the accident away
+  (`abortYoungStroke`); on an established one the ink is COMMITTED**
+  (`commitTouchStrokeForNav`) — by then it is the child's work. Without the
+  second half the finger simply did nothing and stayed dead until lifted.
+- **`rasterWaits` never re-rasterises mid-gesture.** Repainting a page under
+  a finger that has merely PAUSED is a visible stutter; the fingers coming
+  off is what says the zoom has settled. Capped, so a lost `pointerup`
+  cannot leave the pages soft for good.
+- **`applyScale` does NOT rebuild the pins during a gesture.** Each pin is a
+  foreignObject, a div and two listeners rebuilt across every page, and a
+  pinch asks for a new scale every frame. They catch up once, in `navEnd`.
+- **Two- and three-finger double taps are undo and redo.** ↶ is most of a
+  phone screen's sideways scrolling away and Ctrl+Z is not a thing on an
+  iPad.
+- **`#viewerArea` is `touch-action: pan-x pan-y`** so the margins still
+  scroll natively, and every control is `touch-action: manipulation` — a
+  child double-tapping ▲ to grow the pen would otherwise zoom the whole app.
+
+### 🐛 …AND `hidden` DID NOT HIDE
+
+`[hidden] { display: none }` is a **UA-stylesheet** rule, and ANY author rule
+beats the UA sheet whatever its specificity. `.toolBtn { display: grid }` and
+`.iconBtn { display: grid }` therefore re-showed every button hidden with
+`el.hidden = true` — measured in Chromium as `display: grid`.
+
+- **THIS WAS ALREADY BREAKING 🎤.** `renderMicBtns` hides both microphones on
+  a device with no support for one, and this app's own rule is that **a
+  button which silently does nothing is worse than no button**. They were
+  being drawn anyway, on every such device, doing nothing when tapped.
+- The fix is one author-level `[hidden] { display: none !important; }`. Every
+  `hidden` in this file is on something that is meant to be hidden (the three
+  file inputs, 🎤 ×2, ✍️), so making the attribute work can only ever hide
+  what was always meant to be hidden — **check that again before adding a
+  `hidden` to anything that is supposed to show.**
+
+### 🐛 AND A TYPED ANSWER COULD BE SILENTLY LOST
+
+Not a matter of feel. `a.text` is written ONLY by `commitActiveTextEdit`,
+and the only things that called it were tapping elsewhere on the page,
+switching tool, Escape, printing and marking. **Type an answer and press
+Save — or ← Back, or close the tab — and the answer was gone.** Not saved
+wrongly: the box carried `text: ''` the whole time, `dirty` had already
+been cleared by the auto-save that fired when the EMPTY box was created, so
+every exit path's `if (dirty && currentDocId)` was false and none of them
+wrote anything at all. The app reported a clean save.
+
+- **`bindTextEditNode` attaches `blur` (commit) and `input` (grow).** Every
+  button in the app takes the focus off the box, so the words are written
+  down the moment the child reaches for anything.
+- **`overlayRebuilding` is what stops a blur from the REBUILD committing the
+  box.** `renderOverlay` lifts the live node out and puts it back; without
+  the flag that closes the box mid-word and takes the iPad's keyboard down
+  with it. Ans Key carries the identical flag.
+- **IT IS A COUNTER CLEARED ON THE NEXT TURN, NOT A BOOLEAN CLEARED IN
+  LINE.** Chromium moves the focus to the body with NO event when a focused
+  element is removed; **Firefox and Safari fire a real `blur`, and not
+  always synchronously** — so a flag already back to false by the time it
+  lands admits exactly the case it was written for, on two engines out of
+  three and never on the one this is developed in. The blur handler asks
+  again on the next turn for the same reason. A counter rather than a flag
+  because `renderAllOverlays` rebuilds every page in a row.
+- **THE REBUILD PUTS THE FOCUS BACK.** Taking the node out of the document
+  drops the focus even though the very same node goes back in — the child
+  then types into nothing, and on an iPad the keyboard goes down with it.
+- **The box GROWS with the words and never shrinks below the one-line
+  floor.** `a.h` was written only at commit, so until then a two-line answer
+  depended on `overflow: visible` — and a clipped answer is one the marking
+  run never sees, and marks as blank.
+- **🔴 THE AUTO-SAVE MUST NOT CLOSE THE BOX, and the first version of this
+  fix did.** `commitActiveTextEdit` does TWO jobs — write the words down and
+  END the edit — and `performSave` runs on a **2.5-second timer armed the
+  moment the box is created** (`startTextBox` → `setDirty` →
+  `scheduleAutoSave`). Putting the full commit at the top of it was a
+  regression with a fuse on it: the box a child was still hunting for the
+  keyboard to answer closed itself under them, and **deleted itself outright
+  if they had not typed yet**. There is no double-tap-to-edit here, so there
+  is no way back in — tapping again makes a NEW box.
+  **`syncTextEditValue` is the non-destructive half** and is what the save
+  calls: the words reach `annotations`, the child carries on typing. The FULL
+  commit stays on the paths where the child is LEAVING — `flushSave`, ← Back,
+  `beforeunload`, `setTool`, and a tap elsewhere on the page.
+- **`readTextInto` is the ONE place the words are read out of the div**, so
+  the save and the commit can never disagree about what a child wrote. The
+  duplicate had already gone wrong once: the ` ` arrived as a LITERAL
+  non-breaking space, which is the hazard `ANN_CARET_PROBE` is written as an
+  escape to avoid — *an invisible literal is one a later edit silently drops*.
+- **TYPING MARKS THE WORKSHEET DIRTY** (`input` → `setDirty`). Without it the
+  worksheet is not dirty while an answer is being written, so `flushSave`'s
+  guard is false and a tab closed mid-sentence saves nothing — and the
+  auto-save timer never slides to 2.5s after the child STOPS.
+- **Every write reads the box FIRST, before the `dirty` test.** Asking `dirty`
+  first is the bug: an uncommitted box need not have made the worksheet dirty.
+- **A KNOWN, DELIBERATE CONSEQUENCE: an untyped box can now be SAVED empty.**
+  The auto-save firing on a box nobody has typed into writes `text: ''` and
+  stores it, where the old full commit deleted it. It is invisible — every
+  LEAVING path still deletes an empty box — and it can only be seen by opening
+  the worksheet on another device while that box sits open. Deleting a box a
+  child has this second tapped into existence is the worse of the two.
+- **A TEST CAN HOLD A BUG IN PLACE.** The first version of the harness check
+  here asserted `performSave` calls `commitActiveTextEdit` — pinning the
+  property that is right for the Save BUTTON onto the TIMER, without
+  distinguishing them. It now asserts the opposite, and says why.
+
+- Run **`node tools/tutor-tests.mjs`** after touching any of it, and
+  **`node tools/stylus-check.mjs`** (and `--selftest`) to see what it costs.
+
 ## House rules
+- After touching **✍️ the stylus pipeline, the touch navigation or the text
+  box's commit** (`stylusOnly`, `pencilSeen`, `setStylusOnly`,
+  `renderStylusBtn`, `PALM_CONTACT`, `isPalmTouch`, `isDrawTool`,
+  `claimPointer`, `activePointerId`, `cancelStaleGesture`, `redrawTemp`,
+  `commitDrawing`, `pointIn`, `overlayRebuilding`, `bindTextEditNode`,
+  `rasterWaits`, `attachOverlayHandlers`, `attachTouchNavigation`, or the
+  `touch-action` rules), run **`node tools/tutor-tests.mjs`** and
+  **`node tools/stylus-check.mjs --selftest`**. Reading the source cannot
+  answer this one and neither can a screenshot: a mouse has no palm, sends
+  one sample per move, and never wants to scroll the page it is drawing on,
+  so on the machine this is written on every one of these looks perfect.
+  Put `renderOverlay(p)` back in the `pointermove` and writing gets slower
+  and JAGGIER the fuller the page gets — the browser drops moves to keep up,
+  so fewer points are captured — and it reads as a tired iPad rather than as
+  a bug. Drop the palm rules and the heel of a hand writes across the
+  working and merges into the pen's own stroke, in the child's ink, on a
+  page that is then marked from a picture of it. Default pencil-only ON
+  again and a child on a phone taps the page, nothing happens, and no screen
+  says why. Take the navigation engine away and the worksheet cannot be
+  moved with fingers at all, and zooming in traps them. Lose
+  `getCoalescedEvents` and fast handwriting is a chain of straight segments;
+  lose the thinning and one line of working is thousands of points saved for
+  ever. Put the stroke back into `annotations` at `pointerdown` and a
+  cancelled gesture saves a half-stroke. And take `bindTextEditNode`'s
+  `blur` away — or ask `dirty` before committing in any save path — and a
+  typed answer is silently replaced with an empty box by the button marked
+  Save.
 - After touching **↻ Practise again or 🖨 Print** (`practiseAgainAvailable`,
   `practiseAgain`, `attempts`, `printKeyAllowed`, `printHasKeyPages`,
   `printWorksheet`, `openPrintModal`, `PRINT_MAX_SIDE`, the `#printSheet`

@@ -12,6 +12,78 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.12.1 — the text box stays open while you are typing in it
+
+Three fixes on top of v1.12.0, all found by re-reading the work rather than by anyone hitting them.
+**v1.12.0 was reported before these landed, so the badge says v1.12.1** — that is what the badge is
+for.
+
+- **The auto-save was closing the text box under you.** Saving an open box has to write the words
+  down *and* it used to end the edit — so two and a half seconds after tapping 🅣, the box you were
+  still finding the keyboard to answer closed itself, and vanished entirely if you had not typed
+  yet. There is no way back into a box in this app; tapping again makes a new one. The save now
+  writes the words and leaves you typing.
+- **Typing marks the worksheet as unsaved.** It did not, so closing the tab mid-sentence saved
+  nothing, and the save landed a fixed 2.5 seconds after you *opened* the box rather than after you
+  stopped writing.
+- **The caret survives the page redrawing under it** — the box keeps the caret, and on an iPad the
+  keyboard, when something else on the page changes.
+
+---
+
+## v1.12.0 — ✍️ Writing on the page, properly
+
+**The answers go on the page with a stylus, and until now that was the roughest part of the app.**
+The annotation *shapes* were Ans Key's; the way a stroke got onto the page was not. Four faults,
+every one of them silent — the ink appeared either way, just worse.
+
+- **Your hand can rest on the screen now.** There was no palm rejection at all, so the heel of a
+  hand made marks, and its contact was *merged into the pen's own stroke* — a line shooting across
+  your working, in your own ink, on a page that is then marked from a picture of it. A palm-sized
+  contact is refused, one pointer owns a stroke at a time, and **the first time a stylus touches
+  the page, pencil-only mode switches itself on**: your stylus writes, your fingers move the page.
+  ✍️ in the toolbar turns it off again, and the device remembers.
+- **Your fingers can move the worksheet.** They could not — at all. The page refuses the browser's
+  own scrolling so that writing on it works, and nothing had been put in its place, so the only way
+  to get around was the +/− buttons and a 24-pixel strip down each side. Zoom in once and even that
+  was gone. **Two fingers now pan and pinch-zoom**, a flick carries on, and in pencil-only mode one
+  finger moves the page.
+- **Undo is two fingers, double-tapped.** Redo is three. ↶ is most of a phone screen's worth of
+  sideways scrolling away, and Ctrl+Z is not a thing on an iPad.
+- **Fast handwriting is not angular any more.** A stylus samples far faster than the browser
+  reports it, and every sample in between was being thrown away, so writing quickly came back as a
+  chain of straight segments.
+- **And it does not slow down as the page fills up.** Every movement of the pen used to rebuild
+  every answer already on the page. Measured in a real browser, on a page holding thirty answers,
+  one line of working cost **772 ms and built 18,631 nodes**; it now costs **32 ms and builds
+  one** — [24× faster](tools/stylus-check.mjs).
+
+**A typed answer can no longer be lost.** This one was not a matter of feel. The words in a text
+box were only written into the worksheet when you tapped somewhere else on the page — so typing an
+answer and then pressing **Save**, or ← Back, or simply closing the tab, saved an *empty box* over
+it. The box now writes itself down the moment you touch anything else, every save path commits it
+first, and **the box grows as you type** rather than staying one line tall and clipping the answer
+out of the picture the marking reads. The box also stops losing the caret — and, on an iPad, the
+keyboard — when something else on the page redraws underneath it, and **the auto-save no longer
+closes it while you are still writing**: it saves the words and leaves you typing.
+
+Smaller things that come with it: a tap leaves a visible dot rather than invisible ink; a gesture
+iPadOS interrupts keeps what you had written instead of throwing it away; the pages stop
+re-sharpening under your fingers mid-pinch; and double-tapping ▲ to make the pen bigger no longer
+zooms the whole app.
+
+**And 🎤 no longer appears on devices that cannot use it.** Buttons in this app are hidden by
+setting `hidden` on them — which the stylesheet had been quietly overriding, so the microphone was
+drawn on machines with no support for it and did nothing when tapped. Both mics and the new ✍️
+button are properly hidden now.
+
+**Two harnesses cover it.** `node tools/tutor-tests.mjs` grew a *Writing with a stylus* section
+(78 checks). `node tools/stylus-check.mjs` is new and drives the **real** handlers in a **real**
+browser with synthetic pointer events, printing the before-and-after timings above;
+`--selftest` breaks the pipeline eight ways and requires every break to be caught.
+
+---
+
 ## v1.11.0 — ↻ Practise again, and 🖨 Print
 
 **The answers go back off the paper.** Marking a worksheet puts the answer to every question on

@@ -1943,6 +1943,456 @@ ok('one page per sheet, and the last one carries no break',
    /\.printPage \{[\s\S]{0,200}break-after: page;/.test(html) &&
    /\.printPage:last-child \{ break-after: auto/.test(html));
 
+
+/* =====================================================================
+   ✍️ WRITING ON THE PAGE WITH A STYLUS
+   ---------------------------------------------------------------------
+   Every fault this section guards against is INVISIBLE from a screenshot
+   and invisible from reading the app on a laptop, because a mouse has no
+   palm, dispatches one sample per move and never asks to scroll the page
+   it is drawing on. They only show up on the device the app is actually
+   used on, in front of a child who cannot say what is wrong beyond "it's
+   laggy" or "it drew when I didn't want it to".
+
+   • Rebuild the overlay on every pointermove again and writing gets
+     slower with every answer already on the page — a symptom that reads
+     as a tired iPad rather than as a bug.
+   • Drop getCoalescedEvents and fast handwriting comes back angular.
+   • Take the thinning out and a line of working is thousands of points,
+     saved and re-serialised for the rest of the worksheet's life.
+   • Lose the palm rules and the heel of a hand writes on the page — in
+     the child's own ink, on a worksheet that is then MARKED from a
+     picture of it.
+   • Put the stroke back into `annotations` at pointerdown and a gesture
+     iPadOS cancels leaves a half-stroke in the saved body.
+   • Default pencil-only ON and a child on a phone taps the page, nothing
+     happens, and nothing on any screen says why.
+   ===================================================================== */
+section('Writing with a stylus');
+
+const SRC_STYLUS = between('var stylusOnly = (function () {',
+                           'function setTool(t) {', 'the stylus input pipeline');
+
+/* A DOM small enough to run the renderer against, and honest about the two
+   things these tests actually measure: how many nodes get built, and what
+   ends up in the `d` string. */
+function fakeNode(tag) {
+  return {
+    tag, children: [], parentNode: null, attrs: {},
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    getAttribute(k) { return this.attrs[k] === undefined ? null : this.attrs[k]; },
+    removeAttribute(k) { delete this.attrs[k]; },
+    appendChild(n) { n.parentNode = this; this.children.push(n); return n; },
+    removeChild(n) {
+      const i = this.children.indexOf(n);
+      if (i >= 0) this.children.splice(i, 1);
+      n.parentNode = null;
+      return n;
+    },
+    querySelector(sel) {
+      if (sel === 'path') {
+        for (const c of this.children) { if (c.tag === 'path') return c; }
+      }
+      return null;
+    }
+  };
+}
+
+function stylusSandbox() {
+  const built = { annNode: 0, renderOverlay: 0, pushUndo: 0 };
+  const ctx = {
+    console, localStorage: { getItem: () => null, setItem: () => {} },
+    window: { matchMedia: () => ({ matches: false }) },
+    navigator: { maxTouchPoints: 0 },
+    document: { createElement: () => fakeNode('div') },
+    built,
+    annotations: [],
+    drawing: null, erasing: null, moving: null,
+    round2: n => Math.round(n * 100) / 100,
+    pathFromPoints(pts) {
+      if (!pts.length) return '';
+      let d = 'M ' + pts[0].x + ' ' + pts[0].y;
+      for (let i = 1; i < pts.length; i++) d += ' L ' + pts[i].x + ' ' + pts[i].y;
+      return d;
+    },
+    annNode(a) {
+      built.annNode++;
+      const g = fakeNode('g');
+      g.setAttribute('data-id', a.id);
+      if (a.type === 'pen' || a.type === 'highlight') {
+        const p = fakeNode('path');
+        p.setAttribute('d', ctx.pathFromPoints(a.points || []));
+        g.appendChild(p);
+      }
+      return g;
+    },
+    annBounds(a) {
+      if (a.type === 'pen' || a.type === 'highlight') {
+        const xs = (a.points || []).map(q => q.x), ys = (a.points || []).map(q => q.y);
+        if (!xs.length) return { x: 0, y: 0, x2: 0, y2: 0 };
+        return { x: Math.min(...xs), y: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
+      }
+      return { x: a.x || 0, y: a.y || 0, x2: (a.x || 0) + (a.w || 0), y2: (a.y || 0) + (a.h || 0) };
+    },
+    pushUndo() { built.pushUndo++; },
+    setDirty() {},
+    renderOverlay() { built.renderOverlay++; },
+    renderAllOverlays() { built.renderOverlay++; },
+    renderPinsOn() {}, renderMarksOn() {},
+    toast() {},
+    $: () => null
+  };
+  ctx.globalThis = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(SRC_STYLUS, ctx);
+  return ctx;
+}
+
+const STY = stylusSandbox();
+
+/* ---- Palm rejection ---- */
+/* iPads report ordinary fingertips at contact sizes up to ~45px, so a
+   threshold at or below that eats normal finger scrolling — which would be
+   a worse bug than the one it fixes. */
+ok('a palm-sized touch is refused', STY.isPalmTouch({ pointerType: 'touch', width: 70, height: 70 }));
+ok('…and so is one that is wide but not tall', STY.isPalmTouch({ pointerType: 'touch', width: 90, height: 8 }));
+ok('an ordinary fingertip is NOT a palm', !STY.isPalmTouch({ pointerType: 'touch', width: 44, height: 44 }));
+ok('a stylus is never a palm, whatever it reports',
+   !STY.isPalmTouch({ pointerType: 'pen', width: 300, height: 300 }),
+   'a pen that reported a big contact patch would be locked out of the app entirely');
+ok('a mouse is never a palm', !STY.isPalmTouch({ pointerType: 'mouse', width: 999, height: 999 }));
+
+/* ---- Which tools a finger may not use in pencil-only mode ---- */
+['pen', 'highlight', 'rect', 'ellipse', 'line', 'arrow', 'text', 'eraser'].forEach(t => {
+  ok('“' + t + '” makes marks, so a finger pans instead', STY.isDrawTool(t));
+});
+/* These three make no marks, and a finger has to keep them: a child asking
+   for a hint should not have to go and find their stylus first, and a text
+   box you cannot drag is a text box in the wrong place for ever. */
+ok('🖱️ select is NOT a marking tool — a finger still drags a box', !STY.isDrawTool('select'));
+ok('💡 hint is NOT a marking tool — it is a tap', !STY.isDrawTool('hint'));
+ok('🎤 speak is NOT a marking tool — it is a tap', !STY.isDrawTool('speak'));
+
+/* ---- Pencil-only defaults OFF ---- */
+/* Ans Key defaults it ON, and that is right for a teacher who knows where
+   the button is. Here it would be a nine-year-old on a phone tapping the
+   page and nothing happening. */
+ok('pencil-only defaults OFF with nothing stored', STY.stylusOnly === false,
+   'a finger-only phone is the commonest device this app runs on');
+ok('…and the file says why it diverges from Ans Key',
+   /DELIBERATE DIVERGENCE FROM ANS KEY/.test(html),
+   'a default that disagrees with the app it was ported from needs its reason written down, or it reads as a porting slip and gets "fixed" back');
+ok('…and it is stored per device', /localStorage\.setItem\('tutorStylusOnly'/.test(SRC_STYLUS));
+ok('a stylus touching down switches it on by itself',
+   /pencilSeen = true;[\s\S]{0,80}setStylusOnly\(true\)/.test(html),
+   'palm rejection that has to be found in a toolbar is palm rejection nobody has on');
+
+/* ---- The live stroke is ONE node whose `d` grows in place ---- */
+/* This is the whole performance fix. Rebuilding the overlay per move made
+   every stroke cost a rebuild of every answer already on the page. */
+{
+  const c = stylusSandbox();
+  const svg = fakeNode('svg');
+  const page = { num: 1, svg, baseW: 600, baseH: 800 };
+  const ann = { id: 'a1', type: 'pen', page: 1, points: [{ x: 0, y: 0 }] };
+  c.drawing = { page, ann, svgNode: null, _d: null, _dCount: 0 };
+  c.redrawTemp(true);
+  const madeAtStart = c.built.annNode;
+  for (let i = 1; i <= 400; i++) {
+    ann.points.push({ x: i, y: i });
+    c.redrawTemp();
+  }
+  ok('400 samples build NO extra nodes after the first',
+     c.built.annNode === madeAtStart, 'built ' + c.built.annNode + ' nodes for one stroke');
+  ok('…and never rebuild the page overlay', c.built.renderOverlay === 0,
+     'renderOverlay ran ' + c.built.renderOverlay + ' times during one stroke');
+  ok('…and the page still holds exactly one live node', svg.children.length === 1);
+  const d = svg.children[0].querySelector('path').getAttribute('d');
+  ok('the `d` string is complete', d.startsWith('M 0 0 L 1 1 ') && d.endsWith(' L 400 400'), d.slice(0, 40));
+  ok('…and has one segment per point', d.split(' L ').length === 401,
+     'got ' + d.split(' L ').length + ' segments');
+  /* The incremental string has to be INVALIDATED by a full rebuild, or the
+     next append lands on a `d` that no longer describes what is on screen. */
+  c.redrawTemp(true);
+  ok('a forced rebuild invalidates the incremental string', c.drawing._d === null);
+  ok('…and replaces the node rather than stacking a second one',
+     svg.children.length === 1, 'got ' + svg.children.length + ' nodes');
+}
+
+/* ---- Committing the stroke ---- */
+{
+  const c = stylusSandbox();
+  const svg = fakeNode('svg');
+  const page = { num: 1, svg, baseW: 600, baseH: 800 };
+  const ann = { id: 'a2', type: 'pen', page: 1, points: [{ x: 5, y: 5 }, { x: 9, y: 9 }] };
+  c.drawing = { page, ann, svgNode: null, _d: null, _dCount: 0 };
+  c.redrawTemp(true);
+  const kept = c.commitDrawing(true);
+  ok('a real stroke is committed', kept === true);
+  ok('…into annotations, once', c.annotations.length === 1 && c.annotations[0].id === 'a2');
+  ok('…with exactly one undo step, pushed BEFORE it lands',
+     c.built.pushUndo === 1, 'got ' + c.built.pushUndo);
+  ok('…keeping the node already on screen rather than rebuilding the page',
+     c.built.renderOverlay === 0 && svg.children.length === 1);
+  ok('…and the finished node catches the eraser again',
+     svg.children[0].getAttribute('pointer-events') === null,
+     'a stroke left pointer-events:none can never be rubbed out');
+}
+
+/* A TAP IS A DOT. `pathFromPoints` of a single point draws nothing at all,
+   so without this the child's mark is invisible ink that still catches the
+   eraser — they see nothing and then rub out something they cannot see. */
+{
+  const c = stylusSandbox();
+  const svg = fakeNode('svg');
+  const page = { num: 1, svg, baseW: 600, baseH: 800 };
+  const ann = { id: 'a3', type: 'pen', page: 1, points: [{ x: 5, y: 5 }] };
+  c.drawing = { page, ann, svgNode: null, _d: null, _dCount: 0 };
+  c.redrawTemp(true);
+  ok('a one-point tap is KEPT, as a visible dot', c.commitDrawing(true) === true);
+  ok('…by giving it a second point', c.annotations[0].points.length === 2);
+  ok('…and the node on screen is redrawn to show it',
+     svg.children[0].querySelector('path').getAttribute('d').split(' L ').length === 2);
+}
+
+/* A box or a line dragged nowhere is a tap, not a mark — dropping it keeps
+   the page free of invisible zero-size shapes that still catch the eraser. */
+{
+  const c = stylusSandbox();
+  const svg = fakeNode('svg');
+  const page = { num: 1, svg, baseW: 600, baseH: 800 };
+  const ann = { id: 'a4', type: 'rect', page: 1, x: 10, y: 10, w: 0.5, h: 0.5 };
+  c.drawing = { page, ann, svgNode: null, _d: null, _dCount: 0 };
+  c.redrawTemp(true);
+  ok('a box dragged nowhere is dropped', c.commitDrawing(true) === false);
+  ok('…and leaves nothing behind, in the array or on the page',
+     c.annotations.length === 0 && svg.children.length === 0);
+  ok('…and costs no undo step', c.built.pushUndo === 0);
+}
+
+/* A GESTURE THE BROWSER LOST must not leave its half-stroke on the page and
+   every later touch locked out — the app looks frozen and nothing says why. */
+{
+  const c = stylusSandbox();
+  const svg = fakeNode('svg');
+  const page = { num: 1, svg, baseW: 600, baseH: 800 };
+  c.drawing = { page, ann: { id: 'a5', type: 'pen', page: 1, points: [{ x: 1, y: 1 }] },
+                svgNode: null, _d: null, _dCount: 0 };
+  c.redrawTemp(true);
+  c.claimPointer({ pointerId: 7, pointerType: 'touch' });
+  ok('a pointer can be claimed', c.activePointerId === 7 && c.activePointerType === 'touch');
+  c.cancelStaleGesture();
+  ok('a stale gesture releases the pointer', c.activePointerId === null && c.activePointerType === null,
+     'left claimed, every later touch on the page is swallowed for the rest of the session');
+  ok('…and sweeps its half-drawn stroke off the page', svg.children.length === 0);
+  ok('…and puts nothing into annotations', c.annotations.length === 0);
+}
+
+/* ---- Against index.html itself ---- */
+/* None of the rest can be measured from the outside: they are properties of
+   the event handlers, and the one that gets forgotten is always the one no
+   screen can show. */
+const OVERLAY = between('function attachOverlayHandlers(p) {',
+                        '/* `eventPoint` with the page\'s rectangle already measured',
+                        'the overlay handlers');
+
+ok('the pen reads every coalesced sample the stylus gave us',
+   /getCoalescedEvents\s*&&\s*e\.getCoalescedEvents\(\)/.test(OVERLAY),
+   'without it, fast handwriting comes back as a chain of straight segments');
+ok('…falling back to the event itself where there are none',
+   /if \(!samples \|\| !samples\.length\) samples = \[e\];/.test(OVERLAY));
+ok('…and the page is measured ONCE per move, not once per sample',
+   /var rect = p\.svg\.getBoundingClientRect\(\);/.test(OVERLAY) &&
+   /pointIn\(samples\[si\], p, rect\)/.test(OVERLAY),
+   'a getBoundingClientRect per sample is a dozen forced layouts inside one event');
+ok('the points are thinned',
+   /Math\.abs\(sp\.x - last\.x\) \+ Math\.abs\(sp\.y - last\.y\) >= 1/.test(OVERLAY),
+   'untinned, one line of working is thousands of points saved for ever');
+
+ok('the live stroke goes through redrawTemp, never renderOverlay',
+   /redrawTemp\(\);/.test(OVERLAY) && !/^\s*renderOverlay\(p\);\s*$/m.test(
+     OVERLAY.slice(OVERLAY.indexOf("addEventListener('pointermove'"),
+                   OVERLAY.indexOf('function endStroke'))
+       .replace(/if \(moving[\s\S]*?\n    \}/, '')),
+   'a rebuild per move makes every stroke cost a rebuild of the whole page');
+ok('the stroke in hand is NOT in `annotations` yet',
+   !/annotations\.push\(a\);\s*\n\s*renderOverlay\(p\);/.test(OVERLAY),
+   'in the array it is rebuilt with everything else on every single move — and a cancelled gesture saves a half-stroke');
+
+ok('a palm never starts anything', /if \(isPalmTouch\(e\)\) \{ e\.preventDefault\(\); return; \}/.test(OVERLAY));
+ok('one pointer owns the gesture', /activePointerId !== null && e\.pointerId !== activePointerId/.test(OVERLAY));
+ok('…and a lost up/cancel clears the stale state rather than locking the page',
+   /cancelStaleGesture\(\)/.test(OVERLAY));
+ok('a moving palm is ignored too',
+   /pointermove'[\s\S]{0,200}activePointerId !== null && e\.pointerId !== activePointerId/.test(OVERLAY),
+   'rejected on the way down and accepted on the way across is a palm that draws');
+ok('a palm lifting off never ends the real gesture',
+   /function endStroke\(e\) \{[\s\S]{0,200}e\.pointerId !== activePointerId/.test(OVERLAY));
+
+ok('a finger pans rather than draws in pencil-only mode',
+   /if \(stylusOnly && e\.pointerType === 'touch' && isDrawTool\(tool\)\) return;/.test(OVERLAY));
+ok('…and the navigation engine\'s touches never reach the tools',
+   /e\.pointerType === 'touch' && nav\.mode/.test(OVERLAY));
+
+/* iPadOS cancels a gesture for a system swipe or a palm-triggered scroll.
+   Losing half an answer to a swipe nobody meant to make is the kind of thing
+   that stops a child using the app at all. */
+ok('pointercancel KEEPS the ink', /addEventListener\('pointercancel', endStroke\)/.test(OVERLAY));
+ok('there is deliberately no pointerleave handler',
+   !/addEventListener\('pointerleave'/.test(OVERLAY),
+   'with pointer capture it only cuts a stroke in half at the margin — which is exactly where working goes');
+ok('…and the file says so, so it is not "restored" as a missing case',
+   /Deliberately NO pointerleave handler/.test(OVERLAY));
+
+/* ---- The navigation engine ---- */
+const NAV = between('(function attachTouchNavigation() {', "$('stylusBtn').addEventListener",
+                    'the touch navigation engine');
+ok('two fingers pinch-zoom', /nav\.mode = 'pinch'/.test(NAV));
+ok('…keeping the point under the fingers fixed', /function zoomAt\(clientX, clientY, factor\)/.test(NAV));
+ok('…and one zoom per animation frame, not one per event',
+   /requestAnimationFrame\(flushNavZoom\)/.test(NAV),
+   'a resize plus a scroll read per event is a forced layout twice a frame on a ten-page document');
+ok('…landing exactly where the fingers left it', /function endNavZoom/.test(NAV) && /endNavZoom\(\);/.test(NAV));
+ok('one finger pans in pencil-only mode', /nav\.mode = 'pan'/.test(NAV));
+ok('…but NEVER while the stylus is mid-stroke', /!drawing &&/.test(NAV),
+   'a hand contact SMALLER than PALM_CONTACT is not a palm, and would set the page panning under a live stroke — which measures against a moving rectangle, so the writing smears');
+ok('…in the CAPTURE phase, ahead of the overlay', /\}, true\);/.test(NAV));
+ok('a flick carries on', /function startNavMomentum/.test(NAV));
+ok('a palm is not a navigating finger', /if \(isPalmTouch\(e\)\) return;/.test(NAV));
+
+/* A second finger landing on a stroke means "scroll". A young stroke was an
+   accident; an established one is the child's work and is kept. */
+ok('a second finger on a JUST-started stroke throws the accident away',
+   /function abortYoungStroke/.test(NAV) && /startT < 300/.test(NAV));
+ok('…but on an established one the ink is COMMITTED, not lost',
+   /function commitTouchStrokeForNav/.test(NAV) && /commitDrawing\(true\)/.test(NAV));
+
+/* ↶ is in a toolbar that scrolls sideways on a phone, and Ctrl+Z is not a
+   thing on an iPad. */
+ok('a two-finger double tap is undo', /mtap\.max === 2/.test(NAV) && /undo\(\);/.test(NAV));
+ok('…and three fingers is redo', /redo\(\);/.test(NAV));
+ok('…never while a text box is being typed in', /if \(editingId\) return;/.test(NAV));
+ok('the browser\'s own scroll is stopped while the engine is driving',
+   /if \(nav\.mode\) e\.preventDefault\(\);/.test(NAV) && /\{ passive: false \}/.test(NAV));
+
+/* ---- The box being typed in ----
+   The one DATA-LOSS bug in this app: `a.text` is written only by
+   `commitActiveTextEdit`, and until v1.12.0 no save path called it — so
+   typing an answer and pressing Save wrote an EMPTY box over it and reported
+   a clean save. Every check here is silent and the app looks right. */
+const TEXTBIND = between('function bindTextEditNode(div, id) {', 'function commitActiveTextEdit(',
+                         'the text-box binding');
+ok('the box being typed in is BOUND, not just made editable',
+   /if \(editingId === a\.id\) bindTextEditNode\(div, a\.id\);/.test(html));
+ok('…committing on blur', /addEventListener\('blur'/.test(TEXTBIND),
+   'without it the words reach the worksheet only if the child happens to tap the page again');
+ok('…and growing the box on input', /addEventListener\('input'/.test(TEXTBIND));
+ok('…never shrinking one the student dragged taller',
+   /Math\.max\(div\.scrollHeight, a\.h \|\| 0/.test(TEXTBIND),
+   'that was their decision — and a box that shrinks clips the answer out of the marked picture');
+
+/* A blur caused by the REBUILD is not the child leaving the box. Chromium
+   drops the focus silently; Firefox and Safari fire a real blur, and not
+   always synchronously — so a flag cleared in line lets exactly the case it
+   was written for through, on two engines out of three. */
+ok('a blur from the overlay rebuild never commits the box',
+   /if \(overlayRebuilding \|\| !div\.isConnected\) return;/.test(TEXTBIND));
+ok('…and it is asked again on the next turn, for a browser that fires it late',
+   /setTimeout\(function \(\) \{[\s\S]{0,200}document\.activeElement === div\) return;/.test(TEXTBIND),
+   'an async blur lands after a flag cleared in line is already back to false');
+ok('`overlayRebuilding` is a COUNTER, not a boolean',
+   /var overlayRebuilding = 0;/.test(html),
+   'renderAllOverlays rebuilds every page in a row, so the flag nests');
+ok('…and survives an annNode that throws',
+   /\} finally \{\s*setTimeout\(function \(\) \{ if \(overlayRebuilding > 0\)/.test(html),
+   'left above zero it never comes down, and the blur backstop is silently dead for the rest of the session');
+ok('…cleared on the NEXT turn, not in line',
+   /setTimeout\(function \(\) \{ if \(overlayRebuilding > 0\) overlayRebuilding--; \}, 0\);/.test(html));
+ok('…and the rebuild puts the focus back on the box',
+   /if \(hadFocus && keptDiv && keptDiv\.isConnected/.test(html),
+   'taking the node out of the document drops the focus even though the same node goes back in — the child then types into nothing, and on an iPad the keyboard goes down with it');
+
+/* EVERY write commits FIRST, before the `dirty` test. Asking `dirty` first is
+   the bug: an uncommitted box does not make the worksheet dirty, so the guard
+   is false and nothing is written at all. */
+/* 🔴 THE AUTO-SAVE MUST NOT CLOSE THE BOX, and this is the one place that
+   says so. `commitActiveTextEdit` does two jobs — write the words down AND
+   end the edit — and `performSave` runs on a 2.5-SECOND TIMER armed the
+   moment the box is created. Putting the full commit at the top of it was a
+   regression with a fuse on it: the box a child is still hunting for the
+   keyboard to answer closed itself under them, and deleted itself outright
+   if they had not typed yet. There is no double-tap-to-edit in this app, so
+   there is no way back into it — tapping again makes a NEW box.
+   An earlier version of THIS CHECK asserted the opposite and held the bug in
+   place: it pinned the property that is right for the Save BUTTON onto the
+   TIMER, without distinguishing them. */
+const SAVE_FN = between('async function performSave(quiet) {', 'function autoSaveDelay(',
+                        'the save');
+ok('the auto-save writes the words down…',
+   /syncTextEditValue\(\);/.test(SAVE_FN),
+   'an open box holds the answer outside `annotations`, so the save stores an empty box over it');
+ok('…and does NOT end the edit',
+   !/commitActiveTextEdit\(\)/.test(SAVE_FN),
+   'performSave runs on a 2.5s timer armed when the box was OPENED — ending the edit here closes the box under a child who is still typing, and deletes it if they have not started');
+ok('`syncTextEditValue` really is the non-destructive half',
+   /function syncTextEditValue\(\) \{\s*if \(editingId\) readTextInto\(editingId\);\s*\}/.test(html),
+   'it must not clear editingId, rebuild the overlay, or drop an empty box');
+ok('…and both halves read the div through ONE door',
+   /var a = readTextInto\(id\);/.test(html) &&
+   (html.match(/innerText\.replace/g) || []).length === 1,
+   'two copies of that extraction is two answers for what a child wrote');
+ok('…written as an escape, not an invisible literal',
+   /innerText\.replace\(\/\\u00a0\/g, ' '\)/.test(html),
+   'a literal non-breaking space is one a later edit silently drops — the lesson ANN_CARET_PROBE carries');
+
+/* TYPING IS A CHANGE. Without it the worksheet is not `dirty` while an answer
+   is being written, so `flushSave`'s guard is false and a tab closed
+   mid-sentence saves nothing — and the auto-save timer, armed when the box was
+   OPENED, never slides to 2.5s after the child STOPS. */
+ok('typing marks the worksheet dirty',
+   /div\.addEventListener\('input', function \(\) \{ setDirty\(true\); \}\);/.test(TEXTBIND));
+
+/* The LEAVING paths keep the full commit: there is no box to keep open when
+   the child has gone. All three ask BEFORE the `dirty` test — an uncommitted
+   box need not have made the worksheet dirty, and asking first decides there
+   is nothing to save and lets the answer die with the tab. */
+const LEAVING = [
+  ['flushSave', /function flushSave\(\) \{[\s\S]{0,600}?commitActiveTextEdit\(\);\s*\n\s*if \(dirty/],
+  ['the ← Back button', /\$\('backBtn'\)\.addEventListener\('click', function \(\) \{\s*commitActiveTextEdit\(\);/],
+  ['beforeunload', /addEventListener\('beforeunload', function \(e\) \{\s*commitActiveTextEdit\(\);/]
+];
+LEAVING.forEach(([name, re]) => {
+  ok(name + ' commits the open box before it tests `dirty`', re.test(html),
+     'the child leaves and their answer is replaced by an empty box, with the app reporting a clean save');
+});
+
+/* ---- The button ---- */
+/* THE `hidden` ATTRIBUTE ONLY WORKS IF THE STYLESHEET LETS IT. `[hidden]`
+   is a UA rule and ANY author rule beats the UA sheet whatever its
+   specificity, so `.toolBtn { display: grid }` re-shows every toolbar button
+   hidden with `el.hidden = true` — measured in Chromium as `display: grid`.
+   Both `renderMicBtns` and `renderStylusBtn` hide that way, and this app's
+   own rule is that a button which silently does nothing is worse than no
+   button. */
+ok('the stylesheet makes `hidden` actually hide',
+   /\n  \[hidden\] \{ display: none !important; \}/.test(html),
+   '.toolBtn sets `display: grid`, which beats the UA [hidden] rule — 🎤 and ✍️ are both drawn on devices that cannot use them');
+ok('…and the buttons that rely on it are still hidden that way',
+   /tb\.hidden = !voiceSupported\(\)/.test(html) && /b\.hidden = !touchy/.test(html));
+
+ok('the ✍️ button exists', /id="stylusBtn"/.test(html));
+ok('…and is hidden on a device with no touchscreen',
+   /<button class="toolBtn" id="stylusBtn" hidden/.test(html),
+   'on a laptop it is a switch that can only ever break the mouse');
+ok('…revealed by one door', /function renderStylusBtn\(\)/.test(html));
+ok('…which reads the device rather than guessing',
+   /any-pointer: coarse/.test(html) && /navigator\.maxTouchPoints/.test(html));
+ok('…and it is wired up', /\$\('stylusBtn'\)\.addEventListener\('click'/.test(html));
+ok('the gestures are said on screen, not only in a tooltip',
+   /class="zoomTip"/.test(html),
+   'a tooltip is a thing nobody on a touchscreen can open');
+
+
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'
   : '✓ all ' + checks + ' checks passed'));
