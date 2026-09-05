@@ -271,6 +271,13 @@
   .toolGroup { display: flex; gap: 4px; align-items: center; padding: 0 6px;
                border-left: 1px solid var(--line); }
   .toolGroup:first-child { border-left: none; padding-left: 0; }
+  /* WITHOUT THIS, TAPPING ▲ TWICE ZOOMS THE WHOLE APP. iOS treats a quick
+     second tap as a double-tap-to-zoom unless the target opts out, and
+     bumping the pen size twice is exactly what a child does. It belongs on
+     every control, not just the size spinner. */
+  .btn, .toolBtn, .swatch, .bTab, .iconBtn, .sizeStep, .sizeInput, .keyChip {
+    touch-action: manipulation;
+  }
   .toolBtn {
     width: 38px; height: 38px; display: grid; place-items: center; font-size: 17px;
     background: var(--bg); border: 1px solid var(--line); border-radius: 10px;
@@ -309,6 +316,11 @@
   #viewerArea {
     flex: 1; min-width: 0; overflow: auto; -webkit-overflow-scrolling: touch;
     background: var(--bg-soft); padding: 20px 0 60px;
+    /* The overlay over each page is `touch-action: none`, so the margins and
+       the gaps between pages are the only places the browser itself will
+       scroll from. Naming pan here keeps those working while the navigation
+       engine drives everything over the page. */
+    touch-action: pan-x pan-y;
   }
   #pagesContainer { display: flex; flex-direction: column; align-items: center; gap: 20px; }
   .pageWrap {
@@ -320,6 +332,13 @@
     position: absolute; inset: 0; width: 100%; height: 100%;
     touch-action: none; cursor: crosshair;
   }
+  /* What the fingers can do, said once beside the zoom buttons rather than
+     in a tooltip nobody on a touchscreen can open. */
+  .zoomTip {
+    font-size: 11px; color: var(--ink-soft, #6B6B66); white-space: nowrap;
+    padding-left: 4px; letter-spacing: .01em;
+  }
+  @media (max-width: 900px) { .zoomTip { display: none; } }
   .pageWrap svg.overlay.selectMode { cursor: default; }
   .pageWrap svg.overlay.textMode { cursor: text; }
   .pageWrap svg.overlay.eraserMode { cursor: cell; }
@@ -1136,8 +1155,12 @@
         </div>
 
         <div class="toolGroup">
-          <button class="toolBtn" id="undoBtn" title="Undo (Ctrl+Z)">↶</button>
-          <button class="toolBtn" id="redoBtn" title="Redo (Ctrl+Shift+Z)">↷</button>
+          <!-- Pencil-only mode. Hidden on a device with no touchscreen —
+               see renderStylusBtn(). -->
+          <button class="toolBtn" id="stylusBtn" hidden aria-pressed="false"
+                  title="✍️ Pencil-only — your stylus writes, your fingers move the page, and your hand resting on it is ignored">✍️</button>
+          <button class="toolBtn" id="undoBtn" title="Undo (Ctrl+Z, or a two-finger double tap)">↶</button>
+          <button class="toolBtn" id="redoBtn" title="Redo (Ctrl+Shift+Z, or a three-finger double tap)">↷</button>
         </div>
 
         <div class="toolGroup">
@@ -1145,6 +1168,7 @@
           <span id="zoomLabel">100%</span>
           <button class="toolBtn" id="zoomInBtn" title="Zoom in">+</button>
           <button class="toolBtn" id="fitBtn" title="Fit the page width">⤢</button>
+          <span class="zoomTip">pinch to zoom · two fingers to move</span>
         </div>
 
         <button class="btn btnSm keyChip hidden" id="keyChip" title="This worksheet's answer key">🔑 Answer key</button>
@@ -1576,7 +1600,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.11.0';
+var APP_VERSION = 'v1.12.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -2504,14 +2528,35 @@ function applyScale() {
     p.wrap.style.height = (p.baseH * scale) + 'px';
   });
   updateToolCursor();
-  syncHintPinSizes();
-  syncMarkPins();
+  // The pins and the ✓/✗ chips are drawn in SCREEN pixels, so they have to
+  // be resized when the zoom changes — but each one is a foreignObject, a
+  // div and two listeners REBUILT ACROSS EVERY PAGE, and a pinch asks for a
+  // new scale on every animation frame. Rebuilding them 60 times a second is
+  // most of what a pinch costs; they are re-sized once, when the fingers come
+  // off. The page itself scales with CSS either way, so nothing looks wrong
+  // in between — the pins are simply a fraction out until the gesture ends.
+  if (!(nav && nav.mode)) {
+    syncHintPinSizes();
+    syncMarkPins();
+  }
   scheduleRaster();
 }
+var rasterWaits = 0;
 function scheduleRaster() {
   clearTimeout(rasterTimer);
   rasterTimer = setTimeout(function () {
     rasterTimer = null;
+    // NEVER mid-gesture. Re-rasterising a page throws its bitmap away and
+    // paints a new one, which is a visible stutter under a finger that has
+    // merely PAUSED half way through a pinch. The fingers coming off is what
+    // says the zoom has settled. Capped, so a pointerup the browser loses
+    // cannot leave the pages soft for the rest of the session.
+    if (nav && nav.mode && rasterWaits < 16) {
+      rasterWaits++;
+      scheduleRaster();
+      return;
+    }
+    rasterWaits = 0;
     rasterVisiblePages();
   }, 130);
 }
@@ -2600,6 +2645,13 @@ function fitWidth() {
 /* ================= Annotation rendering ================= */
 function renderAllOverlays() { pages.forEach(renderOverlay); syncSizeCtl(); }
 
+/* True only while the live node is out of the document being put back. A
+   `blur` that arrives in that window is the REBUILD, not the child leaving
+   the box, and committing on it would close the box they are still typing
+   in — mid-word, taking the iPad's keyboard down with it. Ans Key carries
+   the same flag for the same reason. */
+var overlayRebuilding = false;
+
 function renderOverlay(p) {
   var svg = p.svg;
   // Rebuilding the overlay throws away the node of the box being typed in —
@@ -2607,6 +2659,7 @@ function renderOverlay(p) {
   // So that ONE node is lifted out before the rebuild and put back into it.
   var keepId = editingId;
   var kept = keepId ? svg.querySelector('g[data-id="' + keepId + '"]') : null;
+  overlayRebuilding = true;
   if (kept && kept.parentNode) kept.parentNode.removeChild(kept);
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   annotations.forEach(function (a) {
@@ -2614,6 +2667,7 @@ function renderOverlay(p) {
     if (kept && a.id === keepId) { svg.appendChild(kept); return; }
     svg.appendChild(annNode(a));
   });
+  overlayRebuilding = false;
   if (selectedId && selectedId !== editingId) {
     var selAnn = annotations.find(function (a) { return a.id === selectedId; });
     if (selAnn && selAnn.page === p.num) {
@@ -2699,6 +2753,7 @@ function annNode(a) {
     div.contentEditable = (editingId === a.id) ? 'true' : 'false';
     fo.appendChild(div);
     g.appendChild(fo);
+    if (editingId === a.id) bindTextEditNode(div, a.id);
   }
   return g;
 }
@@ -2844,9 +2899,241 @@ function eventPoint(e, p) {
   };
 }
 
-var drawing = null;   // { page, ann }
+var drawing = null;   // { page, ann, svgNode, _d, _dCount, ptrType, startT }
 var moving = null;    // { page, id, snap, lastX, lastY, moved }
 var erasing = null;   // { page, snap, removed }
+
+/* =====================================================================
+   ✍️ WRITING ON THE PAGE WITH A STYLUS
+   ---------------------------------------------------------------------
+   This is Ans Key's input pipeline, ported. The annotation SHAPES were
+   already that app's; the way a stroke gets ONTO the page was not, and
+   that is the half a child actually feels. Four faults, and every one of
+   them is silent — the ink appears either way, just worse:
+
+   1. THE WHOLE PAGE WAS REBUILT ON EVERY POINTERMOVE. `renderOverlay(p)`
+      empties the SVG and re-creates a node for every annotation on the
+      page, re-serialising every point of every stroke into a `d` string.
+      An Apple Pencil dispatches ~120 moves a second, so by the tenth
+      answer on a page each one of those cost a rebuild of the previous
+      nine. That is why writing "slowed down as the page filled up" —
+      a symptom that reads as the iPad being tired rather than as a bug.
+      A live stroke is now ONE temp node whose `d` is EXTENDED in place
+      (`redrawTemp`), and the page is rebuilt once, at the end.
+
+   2. THE PENCIL'S EXTRA SAMPLES WERE THROWN AWAY. An Apple Pencil samples
+      far faster than `pointermove` is dispatched, and the samples in
+      between are only reachable through `getCoalescedEvents()`. Without
+      them fast handwriting comes back as a chain of straight segments —
+      the corners a child sees when they write quickly and the app draws
+      slowly.
+
+   3. A RESTING PALM DREW. There was no palm rejection and no pencil-only
+      mode at all, so the heel of a hand on the paper made marks — over
+      the question, in the student's own ink, on a worksheet that is then
+      MARKED from a picture of it. `isPalmTouch` refuses a palm-sized
+      contact, `activePointerId` lets exactly one pointer own a gesture,
+      and pencil-only mode (on by default the moment a stylus is seen)
+      makes the Pencil the only thing that can leave a mark.
+
+   4. A FINGER COULD NOT MOVE THE PAGE. The overlay is `touch-action:
+      none` and covers the whole worksheet, so on an iPad there was NO
+      way to scroll or zoom with fingers — the +/− buttons and the
+      scrollbar were the whole of it. The navigation engine below is
+      GoodNotes': two fingers pan and pinch, one finger pans in
+      pencil-only mode, a flick carries on, and a two- or three-finger
+      double tap is undo/redo — which is how a ten-year-old undoes
+      something, because Ctrl+Z is not.
+
+   `polymathlc/anskey` is where all of this comes from; ship a change to
+   the pipeline to both.
+   ===================================================================== */
+
+/* Pencil-only mode: the stylus draws, fingers pan the page, and a palm is
+   ignored outright.
+
+   IT DEFAULTS **OFF**, AND THAT IS A DELIBERATE DIVERGENCE FROM ANS KEY,
+   which defaults it on. Ans Key is a teacher's app on a teacher's iPad, and
+   the teacher knows where the button is. This one is opened by a nine-year-
+   old on whatever is in the house — very often a phone, or a school iPad
+   with no Pencil anywhere near it. Defaulting to pencil-only there is a
+   child tapping the page, nothing happening, and no way of knowing why:
+   the app would be broken for the commonest device it runs on, silently.
+
+   So it switches itself on THE FIRST TIME A STYLUS TOUCHES DOWN, which is
+   the moment palm rejection starts being worth having and the moment the
+   child demonstrably has one in their hand. After that the device remembers
+   the answer either way. */
+var stylusOnly = (function () {
+  try { return localStorage.getItem('tutorStylusOnly') === '1'; }
+  catch (e) { return false; }
+})();
+var pencilSeen = false;       // a stylus has been used this session
+var activePointerId = null;   // the ONE pointer allowed to draw/drag right now
+var activePointerType = null; // its pointerType, to tell a stale gesture from a palm
+
+function claimPointer(e) { activePointerId = e.pointerId; activePointerType = e.pointerType; }
+
+/* iPads report ordinary fingertips with contact patches up to ~45px, so
+   the palm threshold has to sit above that or normal finger scrolling gets
+   eaten — which would be a worse bug than the one it fixes. */
+var PALM_CONTACT = 55;
+function isPalmTouch(e) {
+  return e.pointerType === 'touch' && (e.width > PALM_CONTACT || e.height > PALM_CONTACT);
+}
+
+/* Which tools put something on the page. A finger in pencil-only mode PANS
+   instead of using one of these.
+
+   🖱️ select is deliberately NOT one of them: it makes no marks, and a finger
+   has to keep being able to pick a text box up and drag it where it belongs
+   — two fingers still pan while it is in hand. 💡 hint and 🎤 speak are the
+   same reasoning: they are TAPS, and a child asking for a hint should not
+   have to go and find their stylus first. */
+function isDrawTool(t) {
+  return t === 'pen' || t === 'highlight' || t === 'rect' || t === 'ellipse' ||
+         t === 'line' || t === 'arrow' || t === 'text' || t === 'eraser';
+}
+
+/* Touch navigation state, read by the overlay's pointerdown before the
+   engine at the bottom of the file ever runs — so it is declared with the
+   rest of the input state rather than beside its listeners. */
+var nav = { mode: null, pts: new Map(), cx: 0, cy: 0, dist: 0, vx: 0, vy: 0, lastT: 0 };
+var navMomentum = null;
+
+/* The ✍️ button only appears on a device that HAS a stylus or a touchscreen.
+   On a laptop pencil-only mode is a switch that can only ever break the
+   mouse, and a button that does nothing useful is one more thing in a
+   toolbar a ten-year-old is already scrolling sideways. */
+function renderStylusBtn() {
+  var b = $('stylusBtn');
+  if (!b) return;
+  var touchy = pencilSeen ||
+    (window.matchMedia && window.matchMedia('(any-pointer: coarse)').matches) ||
+    (navigator.maxTouchPoints || 0) > 0;
+  b.hidden = !touchy;
+  b.classList.toggle('active', stylusOnly);
+  b.setAttribute('aria-pressed', stylusOnly ? 'true' : 'false');
+}
+
+function setStylusOnly(on, quiet) {
+  stylusOnly = on;
+  var b = $('stylusBtn');
+  if (b) {
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  try { localStorage.setItem('tutorStylusOnly', on ? '1' : '0'); } catch (e) {}
+  if (!quiet) {
+    toast(on
+      ? '✍️ Pencil-only — your stylus writes, your fingers move the page, and your hand resting on it is ignored.'
+      : '✍️ Pencil-only off — your finger can write again.');
+  }
+}
+
+/* A gesture whose pointerup/pointercancel never reached us (swallowed by the
+   navigation engine, or by the browser when iPadOS took the touch for a
+   system swipe) would leave its half-drawn stroke stranded on the page and
+   lock every later touch out — the app looks frozen and nothing says why.
+   Throw the stale state away, sweep any leftover preview off, and let the
+   new gesture proceed. */
+function cancelStaleGesture() {
+  if (drawing && drawing.svgNode && drawing.svgNode.parentNode) {
+    drawing.svgNode.parentNode.removeChild(drawing.svgNode);
+  }
+  drawing = null;
+  erasing = null;
+  moving = null;
+  activePointerId = null;
+  activePointerType = null;
+  renderAllOverlays();
+}
+
+/* ---- The live stroke ----
+   While a pen or highlighter stroke grows, ONLY its `d` string changes, so
+   the string is EXTENDED rather than rebuilt from all of its points. Built
+   from scratch every frame, a stroke costs more the longer it gets: one
+   line of working is easily 1500 points, re-serialised 120 times a second.
+   Every other shape (a box, a line, an arrow) is cheap and is simply
+   re-made. */
+function redrawTemp(force) {
+  if (!drawing) return;
+  var p = drawing.page;
+  var a = drawing.ann;
+  if (!force && drawing.svgNode && (a.type === 'pen' || a.type === 'highlight')) {
+    var path = drawing.svgNode.querySelector('path');
+    if (path) {
+      if (drawing._d && drawing._dCount <= a.points.length) {
+        for (var i = drawing._dCount; i < a.points.length; i++) {
+          drawing._d += ' L ' + a.points[i].x + ' ' + a.points[i].y;
+        }
+      } else {
+        drawing._d = pathFromPoints(a.points);   // first frame
+      }
+      drawing._dCount = a.points.length;
+      path.setAttribute('d', drawing._d);
+      return;
+    }
+  }
+  drawing._d = null;      // a full rebuild invalidates the incremental string
+  drawing._dCount = 0;
+  if (drawing.svgNode && drawing.svgNode.parentNode) {
+    drawing.svgNode.parentNode.removeChild(drawing.svgNode);
+  }
+  drawing.svgNode = annNode(a);
+  drawing.svgNode.setAttribute('pointer-events', 'none');
+  p.svg.appendChild(drawing.svgNode);
+}
+
+/* The stroke in hand becomes a real annotation. ONE door, because a stroke
+   can finish three ways — lifted, cancelled by iPadOS, or handed over to
+   the navigation engine when a second finger lands — and all three have to
+   keep the child's ink and push exactly one undo step. */
+function commitDrawing(keepNode) {
+  if (!drawing) return false;
+  var a = drawing.ann;
+  var node = drawing.svgNode;
+  var p = drawing.page;
+  drawing = null;
+  delete a._ox; delete a._oy;
+
+  // A clean tap gives a single point — keep it as a visible dot rather than
+  // silently dropping it. `pathFromPoints` of one point draws nothing at
+  // all, so the mark the child made would be invisible ink that still
+  // catches the eraser.
+  if ((a.type === 'pen' || a.type === 'highlight') && a.points.length === 1) {
+    a.points.push({ x: round2(a.points[0].x + 0.01), y: a.points[0].y });
+    if (node) {
+      var dotPath = node.querySelector('path');
+      if (dotPath) dotPath.setAttribute('d', pathFromPoints(a.points));
+    }
+  }
+
+  var b = annBounds(a);
+  var tiny = (a.type === 'pen' || a.type === 'highlight')
+    ? a.points.length < 2
+    : ((b.x2 - b.x) < 2 && (b.y2 - b.y) < 2);
+  if (tiny) {
+    if (node && node.parentNode) node.parentNode.removeChild(node);
+    return false;
+  }
+
+  pushUndo();               // the page WITHOUT this stroke: one stroke, one undo
+  annotations.push(a);
+  setDirty(true);
+  // Keep the stroke already on screen as its final node instead of rebuilding
+  // the whole overlay — re-rendering every annotation after every single mark
+  // is what made rapid dots and short strokes feel laggy.
+  if (keepNode && node && node.parentNode) {
+    node.removeAttribute('pointer-events');
+    renderPinsOn(p);
+    renderMarksOn(p);
+  } else {
+    if (node && node.parentNode) node.parentNode.removeChild(node);
+    renderOverlay(p);
+  }
+  return true;
+}
 
 function setTool(t) {
   commitActiveTextEdit();
@@ -3039,6 +3326,56 @@ function eraseAlong(x1, y1, x2, y2) {
   if (changed) renderOverlay(erasing.page);
 }
 
+/* ---- THE BOX BEING TYPED IN IS BOUND, NOT JUST MADE EDITABLE ----
+   `a.text` is only ever written by `commitActiveTextEdit`, and until this
+   existed the ONLY things that called it were tapping elsewhere on the page,
+   switching tool, Escape, printing and marking. So:
+
+   TYPE AN ANSWER, THEN TAP SAVE — OR ← BACK, OR CLOSE THE TAB — AND THE
+   ANSWER WAS GONE. Not saved wrongly: gone. The box carried `text: ''` the
+   whole time it was being typed in, `dirty` had already been cleared by the
+   auto-save that fired when the empty box was created, so every exit path's
+   `if (dirty && currentDocId)` was FALSE and none of them wrote anything at
+   all. The child watched their words appear on the page, pressed the button
+   marked Save, and lost them — with the app reporting a clean save.
+
+   Two listeners fix it and both matter:
+
+   • `blur` COMMITS. Every button in this app takes the focus off the box, so
+     the words are written down the moment the child reaches for anything —
+     which is what makes the belt-and-braces commit in `performSave` a second
+     line of defence rather than the only one.
+   • `input` GROWS THE BOX as they type. `a.h` was written only at commit, so
+     until then the foreignObject stayed one line tall and a two-line answer
+     depended on `overflow: visible` being honoured — which Safari, the
+     primary device here, has never been reliable about. A clipped answer is
+     an answer the marking run never sees, and it is marked as blank.
+
+   It never SHRINKS below the one-line floor, and the `.annText` div keeps its
+   own DOM node across an overlay rebuild, so the caret, the focus and the
+   iPad's keyboard all survive the box growing mid-word. */
+function bindTextEditNode(div, id) {
+  if (div._annEditId === id) return;   // annNode can be re-run for the same box
+  div._annEditId = id;
+  div.addEventListener('input', function () {
+    var a = annotations.find(function (x) { return x.id === id; });
+    if (!a) return;
+    // Grow with the words, and NEVER shrink a box the student dragged tall —
+    // that was their decision. The same rule the size control follows.
+    var want = Math.max(div.scrollHeight, a.h || 0, (a.fontSize || 16) * 1.8);
+    if (Math.abs(want - (a.h || 0)) < 0.5) return;
+    a.h = round2(want);
+    if (div.parentNode && div.parentNode.setAttribute) {
+      div.parentNode.setAttribute('height', a.h);
+    }
+  });
+  div.addEventListener('blur', function () {
+    if (editingId !== id) return;                        // committed another way
+    if (overlayRebuilding || !div.isConnected) return;   // the rebuild, not the child
+    commitActiveTextEdit();
+  });
+}
+
 function commitActiveTextEdit() {
   if (!editingId) return;
   var id = editingId;
@@ -3213,6 +3550,35 @@ function attachOverlayHandlers(p) {
 
   svg.addEventListener('pointerdown', function (e) {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+
+    /* ---- Palm rejection ----
+       The first time a stylus touches down, switch pencil-only mode on: the
+       child has a Pencil in their hand, and from here a resting palm can
+       never make a mark on work that is about to be marked from a picture
+       of the page. */
+    if (e.pointerType === 'pen' && !pencilSeen) {
+      pencilSeen = true;
+      if (!stylusOnly) setStylusOnly(true);
+      renderStylusBtn();
+    }
+    // A palm-sized contact patch never starts anything.
+    if (isPalmTouch(e)) { e.preventDefault(); return; }
+    // While one pointer owns a gesture, every extra touch is swallowed rather
+    // than allowed to hijack it. But a NEW primary pointer of the same kind
+    // can only exist if the old gesture's up/cancel was lost — clear the
+    // stale state instead of locking the page for the rest of the lesson.
+    if (activePointerId !== null && e.pointerId !== activePointerId) {
+      if (e.isPrimary && e.pointerType === activePointerType) {
+        cancelStaleGesture();
+      } else {
+        e.preventDefault();
+        return;
+      }
+    }
+    // Touches the navigation engine has claimed (finger pan, two-finger
+    // pan / pinch-zoom) never reach the tools.
+    if (e.pointerType === 'touch' && nav.mode) { e.preventDefault(); return; }
+
     var pt = eventPoint(e, p);
 
     // A tap inside the box being typed in just moves the caret. A tap
@@ -3224,6 +3590,9 @@ function attachOverlayHandlers(p) {
       commitActiveTextEdit();
     }
 
+    // 💡 and 🎤 are TAPS, not marks, so a finger is welcome to make them
+    // even in pencil-only mode — a child asking for a hint should not have
+    // to find their stylus first.
     if (tool === 'hint') {
       e.preventDefault();
       askHintAt(p, pt);
@@ -3239,10 +3608,17 @@ function attachOverlayHandlers(p) {
       return;
     }
 
+    // In pencil-only mode a finger on a marking tool PANS the page instead
+    // of drawing (the engine below picks it up), so the stylus stays the
+    // only thing that leaves ink. Returning without preventDefault is what
+    // lets that engine have it.
+    if (stylusOnly && e.pointerType === 'touch' && isDrawTool(tool)) return;
+
     if (tool === 'eraser') {
       e.preventDefault();
       erasing = { page: p, snap: snapshot(), removed: false, lastX: e.clientX, lastY: e.clientY };
-      svg.setPointerCapture(e.pointerId);
+      claimPointer(e);
+      try { svg.setPointerCapture(e.pointerId); } catch (err) {}
       eraseAlong(e.clientX, e.clientY, e.clientX, e.clientY);
       return;
     }
@@ -3254,7 +3630,8 @@ function attachOverlayHandlers(p) {
       renderAllOverlays();
       if (!id) return;
       e.preventDefault();
-      svg.setPointerCapture(e.pointerId);
+      claimPointer(e);
+      try { svg.setPointerCapture(e.pointerId); } catch (err) {}
       moving = { page: p, id: id, snap: snapshot(), lastX: pt.x, lastY: pt.y, moved: false };
       return;
     }
@@ -3267,7 +3644,8 @@ function attachOverlayHandlers(p) {
 
     // Everything else draws.
     e.preventDefault();
-    svg.setPointerCapture(e.pointerId);
+    claimPointer(e);
+    try { svg.setPointerCapture(e.pointerId); } catch (err) {}
     var a = { id: newAnnId(), page: p.num, color: color, width: strokeW };
     if (tool === 'pen' || tool === 'highlight') {
       a.type = tool;
@@ -3286,12 +3664,20 @@ function attachOverlayHandlers(p) {
       a.x = pt.x; a.y = pt.y; a.w = 0; a.h = 0;
       a._ox = pt.x; a._oy = pt.y;
     }
-    drawing = { page: p, ann: a };
-    annotations.push(a);
-    renderOverlay(p);
+    // The stroke is NOT put into `annotations` yet, and that is the whole
+    // point: while it is in hand it is one temp node whose `d` grows in
+    // place. In the array it would be rebuilt — along with every other
+    // annotation on the page — on every single pointermove.
+    drawing = { page: p, ann: a, svgNode: null, _d: null, _dCount: 0,
+                ptrType: e.pointerType, startT: e.timeStamp };
+    redrawTemp(true);
   });
 
   svg.addEventListener('pointermove', function (e) {
+    // Only the pointer that started the gesture may continue it — a palm or
+    // a second finger moving on the page is ignored completely.
+    if (activePointerId !== null && e.pointerId !== activePointerId) return;
+
     if (erasing && erasing.page === p) {
       eraseAlong(erasing.lastX, erasing.lastY, e.clientX, e.clientY);
       erasing.lastX = e.clientX;
@@ -3309,22 +3695,46 @@ function attachOverlayHandlers(p) {
       return;
     }
     if (!drawing || drawing.page !== p) return;
-    var q = eventPoint(e, p);
+
+    // ONE layout read per event, shared by every coalesced sample in it.
+    // `eventPoint` measures the page, and measuring it once per sample would
+    // put a dozen forced layouts inside a single move.
+    var rect = p.svg.getBoundingClientRect();
     var an = drawing.ann;
+
     if (an.type === 'pen' || an.type === 'highlight') {
-      an.points.push(q);
-    } else if (an.type === 'line' || an.type === 'arrow') {
-      an.x2 = q.x; an.y2 = q.y;
+      // An Apple Pencil samples far faster than pointermove is dispatched;
+      // the extra samples are only reachable through getCoalescedEvents, and
+      // dropping them is what makes quick handwriting come out angular.
+      var samples = (e.getCoalescedEvents && e.getCoalescedEvents()) || null;
+      if (!samples || !samples.length) samples = [e];
+      for (var si = 0; si < samples.length; si++) {
+        var sp = pointIn(samples[si], p, rect);
+        var last = an.points[an.points.length - 1];
+        // Thinned: samples closer than a page unit are hand tremor and
+        // rendering noise, and every one of them costs a path segment for
+        // the rest of the worksheet's life.
+        if (Math.abs(sp.x - last.x) + Math.abs(sp.y - last.y) >= 1) an.points.push(sp);
+      }
     } else {
-      an.x = Math.min(an._ox, q.x);
-      an.y = Math.min(an._oy, q.y);
-      an.w = Math.abs(q.x - an._ox);
-      an.h = Math.abs(q.y - an._oy);
+      var q = pointIn(e, p, rect);
+      if (an.type === 'line' || an.type === 'arrow') {
+        an.x2 = q.x; an.y2 = q.y;
+      } else {
+        an.x = Math.min(an._ox, q.x);
+        an.y = Math.min(an._oy, q.y);
+        an.w = Math.abs(q.x - an._ox);
+        an.h = Math.abs(q.y - an._oy);
+      }
     }
-    renderOverlay(p);
+    redrawTemp();
   });
 
   function endStroke(e) {
+    // A palm or a stray finger lifting off must not end the real gesture.
+    if (e && activePointerId !== null && e.pointerId !== activePointerId) return;
+    activePointerId = null;
+    activePointerType = null;
     if (erasing && erasing.page === p) {
       if (erasing.removed) { pushUndo(erasing.snap); setDirty(true); }
       erasing = null;
@@ -3337,28 +3747,58 @@ function attachOverlayHandlers(p) {
       return;
     }
     if (!drawing || drawing.page !== p) return;
-    var an = drawing.ann;
-    drawing = null;
-    delete an._ox; delete an._oy;
-    // A tap that drew nothing is a tap, not a mark. Dropping it keeps the
-    // page free of invisible zero-size shapes that still catch the eraser.
-    var b = annBounds(an);
-    var tiny = (b.x2 - b.x) < 2 && (b.y2 - b.y) < 2;
-    if (tiny && an.type !== 'pen') {
-      annotations = annotations.filter(function (x) { return x.id !== an.id; });
-      renderOverlay(p);
-      return;
-    }
-    // The undo entry is pushed at the END of the stroke, with the stroke
-    // itself removed: one stroke is one undo step.
-    var before = annotations.filter(function (x) { return x.id !== an.id; });
-    pushUndo(JSON.stringify(before));
-    setDirty(true);
-    renderOverlay(p);
+    commitDrawing(true);
   }
   svg.addEventListener('pointerup', endStroke);
+
+  /* When iPadOS interrupts a gesture — a palm triggered a system scroll, a
+     multitasking swipe came in from the edge — the browser fires
+     pointercancel. The ink drawn up to that moment is the student's work, so
+     it is KEPT rather than thrown away: losing half an answer to a swipe
+     nobody meant to make is the kind of thing that stops a child using the
+     app at all. */
   svg.addEventListener('pointercancel', endStroke);
-  svg.addEventListener('pointerleave', function (e) { if (drawing || erasing || moving) endStroke(e); });
+
+  /* If the capture is dropped while a gesture is still running — a
+     capture-phase handler swallowed the pointerup, or the browser revoked
+     the capture outright — the half-drawn stroke would linger on the page
+     and every later touch would be locked out, which reads as the app
+     freezing with nothing to say why. Treat it exactly like a cancel.
+     `lostpointercapture` also fires after every ordinary pointerup, but by
+     then the state is already cleared and endStroke's guards make it a
+     no-op. */
+  svg.addEventListener('lostpointercapture', function (e) {
+    if (activePointerId === null || e.pointerId !== activePointerId) return;
+    var busy = (drawing && drawing.page === p) || (erasing && erasing.page === p) ||
+               (moving && moving.page === p);
+    if (busy) endStroke(e);
+  });
+
+  /* Belt-and-braces for iOS Safari: even with `touch-action: none` some
+     versions still try to scroll or zoom from a palm resting on the page.
+     Not while a text box is open — the keyboard's own scrolling is the
+     browser's business — and not while the navigation engine is driving,
+     which does its own preventDefault on the viewer. */
+  svg.addEventListener('touchmove', function (e) {
+    if (editingId || nav.mode) return;
+    e.preventDefault();
+  }, { passive: false });
+
+  /* Deliberately NO pointerleave handler. The overlay holds the pointer
+     capture, so a stroke that strays over the edge of the page and comes
+     back is one stroke — ending it there would cut a child's handwriting in
+     half every time they wrote near the margin, which is exactly where the
+     working goes. */
+}
+
+/* `eventPoint` with the page's rectangle already measured — for the coalesced
+   samples inside one move, which all share the same layout. `eventPoint`
+   itself stays the ONE door everywhere else. */
+function pointIn(e, p, rect) {
+  return {
+    x: round2((e.clientX - rect.left) * (p.baseW / rect.width)),
+    y: round2((e.clientY - rect.top) * (p.baseH / rect.height))
+  };
 }
 
 function translateAnn(a, dx, dy) {
@@ -7748,6 +8188,9 @@ function scoreOf() {
 }
 
 async function performSave(quiet) {
+  // The words in the box being typed in are not in `annotations` until they
+  // are committed — saving first writes an EMPTY box over the child's answer.
+  commitActiveTextEdit();
   if (!currentDocId || !currentUser) return false;
   // One write at a time. Auto-save, a hidden tab and a pressed button can
   // all fire within a second of each other, and two writes of the same body
@@ -7928,6 +8371,10 @@ function offerLocalBackup(id, serverStamp) {
    often gives a swiped-away tab `pagehide` and nothing else, and a desktop
    tab switched away gets `visibilitychange` long before it is closed. */
 function flushSave() {
+  // Before the `dirty` test, not after it: an uncommitted box does not make
+  // the worksheet dirty, so a flush that asked first would decide there was
+  // nothing to save and let the answer die with the tab.
+  commitActiveTextEdit();
   if (dirty && currentDocId) {
     clearTimeout(autoSaveTimer);
     localBackupWrite(currentDocId);   // before the write, not after it
@@ -9770,6 +10217,7 @@ $('signInBtn2').addEventListener('click', signIn);
 $('signOutBtn').addEventListener('click', signOut);
 $('brandHome').addEventListener('click', function () { showView('home'); });
 $('backBtn').addEventListener('click', function () {
+  commitActiveTextEdit();   // before the `dirty` test — see flushSave
   if (dirty && currentDocId) performSave(true);
   showView('home');
   loadWorksheets();
@@ -9900,6 +10348,244 @@ window.addEventListener('resize', function () {
   syncHintPinSizes();
 });
 
+/* =====================================================================
+   ✌️ MOVING THE PAGE WITH FINGERS (GoodNotes-style)
+   ---------------------------------------------------------------------
+   The overlay is `touch-action: none` and covers the whole worksheet, which
+   is what lets a stroke be drawn without the page scrolling out from under
+   it — and, until this engine existed, meant a child on an iPad could not
+   move the worksheet with their fingers AT ALL. The +/− buttons and the
+   scrollbar were the whole of it, on a page they are trying to write on.
+
+   Two fingers pan and pinch-zoom, one finger pans in pencil-only mode, a
+   flick carries on decaying, and a two- or three-finger double tap is
+   undo/redo — which is how a ten-year-old undoes something, because Ctrl+Z
+   is not. Ported from `polymathlc/anskey`; ship a change to both.
+   ===================================================================== */
+(function attachTouchNavigation() {
+  var viewerArea = $('viewerArea');
+  if (!viewerArea) return;
+
+  function navCenterDist() {
+    var arr = Array.from(nav.pts.values());
+    if (!arr.length) return { cx: 0, cy: 0, dist: 0 };
+    var cx = 0, cy = 0;
+    arr.forEach(function (q) { cx += q.x; cy += q.y; });
+    cx /= arr.length; cy /= arr.length;
+    var dist = arr.length >= 2 ? Math.hypot(arr[0].x - arr[1].x, arr[0].y - arr[1].y) : 0;
+    return { cx: cx, cy: cy, dist: dist };
+  }
+
+  function stopNavMomentum() {
+    if (navMomentum) { cancelAnimationFrame(navMomentum); navMomentum = null; }
+  }
+
+  /* Flick scrolling: carry on with decaying velocity after the finger lifts.
+     Without it every screenful of a ten-page worksheet is its own drag. */
+  function startNavMomentum() {
+    var vx = nav.vx, vy = nav.vy;
+    if (Math.abs(vx) < 0.08 && Math.abs(vy) < 0.08) return;
+    var last = performance.now();
+    function step(now) {
+      var dt = Math.min(50, now - last);
+      last = now;
+      viewerArea.scrollLeft -= vx * dt;
+      viewerArea.scrollTop -= vy * dt;
+      var decay = Math.pow(0.94, dt / 16.7);
+      vx *= decay; vy *= decay;
+      if (Math.abs(vx) > 0.02 || Math.abs(vy) > 0.02) navMomentum = requestAnimationFrame(step);
+      else { navMomentum = null; scheduleRaster(); }
+    }
+    navMomentum = requestAnimationFrame(step);
+  }
+
+  /* A pinch reports up to 120 moves a second, and each one resizes every
+     page and then reads the scroll position back — a forced layout twice per
+     event, on a document that can be ten pages long. That IS the lag. The
+     moves are collected instead and turned into exactly ONE zoom per
+     animation frame, which is as often as the screen can show it anyway. */
+  var navZoom = { ratio: 1, x: 0, y: 0, raf: null };
+  function scheduleNavZoom() {
+    if (navZoom.raf) return;
+    navZoom.raf = requestAnimationFrame(flushNavZoom);
+  }
+  function flushNavZoom() {
+    navZoom.raf = null;
+    var r = navZoom.ratio;
+    navZoom.ratio = 1;
+    if (r !== 1) zoomAt(navZoom.x, navZoom.y, r);
+  }
+  function endNavZoom() {
+    if (navZoom.raf) { cancelAnimationFrame(navZoom.raf); navZoom.raf = null; }
+    flushNavZoom();   // whatever the last few milliseconds of the pinch asked for
+  }
+
+  /* Zoom keeping the point under the fingers fixed on screen — pinching a
+     diagram has to make THAT diagram bigger, not the top-left of the page. */
+  function zoomAt(clientX, clientY, factor) {
+    var rect = viewerArea.getBoundingClientRect();
+    var newScale = Math.min(4, Math.max(0.25, scale * factor));
+    var f = newScale / scale;
+    if (f === 1) return;
+    var ox = clientX - rect.left + viewerArea.scrollLeft;
+    var oy = clientY - rect.top + viewerArea.scrollTop;
+    scale = newScale;
+    fittedWidth = false;
+    applyScale();
+    viewerArea.scrollLeft = ox * f - (clientX - rect.left);
+    viewerArea.scrollTop = oy * f - (clientY - rect.top);
+  }
+
+  /* A second finger landing right after a one-finger stroke began means the
+     child meant to scroll — throw the accidental dot away and pan instead. */
+  function abortYoungStroke(ts) {
+    if (drawing && drawing.ptrType === 'touch' && ts - drawing.startT < 300) {
+      if (drawing.svgNode && drawing.svgNode.parentNode) {
+        drawing.svgNode.parentNode.removeChild(drawing.svgNode);
+      }
+      drawing = null;
+      activePointerId = null;
+      activePointerType = null;
+    }
+  }
+
+  /* A second finger arriving on an ESTABLISHED finger stroke also means
+     "navigate" — but by then the ink is the student's work, so it is kept
+     and committed rather than thrown away, and the gesture is then released
+     so pinch/pan can take over. Without this the second finger simply did
+     nothing and stayed dead until it was lifted, because the overlay refuses
+     the browser's own scrolling. */
+  function commitTouchStrokeForNav() {
+    if (!drawing) return;
+    activePointerId = null;
+    activePointerType = null;
+    commitDrawing(true);
+  }
+
+  viewerArea.addEventListener('pointerdown', function (e) {
+    if (e.pointerType !== 'touch') return;
+    stopNavMomentum();
+    if (isPalmTouch(e)) return;
+    nav.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (nav.pts.size === 2 && nav.mode !== 'pinch') {
+      abortYoungStroke(e.timeStamp);
+      if (drawing && drawing.ptrType === 'touch') commitTouchStrokeForNav();
+      if (!drawing && !moving && !erasing && !editingId) {
+        nav.mode = 'pinch';
+        var c = navCenterDist();
+        nav.cx = c.cx; nav.cy = c.cy; nav.dist = c.dist;
+        nav.vx = 0; nav.vy = 0; nav.lastT = e.timeStamp;
+      }
+    } else if (nav.pts.size === 1 && stylusOnly && isDrawTool(tool) && !editingId &&
+               e.target.closest && e.target.closest('svg.overlay')) {
+      // Pencil-only mode: one finger on the page pans it. This runs in the
+      // capture phase, ahead of the overlay's own handler, which is what
+      // makes the finger a scroll rather than a mark.
+      nav.mode = 'pan';
+      nav.cx = e.clientX; nav.cy = e.clientY;
+      nav.vx = 0; nav.vy = 0; nav.lastT = e.timeStamp;
+    }
+  }, true);
+
+  viewerArea.addEventListener('pointermove', function (e) {
+    if (e.pointerType !== 'touch' || !nav.pts.has(e.pointerId)) return;
+    nav.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (!nav.mode) return;
+    var c = navCenterDist();
+    var dx = c.cx - nav.cx;
+    var dy = c.cy - nav.cy;
+    var dt = Math.max(1, e.timeStamp - nav.lastT);
+    viewerArea.scrollLeft -= dx;
+    viewerArea.scrollTop -= dy;
+    nav.vx = 0.75 * (dx / dt) + 0.25 * nav.vx;
+    nav.vy = 0.75 * (dy / dt) + 0.25 * nav.vy;
+    nav.lastT = e.timeStamp;
+    if (nav.mode === 'pinch' && nav.dist > 0 && c.dist > 0) {
+      // Every scrap of the pinch counts. Ignoring changes under a threshold
+      // and then applying the whole of it at once is exactly what makes a
+      // zoom feel steppy: the fingers move smoothly and the page arrives in
+      // jumps.
+      navZoom.ratio *= c.dist / nav.dist;
+      navZoom.x = c.cx;
+      navZoom.y = c.cy;
+      nav.dist = c.dist;
+      scheduleNavZoom();
+    }
+    nav.cx = c.cx; nav.cy = c.cy;
+  }, true);
+
+  function navEnd(e) {
+    if (e.pointerType !== 'touch' || !nav.pts.has(e.pointerId)) return;
+    nav.pts.delete(e.pointerId);
+    if (!nav.mode) return;
+    if (nav.mode === 'pinch') endNavZoom();   // land exactly where the fingers left it
+    if (nav.pts.size === 0) {
+      startNavMomentum();
+      nav.mode = null;
+      // The pins were left alone for the whole gesture (see applyScale) —
+      // this is where they catch up, once, with the zoom they ended on.
+      syncHintPinSizes();
+      syncMarkPins();
+      scheduleRaster();   // the pages sharpen up now the gesture is over
+    } else {
+      // Re-anchor on the fingers still down, so the view does not jump.
+      var c = navCenterDist();
+      nav.cx = c.cx; nav.cy = c.cy; nav.dist = c.dist;
+      if (nav.pts.size === 1) nav.mode = 'pan';
+    }
+  }
+  document.addEventListener('pointerup', navEnd, true);
+  document.addEventListener('pointercancel', navEnd, true);
+
+  /* While the engine is panning/zooming, stop the browser's own touch scroll
+     from also running — it would double-scroll and fight the gesture. */
+  viewerArea.addEventListener('touchmove', function (e) {
+    if (nav.mode) e.preventDefault();
+  }, { passive: false });
+
+  /* Two-finger double tap = undo, three-finger double tap = redo. This is
+     the undo a child actually finds: ↶ is in a toolbar that scrolls sideways
+     on a phone, and Ctrl+Z is not a thing on an iPad. */
+  var mtap = { max: 0, t0: 0, moved: false, pts: {} };
+  var lastMultiTap = { count: 0, t: 0 };
+  viewerArea.addEventListener('touchstart', function (e) {
+    if (e.touches.length === e.changedTouches.length) {
+      mtap = { max: 0, t0: e.timeStamp, moved: false, pts: {} };
+    }
+    Array.prototype.forEach.call(e.changedTouches, function (t) {
+      mtap.pts[t.identifier] = { x: t.clientX, y: t.clientY };
+    });
+    if (e.touches.length > mtap.max) mtap.max = e.touches.length;
+  }, { passive: true });
+  viewerArea.addEventListener('touchmove', function (e) {
+    Array.prototype.forEach.call(e.changedTouches, function (t) {
+      var st = mtap.pts[t.identifier];
+      if (st && Math.hypot(t.clientX - st.x, t.clientY - st.y) > 14) mtap.moved = true;
+    });
+  }, { passive: true });
+  viewerArea.addEventListener('touchend', function (e) {
+    if (e.touches.length) return;   // wait until every finger is up
+    var dur = e.timeStamp - mtap.t0;
+    if (mtap.moved || dur > 320 || mtap.max < 2 || mtap.max > 3) return;
+    if (lastMultiTap.count === mtap.max && e.timeStamp - lastMultiTap.t < 500) {
+      lastMultiTap = { count: 0, t: 0 };
+      if (editingId) return;
+      if (mtap.max === 2) {
+        if (undoStack.length) { undo(); toast('↶ Undo'); }
+        else toast('Nothing to undo.');
+      } else {
+        if (redoStack.length) { redo(); toast('↷ Redo'); }
+        else toast('Nothing to redo.');
+      }
+    } else {
+      lastMultiTap = { count: mtap.max, t: e.timeStamp };
+    }
+  }, { passive: true });
+})();
+
+$('stylusBtn').addEventListener('click', function () { setStylusOnly(!stylusOnly); });
+renderStylusBtn();
+
 /* One-letter tool shortcuts. Every field in the app stops its own keystrokes
    before they reach here, but this guard is what stops a "p" typed into a
    text box on the page from switching to the pen mid-word. */
@@ -9942,6 +10628,7 @@ document.addEventListener('keydown', function (e) {
 /* Closing a tab with unsaved ink in it is the one way work is lost here, and
    auto-save has a few seconds of lag by design. */
 window.addEventListener('beforeunload', function (e) {
+  commitActiveTextEdit();   // before the `dirty` test — see flushSave
   if (dirty && currentDocId) {
     performSave(true);
     e.preventDefault();
