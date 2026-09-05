@@ -2322,6 +2322,19 @@ SAVE_PATHS.forEach(([name, re]) => {
 });
 
 /* ---- The button ---- */
+/* THE `hidden` ATTRIBUTE ONLY WORKS IF THE STYLESHEET LETS IT. `[hidden]`
+   is a UA rule and ANY author rule beats the UA sheet whatever its
+   specificity, so `.toolBtn { display: grid }` re-shows every toolbar button
+   hidden with `el.hidden = true` — measured in Chromium as `display: grid`.
+   Both `renderMicBtns` and `renderStylusBtn` hide that way, and this app's
+   own rule is that a button which silently does nothing is worse than no
+   button. */
+ok('the stylesheet makes `hidden` actually hide',
+   /\n  \[hidden\] \{ display: none !important; \}/.test(html),
+   '.toolBtn sets `display: grid`, which beats the UA [hidden] rule — 🎤 and ✍️ are both drawn on devices that cannot use them');
+ok('…and the buttons that rely on it are still hidden that way',
+   /tb\.hidden = !voiceSupported\(\)/.test(html) && /b\.hidden = !touchy/.test(html));
+
 ok('the ✍️ button exists', /id="stylusBtn"/.test(html));
 ok('…and is hidden on a device with no touchscreen',
    /<button class="toolBtn" id="stylusBtn" hidden/.test(html),

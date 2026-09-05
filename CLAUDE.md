@@ -1319,6 +1319,23 @@ a finger could scroll from, and **zooming in once took even those away**.
   scroll natively, and every control is `touch-action: manipulation` — a
   child double-tapping ▲ to grow the pen would otherwise zoom the whole app.
 
+### 🐛 …AND `hidden` DID NOT HIDE
+
+`[hidden] { display: none }` is a **UA-stylesheet** rule, and ANY author rule
+beats the UA sheet whatever its specificity. `.toolBtn { display: grid }` and
+`.iconBtn { display: grid }` therefore re-showed every button hidden with
+`el.hidden = true` — measured in Chromium as `display: grid`.
+
+- **THIS WAS ALREADY BREAKING 🎤.** `renderMicBtns` hides both microphones on
+  a device with no support for one, and this app's own rule is that **a
+  button which silently does nothing is worse than no button**. They were
+  being drawn anyway, on every such device, doing nothing when tapped.
+- The fix is one author-level `[hidden] { display: none !important; }`. Every
+  `hidden` in this file is on something that is meant to be hidden (the three
+  file inputs, 🎤 ×2, ✍️), so making the attribute work can only ever hide
+  what was always meant to be hidden — **check that again before adding a
+  `hidden` to anything that is supposed to show.**
+
 ### 🐛 AND A TYPED ANSWER COULD BE SILENTLY LOST
 
 Not a matter of feel. `a.text` is written ONLY by `commitActiveTextEdit`,

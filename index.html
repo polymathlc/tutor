@@ -61,6 +61,18 @@
     overflow: hidden;          /* the app scrolls inside its own panes */
   }
   .hidden { display: none !important; }
+  /* THE `hidden` ATTRIBUTE HAS TO BE MADE TO WORK. It is a UA-stylesheet
+     rule, and ANY author rule beats the UA sheet whatever its specificity —
+     so `.toolBtn { display: grid }` quietly re-showed every button in the
+     toolbar that had been hidden with `el.hidden = true`. Measured in
+     Chromium: a `.toolBtn[hidden]` computes to `display: grid`.
+
+     That is not a cosmetic slip. 🎤 is hidden by `renderMicBtns` on a device
+     with no microphone or no support for one — and this app's own rule is
+     that a button which silently does nothing is worse than no button. It
+     was being drawn anyway. ✍️ pencil-only is hidden on a device with no
+     touchscreen for the same reason. */
+  [hidden] { display: none !important; }
 
   /* ---------- Header ---------- */
   header {

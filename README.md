@@ -52,6 +52,11 @@ iPadOS interrupts keeps what you had written instead of throwing it away; the pa
 re-sharpening under your fingers mid-pinch; and double-tapping ▲ to make the pen bigger no longer
 zooms the whole app.
 
+**And 🎤 no longer appears on devices that cannot use it.** Buttons in this app are hidden by
+setting `hidden` on them — which the stylesheet had been quietly overriding, so the microphone was
+drawn on machines with no support for it and did nothing when tapped. Both mics and the new ✍️
+button are properly hidden now.
+
 **Two harnesses cover it.** `node tools/tutor-tests.mjs` grew a *Writing with a stylus* section
 (78 checks). `node tools/stylus-check.mjs` is new and drives the **real** handlers in a **real**
 browser with synthetic pointer events, printing the before-and-after timings above;
