@@ -2682,20 +2682,26 @@ function renderOverlay(p) {
   var keptDiv = kept ? kept.querySelector('.annText') : null;
   var hadFocus = !!(keptDiv && document.activeElement === keptDiv);
   overlayRebuilding++;
-  if (kept && kept.parentNode) kept.parentNode.removeChild(kept);
-  while (svg.firstChild) svg.removeChild(svg.firstChild);
-  annotations.forEach(function (a) {
-    if (a.page !== p.num) return;
-    if (kept && a.id === keepId) { svg.appendChild(kept); return; }
-    svg.appendChild(annNode(a));
-  });
+  // try/finally, or an annNode that throws part way leaves the counter above
+  // zero for the rest of the session — and the blur backstop is then silently
+  // dead, which is the hardest kind of dead to notice.
+  try {
+    if (kept && kept.parentNode) kept.parentNode.removeChild(kept);
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    annotations.forEach(function (a) {
+      if (a.page !== p.num) return;
+      if (kept && a.id === keepId) { svg.appendChild(kept); return; }
+      svg.appendChild(annNode(a));
+    });
+  } finally {
+    setTimeout(function () { if (overlayRebuilding > 0) overlayRebuilding--; }, 0);
+  }
   // Taking the node out of the document drops the focus even though the very
   // same node goes back in. Put it back where it was, or the child carries on
   // typing into nothing — and on an iPad the keyboard goes down with it.
   if (hadFocus && keptDiv && keptDiv.isConnected && document.activeElement !== keptDiv) {
     try { keptDiv.focus({ preventScroll: true }); } catch (e) { keptDiv.focus(); }
   }
-  setTimeout(function () { if (overlayRebuilding > 0) overlayRebuilding--; }, 0);
   if (selectedId && selectedId !== editingId) {
     var selAnn = annotations.find(function (a) { return a.id === selectedId; });
     if (selAnn && selAnn.page === p.num) {
@@ -3397,6 +3403,13 @@ function bindTextEditNode(div, id) {
       div.parentNode.setAttribute('height', a.h);
     }
   });
+  // TYPING IS A CHANGE. Without this the worksheet is not `dirty` while an
+  // answer is being written, so `flushSave`'s guard is false and a tab closed
+  // mid-sentence saves nothing — and the auto-save timer, armed when the box
+  // was OPENED, never slides. It re-arms on every keystroke, which is what
+  // makes the save land 2.5s after the child stops rather than 2.5s after
+  // they started.
+  div.addEventListener('input', function () { setDirty(true); });
   div.addEventListener('blur', function () {
     if (editingId !== id) return;                        // committed another way
     if (overlayRebuilding || !div.isConnected) return;   // the rebuild, not the child
@@ -3412,20 +3425,54 @@ function bindTextEditNode(div, id) {
   });
 }
 
+/* ---- SAVING THE WORDS WITHOUT CLOSING THE BOX ----
+   `commitActiveTextEdit` does two jobs: it writes the words into the
+   annotation, and it ENDS the edit — dropping `editingId`, rebuilding the
+   overlay, taking the caret and the iPad's keyboard with it, and deleting the
+   box outright if nothing has been typed into it yet.
+
+   That is right when the child is LEAVING (tapping the page, switching tool,
+   ← Back, closing the tab). **IT IS WRONG FOR THE AUTO-SAVE**, and putting it
+   at the top of `performSave` was a regression with a two-and-a-half-second
+   fuse on it: `startTextBox` sets `dirty`, `setDirty` arms the auto-save, and
+   2.5 seconds later the box a child is still hunting for the keyboard to
+   answer closed itself under them — or, if they had not typed yet, deleted
+   itself. There is no way back into it: this app has no double-tap-to-edit,
+   so tapping again makes a NEW box.
+
+   So the save takes only the first job. The words reach `annotations` — which
+   is the whole point of committing before a write — and the child carries on
+   typing. */
+function syncTextEditValue() {
+  if (editingId) readTextInto(editingId);
+}
+
+/* THE ONE PLACE THE WORDS ARE READ OUT OF THE DIV, so the save and the commit
+   cannot drift about what a child's answer says. It is written `\u00a0`
+   rather than as the character for the reason `ANN_CARET_PROBE` is: an
+   invisible literal is one a later edit silently drops, and this one decides
+   whether every word of the answer matches downstream. */
+function readTextInto(id) {
+  var a = annotations.find(function (x) { return x.id === id; });
+  if (!a) return null;
+  var p = pages.find(function (pg) { return pg.num === a.page; });
+  var div = p && p.svg.querySelector('g[data-id="' + id + '"] .annText');
+  if (!div) return a;
+  // contenteditable inserts non-breaking spaces as you type; they look
+  // identical on screen and break every word match downstream.
+  a.text = div.innerText.replace(/\u00a0/g, ' ').replace(/\n$/, '');
+  a.h = Math.max((a.fontSize || 16) * 1.8, div.scrollHeight);
+  return a;
+}
+
 function commitActiveTextEdit() {
   if (!editingId) return;
   var id = editingId;
-  var a = annotations.find(function (x) { return x.id === id; });
+  // Read the words FIRST, while the node is still the page's own — then end
+  // the edit. Same door as the auto-save's, so the two cannot disagree.
+  var a = readTextInto(id);
   editingId = null;
   if (!a) { renderAllOverlays(); return; }
-  var p = pages.find(function (pg) { return pg.num === a.page; });
-  var div = p && p.svg.querySelector('g[data-id="' + id + '"] .annText');
-  if (div) {
-    // contenteditable inserts non-breaking spaces as you type; they look
-    // identical on screen and break every word match downstream.
-    a.text = div.innerText.replace(/\u00a0/g, ' ').replace(/\n$/, '');
-    a.h = Math.max((a.fontSize || 16) * 1.8, div.scrollHeight);
-  }
   // An empty box is not an annotation — it is a tap that changed its mind.
   if (!String(a.text || '').trim()) {
     annotations = annotations.filter(function (x) { return x.id !== id; });
@@ -8225,8 +8272,11 @@ function scoreOf() {
 
 async function performSave(quiet) {
   // The words in the box being typed in are not in `annotations` until they
-  // are committed — saving first writes an EMPTY box over the child's answer.
-  commitActiveTextEdit();
+  // are written there — saving first would store an EMPTY box over the
+  // child's answer. `syncTextEditValue` and NOT `commitActiveTextEdit`: this
+  // runs on the AUTO-SAVE timer, and ending the edit here closes the box
+  // under a child who is still typing into it. See syncTextEditValue.
+  syncTextEditValue();
   if (!currentDocId || !currentUser) return false;
   // One write at a time. Auto-save, a hidden tab and a pressed button can
   // all fire within a second of each other, and two writes of the same body
@@ -8407,9 +8457,11 @@ function offerLocalBackup(id, serverStamp) {
    often gives a swiped-away tab `pagehide` and nothing else, and a desktop
    tab switched away gets `visibilitychange` long before it is closed. */
 function flushSave() {
-  // Before the `dirty` test, not after it: an uncommitted box does not make
-  // the worksheet dirty, so a flush that asked first would decide there was
-  // nothing to save and let the answer die with the tab.
+  // The FULL commit here, not just the sync: the tab is going away, so there
+  // is no box left to keep open. And before the `dirty` test rather than
+  // after it — an uncommitted box need not have made the worksheet dirty, and
+  // a flush that asked first would decide there was nothing to save and let
+  // the answer die with the tab.
   commitActiveTextEdit();
   if (dirty && currentDocId) {
     clearTimeout(autoSaveTimer);
@@ -10513,6 +10565,12 @@ window.addEventListener('resize', function () {
         nav.vx = 0; nav.vy = 0; nav.lastT = e.timeStamp;
       }
     } else if (nav.pts.size === 1 && stylusOnly && isDrawTool(tool) && !editingId &&
+               // NEVER while the stylus is mid-stroke. A hand contact SMALLER
+               // than PALM_CONTACT is not a palm to `isPalmTouch`, and without
+               // this it sets the page panning under a live stroke — which
+               // measures against a moving rectangle, so the writing smears.
+               // Ans Key's condition is missing this; ours is the better one.
+               !drawing &&
                e.target.closest && e.target.closest('svg.overlay')) {
       // Pencil-only mode: one finger on the page pans it. This runs in the
       // capture phase, ahead of the overlay's own handler, which is what

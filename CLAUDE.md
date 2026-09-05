@@ -1369,9 +1369,34 @@ wrote anything at all. The app reported a clean save.
   floor.** `a.h` was written only at commit, so until then a two-line answer
   depended on `overflow: visible` — and a clipped answer is one the marking
   run never sees, and marks as blank.
-- **Every write commits FIRST, before the `dirty` test**, in `performSave`,
-  `flushSave`, ← Back and `beforeunload`. Asking `dirty` first is the bug:
-  an uncommitted box does not make the worksheet dirty.
+- **🔴 THE AUTO-SAVE MUST NOT CLOSE THE BOX, and the first version of this
+  fix did.** `commitActiveTextEdit` does TWO jobs — write the words down and
+  END the edit — and `performSave` runs on a **2.5-second timer armed the
+  moment the box is created** (`startTextBox` → `setDirty` →
+  `scheduleAutoSave`). Putting the full commit at the top of it was a
+  regression with a fuse on it: the box a child was still hunting for the
+  keyboard to answer closed itself under them, and **deleted itself outright
+  if they had not typed yet**. There is no double-tap-to-edit here, so there
+  is no way back in — tapping again makes a NEW box.
+  **`syncTextEditValue` is the non-destructive half** and is what the save
+  calls: the words reach `annotations`, the child carries on typing. The FULL
+  commit stays on the paths where the child is LEAVING — `flushSave`, ← Back,
+  `beforeunload`, `setTool`, and a tap elsewhere on the page.
+- **`readTextInto` is the ONE place the words are read out of the div**, so
+  the save and the commit can never disagree about what a child wrote. The
+  duplicate had already gone wrong once: the ` ` arrived as a LITERAL
+  non-breaking space, which is the hazard `ANN_CARET_PROBE` is written as an
+  escape to avoid — *an invisible literal is one a later edit silently drops*.
+- **TYPING MARKS THE WORKSHEET DIRTY** (`input` → `setDirty`). Without it the
+  worksheet is not dirty while an answer is being written, so `flushSave`'s
+  guard is false and a tab closed mid-sentence saves nothing — and the
+  auto-save timer never slides to 2.5s after the child STOPS.
+- **Every write reads the box FIRST, before the `dirty` test.** Asking `dirty`
+  first is the bug: an uncommitted box need not have made the worksheet dirty.
+- **A TEST CAN HOLD A BUG IN PLACE.** The first version of the harness check
+  here asserted `performSave` calls `commitActiveTextEdit` — pinning the
+  property that is right for the Save BUTTON onto the TIMER, without
+  distinguishing them. It now asserts the opposite, and says why.
 
 - Run **`node tools/tutor-tests.mjs`** after touching any of it, and
   **`node tools/stylus-check.mjs`** (and `--selftest`) to see what it costs.

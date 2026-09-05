@@ -439,7 +439,27 @@ if (OLD_OVERLAY) {
 }
 
 console.log('');
+if (!before) {
+  // Said out loud. A run that quietly drops three checks and still reports
+  // "all N passed" is a run that reads as a clean bill of health.
+  console.log('  ! NO BASELINE — the three comparison checks below were SKIPPED.\n');
+}
 if (before) {
+  /* THE BASELINE HAS TO BE THE OLD PIPELINE, asserted rather than assumed.
+     The walk looks for the newest commit whose handlers do not mention
+     `getCoalescedEvents` — an implementation token, not an invariant. Move
+     the coalescing into a helper one day (the natural thing to do when
+     `pointerrawupdate` is added) and THIS release becomes the newest commit
+     "without coalescing": the harness would then compare the new pipeline
+     against a slightly older new pipeline. The comparison checks below do
+     already fail in that case, but they fail saying the wrong thing —
+     "it stopped tearing the overlay down" rather than "your baseline is not
+     the old code". This says it. */
+  ok('the baseline really is the pre-port pipeline (' + OLD_REF + ')',
+     before.counters.renderOverlay > 100 && before.counters.annNode > 1000,
+     'it rebuilt the page ' + before.counters.renderOverlay + ' times and built ' +
+     before.counters.annNode + ' nodes — the OLD pipeline does that per sample, so this is not it. ' +
+     'The commit walk found the wrong commit; every comparison below is meaningless.');
   const speedup = before.ms / Math.max(0.01, now.ms);
   ok('the stroke is faster than it was', now.ms < before.ms,
      Math.round(now.ms) + 'ms now against ' + Math.round(before.ms) + 'ms before');

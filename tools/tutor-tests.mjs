@@ -2254,6 +2254,8 @@ ok('…and one zoom per animation frame, not one per event',
    'a resize plus a scroll read per event is a forced layout twice a frame on a ten-page document');
 ok('…landing exactly where the fingers left it', /function endNavZoom/.test(NAV) && /endNavZoom\(\);/.test(NAV));
 ok('one finger pans in pencil-only mode', /nav\.mode = 'pan'/.test(NAV));
+ok('…but NEVER while the stylus is mid-stroke', /!drawing &&/.test(NAV),
+   'a hand contact SMALLER than PALM_CONTACT is not a palm, and would set the page panning under a live stroke — which measures against a moving rectangle, so the writing smears');
 ok('…in the CAPTURE phase, ahead of the overlay', /\}, true\);/.test(NAV));
 ok('a flick carries on', /function startNavMomentum/.test(NAV));
 ok('a palm is not a navigating finger', /if \(isPalmTouch\(e\)\) return;/.test(NAV));
@@ -2301,6 +2303,9 @@ ok('…and it is asked again on the next turn, for a browser that fires it late'
 ok('`overlayRebuilding` is a COUNTER, not a boolean',
    /var overlayRebuilding = 0;/.test(html),
    'renderAllOverlays rebuilds every page in a row, so the flag nests');
+ok('…and survives an annNode that throws',
+   /\} finally \{\s*setTimeout\(function \(\) \{ if \(overlayRebuilding > 0\)/.test(html),
+   'left above zero it never comes down, and the blur backstop is silently dead for the rest of the session');
 ok('…cleared on the NEXT turn, not in line',
    /setTimeout\(function \(\) \{ if \(overlayRebuilding > 0\) overlayRebuilding--; \}, 0\);/.test(html));
 ok('…and the rebuild puts the focus back on the box',
@@ -2310,15 +2315,55 @@ ok('…and the rebuild puts the focus back on the box',
 /* EVERY write commits FIRST, before the `dirty` test. Asking `dirty` first is
    the bug: an uncommitted box does not make the worksheet dirty, so the guard
    is false and nothing is written at all. */
-const SAVE_PATHS = [
-  ['performSave', /async function performSave\(quiet\) \{\s*(?:\/\/[^\n]*\n\s*)*commitActiveTextEdit\(\);/],
-  ['flushSave', /function flushSave\(\) \{[\s\S]{0,400}?commitActiveTextEdit\(\);\s*\n\s*if \(dirty/],
+/* 🔴 THE AUTO-SAVE MUST NOT CLOSE THE BOX, and this is the one place that
+   says so. `commitActiveTextEdit` does two jobs — write the words down AND
+   end the edit — and `performSave` runs on a 2.5-SECOND TIMER armed the
+   moment the box is created. Putting the full commit at the top of it was a
+   regression with a fuse on it: the box a child is still hunting for the
+   keyboard to answer closed itself under them, and deleted itself outright
+   if they had not typed yet. There is no double-tap-to-edit in this app, so
+   there is no way back into it — tapping again makes a NEW box.
+   An earlier version of THIS CHECK asserted the opposite and held the bug in
+   place: it pinned the property that is right for the Save BUTTON onto the
+   TIMER, without distinguishing them. */
+const SAVE_FN = between('async function performSave(quiet) {', 'function autoSaveDelay(',
+                        'the save');
+ok('the auto-save writes the words down…',
+   /syncTextEditValue\(\);/.test(SAVE_FN),
+   'an open box holds the answer outside `annotations`, so the save stores an empty box over it');
+ok('…and does NOT end the edit',
+   !/commitActiveTextEdit\(\)/.test(SAVE_FN),
+   'performSave runs on a 2.5s timer armed when the box was OPENED — ending the edit here closes the box under a child who is still typing, and deletes it if they have not started');
+ok('`syncTextEditValue` really is the non-destructive half',
+   /function syncTextEditValue\(\) \{\s*if \(editingId\) readTextInto\(editingId\);\s*\}/.test(html),
+   'it must not clear editingId, rebuild the overlay, or drop an empty box');
+ok('…and both halves read the div through ONE door',
+   /var a = readTextInto\(id\);/.test(html) &&
+   (html.match(/innerText\.replace/g) || []).length === 1,
+   'two copies of that extraction is two answers for what a child wrote');
+ok('…written as an escape, not an invisible literal',
+   /innerText\.replace\(\/\\u00a0\/g, ' '\)/.test(html),
+   'a literal non-breaking space is one a later edit silently drops — the lesson ANN_CARET_PROBE carries');
+
+/* TYPING IS A CHANGE. Without it the worksheet is not `dirty` while an answer
+   is being written, so `flushSave`'s guard is false and a tab closed
+   mid-sentence saves nothing — and the auto-save timer, armed when the box was
+   OPENED, never slides to 2.5s after the child STOPS. */
+ok('typing marks the worksheet dirty',
+   /div\.addEventListener\('input', function \(\) \{ setDirty\(true\); \}\);/.test(TEXTBIND));
+
+/* The LEAVING paths keep the full commit: there is no box to keep open when
+   the child has gone. All three ask BEFORE the `dirty` test — an uncommitted
+   box need not have made the worksheet dirty, and asking first decides there
+   is nothing to save and lets the answer die with the tab. */
+const LEAVING = [
+  ['flushSave', /function flushSave\(\) \{[\s\S]{0,600}?commitActiveTextEdit\(\);\s*\n\s*if \(dirty/],
   ['the ← Back button', /\$\('backBtn'\)\.addEventListener\('click', function \(\) \{\s*commitActiveTextEdit\(\);/],
   ['beforeunload', /addEventListener\('beforeunload', function \(e\) \{\s*commitActiveTextEdit\(\);/]
 ];
-SAVE_PATHS.forEach(([name, re]) => {
-  ok(name + ' commits the open text box before it tests `dirty`', re.test(html),
-     'the child presses Save and their answer is replaced by an empty box, with the app reporting a clean save');
+LEAVING.forEach(([name, re]) => {
+  ok(name + ' commits the open box before it tests `dirty`', re.test(html),
+     'the child leaves and their answer is replaced by an empty box, with the app reporting a clean save');
 });
 
 /* ---- The button ---- */

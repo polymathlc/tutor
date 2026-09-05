@@ -45,7 +45,8 @@ answer and then pressing **Save**, or ← Back, or simply closing the tab, saved
 it. The box now writes itself down the moment you touch anything else, every save path commits it
 first, and **the box grows as you type** rather than staying one line tall and clipping the answer
 out of the picture the marking reads. The box also stops losing the caret — and, on an iPad, the
-keyboard — when something else on the page redraws underneath it.
+keyboard — when something else on the page redraws underneath it, and **the auto-save no longer
+closes it while you are still writing**: it saves the words and leaves you typing.
 
 Smaller things that come with it: a tap leaves a visible dot rather than invisible ink; a gesture
 iPadOS interrupts keeps what you had written instead of throwing it away; the pages stop
