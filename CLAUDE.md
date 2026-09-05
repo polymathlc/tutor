@@ -1337,6 +1337,17 @@ wrote anything at all. The app reported a clean save.
   box.** `renderOverlay` lifts the live node out and puts it back; without
   the flag that closes the box mid-word and takes the iPad's keyboard down
   with it. Ans Key carries the identical flag.
+- **IT IS A COUNTER CLEARED ON THE NEXT TURN, NOT A BOOLEAN CLEARED IN
+  LINE.** Chromium moves the focus to the body with NO event when a focused
+  element is removed; **Firefox and Safari fire a real `blur`, and not
+  always synchronously** — so a flag already back to false by the time it
+  lands admits exactly the case it was written for, on two engines out of
+  three and never on the one this is developed in. The blur handler asks
+  again on the next turn for the same reason. A counter rather than a flag
+  because `renderAllOverlays` rebuilds every page in a row.
+- **THE REBUILD PUTS THE FOCUS BACK.** Taking the node out of the document
+  drops the focus even though the very same node goes back in — the child
+  then types into nothing, and on an iPad the keyboard goes down with it.
 - **The box GROWS with the words and never shrinks below the one-line
   floor.** `a.h` was written only at commit, so until then a two-line answer
   depended on `overflow: visible` — and a clipped answer is one the marking

@@ -2645,12 +2645,20 @@ function fitWidth() {
 /* ================= Annotation rendering ================= */
 function renderAllOverlays() { pages.forEach(renderOverlay); syncSizeCtl(); }
 
-/* True only while the live node is out of the document being put back. A
-   `blur` that arrives in that window is the REBUILD, not the child leaving
-   the box, and committing on it would close the box they are still typing
-   in — mid-word, taking the iPad's keyboard down with it. Ans Key carries
-   the same flag for the same reason. */
-var overlayRebuilding = false;
+/* Non-zero while the live node is out of the document being put back. A
+   `blur` that belongs to THAT is the rebuild, not the child leaving the box,
+   and committing on it closes a box they are still typing in — mid-word,
+   taking the iPad's keyboard down with it. Ans Key carries the same flag.
+
+   IT IS A COUNTER CLEARED ON THE NEXT TURN, NOT A BOOLEAN CLEARED IN LINE,
+   and that is the load-bearing part. Chromium moves the focus to the body
+   with no event when a focused element is removed; **Firefox and Safari fire
+   a real `blur`, and not always synchronously** — so a flag already back to
+   false by the time it lands lets exactly the case it was written for
+   through, on two of the three engines and not on the one this is developed
+   in. A counter rather than a flag because rebuilds nest: `renderAllOverlays`
+   is every page in a row. */
+var overlayRebuilding = 0;
 
 function renderOverlay(p) {
   var svg = p.svg;
@@ -2659,7 +2667,9 @@ function renderOverlay(p) {
   // So that ONE node is lifted out before the rebuild and put back into it.
   var keepId = editingId;
   var kept = keepId ? svg.querySelector('g[data-id="' + keepId + '"]') : null;
-  overlayRebuilding = true;
+  var keptDiv = kept ? kept.querySelector('.annText') : null;
+  var hadFocus = !!(keptDiv && document.activeElement === keptDiv);
+  overlayRebuilding++;
   if (kept && kept.parentNode) kept.parentNode.removeChild(kept);
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   annotations.forEach(function (a) {
@@ -2667,7 +2677,13 @@ function renderOverlay(p) {
     if (kept && a.id === keepId) { svg.appendChild(kept); return; }
     svg.appendChild(annNode(a));
   });
-  overlayRebuilding = false;
+  // Taking the node out of the document drops the focus even though the very
+  // same node goes back in. Put it back where it was, or the child carries on
+  // typing into nothing — and on an iPad the keyboard goes down with it.
+  if (hadFocus && keptDiv && keptDiv.isConnected && document.activeElement !== keptDiv) {
+    try { keptDiv.focus({ preventScroll: true }); } catch (e) { keptDiv.focus(); }
+  }
+  setTimeout(function () { if (overlayRebuilding > 0) overlayRebuilding--; }, 0);
   if (selectedId && selectedId !== editingId) {
     var selAnn = annotations.find(function (a) { return a.id === selectedId; });
     if (selAnn && selAnn.page === p.num) {
@@ -3372,7 +3388,15 @@ function bindTextEditNode(div, id) {
   div.addEventListener('blur', function () {
     if (editingId !== id) return;                        // committed another way
     if (overlayRebuilding || !div.isConnected) return;   // the rebuild, not the child
-    commitActiveTextEdit();
+    // Asked on the NEXT turn as well, because a browser that hands the focus
+    // straight back has not been left either — and because every path that
+    // really matters (Save, ← Back, closing the tab, switching tool) commits
+    // by hand anyway. This is the backstop, so it can afford to be sure.
+    setTimeout(function () {
+      if (editingId !== id || overlayRebuilding) return;
+      if (!div.isConnected || document.activeElement === div) return;
+      commitActiveTextEdit();
+    }, 0);
   });
 }
 

@@ -44,7 +44,8 @@ box were only written into the worksheet when you tapped somewhere else on the p
 answer and then pressing **Save**, or ← Back, or simply closing the tab, saved an *empty box* over
 it. The box now writes itself down the moment you touch anything else, every save path commits it
 first, and **the box grows as you type** rather than staying one line tall and clipping the answer
-out of the picture the marking reads.
+out of the picture the marking reads. The box also stops losing the caret — and, on an iPad, the
+keyboard — when something else on the page redraws underneath it.
 
 Smaller things that come with it: a tap leaves a visible dot rather than invisible ink; a gesture
 iPadOS interrupts keeps what you had written instead of throwing it away; the pages stop

@@ -2273,6 +2273,54 @@ ok('…never while a text box is being typed in', /if \(editingId\) return;/.tes
 ok('the browser\'s own scroll is stopped while the engine is driving',
    /if \(nav\.mode\) e\.preventDefault\(\);/.test(NAV) && /\{ passive: false \}/.test(NAV));
 
+/* ---- The box being typed in ----
+   The one DATA-LOSS bug in this app: `a.text` is written only by
+   `commitActiveTextEdit`, and until v1.12.0 no save path called it — so
+   typing an answer and pressing Save wrote an EMPTY box over it and reported
+   a clean save. Every check here is silent and the app looks right. */
+const TEXTBIND = between('function bindTextEditNode(div, id) {', 'function commitActiveTextEdit(',
+                         'the text-box binding');
+ok('the box being typed in is BOUND, not just made editable',
+   /if \(editingId === a\.id\) bindTextEditNode\(div, a\.id\);/.test(html));
+ok('…committing on blur', /addEventListener\('blur'/.test(TEXTBIND),
+   'without it the words reach the worksheet only if the child happens to tap the page again');
+ok('…and growing the box on input', /addEventListener\('input'/.test(TEXTBIND));
+ok('…never shrinking one the student dragged taller',
+   /Math\.max\(div\.scrollHeight, a\.h \|\| 0/.test(TEXTBIND),
+   'that was their decision — and a box that shrinks clips the answer out of the marked picture');
+
+/* A blur caused by the REBUILD is not the child leaving the box. Chromium
+   drops the focus silently; Firefox and Safari fire a real blur, and not
+   always synchronously — so a flag cleared in line lets exactly the case it
+   was written for through, on two engines out of three. */
+ok('a blur from the overlay rebuild never commits the box',
+   /if \(overlayRebuilding \|\| !div\.isConnected\) return;/.test(TEXTBIND));
+ok('…and it is asked again on the next turn, for a browser that fires it late',
+   /setTimeout\(function \(\) \{[\s\S]{0,200}document\.activeElement === div\) return;/.test(TEXTBIND),
+   'an async blur lands after a flag cleared in line is already back to false');
+ok('`overlayRebuilding` is a COUNTER, not a boolean',
+   /var overlayRebuilding = 0;/.test(html),
+   'renderAllOverlays rebuilds every page in a row, so the flag nests');
+ok('…cleared on the NEXT turn, not in line',
+   /setTimeout\(function \(\) \{ if \(overlayRebuilding > 0\) overlayRebuilding--; \}, 0\);/.test(html));
+ok('…and the rebuild puts the focus back on the box',
+   /if \(hadFocus && keptDiv && keptDiv\.isConnected/.test(html),
+   'taking the node out of the document drops the focus even though the same node goes back in — the child then types into nothing, and on an iPad the keyboard goes down with it');
+
+/* EVERY write commits FIRST, before the `dirty` test. Asking `dirty` first is
+   the bug: an uncommitted box does not make the worksheet dirty, so the guard
+   is false and nothing is written at all. */
+const SAVE_PATHS = [
+  ['performSave', /async function performSave\(quiet\) \{\s*(?:\/\/[^\n]*\n\s*)*commitActiveTextEdit\(\);/],
+  ['flushSave', /function flushSave\(\) \{[\s\S]{0,400}?commitActiveTextEdit\(\);\s*\n\s*if \(dirty/],
+  ['the ← Back button', /\$\('backBtn'\)\.addEventListener\('click', function \(\) \{\s*commitActiveTextEdit\(\);/],
+  ['beforeunload', /addEventListener\('beforeunload', function \(e\) \{\s*commitActiveTextEdit\(\);/]
+];
+SAVE_PATHS.forEach(([name, re]) => {
+  ok(name + ' commits the open text box before it tests `dirty`', re.test(html),
+     'the child presses Save and their answer is replaced by an empty box, with the app reporting a clean save');
+});
+
 /* ---- The button ---- */
 ok('the ✍️ button exists', /id="stylusBtn"/.test(html));
 ok('…and is hidden on a device with no touchscreen',

@@ -48,14 +48,29 @@ const OVERLAY = cut(html, 'function attachOverlayHandlers(p) {', '\nfunction tra
 const ERASE   = cut(html, 'function eraseAlong(x1, y1, x2, y2) {', '/* ---- THE BOX BEING TYPED IN', 'the eraser');
 const HLW     = cut(html, 'function highlightWidthFor(w)', '\n', 'the highlighter width');
 
-/* ---- …and the pipeline as it was BEFORE, out of git ---- */
-let OLD_OVERLAY = null;
+/* ---- …and the pipeline as it was BEFORE, out of git ----
+   NOT `HEAD`, which is this release the moment it is committed and would
+   quietly turn the whole comparison into the new pipeline measured against
+   itself — reported as "1.0× faster" rather than as a broken baseline. The
+   newest commit whose handlers do NOT read `getCoalescedEvents` is the last
+   one before the port, whatever has been rebased or merged since. */
+let OLD_OVERLAY = null, OLD_REF = '';
 try {
-  const before = execSync('git show HEAD:index.html', {
-    cwd: new URL('..', import.meta.url).pathname, maxBuffer: 64 * 1024 * 1024
-  }).toString();
-  OLD_OVERLAY = cut(before, 'function attachOverlayHandlers(p) {', '\nfunction translateAnn(',
-                    'the old overlay handlers');
+  const cwd = new URL('..', import.meta.url).pathname;
+  const revs = execSync('git log --format=%h -40 -- index.html', { cwd })
+    .toString().trim().split('\n').filter(Boolean);
+  for (const rev of revs) {
+    let src;
+    try {
+      src = execSync('git show ' + rev + ':index.html', { cwd, maxBuffer: 64 * 1024 * 1024 }).toString();
+    } catch (e) { continue; }
+    let handlers;
+    try {
+      handlers = cut(src, 'function attachOverlayHandlers(p) {', '\nfunction translateAnn(', 'the old handlers');
+    } catch (e) { continue; }
+    if (!handlers.includes('getCoalescedEvents')) { OLD_OVERLAY = handlers; OLD_REF = rev; break; }
+  }
+  if (!OLD_OVERLAY) console.log('  (no pre-port commit found in the last 40 — running the new pipeline alone)');
 } catch (e) {
   console.log('  (could not read the previous pipeline out of git — running the new one alone)');
 }
@@ -420,7 +435,7 @@ const now = await measure('now');
 let before = null;
 if (OLD_OVERLAY) {
   await load(OLD_OVERLAY);
-  before = await measure('before this release');
+  before = await measure('before (' + OLD_REF + ')');
 }
 
 console.log('');
