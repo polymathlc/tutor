@@ -1581,6 +1581,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script>
 'use strict';
 
@@ -1615,7 +1616,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.13.0';
+var APP_VERSION = 'v1.14.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -1904,7 +1905,16 @@ function _repairAIJson(s) {
    broken one. */
 function aiEngineName() { return 'Chung GPT'; }
 window.aiEngineName = aiEngineName;
+/* THE ENGINE THAT REALLY ANSWERED, falling back to the one that leads when
+   nothing has been asked yet. It is read from `window.aiEngines()` — the ONE
+   door the module exposes — rather than assembled here: a second reading of
+   the engine state is how the badge comes to say Gemini while ChatGPT is
+   answering, which is precisely the thing this name exists to prevent. The
+   two predicates below it are kept for a caller that wants the plain
+   question, and both are false until a call has landed. */
 function aiVendorName() {
+  var st = window.aiEngines && window.aiEngines();
+  if (st && st.vendor) return st.vendor;
   return (window.openAiActive && window.openAiActive()) ? 'ChatGPT'
        : (window.kimiActive && window.kimiActive()) ? 'Kimi' : 'Gemini';
 }
@@ -2019,6 +2029,55 @@ async function resolveNotesOwner() {
     }
   } catch (e) { console.warn('Could not work out whose notes to read', e); }
   return '';
+}
+
+/* ---- WHICH ENGINE ANSWERS IS THE CENTRE'S SETTING, not this device's ----
+   It is a field on `config/admin` — the Learning Portal's own admin pointer,
+   which this app ALREADY reads to learn whose teaching notes to apply, and
+   which only the admin can write. So it needs no rules change and no deploy,
+   and it is the very SAME field the Portal's and the Scan app's toggles
+   write: one switch moves them all.
+
+   A device-local choice was the bug wearing a feature's clothes — the teacher
+   switched engine on their own laptop, watched it work, and every student
+   stayed on the capped one. It is a LIVE listener rather than a poll, so a
+   phone with the app open follows within seconds, and it COMES DOWN on every
+   account change, or one account's setting governs the next person to sign in
+   on a shared iPad.
+
+   An unset field means Gemini — the default this app already had — so a
+   centre that never touches it is unaffected, and a read that is DENIED
+   changes nothing: Gemini leads, exactly as it did before any of this. */
+var _aiCfgStop = null;
+function aiEngineWatchShared() {
+  if (_aiCfgStop || !db) return;
+  try {
+    _aiCfgStop = db.collection('config').doc('admin').onSnapshot(function (snap) {
+      var d = (snap && snap.exists && snap.data()) || {};
+      if (window.aiSetEngine) window.aiSetEngine(d.aiEngine || 'gemini');
+      refreshAiEngineNames();
+      if ($('engineModal') && $('engineModal').classList.contains('open')) renderEngineBody();
+    }, function (err) {
+      console.warn('Could not read the centre-wide AI engine setting', err);
+      _aiCfgStop = null;
+    });
+  } catch (e) { console.warn('Could not watch the AI engine setting', e); }
+}
+function aiEngineStopShared() {
+  if (!_aiCfgStop) return;
+  try { _aiCfgStop(); } catch (e) { /* already gone */ }
+  _aiCfgStop = null;
+}
+/* THE WRITE IS A MERGE, ALWAYS. This document is the bank pointer as well,
+   and a plain set would take `uid` off it — which is how every student in the
+   Learning Portal loses the question bank. */
+async function aiEngineSetShared(engine) {
+  if (!isAdmin(currentUser)) return;
+  await db.collection('config').doc('admin').set({
+    aiEngine: engine,
+    aiEngineAt: new Date().toISOString(),
+    aiEngineBy: (currentUser && currentUser.email) || ''
+  }, { merge: true });
 }
 
 /* ---- The notebook is LIVE, not a one-shot read ----
@@ -9886,17 +9945,84 @@ async function notesDelete(id) {
    device. */
 function openEngineModal() {
   if (!isAdmin(currentUser)) return;
-  var body = $('engineBody');
-  var ready = window.aiReady && window.aiReady();
-  body.innerHTML =
-    '<p class="sub"><b>' + escHtml(aiVendorName()) + '</b> is answering right now' +
-    (ready ? '.' : ', but the AI is not reachable — check the connection and reload.') + '</p>' +
-    '<p class="sub" style="margin-top:14px">Students and parents never see a vendor name: everything on their ' +
-    'side is <b>' + escHtml(aiEngineName()) + '</b>, the centre\'s own assistant.</p>' +
-    '<p class="sub" style="margin-top:14px">Gemini runs on the shared Firebase project. The ChatGPT and Kimi ' +
-    'keys live in <b>Ans Key</b>, in your own admin record — this app has no key box on purpose, because ' +
-    'students sign into it on shared devices.</p>';
+  renderEngineBody();
   $('engineModal').classList.add('open');
+}
+
+/* IT REPORTS ONLY WHAT IT KNOWS: the routes in the order they will really be
+   tried, and what each said the last time it refused. An app quietly running
+   on its second route looks exactly like one running on its first, and an app
+   with nothing behind its first looks like both — right up to the morning the
+   cap is hit. A "the backup is fine" that was never tested is the sentence
+   this panel exists to stop anyone believing. */
+function renderEngineBody() {
+  var body = $('engineBody');
+  if (!body) return;
+  var st = (window.aiEngines && window.aiEngines()) || null;
+  var ready = window.aiReady && window.aiReady();
+  var h = '';
+
+  h += '<p class="sub"><b>' + escHtml(aiVendorName()) + '</b> is answering right now' +
+       (ready ? '.' : ', but Gemini is not reachable — the backups still are.') + '</p>';
+
+  if (st) {
+    h += '<div class="field" style="margin-top:16px">' +
+         '<label>Which to try first <span class="hint">(everyone’s devices)</span></label>' +
+         '<select id="engPrefer">' +
+         st.engines.map(function (e) {
+           return '<option value="' + escHtml(e) + '"' + (e === st.preferred ? ' selected' : '') + '>' +
+                  escHtml(st.names[e] || e) + ', with the others behind it</option>';
+         }).join('') +
+         '</select></div>';
+
+    h += '<p class="sub" style="margin-top:16px"><b>Tried in this order</b></p>';
+    h += '<ol class="sub" style="margin-top:6px;padding-left:22px">' +
+         st.order.map(function (n) { return '<li>' + escHtml(n) + '</li>'; }).join('') + '</ol>';
+    if (st.last) {
+      h += '<p class="sub" style="margin-top:10px">The last answer came from <b>' + escHtml(st.last) + '</b>' +
+           (st.fellBack ? ', after an earlier route refused.' : '.') + '</p>';
+    }
+    /* "Nobody has deployed the function yet", "the key was rejected" and "the
+       account is out of credit" are three different problems with three
+       different fixes, and an app that reports all three as AI error sends the
+       teacher looking in the wrong place. */
+    ['openai', 'kimi'].forEach(function (e) {
+      var why = st.why && st.why[e];
+      if (!why) return;
+      var missing = /not-?found|failed-?precondition|not configured|internal/i.test(why);
+      h += '<p class="sub" style="margin-top:10px">' +
+           (missing
+             ? '<b>' + escHtml(st.names[e]) + '</b> is not switched on yet — its key secret has not been set, or the ' +
+               'functions have not been deployed in the Maths repo. '
+             : '<b>' + escHtml(st.names[e]) + '</b> refused a moment ago and is being skipped for a few minutes. ') +
+           '<span class="hint">(' + escHtml(why) + ')</span></p>';
+    });
+  }
+
+  h += '<p class="sub" style="margin-top:16px">Students and parents never see a vendor name: everything on their ' +
+       'side is <b>' + escHtml(aiEngineName()) + '</b>, the centre’s own assistant.</p>';
+  h += '<p class="sub" style="margin-top:14px">This setting is the <b>centre’s</b>, not this device’s — it is the ' +
+       'same switch as the one in the Learning Portal and Scan &amp; Answer, so changing it here moves them all.</p>';
+  h += '<p class="hint" style="margin-top:14px"><b>There is no key box here, on purpose.</b> The backups’ real keys are ' +
+       'Firebase secrets behind the <code>askOpenAi</code> and <code>askKimi</code> Cloud Functions, which is what lets a ' +
+       'student’s phone use them with nothing set up on it — and a key field in an app children sign into on shared ' +
+       'iPads is a key waiting to be typed on the wrong device.</p>';
+
+  body.innerHTML = h;
+  var sel = $('engPrefer');
+  if (sel) sel.addEventListener('change', function () { engineSetPrefer(sel.value); });
+}
+
+/* A write that FAILED must be reported: a teacher told nothing would believe
+   the whole centre had moved. */
+function engineSetPrefer(v) {
+  if (!isAdmin(currentUser)) return;
+  aiEngineSetShared(v).then(function () {
+    toast('Every device will try ' + ((window.aiEngines && window.aiEngines().names[v]) || v) + ' first.');
+  }).catch(function (e) {
+    toast('Could not save the centre-wide setting: ' + ((e && e.message) || e), 6000);
+    renderEngineBody();
+  });
 }
 
 /* ================= Sign in ================= */
@@ -11018,6 +11144,7 @@ if (auth) auth.onAuthStateChanged(function (user) {
   // left running would go on feeding one account's notes to the next person
   // to sign in on the same device.
   stopTeachingNotes();
+  aiEngineStopShared();
   worksheets = [];
   mistakes = [];
   // One account's students must never decide what the next person to sign in
@@ -11033,6 +11160,7 @@ if (auth) auth.onAuthStateChanged(function (user) {
     // questions are answered. What the gate stops is USING it — the dialog
     // covers the screen and cannot be dismissed.
     loadTeachingNotes(true);
+    aiEngineWatchShared();
     loadWorksheets();
     loadMistakes();
     usageStart(user);
@@ -11432,6 +11560,166 @@ window.transcribeRouteNote = function transcribeRouteNote() {
   return "Speech is transcribed by " + AI_TRANSCRIBE_MODEL + ", with " + AI_MODEL + " behind it.";
 };
 
+/* =====================================================================
+   ⚙️ THREE ENGINES, AND WHICHEVER ONE WILL ANSWER
+   ---------------------------------------------------------------------
+   The way this app dies is not a bug in it. Every hint, every mark and
+   every reply comes back `[429] Your billing account has exceeded its
+   monthly spending cap` — the same answer to every call, on every device,
+   until the month turns over. One engine is one thing standing between a
+   child and a dead app, so Gemini is the engine and ChatGPT and Kimi are
+   behind it.
+
+   `window.askGemini` KEEPS ITS NAME AND ITS SHAPE, and that is the whole
+   reason this is one change rather than fifteen. It is the ONE door every
+   call site already goes through — the hint ladder, the marking run, the
+   chat, the mistake reader, the practice check — so all of them gained the
+   backup at once and not one of them had to be told. `aiAskWith` is the
+   failover loop and `_aiRun` the dispatcher; a route past them is a call
+   that still dies on the cap with nothing on screen saying why.
+
+   THERE IS NO KEY BOX HERE, AND THERE NEVER WILL BE. This app is opened by
+   children on shared iPads, so the backups are SERVER-KEYED ONLY: the keys
+   are Firebase secrets behind the `askOpenAi` / `askKimi` Cloud Functions
+   in `polymathlc/math/functions`, and a browser never sees one. That is
+   also what makes them work on a student's phone with nothing set up on
+   it — which is the half of the school that matters.
+
+   IT NEEDS ONE DEPLOY. `firebase functions:secrets:set OPENAI_API_KEY`
+   (and MOONSHOT_API_KEY) and then a functions deploy. Until then the call
+   comes back `failed-precondition` and the engine panel says so IN THOSE
+   WORDS, rather than reporting it as an AI error the teacher would go
+   looking for in the wrong place.
+   ===================================================================== */
+const AI_ENGINES = ["gemini", "openai", "kimi"];
+const AI_ROUTE_LABEL = { gemini: "Gemini", openai: "ChatGPT (server key)", kimi: "Kimi (server key)" };
+const AI_ENGINE_VENDOR = { gemini: "Gemini", openai: "ChatGPT", kimi: "Kimi" };
+/* How long an engine that refused is skipped over. Long enough that one
+   capped marking run does not pay for the discovery on every question;
+   short enough that a cap lifted is found again inside one sitting. */
+const AI_DOWN_MS = 10 * 60 * 1000;
+const _aiDown = { gemini: 0, openai: 0, kimi: 0 };
+const _aiWhy = { gemini: "", openai: "", kimi: "" };
+let _aiPreferred = "gemini";
+let _aiLast = { engine: "", fellBack: false };
+
+function aiEngineIsDown(e) { return (_aiDown[e] || 0) > Date.now(); }
+function _aiMarkDown(e, why) { _aiDown[e] = Date.now() + AI_DOWN_MS; _aiWhy[e] = why || ""; }
+function _aiMarkUp(e) { _aiDown[e] = 0; _aiWhy[e] = ""; }
+
+/* WHICH ENGINE LEADS IS A SETTING FOR THE WHOLE CENTRE, not for this
+   device, and it is the SAME field the Learning Portal's own toggle
+   writes: `config/admin.aiEngine`. The page pushes it in here rather than
+   this module reading it, because the signed-in Firestore lives in the
+   classic script above. An engine name nobody recognises still yields
+   every route rather than an empty list — a stale word in the shared
+   setting would otherwise take the AI off every device at once. */
+window.aiSetEngine = function aiSetEngine(engine) {
+  _aiPreferred = AI_ENGINES.indexOf(engine) >= 0 ? engine : "gemini";
+};
+
+/* `openai` and `kimi` are ALWAYS listed. Whether the function is deployed
+   is not something a page can know without asking, and asking wrongly
+   costs ONE call: it is then marked down rather than paid for again on
+   every question. A refused route goes to the BACK and never off the list
+   — a cap is lifted eventually — and `sort` is stable, so the preference
+   order survives underneath the down-marking. */
+function aiEngineOrder() {
+  const first = _aiPreferred;
+  const order = AI_ENGINES.indexOf(first) >= 0
+    ? [first].concat(AI_ENGINES.filter(e => e !== first))
+    : AI_ENGINES.slice();
+  const have = order.filter(e => e !== "gemini" || !!geminiModel);
+  return have.sort((a, b) => (aiEngineIsDown(a) ? 1 : 0) - (aiEngineIsDown(b) ? 1 : 0));
+}
+
+/* The callable rides the COMPAT app, because that is the app holding the
+   signed-in user; the modular app beside it carries App Check but no
+   session, and the function refuses a caller it cannot name. A blocked
+   CDN leaves `firebase.functions` undefined, and the route is simply not
+   available — the backup degrading quietly is the whole point of it. */
+function _aiCallable(name) {
+  if (typeof firebase === "undefined" || !firebase.functions) throw new Error("The backup needs the Firebase functions SDK, which did not load.");
+  return firebase.app().functions().httpsCallable(name, { timeout: 240000 });
+}
+async function _aiServerAsk(name, prompt, opts, extra) {
+  const call = _aiCallable(name);
+  const res = await call(Object.assign({
+    prompt: String(prompt == null ? "" : prompt),
+    system: String(opts.system || ""),
+    media: (opts.images || []).filter(m => m && m.data).map(m => ({ mimeType: m.mimeType || "image/jpeg", data: m.data })),
+    json: !!opts.json,
+    maxOutputTokens: opts.maxOutputTokens || 512
+  }, extra || {}));
+  const text = res && res.data && res.data.text;
+  if (typeof text !== "string" || !text.trim()) throw new Error("The " + name + " route returned an unexpected response shape.");
+  return text.trim();
+}
+/* A reasoning model runs only at its own default temperature and the
+   server chooses the model, so no temperature is sent at all: one would be
+   a 400 rather than a worse answer. `thinkingLevel` is deliberately not
+   translated either — an argument a model does not know is a failed call.
+   NO MODEL IS SENT TO KIMI: Moonshot renames its flagship every release,
+   this app has no box to correct a stale id in, and the function falls
+   back to its own current one when the client names nothing. */
+function askOpenAiServer(prompt, opts) { return _aiServerAsk("askOpenAi", prompt, opts); }
+function askKimiServer(prompt, opts) { return _aiServerAsk("askKimi", prompt, opts); }
+
+function _aiRun(engine, prompt, opts) {
+  if (engine === "openai") return askOpenAiServer(prompt, opts);
+  if (engine === "kimi") return askKimiServer(prompt, opts);
+  return askGeminiDirect(prompt, opts);
+}
+
+async function aiAskWith(prompt, opts, order) {
+  if (!order.length) throw new Error("AI is not configured yet");
+  let first = null;
+  for (let i = 0; i < order.length; i++) {
+    const engine = order[i];
+    try {
+      const out = await _aiRun(engine, prompt, opts);
+      _aiMarkUp(engine);
+      _aiLast = { engine: engine, fellBack: i > 0 };
+      return out;
+    } catch (e) {
+      _aiMarkDown(engine, String((e && e.message) || e || ""));
+      if (!first) first = e;
+      console.warn("AI route " + engine + " refused:", e);
+    }
+  }
+  /* EVERY route's refusal, not just the first. Reporting one hides the
+     rest: "Gemini: billing cap" and nothing else sends the teacher to the
+     Google console when the job is to deploy the ChatGPT function. */
+  const why = order.map(e => AI_ROUTE_LABEL[e] + ": " + (_aiWhy[e] || "refused")).join(" · ");
+  const err = new Error(why);
+  err.cause = first;
+  _aiLast = { engine: "", fellBack: false };
+  throw err;
+}
+
+/* What the admin's engine panel prints. It reports only what it KNOWS:
+   the routes in the order they will be tried, and what each said the last
+   time it refused. A "the backup is fine" that was never tested is the
+   sentence this exists to stop anyone believing. */
+window.aiEngines = function aiEngines() {
+  return {
+    preferred: _aiPreferred,
+    vendor: AI_ENGINE_VENDOR[_aiLast.engine === "openai" ? "openai" : _aiLast.engine === "kimi" ? "kimi" : _aiPreferred] || "Gemini",
+    order: aiEngineOrder().map(e => AI_ROUTE_LABEL[e] || e),
+    last: _aiLast.engine ? (AI_ROUTE_LABEL[_aiLast.engine] || _aiLast.engine) : "",
+    fellBack: !!_aiLast.fellBack,
+    why: Object.assign({}, _aiWhy),
+    engines: AI_ENGINES.slice(),
+    names: Object.assign({}, AI_ENGINE_VENDOR)
+  };
+};
+/* The vendor line on the admin's side asks this. It is the engine that
+   really answered last, not the one that was preferred — an admin who
+   cannot tell which engine answered cannot tell a missing key from a
+   broken one. */
+window.openAiActive = function openAiActive() { return _aiLast.engine === "openai"; };
+window.kimiActive = function kimiActive() { return _aiLast.engine === "kimi"; };
+
 window.aiReady = () => !!geminiModel;
 
 // Gemini's ceiling is far below what a long marking run may ask for, and an
@@ -11440,7 +11728,7 @@ window.aiReady = () => !!geminiModel;
 const GEMINI_MAX_OUTPUT = 32000;
 
 window.askGemini = async function askGemini(prompt, opts = {}) {
-  return askGeminiDirect(prompt, opts);
+  return aiAskWith(prompt, opts, aiEngineOrder());
 };
 
 async function askGeminiDirect(prompt, { maxOutputTokens = 512, temperature = 0.3, json = false, system = "", images = [], thinkingLevel = AI_THINK_MIN } = {}) {
