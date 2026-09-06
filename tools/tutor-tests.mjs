@@ -2384,6 +2384,78 @@ ok('the button is a MODE, not a tool',
    !/id="stylusBtn"[^>]*data-tool/.test(html),
    'the tool buttons are wired and lit by data-tool; a mode wearing one would be set as a tool');
 
+/* =====================================================================
+   ⚙️ THREE ENGINES, AND WHICHEVER ONE WILL ANSWER
+   The way this app dies is not a bug in it: "[429] Your billing account has
+   exceeded its monthly spending cap", returned identically to every call on
+   every device until the month turns over. Everything pinned here is silent
+   — the app carries on looking exactly as it did that morning.
+   ===================================================================== */
+ok('`window.askGemini` is still the ONE door, and it goes through the loop',
+   /window\.askGemini = async function askGemini\([^)]*\) \{\s*return aiAskWith\(prompt, opts, aiEngineOrder\(\)\);/.test(html),
+   'a door that calls askGeminiDirect again is every call site back on one engine, with no backup at all');
+ok('…and `askGeminiDirect` is reached only through the dispatcher',
+   (html.match(/askGeminiDirect\(prompt, opts\)/g) || []).length === 1,
+   'a second call site past _aiRun is a call that still dies on the cap with nothing saying why');
+ok('the backups are SERVER-KEYED and there is no key box',
+   /askOpenAi/.test(html) && /askKimi/.test(html) && !/type="password"/.test(html),
+   'this app is opened by children on shared iPads — a key field here is a key typed on the wrong device');
+ok('…and no OpenAI-shaped key is in the file',
+   !/\bsk-[A-Za-z0-9_-]{16,}/.test(html),
+   'a public static site served to every student browser');
+ok('a refused route goes to the BACK of the list and never off it',
+   /sort\(\(a, b\) => \(aiEngineIsDown\(a\) \? 1 : 0\) - \(aiEngineIsDown\(b\) \? 1 : 0\)\)/.test(html),
+   'taken off, the app is dead once the cap has been lifted');
+ok('…and the mark expires by itself', /_aiDown\[e\] = Date\.now\(\) \+ AI_DOWN_MS/.test(html));
+ok('…and a success clears it', /function _aiMarkUp\(e\) \{ _aiDown\[e\] = 0/.test(html));
+ok('an engine name nobody recognises still yields every route',
+   /AI_ENGINES\.indexOf\(first\) >= 0[\s\S]{0,120}: AI_ENGINES\.slice\(\)/.test(html),
+   'a stale word in the centre-wide setting would take the AI off every device at once');
+ok('when nothing answers, EVERY route is named',
+   /order\.map\(e => AI_ROUTE_LABEL\[e\] \+ ": " \+ \(_aiWhy\[e\] \|\| "refused"\)\)/.test(html),
+   'reporting only the first sends the teacher to the Google console when the job is to deploy a function');
+ok('no temperature is sent to a server route',
+   !/_aiServerAsk[\s\S]{0,600}temperature/.test(html),
+   'a reasoning model runs only at its own default — a temperature is a 400, not a worse answer');
+ok('no model is named to Kimi',
+   /function askKimiServer\(prompt, opts\) \{ return _aiServerAsk\("askKimi", prompt, opts\); \}/.test(html),
+   'Moonshot renames its flagship every release and this app has no box to correct a stale id in');
+ok('the callable rides the COMPAT app, which holds the signed-in user',
+   /firebase\.app\(\)\.functions\(\)\.httpsCallable/.test(html) &&
+   /firebase-functions-compat\.js/.test(html),
+   'the modular app carries App Check but no session, and the function refuses a caller it cannot name');
+ok('…and a blocked CDN leaves the backup unavailable rather than throwing on load',
+   /typeof firebase === "undefined" \|\| !firebase\.functions/.test(html));
+
+/* THE ENGINE IS THE CENTRE'S SETTING, on the document this app already
+   reads. A device-local choice is the bug wearing a feature's clothes. */
+ok('the shared setting is a field on config/admin',
+   /db\.collection\('config'\)\.doc\('admin'\)\.onSnapshot/.test(html),
+   'the same field the Portal and Scan write — one switch moves them all');
+ok('…and it is LIVE, not a one-shot read',
+   /_aiCfgStop = db\.collection\('config'\)\.doc\('admin'\)\.onSnapshot/.test(html));
+ok('…and it comes DOWN on every account change',
+   /stopTeachingNotes\(\);\s*\n\s*aiEngineStopShared\(\);/.test(html),
+   'one account setting left running governs the next person to sign in on a shared iPad');
+ok('the write is a MERGE, always',
+   /aiEngine: engine,[\s\S]{0,220}\{ merge: true \}/.test(html),
+   'a plain set takes `uid` off the document and every student in the Portal loses the bank');
+ok('…and only the admin may write it',
+   /async function aiEngineSetShared\(engine\) \{\s*\n\s*if \(!isAdmin\(currentUser\)\) return;/.test(html),
+   'hiding the picker is never the lock');
+ok('an unset field means Gemini',
+   /window\.aiSetEngine\(d\.aiEngine \|\| 'gemini'\)/.test(html),
+   'a centre that never touches this must be unaffected');
+ok('a failed write is REPORTED',
+   /Could not save the centre-wide setting/.test(html),
+   'a teacher told nothing would believe the whole centre had moved');
+
+ok('the vendor name is read from the ONE engine door',
+   /var st = window\.aiEngines && window\.aiEngines\(\);\s*\n\s*if \(st && st\.vendor\) return st\.vendor;/.test(html),
+   'a second reading of the engine state is how the badge says Gemini while ChatGPT is answering');
+ok('…and the student side is still Chung GPT, from a literal',
+   /function aiEngineName\(\) \{ return 'Chung GPT'; \}/.test(html));
+
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'
   : '✓ all ' + checks + ' checks passed'));

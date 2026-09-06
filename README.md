@@ -12,6 +12,29 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.14.0 — ⚙️ Three engines, and whichever one will answer
+
+When the shared Firebase project hits its monthly spending cap, every hint, every mark and every
+reply in this app came back as the same error — on every device, until the month turned over. One
+engine was one thing standing between a child and a dead app.
+
+**Gemini still answers first. ChatGPT and Kimi now stand behind it**, and a route that refuses is
+skipped for a few minutes and then tried again rather than being written off. Nothing on the
+student's side changes: the buddy is still **Chung GPT**, and it still hints rather than answers.
+
+**There is still no key box here, and there never will be.** This app is opened by children on
+shared iPads, so the two backups are reached through the centre's own server — their keys are
+secrets the browser never sees, which is also what makes them work on a student's phone with
+nothing set up on it.
+
+**The teacher's ⚙️ AI panel now picks which engine leads, for the whole centre.** It is the same
+switch as the one in the Learning Portal and Scan & Answer — changing it in any of them moves them
+all — and the panel says which routes will be tried, in order, and what each one said the last time
+it refused.
+
+*(The two backups need their keys set on the server before they can answer. Until then the panel
+says so in as many words, rather than reporting it as an AI error.)*
+
 ## v1.13.0 — ✍️ Write with the pencil, scroll with your fingers
 
 The worksheet is now used the way a notebook app on an iPad is used.

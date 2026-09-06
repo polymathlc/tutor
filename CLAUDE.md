@@ -324,9 +324,83 @@ literal rather than a `var` assigned up there.
 - **`aiVendorName()` is the vendor**, and the admin's two surfaces keep using it. Branding the
   student's side must not take the truth away from the teacher's: an admin who cannot tell which
   engine answered cannot tell a missing key from a broken one.
-- **There is deliberately no API-key box in this app.** Ans Key keeps the ChatGPT and Kimi keys in
-  the admin's own record; a key field in an app students sign into on shared iPads is a key waiting
-  to be typed on the wrong device.
+- **There is deliberately no API-key box in this app**, and that has not changed now
+  that ChatGPT and Kimi answer here: both are reached through their **server-keyed**
+  Cloud Functions, so no key ever reaches the page. A key field in an app students
+  sign into on shared iPads is a key waiting to be typed on the wrong device — see
+  **⚙️ THREE ENGINES** above.
+- **`window.askGemini` KEEPS ITS NAME AND ITS SHAPE**, and that is why this
+  was one change rather than fifteen. It is the ONE door every call site
+  already goes through — the hint ladder, the marking run, the chat, the
+  mistake reader, the practice check — so all of them gained the backup at
+  once and not one of them had to be told. `aiAskWith` is the failover loop
+  and `_aiRun` the dispatcher; **a route past them is a call that still dies
+  on the cap with nothing on screen saying why**, so `askGeminiDirect` is
+  reached from exactly one place and the harness counts it.
+- **THERE IS NO KEY BOX HERE, AND THERE NEVER WILL BE.** This app is opened by
+  children on shared iPads, so the backups are **server-keyed only**: the keys
+  are Firebase secrets behind the `askOpenAi` / `askKimi` Cloud Functions in
+  `polymathlc/math/functions`, and a browser never sees one. That is also what
+  makes them work on a student's phone with nothing set up on it — the half of
+  the school that matters. Ans Key keeps the pasted-key fallback; this app
+  deliberately does not.
+- **IT NEEDS ONE DEPLOY** — `firebase functions:secrets:set OPENAI_API_KEY`
+  (and `MOONSHOT_API_KEY`) and a functions deploy. Until then the call returns
+  `failed-precondition` and the engine panel says **in those words** that the
+  secret is not set, rather than reporting it as an AI error the teacher would
+  go looking for in the wrong place.
+- **A REFUSED ROUTE GOES TO THE BACK AND NEVER OFF THE LIST.** A cap is lifted
+  eventually and a network does come back; an app that refuses on a stale note
+  is worse than one that spends a call finding out. The mark expires by itself
+  after `AI_DOWN_MS` and a success clears it. `sort` is stable, so the
+  preference order survives underneath the down-marking.
+- **NO TEMPERATURE AND NO MODEL ARE SENT TO A SERVER ROUTE.** A reasoning
+  model runs only at its own default temperature and one sent is a **400** —
+  not a worse answer, no answer at all — and the server chooses the model
+  anyway. `thinkingLevel` is deliberately not translated either. And **nothing
+  names a model to Kimi**: Moonshot renames its flagship every release, this
+  app has no box to correct a stale id in, and the function falls back to its
+  own current one when the client names none.
+- **WHEN NOTHING ANSWERS, EVERY ROUTE IS NAMED.** The first error is kept as
+  `cause`, but the message lists them all — reporting one hides the rest, and
+  *"Gemini: your billing account has exceeded its monthly spending cap"* sends
+  the teacher to the Google console when the job is to deploy a function.
+- **The callable rides the COMPAT app**, because that is the app holding the
+  signed-in user; the modular app beside it carries App Check but no session,
+  and the function refuses a caller it cannot name. A blocked
+  `firebase-functions-compat.js` leaves the route unavailable rather than
+  throwing on load — a backup degrading quietly is the whole point of it.
+
+### …and the switch is the CENTRE'S, not this device's
+
+- **It is a field on `config/admin`** — the Learning Portal's own admin
+  pointer, which this app **already reads** to learn whose teaching notes to
+  apply, and which only the admin can write. So it needs **no rules change and
+  no deploy**, and it is the very SAME field the Portal's and Scan & Answer's
+  toggles write: **one switch moves them all**.
+- **A device-local choice is the bug wearing a feature's clothes** — the
+  teacher switches engine on their own laptop, watches it work, and every
+  student stays on the capped one, with the screen on the machine they set it
+  on looking exactly as it should.
+- **It is a LIVE listener**, so a phone with the app open follows within
+  seconds, and it **comes down on every account change** — one account's
+  setting governing the next person to sign in on a shared iPad is the same
+  fault the teaching-notes listener already guards against.
+- **The write is a MERGE, always.** That document is the bank pointer as well,
+  and a plain set would take `uid` off it — which is how every student in the
+  Learning Portal loses the question bank. Only the admin may write it, and
+  **that is checked in `aiEngineSetShared` rather than only on the picker**:
+  hiding a control is never the lock.
+- **An unset field means Gemini**, the default this app already had, so a
+  centre that never touches it is unaffected — and a read that is DENIED
+  changes nothing at all.
+- **A write that FAILED is reported.** A teacher told nothing would believe the
+  whole centre had moved.
+- **`aiVendorName()` reads `window.aiEngines()`**, the one door, rather than
+  assembling the engine state a second time — that second reading is exactly
+  how the badge comes to say *Gemini* while ChatGPT is answering. The
+  student's side is still **Chung GPT**, from a literal, and always will be.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## 🎙️ TRANSCRIPTION — one model, one door (v1.1.0)
 
