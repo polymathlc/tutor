@@ -12,6 +12,20 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.15.2 — Protect Live session records and usage limits
+
+The Live deployment tools now protect Study Buddy and Ans Key's server-managed
+session records and usage counters from browser access. The focused rules update
+starts from the current shared project rules, preserves unrelated permissions,
+and checks both the existing permissions and the new protection before publishing.
+It rechecks the active rules immediately before publication and verifies the result.
+Both voice service codebases and this protection were deployed on 16 September
+2026; all 166 server-side permission checks passed.
+See [Live tutoring setup](docs/live-tutoring.md#shared-firestore-protection) for
+read-only inspection, validation, and the explicit apply command.
+
+---
+
 ## v1.15.1 — Live service deployment fix
 
 The live service dependency lockfile now matches Firebase's Node 22 / npm 10
