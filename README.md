@@ -12,6 +12,15 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.15.1 — Live service deployment fix
+
+The live service dependency lockfile now matches Firebase's Node 22 / npm 10
+build environment. Clean installation and all 36 server tests pass. The Live
+tab and tutoring behavior are unchanged; the voice service still requires an
+authorized Firebase deployment using the existing server secret.
+
+---
+
 ## v1.15.0 — Live tutoring that listens and speaks
 
 Open a saved worksheet, choose **🎧 Live**, and select **Start live tutoring**. Chung GPT listens
