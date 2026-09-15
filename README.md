@@ -12,6 +12,25 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.15.0 — Live tutoring that listens and speaks
+
+Open a saved worksheet, choose **🎧 Live**, and select **Start live tutoring**. Chung GPT listens
+and replies aloud, with natural interruptions, a live transcript, microphone mute, and **End
+session**. The voice uses GPT-Live-1; worksheet reasoning uses the existing teaching engine,
+including the current page, Mr Chung's notes, answer-key rules, and the worksheet's help ceiling.
+Follow-up questions and corrections are queued while the tutor checks the worksheet.
+
+Microphone access begins only when the student starts. Ending, hiding the app, leaving Live,
+changing worksheets, or signing out silences the microphone and closes the session. A lesson
+lasts up to 10 minutes. Captions stay in the current browser session and are not saved to the
+worksheet. Existing dictation and written chat remain available.
+
+The new authenticated Firebase backend keeps `OPENAI_API_KEY` on the server. It requires the
+student's Google sign-in, App Check verification, and ownership of the worksheet. See
+[Live tutoring setup](docs/live-tutoring.md) for deployment, usage limits, and verification.
+
+---
+
 ## v1.14.0 — ⚙️ Three engines, and whichever one will answer
 
 When the shared Firebase project hits its monthly spending cap, every hint, every mark and every
