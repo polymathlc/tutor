@@ -31,7 +31,7 @@ import vm from 'node:vm';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FILE = join(here, '..', 'index.html');
-const html = readFileSync(FILE, 'utf8');
+const html = readFileSync(FILE, 'utf8').replace(/\r\n/g, '\n');
 
 let failures = 0;
 let checks = 0;
