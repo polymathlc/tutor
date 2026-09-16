@@ -12,6 +12,23 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.15.4 — See typed answers and think quietly
+
+Live tutoring and Ask now read text that is still being edited on the worksheet,
+without moving the caret or closing the keyboard. The tutor receives both the
+annotated worksheet images and the exact typed answers, including which box is
+active or selected. Visible pages are ranked by their actual area on screen;
+adjacent visible pages can supply a diagram or the rest of an answer. Hidden
+answer-key pages remain excluded from this view.
+
+The voice tutor receives a silent, current view summary when the session starts
+and when the visible pages or typed answers change. During a worksheet check the
+status says **Thinking…**, and the tutor waits for the teaching result instead of
+saying “I’ll check” or asking the pupil to repeat an answer already supplied.
+
+Regression checks cover unfinished text, the annotated image, page visibility,
+hidden key pages, bounded context, quiet updates and the final spoken answer.
+
 ## v1.15.3 — Faster checks, arithmetic teaching and answer-key readiness
 
 Spoken worksheet checks now have a 35-second total limit, including preparation,

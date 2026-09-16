@@ -2,6 +2,30 @@
 
 Guidance for Claude when working in this repo.
 
+## Visible answers and quiet Live checks (v1.15.4)
+
+`syncActiveTextEditValue` reads the current contenteditable without committing it,
+rebuilding the SVG or changing focus. Call it before image/text capture: an answer
+still being typed is otherwise only in the DOM, not `annotations`. Both composite
+images and cropped bands use it. `worksheetTypedContext` additionally sends bounded,
+exact typed text with page/position and active/selected markers, as untrusted data.
+
+`worksheetContextPages` uses screen-rectangle intersections, orders by visible
+area and includes at most three student-visible pages. Do not fall back to hidden
+key pages or choose a previous-page sliver by offset coordinates. Live and Ask use
+the same context. Keep the answer-key readiness gate and the help ceiling.
+
+`liveShareWorksheetContext` sends initial and changed view summaries through
+`session.thinking.append`, with `delegation_id: null` for general context and the
+delegation ID for a check. Appends allow 500 tokens: the silent summary carries
+only page/count metadata and a 60-codepoint text preview; full typed answers stay
+in the delegated check. It does not speak. Progress stays **Thinking…**; only
+the completed teaching result or a useful terminal failure is sent through
+`session.commentary.append`. Do not add spoken acknowledgements or check narration.
+
+Run `node --test tools/live-tutor-tests.mjs tools/check-latency-tests.mjs
+tools/writing-tests.mjs` and `node tools/tutor-tests.mjs` after changing these paths.
+
 ## Check deadlines and teaching method (v1.15.3)
 
 `aiWithDeadline` bounds the entire operation as well as individual provider

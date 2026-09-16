@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 // Exercise the real SVG renderer and the capture/overlay event handlers.
 // Synthetic events verify event ordering and DOM work, not Apple Pencil feel.
-const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 function section(start, end) {
   const a = html.indexOf(start), b = html.indexOf(end, a + start.length);
   assert(a >= 0 && b > a, start);
