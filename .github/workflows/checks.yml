@@ -1,0 +1,23 @@
+name: App checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check inline scripts
+        run: node tools/check-syntax.mjs
+      - name: Check tutoring, key readiness and live behaviour
+        run: node --test tools/*-tests.mjs
