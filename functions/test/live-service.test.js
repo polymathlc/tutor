@@ -52,6 +52,10 @@ test('valid start authenticates before reserving and sends only fixed server con
   assert.deepEqual(config.client.data_channel.allowed_client_events, ['session.close', 'session.thinking.append', 'session.commentary.append']);
   assert.match(config.instructions, /Delegate EVERY academic question/);
   assert.match(config.instructions, /help ceiling/);
+  assert.match(config.instructions, /current worksheet image and the student's typed answers/);
+  assert.match(config.instructions, /Wait for that result before deciding whether anything is missing/);
+  assert.match(config.instructions, /While a delegation is pending, remain silent/);
+  assert.doesNotMatch(config.instructions, /only acknowledge that you are checking|You cannot see pictures/);
   assert.ok(!config.instructions.includes('give all answers'));
   assert.equal(result.headers['Cache-Control'], 'no-store');
 });
