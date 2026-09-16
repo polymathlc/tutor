@@ -2,6 +2,47 @@
 
 Guidance for Claude when working in this repo.
 
+## Check deadlines and teaching method (v1.15.3)
+
+`aiWithDeadline` bounds the entire operation as well as individual provider
+attempts. Preserve cancellation checks before fallback and after every Live
+preparation step. A late answer must not speak or launch another request.
+Firebase 11.10.0 request timeouts are supplied to `getGenerativeModel` through
+its third argument. Keep the longer budgets for full-paper marking.
+
+Teaching uses `tutorMethodRule`: arithmetic and the unitary method first,
+units and parts only for clearly suitable questions, no algebraic unknowns,
+and one step at a time in Live. `keyEnsureReady` must precede hints, marking,
+chat and Live. Share `keyReadJob`, reuse saved rows, and do not answer while
+an attached key is unreadable. Read the matching key entry and its working
+before planning the explanation. Keep the existing help ceiling.
+
+Run `node --test tools/check-latency-tests.mjs tools/live-tutor-tests.mjs`
+and `node tools/tutor-tests.mjs` after changes to these paths.
+
+## Writing responsiveness and palm ownership (v1.15.3)
+
+`appendDrawingSamples` records coalesced pen positions with one geometry read
+per batch; `scheduleInkPreview` paints only the current annotation once per
+frame. Preserve the other SVG nodes. Reacquire the active node if an asynchronous
+hint/mark refresh replaced it, flush the final `pointerup` position, and never
+append cancellation or capture-loss coordinates. Cancel queued frames when
+the gesture or worksheet ends. Keep each completed stroke as one undo entry.
+
+`navBind` sees input before overlay tools. Pen contact must stop existing pan,
+pinch and momentum and take ownership before any touch handler changes the page.
+`penBlocksTouch` covers pen-down and the 350 ms gap after it; `rejectedTouches`
+keeps an already rejected contact out until lift. Contact size may start small
+and grow, so check moves too and restore an accidental erase/move snapshot when
+a contact becomes a palm. Reset rejected IDs on a fresh down and input state on
+blur, hidden document and worksheet replacement. Raw touch undo/redo must obey
+the same pen/palm rules. A captured pointer leaving the overlay keeps drawing;
+actual lost capture closes the gesture once.
+
+Run `node --test tools/writing-tests.mjs` and `node tools/tutor-tests.mjs`.
+The deterministic handler/DOM tests cannot measure pencil-and-hand feel on glass;
+retain the hardware check described below and report when it was unavailable.
+
 ## App
 - `index.html` — **"Study Buddy"**. One self-contained file (markup + CSS + JS) on the shared
   `mathgen--app` Firebase project with Google sign-in. **A student uploads their own worksheet as a

@@ -12,6 +12,55 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.15.3 — Faster checks, arithmetic teaching and answer-key readiness
+
+Spoken worksheet checks now have a 35-second total limit, including preparation,
+and try a backup after a 12-second provider wait. Slow teaching-note loads and
+answer-key reads produce a clear retry message. Ending a live session cancels
+the pending check; late replies cannot be spoken or start another fallback.
+Normal answer checks and full-paper batches have their own longer limits.
+Network failures no longer repeat the same high-thinking Gemini request.
+
+Teaching uses step-by-step arithmetic and the unitary method. Units and parts
+are reserved for questions that clearly call for them. The live tutor gives
+one arithmetic step, asks the pupil to try it, and waits. It does not introduce
+algebraic unknowns. These teaching preferences do not invalidate a pupil's
+otherwise correct method or override the worksheet's help ceiling.
+
+Hints, chat, marking and Live wait for the attached answer key before answering.
+Concurrent requests share its existing read, and saved transcriptions are reused.
+A linked key that cannot be read is reported rather than silently ignored.
+Live and text chat prioritise the entry for an explicitly named question,
+including its working, so later questions in a long key are not left out.
+Missing key rows are prepared when the worksheet opens. The generated teaching
+step uses the matching key's method and checks its result against the key.
+
+Completed marks appear before mistake-book pictures are prepared. The app labels
+that remaining work separately and prevents duplicate marking while it saves.
+
+Writing now paints only the active annotation once per animation frame, keeping
+the page's existing ink, text, hints and marks in place. Coalesced pen samples
+and the final pen-up position are retained, including stationary decimal-point
+taps in the saved ink and images sent for checking. A refreshed overlay during a stroke
+does not lose its preview, and losing pointer capture or leaving the app closes
+the stroke once without inventing extra points.
+
+The pen stops finger navigation and momentum as soon as it touches down. Touches
+present while writing, including contacts initially reported as tiny, remain
+ignored until they lift; a short guard also covers the gaps between letters.
+Growing palm contacts cancel their accidental gesture, and rejected palms cannot
+trigger multi-touch undo. Deliberate finger pan, pinch and undo remain available.
+
+Validation: deterministic tests cover provider stalls, total deadlines,
+cancellation, late results, shared key reads, unreadable keys, long-key lookup,
+and the teaching instructions sent by Live. Writing tests drive the real event
+handlers and SVG renderer, including a page with 1,000 saved strokes. They cover
+coalesced samples, pen/palm ordering, growing contacts, capture loss, cancellation
+and overlay refresh. These tests simulate input, network and model responses;
+they do not measure Apple Pencil hardware feel or a signed-in conversation.
+
+---
+
 ## v1.15.2 — Protect Live session records and usage limits
 
 The Live deployment tools now protect Study Buddy and Ans Key's server-managed

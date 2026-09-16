@@ -12,7 +12,9 @@ const endMarker = '/* ================= End live tutoring ================= */';
 const start = html.indexOf(startMarker);
 const end = html.indexOf(endMarker, start + startMarker.length);
 assert.ok(start >= 0 && end > start, 'the live tutoring section can be loaded independently');
-const source = html.slice(start, end);
+const deadlineSource = html.slice(html.indexOf('/* ================= AI request deadlines ================= */'),
+  html.indexOf('/* ================= End AI request deadlines ================= */'));
+const source = deadlineSource + html.slice(start, end);
 const voiceSource = html.slice(html.indexOf('function startVoice(target) {'), html.indexOf('function _voiceClearTimers()'));
 
 function deferred() {
@@ -22,8 +24,8 @@ function deferred() {
 }
 
 async function flush() {
-  // Each startup boundary is a promise; no wall-clock sleeps are needed.
-  for (let i = 0; i < 20; i++) await Promise.resolve();
+  // Drain all nested preparation/fallback promises without a wall-clock sleep.
+  await new Promise(resolve => setImmediate(resolve));
 }
 
 function node(tagName = 'div') {
@@ -151,7 +153,7 @@ function harness(options = {}) {
     pages: [{ num: 1 }], aiBusy: false, chat: [],
     visiblePage: () => ({ num: 1 }), studentPages: () => [{ num: 1 }],
     aiAvailable: () => true,
-    loadTeachingNotes: async () => {}, ensurePageRaster: async () => {},
+    loadTeachingNotes: async () => {}, keyEnsureReady: async () => {}, ensurePageRaster: async () => {},
     compositeJpeg: page => 'WORKSHEET_PAGE_' + page.num,
     aiGrounding: kind => '[TEACHER_GROUNDING:' + kind + ']',
     buddyCeilingRule: () => '[NUDGES_ONLY]', keyRuleBlock: () => '[ANSWER_KEY_RULES]',
@@ -413,6 +415,50 @@ test('a missing image asks for the question instead of claiming to see the works
   await h.c.runLiveDelegation('no-page', h.c.liveTutor.generation);
   assert.equal(h.calls.ai[0].config.images.length, 0);
   assert.match(h.calls.ai[0].prompt, /No worksheet image is available.*do not guess/);
+  h.c.stopLiveTutor();
+});
+
+test('Live waits for the key and sends arithmetic and unitary teaching rules with its answer', async () => {
+  const key = deferred();
+  const h = await connected({ globals: { keyEnsureReady: () => key.promise } });
+  const work = h.c.runLiveDelegation('key-first', h.c.liveTutor.generation);
+  await flush();
+  assert.equal(h.calls.ai.length, 0, 'no teaching request before the key is ready');
+  key.resolve(); await work;
+  const config = h.calls.ai[0].config;
+  assert.match(config.system, /step-by-step arithmetic and the unitary method/);
+  assert.match(config.system, /Do not introduce algebraic unknowns/);
+  assert.match(config.system, /ONLY when this is very obviously/);
+  assert.match(config.system, /working FIRST/);
+  assert.match(config.system, /wait for their reply/);
+  h.c.stopLiveTutor();
+});
+
+test('an unreadable key is explained aloud without requesting an ungrounded answer', async () => {
+  const error = Object.assign(new Error('The answer key is still being read. Please ask again shortly.'), { code: 'ANSWER_KEY_NOT_READY' });
+  const h = await connected({ globals: { keyEnsureReady: async () => { throw error; } } });
+  await h.c.runLiveDelegation('key-unready', h.c.liveTutor.generation);
+  assert.equal(h.calls.ai.length, 0);
+  assert.match(comments(h.c.liveTutor.channel)[0].content, /answer key is still being read/);
+  assert.equal(h.c.liveTutor.working, false);
+  h.c.stopLiveTutor();
+});
+
+test('a stalled worksheet check ends within its budget, ignores late output, and allows the next question', async () => {
+  const slow = deferred(); let count = 0;
+  const h = await connected({ ai: () => ++count === 1 ? slow.promise : 'Find the value of one item.' });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('slow-check', h.c.liveTutor.generation);
+  await flush();
+  const timer = [...h.calls.timers.values()].find(t => t.ms === 35000);
+  assert.ok(timer); timer.fn(); await work;
+  assert.equal(h.c.liveTutor.working, false);
+  assert.equal(h.calls.ai[0].config.signal.aborted, true);
+  assert.match(comments(channel)[0].content, /could not check/);
+  slow.resolve('Obsolete answer'); await flush();
+  assert.equal(comments(channel).length, 1);
+  await h.c.runLiveDelegation('next-check', h.c.liveTutor.generation);
+  assert.equal(comments(channel).at(-1).content, 'Find the value of one item.');
   h.c.stopLiveTutor();
 });
 

@@ -60,6 +60,8 @@ function between(startMarker, endMarker, what) {
    middle of a comment and what comes out has an unterminated /* in it, and
    the harness dies on a syntax error in code that is perfectly fine. */
 const BAR = '/* =====================================================================';
+const SRC_DEADLINES = between('/* ================= AI request deadlines ================= */',
+                             '/* ================= End AI request deadlines ================= */', 'request deadlines');
 const SRC_CORE   = between('/* ================= Small helpers ================= */',
                            BAR + '\n   THE ANNOTATION ENGINE', 'the helpers, the ladder and the grounding');
 const SRC_ANN    = between('/* Unrotated frame of an x/y/w/h annotation.',
@@ -146,10 +148,10 @@ const sandbox = {
   setTimeout, clearTimeout, Blob: class { constructor(p) { this.size = String(p).length; } },
   Math, JSON, Date, String, Number, Array, Object, parseInt, parseFloat, isNaN, Promise,
   // The touch-navigation engine keeps its live fingers in a Map.
-  Map, Set
+  Map, Set, AbortController
 };
 vm.createContext(sandbox);
-vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
+vm.runInContext(SRC_DEADLINES + '\n' + SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
                 '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
                 '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER + '\n' + SRC_GUIDE +
                 '\n' + SRC_REBUILD + '\n' + SRC_TIERS + '\n' + SRC_QNODES + '\n' + SRC_PALM,
@@ -815,7 +817,7 @@ ok('a figure it cannot place is omitted rather than guessed at',
 /* THE RATION IS PER RUN, and it is spent BEFORE the call so a failure
    cannot buy another try. Left unbounded, a paper where every question is
    wrong quietly spends a vision call on every one of them. */
-const RBCALL = between('async function _mbBuildBlocks(it) {', 'async function _mbUpload', 'the rebuild call');
+const RBCALL = between('async function _mbBuildBlocks(it, context) {', 'async function _mbUpload', 'the rebuild call');
 ok('the budget is spent BEFORE the call', RBCALL.indexOf('_mbBuildBudget--') < RBCALL.indexOf('askGemini('));
 ok('…and refused outright once it is gone', /if \(_mbBuildBudget <= 0\) return null;/.test(RBCALL));
 ok('the budget is refilled in fileMistakes and NOWHERE else',
@@ -1001,7 +1003,7 @@ ok('the hint prompt carries the answer key', /aiGrounding\('hint'\)\s*\+\s*keyRu
 ok('the marking prompt carries the answer key', /aiGrounding\('mark'\)\s*\+\s*keyRuleBlock\(\)/.test(markCall),
    markCall.replace(/\s+/g, ' ').slice(0, 260));
 ok('the chat carries it too, behind the ceiling rule',
-   /buddyCeilingRule\(\)\s*\+\s*aiGrounding\('teach'\)\s*\+\s*keyRuleBlock\(\)/.test(chatCall),
+   /buddyCeilingRule\(\)\s*\+\s*aiGrounding\('teach'\)\s*\+\s*keyRuleBlock\(text\)/.test(chatCall),
    chatCall.replace(/\s+/g, ' ').slice(0, 260));
 
 /* THE KEY IS NOT THE STUDENT'S WORK. Marking the pages at the back of the
@@ -2357,7 +2359,7 @@ const NAV = between('function navBind() {', '/* Two-finger double-tap', 'the nav
 ok('the engine is bound in CAPTURE, ahead of the page overlay',
    /pointerdown', function \(e\) \{[\s\S]*?\}, true\);/.test(NAV),
    'bound after it, a second finger could never take a stroke over into a pinch');
-ok('a resting palm navigates nothing either', /if \(isPalmTouch\(e\)\) return;/.test(NAV));
+ok('a resting palm navigates nothing either', /if \(rejectTouch\(e\)\)/.test(NAV));
 ok('a second finger on a young stroke throws the accidental dot away',
    /abortYoungStroke\(e\.timeStamp\)/.test(NAV));
 ok('…and on an established one KEEPS the ink and pinches',
@@ -2369,7 +2371,7 @@ ok('the pinch is collected into one zoom per frame',
    /scheduleNavZoom\(\)/.test(NAV),
    'a zoom per pointermove is a forced layout twice a frame on a twenty-page document — that IS the lag');
 ok('the browser’s own touch scroll stands down while the engine pans',
-   /if \(nav\.mode\) e\.preventDefault\(\)/.test(NAV),
+   /if \(nav\.mode \|\| penBlocksTouch\(\) \|\| rejectedTouches\.size\) e\.preventDefault\(\)/.test(NAV),
    'the two together double-scroll and fight each other');
 ok('a flick carries on with momentum', /startNavMomentum\(\)/.test(NAV));
 ok('the pages sharpen up once the gesture is over', /scheduleRaster\(\)/.test(NAV));
