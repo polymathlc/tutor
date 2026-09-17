@@ -2,6 +2,109 @@
 
 Guidance for Claude when working in this repo.
 
+## 🧩 KEYWORD CHECKS — the concepts rung asked as a question (v1.17.0)
+
+`KWQ_KEY` / `KWQ_RUNG` / `KWQ_MAX_BLANKS` / `KWQ_LIVE_GAP_MS` / `kwQuizPref` /
+`kwQuiz` / `kwQuizBusyHints` / **`kwQuizAllowed`** / `kwQuizLockedNote` /
+`KWQ_SYS` / `kwQuizCeilingRule` / `kwQuizNorm` / `kwQuizKeyAnswers` /
+**`kwQuizGivesAnswer`** / **`kwQuizClean`** / `kwQuizMatch` / **`kwQuizBuild`**
+/ `kwQuizShow` / `kwQuizClose` / `kwQuizLayout` / `kwQuizRender` /
+`kwQuizCheck` / `kwQuizSolved` / `kwQuizReveal` / `kwQuizTellTutor` /
+`kwQuizAfterHint` / `kwQuizForHint` / `kwQuizForLive` (search `THE KEYWORD
+QUIZ`), the syllabus it reads — `SYLLABUS_TOPICS` / `sylLevelNum` / `sylNorm` /
+`sylRows` / **`sylObjectivesFor`** / `sylPromptBlock` (search `THE SCIENCE
+SYLLABUS`) — plus `#kwQuiz`, `#liveQuizBtn`, the `.kwq*` CSS, the hooks in
+`askHintAt` / `runLiveDelegation` / `loadPdf` / `showView` / the Escape
+handler, the 🧩 button on `hintCard`, and the `quiz` / `solved` rows of
+`USAGE_EVENTS`.
+
+A box pops up over the page and asks the student to FILL IN the words a
+question needs instead of telling them — *"Water turns into [1] by [2]."* — in
+hint mode and in live mode alike. It is the "Concept & keywords" rung of the
+ladder asked as a question rather than read out.
+
+- **IT SITS ON A RUNG, SO THE CEILING GATES IT.** A quiz hands over exactly
+  what the concepts rung hands over, so `kwQuizAllowed` asks the LADDER
+  (`rungsAllowed`) whether that rung is allowed and nowhere decides it a second
+  time. Below that level it is shown 🔒 locked on the card and on the hints
+  tab, like any other locked rung — and `kwQuizClean` refuses a reply outright
+  when the level has changed under it, which is the belt to that brace.
+- **THE KEY NEVER LIFTS THE CEILING**, and this is the one that matters:
+  `kwQuizGivesAnswer` refuses the WHOLE quiz below full help when any blank's
+  word (or an accepted form of it) is exactly what the paper's key gives as
+  the answer. Filling that hole in would state the answer; leaving it empty
+  would be a hole the student cannot fill; and "the puddle dried up because
+  of [evaporation]" beside a key that says *Evaporation* is the answer with a
+  box round it. With no question number every row on the paper counts, because
+  a word that is ANY answer on the paper is an answer on the paper.
+- **ONE BUILDER, ONE CLEANER, ONE BOX.** The 💡 card and the 🎧 tutor both
+  reach the quiz through `kwQuizBuild` → `kwQuizClean` → `kwQuizShow`, so the
+  two modes can never disagree about what a quiz may hold. A second cleaner is
+  a second place to forget the key guard.
+- **IT IS GROUNDED AS `'hint'`**, because the keywords and the key facts are
+  what a quiz is built from and the marking standards are not; the key rides
+  beside it through `keyRuleBlock`; **the syllabus comes AFTER the notes and
+  says the notes win** (`sylPromptBlock`) — the syllabus is the floor under
+  how this teacher teaches a topic, never a second authority beside it; and
+  `kwQuizCeilingRule` restates the ceiling last, where the blanks are decided.
+  The harness pins that order against the file.
+- **THE SYLLABUS IS MATCHED, NEVER SENT WHOLE.** `sylObjectivesFor` scores the
+  79 objectives by the keywords the text actually uses (a two-word phrase
+  counts double) and hands over the best three past a floor — so a maths
+  question, which mentions "water" and nothing else on the list, gets no
+  syllabus block at all, and a subject that is not science gets none whatever
+  the words. The student's level CAPS it: a P4 worksheet is never told it tests
+  a P6 objective, while a P6 child is still reminded of P3 science. It is a
+  COPY of Ans Key's `SYLLABUS_TOPICS` (itself a copy of the Portal's
+  `SYLLABUS_LO_TOPICS`) and drifts only when MOE changes the syllabus — edit
+  all three then.
+- **IN LIVE MODE IT IS BUILT AFTER THE SPOKEN REPLY IS ON ITS WAY**, never
+  before it, so the student hears the tutor at the moment they always did and
+  the box arrives while it is talking. At most one per reply, never while one
+  is still being done, never more often than `KWQ_LIVE_GAP_MS` — a box that
+  popped on every "yes" is a box that gets closed unread. The tutor is TOLD
+  it is on the screen through a general `session.thinking.append`
+  (`delegation_id: null` — context, never speech) and is never handed the
+  missing words; when the student solves it, it is told that too.
+- **IN HINT MODE IT IS BUILT IN THE BACKGROUND off the hint that just landed**
+  (`kwQuizAfterHint`): the hint never waits for it and never loses anything if
+  it fails. It goes along with the question the hint read, the keywords the
+  ladder found, and **only the rungs the student has been SHOWN** — a rung
+  still folded away is one the ladder has not handed over yet. The quiz is
+  remembered ON the hint (`h.quiz`), so it is saved into the body with the
+  hints and comes back done; a second press reopens it with no second call.
+  `kwQuizBusyHints` is kept OFF the hint object on purpose — a busy flag
+  saved mid-flight would come back true for ever on the next open.
+- **`kwQuizClean` decides what a quiz may hold, once**: every hole in the
+  sentence needs its blank and every blank its hole (or the box asks for a
+  word it cannot check — refused); an answer word printed beside its own hole
+  is filled in and dropped from the check; more than `KWQ_MAX_BLANKS` is a
+  test, not a reminder, so the later holes are filled in as given; and what is
+  left is renumbered 1..k in order of appearance, so the sentence and the
+  blanks can never disagree about which is which.
+- **A plural or a tense ending is the same keyword** (`kwQuizMatch`): "water
+  vapours" is "water vapour" and "condenses" is "condense" to a child who has
+  the science right. A different word is not, and the model's `alt` list
+  carries the forms a suffix rule cannot reach.
+- **IT IS A FLOATING BOX, NOT A MODAL.** No backdrop, so the rest of the page
+  can still be written on — and in live mode the tutor still heard — while it
+  is open. It lifts `#liveSubs` clear of itself (`kwQuizLayout`), so a spoken
+  answer is never captioned underneath the quiz it just set. Escape and ✕
+  close it; a new worksheet (`loadPdf`) and leaving the worksheet (`showView`)
+  close it too, and `kwQuizRender` refuses to paint a quiz whose `epoch` is
+  not the open worksheet's.
+- **MODEL OUTPUT IS PAINTED AS TEXT, never as markup** — the sentence, the
+  concept, the clues and the praise are all `textContent` or text nodes,
+  exactly like the transcript rows and the hint cards.
+- **"Show me" appears only after one honest go.** A box that offers the words
+  before anything has been typed is a box nobody fills in.
+- **The switch is a PREFERENCE, per device**, offered on the Live card and the
+  Hints tab whether or not a session is running, and a device that refuses
+  storage still gets quizzes: they are the default. Off, a hint still offers
+  the quiz on its card; it just stops popping up by itself.
+- Run **`node tools/tutor-tests.mjs`** and **`node --test
+  tools/live-tutor-tests.mjs`** after touching any of it.
+
 ## 💬 SUBTITLES — what the tutor just said, over the page (v1.16.0)
 
 `SUBS_KEY` / `SUBS_HOLD_MS` / `SUBS_MAX_CHARS` / `liveSubs` / **`liveSubsNote`**
@@ -1537,6 +1640,27 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **🧩 the keyword check or the syllabus** (`kwQuizAllowed`,
+  `kwQuizClean`, `kwQuizGivesAnswer`, `kwQuizKeyAnswers`, `kwQuizMatch`,
+  `kwQuizBuild`, `KWQ_SYS`, `kwQuizCeilingRule`, `kwQuizShow`, `kwQuizRender`,
+  `kwQuizForHint`, `kwQuizForLive`, `kwQuizTellTutor`, `sylObjectivesFor`,
+  `sylPromptBlock`, `SYLLABUS_TOPICS`, or the hooks in `askHintAt` /
+  `runLiveDelegation` / `loadPdf` / `showView`), run `node tools/tutor-tests.mjs`
+  **and** `node --test tools/live-tutor-tests.mjs`. Every failure here is
+  silent and the box still pops up looking helpful. Let `kwQuizAllowed` stop
+  asking the ladder and a child on *Nudges only* is handed the concept and the
+  keywords their parent switched off, in a box that looks like a game. Drop
+  the key guard — or make it drop the ONE blank instead of refusing the quiz —
+  and the paper's own answer is on the screen with a box round it, or a hole
+  nobody can fill. Send the syllabus whole and every quiz costs thousands of
+  tokens; put it BEFORE the notes and a rule Mr Chung typed this morning loses
+  to a public syllabus. Build the live quiz before the reply is sent and the
+  tutor goes slow on every answer; hand the tutor the missing words and it
+  reads them out. Save the busy flag ON the hint and a quiz built while the
+  tab closed is "building" for ever. Paint the sentence with `innerHTML` and
+  model output is markup on the page. And let a hole and its blank disagree
+  and the box asks for a word it cannot check, which reads as a child getting
+  it wrong.
 - After touching **✍️ the stylus, the palm and the fingers** (`stylusOnly`,
   `PALM_CONTACT`, `isPalmTouch`, `isDrawTool`, `claimPointer`,
   `cancelStaleGesture`, `abortYoungStroke`, `commitTouchStrokeForNav`, `nav`,

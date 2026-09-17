@@ -888,6 +888,176 @@ ok('a block figure is stored as a path, never a download URL',
    /var path = MISTAKE_DIR \+ '\/' \+ currentUser\.uid \+ '\/' \+ name \+ '\.jpg';/.test(html));
 
 /* =====================================================================
+   🧩 THE KEYWORD CHECK — the syllabus it reads, the cleaner and the hook
+   ===================================================================== */
+section('The science syllabus');
+
+const kqLos = [].concat(...S.SYLLABUS_TOPICS.map(t => t.los));
+eq('79 objectives across 18 topics', [S.SYLLABUS_TOPICS.length, kqLos.length], [18, 79]);
+ok('every objective has an id, a title, an objective and keywords',
+   kqLos.every(lo => lo.id && lo.title && lo.obj && Array.isArray(lo.kw) && lo.kw.length));
+ok('the ids are unique', new Set(kqLos.map(lo => lo.id)).size === kqLos.length);
+ok('every topic is on the P3–P6 ladder', S.SYLLABUS_TOPICS.every(t => /^P[3-6]$/.test(t.level)));
+ok('no objective carries questions — this is the syllabus and nothing else', kqLos.every(lo => !('questions' in lo)));
+
+const kqEvap = S.sylObjectivesFor('Explain why the puddle dried up. The water changed into water vapour by evaporation.', 'science', 'P5');
+ok('a water-cycle question finds the water objectives first',
+   kqEvap.length >= 2 && /^wat-/.test(kqEvap[0].id), JSON.stringify(kqEvap.map(m => m.id)));
+ok('…scored by the keywords the text really uses, a two-word phrase counting double',
+   kqEvap[0].score >= 3 && kqEvap[0].hits.indexOf('water vapour') >= 0, JSON.stringify(kqEvap[0]));
+eq('a maths worksheet matches nothing — this is the SCIENCE syllabus',
+   S.sylObjectivesFor('The water tank holds 24 litres of water. Find the total cost of 3 tanks at $2 each', 'math', 'P5'), []);
+eq('a question about nothing on the syllabus matches nothing, even with no subject set',
+   S.sylObjectivesFor('Find the total cost of 3 pens at 2 dollars each', '', 'P5'), []);
+eq('nothing to read is nothing matched', S.sylObjectivesFor('', 'science', 'P5'), []);
+const kqP6 = S.SYLLABUS_TOPICS.filter(t => t.level === 'P6')[0];
+const kqP6Text = kqP6.los[0].kw.join(' ') + ' ' + kqP6.los[0].kw.join(' ');
+ok('a P6 objective is found for its own keywords',
+   S.sylObjectivesFor(kqP6Text, 'science', 'P6').some(m => m.id === kqP6.los[0].id));
+ok('a P4 worksheet is never told it tests a P5 or P6 objective',
+   S.sylObjectivesFor(kqP6Text, 'science', 'P4').every(m => m.level === 'P3' || m.level === 'P4'));
+ok('…and a worksheet outside the ladder is not narrowed by it',
+   S.sylObjectivesFor(kqP6Text, 'science', 'S1').some(m => m.id === kqP6.los[0].id));
+ok('a P6 child is still reminded of P3 science — that is what a P6 question builds on',
+   S.sylObjectivesFor('Living things grow, respond and reproduce; they need food, water and air to survive', 'science', 'P6').some(m => m.level === 'P3'));
+ok('at most three objectives travel',
+   S.sylObjectivesFor(kqLos.slice(0, 12).map(lo => lo.kw.join(' ')).join(' '), 'science', '').length <= 3);
+eq('plurals fold onto their singular', S.sylNorm('Living things and their properties'), 'living thing and their property');
+const kqBlock = S.sylPromptBlock(kqEvap);
+ok('the prompt kqBlock names the objective, its level and its keywords',
+   /THE SYLLABUS \(MOE Primary Science Syllabus 2023/.test(kqBlock) && /\(P5\)/.test(kqBlock) && /Keywords:/.test(kqBlock));
+ok('…and says the teacher\'s notes win', /the notes win/.test(kqBlock));
+eq('no matches, no kqBlock', S.sylPromptBlock([]), '');
+
+section('🧩 The keyword check — what a quiz may hold');
+
+S.wsMeta = { level: 'P5', subject: 'science', guidance: 'concepts' };
+S.wsKey = { rows: [] };
+eq('allowed exactly when the concepts rung is',
+   ['nudge', 'concepts', 'method', 'answer'].map(g => { S.wsMeta.guidance = g; return S.kwQuizAllowed(); }),
+   [false, true, true, true]);
+S.wsMeta.guidance = 'nudge';
+ok('the locked note names the level', /Nudges only/.test(S.kwQuizLockedNote()));
+S.wsMeta.guidance = 'concepts';
+const kqGood = {
+  concept: 'Water changes state when it gains or loses heat.',
+  sentence: 'Water turns into [1] by [2].',
+  blanks: [{ n: 1, answer: 'water vapour', alt: ['vapour'], clue: 'water as a gas' }, { n: 2, answer: 'evaporation', clue: 'the process' }],
+  praise: 'Well done!'
+};
+const kqQ1 = S.kwQuizClean(kqGood, {});
+ok('a well-formed reply is kept whole', kqQ1 && kqQ1.blanks.length === 2 && kqQ1.sentence === 'Water turns into [1] by [2].', JSON.stringify(kqQ1));
+eq('…with its concept, its praise and its clues', [kqQ1.concept, kqQ1.praise, kqQ1.blanks[0].clue, kqQ1.blanks[0].alt], ['Water changes state when it gains or loses heat.', 'Well done!', 'water as a gas', ['vapour']]);
+eq('…not yet done', kqQ1.done, false);
+S.wsMeta.guidance = 'nudge';
+eq('the same reply is refused when the rung it sits on is locked', S.kwQuizClean(kqGood, {}), null);
+S.wsMeta.guidance = 'concepts';
+eq('a hole with no blank refuses the quiz — the box cannot check a word it was not kqGiven',
+   S.kwQuizClean({ sentence: 'Water turns into [1] by [2].', blanks: [{ n: 1, answer: 'water vapour' }] }, {}), null);
+eq('a blank with no hole is simply dropped',
+   S.kwQuizClean({ sentence: 'Water turns into [1].', blanks: [{ n: 1, answer: 'water vapour' }, { n: 2, answer: 'evaporation' }] }, {}).blanks.length, 1);
+eq('a sentence with no holes is no quiz', S.kwQuizClean({ sentence: 'Water evaporates.', blanks: [] }, {}), null);
+eq('a reply that is not an object is no quiz', [S.kwQuizClean(null, {}), S.kwQuizClean('x', {}), S.kwQuizClean([], {})], [null, null, null]);
+const kqMany = S.kwQuizClean({ sentence: '[1] [2] [3] [4] [5] [6]', blanks: [1, 2, 3, 4, 5, 6].map(n => ({ n, answer: 'w' + n })) }, {});
+eq('more than four blanks is a test, not a reminder: the later holes are filled in as kqGiven',
+   [kqMany.blanks.length, kqMany.sentence], [4, '[1] [2] [3] [4] w5 w6']);
+const kqGiven = S.kwQuizClean({ sentence: 'Photosynthesis makes food: plants use [1] for photosynthesis and give out [2].',
+                              blanks: [{ n: 1, answer: 'photosynthesis' }, { n: 2, answer: 'oxygen' }] }, {});
+eq('an answer word printed beside its own hole is filled in and dropped from the check',
+   [kqGiven.blanks.length, kqGiven.blanks[0].answer, kqGiven.blanks[0].n, kqGiven.sentence],
+   [1, 'oxygen', 1, 'Photosynthesis makes food: plants use photosynthesis for photosynthesis and give out [1].']);
+const kqRenum = S.kwQuizClean({ sentence: 'First [3], then [7].', blanks: [{ n: 7, answer: 'b' }, { n: 3, answer: 'a' }] }, {});
+eq('holes are renumbered 1..k in order of appearance, and the blanks follow',
+   [kqRenum.sentence, kqRenum.blanks.map(b => b.answer), kqRenum.blanks.map(b => b.n)], ['First [1], then [2].', ['a', 'b'], [1, 2]]);
+eq('a five-word "keyword" is not a keyword',
+   S.kwQuizClean({ sentence: 'It is [1].', blanks: [{ n: 1, answer: 'because the water gets hotter' }] }, {}), null);
+eq('a hole used twice is one blank', S.kwQuizClean({ sentence: '[1] and [1] again', blanks: [{ n: 1, answer: 'heat' }] }, {}).blanks.length, 1);
+
+/* THE KEY NEVER LIFTS THE CEILING. A blank whose word IS the paper's answer
+   is the answer with a box round it, so the whole quiz is refused below full
+   help — filling that hole in would state the answer, and leaving it empty
+   would be a hole the student cannot fill. */
+S.wsKey = { rows: [{ number: '7', answer: 'Evaporation.', working: '' }, { number: '8', answer: '24 g', working: '' }] };
+eq('a blank that IS the paper\'s answer refuses the whole quiz below full help',
+   S.kwQuizClean({ sentence: 'The puddle dried up because of [1].', blanks: [{ n: 1, answer: 'evaporation' }] }, { number: '7' }), null);
+eq('…through an accepted form of it too',
+   S.kwQuizClean({ sentence: 'The puddle dried up because of [1].', blanks: [{ n: 1, answer: 'evaporating', alt: ['evaporation'] }] }, { number: '7' }), null);
+eq('…and against every row on the paper when the number is not known',
+   S.kwQuizClean({ sentence: 'The mass is [1].', blanks: [{ n: 1, answer: '24 g' }] }, {}), null);
+ok('a blank that is a keyword and not the answer is kept',
+   !!S.kwQuizClean({ sentence: 'The puddle dried up because the water gained [1].', blanks: [{ n: 1, answer: 'heat' }] }, { number: '7' }));
+ok('another question\'s answer is not this question\'s',
+   !!S.kwQuizClean({ sentence: 'The mass is measured in [1].', blanks: [{ n: 1, answer: '24 g' }] }, { number: '7' }));
+S.wsMeta.guidance = 'answer';
+ok('at full help the key guard stands down — the answer is allowed there anyway',
+   !!S.kwQuizClean({ sentence: 'The puddle dried up because of [1].', blanks: [{ n: 1, answer: 'evaporation' }] }, { number: '7' }));
+S.wsMeta.guidance = 'concepts';
+S.wsKey = { rows: [] };
+
+section('🧩 The keyword check — marking a blank');
+const kqWv = { n: 1, answer: 'water vapour', alt: ['vapour'] };
+eq('exact, case, spacing and punctuation are forgiven',
+   ['water vapour', 'WATER  VAPOUR.', 'Water-Vapour', 'vapour'].map(t => S.kwQuizMatch(kqWv, t)), [true, true, true, true]);
+eq('a plural or a tense ending is the same keyword',
+   [S.kwQuizMatch(kqWv, 'water vapours'), S.kwQuizMatch({ n: 1, answer: 'condense' }, 'condenses'),
+    S.kwQuizMatch({ n: 1, answer: 'evaporate' }, 'evaporated'), S.kwQuizMatch({ n: 1, answer: 'gases' }, 'gas')],
+   [true, true, true, true]);
+eq('…but a different word, or a different form the model did not list, is not',
+   [S.kwQuizMatch(kqWv, 'condensation'), S.kwQuizMatch({ n: 1, answer: 'evaporation' }, 'evaporating'), S.kwQuizMatch(kqWv, ''), S.kwQuizMatch(kqWv, '   ')],
+   [false, false, false, false]);
+ok('the ceiling is restated where the blanks are decided, below full help',
+   /CONCEPT & KEYWORDS/.test(S.kwQuizCeilingRule()) && /never the answer/.test(S.kwQuizCeilingRule()));
+S.wsMeta.guidance = 'answer';
+eq('…and falls away at full help', S.kwQuizCeilingRule(), '');
+S.wsMeta.guidance = 'concepts';
+
+section('🧩 The keyword check on a hint');
+/* The real `toast` was evaluated with the helpers and paints a node this
+   sandbox does not have; a refused build says so through it. */
+S.toast = noop;
+let kqCall = null;
+S.window.askGemini = async (prompt, opts) => { kqCall = { prompt, opts }; return JSON.stringify(kqGood); };
+S.hints = [{ id: 'h1', page: 1, x: 1, y: 1, number: '7',
+             question: 'Explain why the puddle dried up after the water vapour formed by evaporation.',
+             rungs: [{ key: 'nudge', text: 'Look at the sun.', keywords: [] },
+                     { key: 'concepts', text: 'Water cycle.', keywords: ['evaporation', 'water vapour'] }],
+             shown: 1, working: false }];
+S.wsEpoch = 0;
+const kqBuilt = await S.kwQuizForHint('h1', {});
+ok('the quiz is kqBuilt off the hint\'s question and the keywords the ladder found',
+   !!kqBuilt && /puddle dried up/.test(kqCall.prompt) && /evaporation, water vapour/.test(kqCall.prompt), kqCall && kqCall.prompt);
+ok('…and only the rungs the student has been SHOWN go along as context',
+   /Look at the sun/.test(kqCall.prompt) && !/Water cycle\./.test(kqCall.prompt));
+ok('the call is grounded as a HINT, then the key, then the syllabus, then the ceiling — in that order',
+   (() => {
+     const sys = kqCall.opts.system;
+     const at = ['fill-in-the-blank reminder', 'THE SYLLABUS (MOE', 'STOPS AT "CONCEPT & KEYWORDS"'].map(m => sys.indexOf(m));
+     return at.every(x => x >= 0) && at[0] < at[1] && at[1] < at[2];
+   })(), kqCall && kqCall.opts.system.slice(0, 160));
+ok('it is text only and cheap', !kqCall.opts.images && kqCall.opts.json === true && kqCall.opts.thinkingLevel === 'low');
+ok('the quiz is remembered ON the hint, so it is saved with the worksheet',
+   S.hints[0].quiz && S.hints[0].quiz.sentence === kqGood.sentence && S.hints[0].quiz.done === false);
+ok('…with the syllabus objectives it drew on, by name only',
+   Array.isArray(S.hints[0].quiz.syllabus) && S.hints[0].quiz.syllabus.length > 0 &&
+   S.hints[0].quiz.syllabus.every(m => m.id && m.title && m.level && !m.obj));
+kqCall = null;
+await S.kwQuizForHint('h1', {});
+eq('a second press reopens the same quiz — no second call', kqCall, null);
+S.wsMeta.guidance = 'nudge';
+S.hints.push({ id: 'h2', page: 1, x: 1, y: 1, question: 'q', number: '', rungs: [{ key: 'nudge', text: 't', keywords: [] }], shown: 1, working: false });
+eq('a locked level builds nothing at all', await S.kwQuizForHint('h2', {}), null);
+eq('…and the model was never asked', kqCall, null);
+S.wsMeta.guidance = 'concepts';
+S.window.askGemini = async () => { S.wsEpoch = 99; return JSON.stringify(kqGood); };
+eq('a quiz that comes back after another worksheet was opened is dropped', await S.kwQuizForHint('h2', {}), null);
+ok('…and never attached', !S.hints[1].quiz);
+S.wsEpoch = 0;
+S.window.askGemini = async () => { S.hints = S.hints.filter(x => x.id !== 'h2'); return JSON.stringify(kqGood); };
+eq('a hint removed while its quiz was being kqBuilt gets nothing attached', await S.kwQuizForHint('h2', {}), null);
+S.window.askGemini = async () => JSON.stringify({ question: '', rungs: [] });
+S.hints = [];
+
+/* =====================================================================
    7. Against the FILE itself — the things no unit test can see
    ===================================================================== */
 section('Against index.html itself');
@@ -929,6 +1099,24 @@ Object.keys(UNGROUNDED_BY_DESIGN).forEach(sys => {
   ok('the exemption for ' + sys + ' is still used by a real call site', !!exemptSeen[sys],
      'nothing calls askGemini with system: ' + sys + ' any more — take the exemption out');
 });
+
+/* 🧩 The keyword check, against the file: the one builder's prompt, the
+   moment the live quiz is built, and the doors that close the box. */
+const kqSrc = between('/* ================= THE KEYWORD QUIZ =================', '/* ================= End the keyword quiz', 'the keyword quiz');
+ok('the keyword check is grounded as a hint, with the key, the syllabus and the ceiling beside it',
+   /system: KWQ_SYS \+ aiGrounding\('hint'\) \+ keyRuleBlock\(source\.question\) \+ sylPromptBlock\(matches\) \+ kwQuizCeilingRule\(\)/.test(kqSrc));
+ok('the live quiz is built AFTER the spoken reply is on its way, never before it',
+   html.indexOf('kwQuizForLive(generation, spokenQuestion, spokenReply)') >
+   html.indexOf("content: spokenReply || 'I could not read that clearly."),
+   'a box that delayed the tutor\'s answer would be a box that made the tutor slow');
+ok('the hint hook builds the quiz in the background, off the hint that just landed', /kwQuizAfterHint\(h, epoch\);/.test(html));
+ok('a new worksheet closes the box', /wsEpoch\+\+;\n\s*kwQuizClose\(\);/.test(html));
+ok('leaving the worksheet closes the box', /if \(v !== 'ws'\) \{ stopLiveTutor\(\); liveTutor\.transcript = \[\]; kwQuizClose\(\); \}/.test(html));
+ok('Escape closes the box', /if \(e\.key === 'Escape'\) \{\n\s*kwQuizClose\(\);/.test(html));
+ok('the box paints model output as TEXT, never as markup', !/\.innerHTML\s*=/.test(kqSrc) && /textContent = q\.concept/.test(kqSrc));
+ok('the box is a floating card with no backdrop, and it never prints',
+   /#kwQuiz \{\s*\n\s*position: fixed;/.test(html) && /@media print \{ #kwQuiz \{ display: none !important; \} \}/.test(html));
+ok('a busy hint is tracked OFF the hint object, which is saved into the body', /var kwQuizBusyHints = \{\};/.test(kqSrc) && !/h\.quizBusy/.test(html));
 
 /* Both ceiling rules go into the SYSTEM prompt, beside the grounding. A
    hard constraint carried in the user message is one the next question can

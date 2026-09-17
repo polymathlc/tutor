@@ -12,6 +12,38 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.17.0 — 🧩 Keyword checks: fill in the blanks
+
+A fill-in-the-blank box now pops up over the worksheet to remind you which
+**concept** a question is testing and which **keywords** a full-mark answer
+needs — by making you supply the words yourself. *"Water turns into [1] by
+[2]."* Type the words, press **Check**, and see which you have.
+
+- **In 💡 Hints:** the moment a hint arrives, a keyword check is built in the
+  background from the question the hint read and pops up when it is ready.
+  Every hint card also carries **🧩 Quiz me on the keywords**, which opens it
+  again — or builds one for a hint that has none yet.
+- **In 🎧 Live:** after Chung GPT answers you out loud, a check can pop up
+  while it is still talking. The tutor is told it is on your screen, so you can
+  ask about it — but it never reads the missing words out. At most one per
+  answer, and never while you are still doing the last one.
+- **Right words go green, wrong ones red.** ⓘ beside a blank gives a clue,
+  Enter checks, and **Show me** appears once you have had an honest go. A
+  plural or a different tense of the right word still counts.
+- **It is built from three things, in order:** Mr Chung's own teaching notes
+  (the keywords and the key facts), the paper's answer key, and the **MOE
+  Primary Science Syllabus 2023** — the objectives the question matches, at or
+  below the student's level. The notes win where the two differ.
+- **It obeys the help level.** A keyword check is the *Concept & keywords*
+  rung of the ladder asked as a question, so it is offered exactly when that
+  rung is and shown 🔒 locked on *Nudges only*. Below full help, a check that
+  would put the paper's own answer in a blank is refused outright.
+- **Keyword quizzes: on / off** is a button on the Live card and a switch on
+  the Hints tab, remembered on your device. Off, a hint still offers the quiz
+  on its card; it just stops popping up by itself.
+- It floats over the page with no backdrop, so you can keep writing round it;
+  ✕ or Escape closes it, and a solved check is saved with its hint.
+
 ## v1.16.0 — Subtitles for what the tutor says
 
 Live tutoring now repeats **what Chung GPT just said** as subtitles across the

@@ -1092,6 +1092,46 @@
     #liveSubs { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); font-size: .95rem; padding: 9px 14px; }
   }
   @media print { #liveSubs { display: none !important; } }
+  /* THE KEYWORD QUIZ — a box over the page that asks for the words.
+     It floats with no backdrop, so the rest of the worksheet can still be
+     written on while it is open; the subtitle bar is lifted clear of it. */
+  #kwQuiz {
+    position: fixed; left: 24px; z-index: 96; display: none;
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    width: min(460px, calc(100% - 48px)); max-height: min(70vh, 560px); overflow-y: auto;
+    background: var(--bg); border: 1px solid var(--accent-deep); border-radius: var(--radius);
+    box-shadow: var(--shadow-modal); padding: 18px 20px 16px;
+  }
+  #kwQuiz.on { display: block; }
+  .kwqHead { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .kwqTitle { font-weight: 700; font-size: 0.95rem; flex: 1; min-width: 0; }
+  .kwqClose { border: none; background: none; cursor: pointer; color: var(--ink-faint); font-size: 1rem; padding: 2px 6px; min-height: 32px; }
+  .kwqConcept { font-size: 0.82rem; color: var(--ink-soft); line-height: 1.55; margin-bottom: 12px; }
+  .kwqSentence { font-size: 1rem; line-height: 2.2; overflow-wrap: anywhere; }
+  .kwqBlank {
+    display: inline-block; min-width: 6ch; margin: 0 3px; padding: 4px 8px; font: inherit; font-size: 0.95rem;
+    text-align: center; border: 2px solid var(--accent-deep); border-radius: 8px; background: #FFFDF7;
+    vertical-align: baseline; line-height: 1.4;
+  }
+  .kwqBlank:focus { outline: none; box-shadow: 0 0 0 3px rgba(231, 189, 114, .45); }
+  .kwqBlank.right { border-color: #4E9E56; background: #EFF8EF; }
+  .kwqBlank.wrong { border-color: #D9534F; background: #FDF0EF; }
+  .kwqBlank:disabled { color: var(--ink); opacity: 1; }
+  .kwqClueBtn { border: none; background: none; cursor: pointer; font-size: 0.85rem; color: var(--ink-faint); padding: 0 6px 0 2px; }
+  .kwqClueBtn:hover { color: var(--ink); }
+  .kwqClues { font-size: 0.8rem; color: var(--ink-soft); margin-top: 8px; line-height: 1.55; }
+  .kwqFoot { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  .kwqResult { font-size: 0.86rem; line-height: 1.5; margin-top: 12px; display: flex; gap: 10px; align-items: center; color: var(--ink-soft); }
+  .kwqResult.solved { color: var(--ink); }
+  .kwqFrom { font-size: 0.72rem; color: var(--ink-faint); margin-top: 12px; line-height: 1.5; }
+  .kwqBtn { margin-top: 14px; margin-right: 8px; }
+  .hintQuizLine { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; font-size: 0.8rem; }
+  @media (max-width: 900px) {
+    /* A bottom sheet over the page, clear of the 💬 button. */
+    #kwQuiz { left: 12px; right: 12px; width: auto; bottom: calc(78px + env(safe-area-inset-bottom, 0px)); padding: 14px 16px 12px; }
+    .kwqSentence { font-size: 0.95rem; }
+  }
+  @media print { #kwQuiz { display: none !important; } }
   .buddyTabs .bTab { min-width: 0; padding-left: 7px; padding-right: 7px; }
 </style>
 </head>
@@ -1275,6 +1315,7 @@
                   <button class="btn btnPrimary" id="liveStartBtn">Start live tutoring</button>
                   <button class="btn" id="liveMuteBtn" aria-pressed="false" hidden>Mute microphone</button>
                   <button class="btn" id="liveSubsBtn" aria-pressed="true">Subtitles: on</button>
+                  <button class="btn" id="liveQuizBtn" aria-pressed="true">Keyword quizzes: on</button>
                   <button class="btn" id="liveEndBtn" hidden>End session</button>
                   <button class="btn" id="livePlaybackBtn" hidden>Enable sound</button>
                 </div>
@@ -1292,6 +1333,8 @@
         <div id="voiceBar" role="status" aria-live="polite"></div>
         <!-- What the tutor is saying, over the page. Painted by renderLiveSubs(). -->
         <div id="liveSubs" role="status" aria-live="polite" hidden></div>
+        <!-- The keyword check: a fill-in-the-blank box over the page. Painted by kwQuizRender(). -->
+        <div id="kwQuiz" role="dialog" aria-label="Keyword check" hidden></div>
       </div>
     </div>
 
@@ -1729,7 +1772,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.16.0';
+var APP_VERSION = 'v1.17.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -1906,6 +1949,498 @@ function guidanceDepth(level) {
   return i + 1;
 }
 function rungsAllowed(level) { return HINT_RUNGS.slice(0, guidanceDepth(level)); }
+
+/* ================= THE SCIENCE SYLLABUS =================
+   The Learning Outcomes of the MOE Primary Science Syllabus 2023 — 18
+   topics, 79 objectives, each with the keywords a question on it tends to
+   use. It is what the 🧩 keyword check reads to decide which CONCEPT a
+   question is testing and which words a full-mark answer needs, beside the
+   teacher's own notes.
+
+   IT IS A COPY of `SYLLABUS_TOPICS` in `polymathlc/anskey` (itself a copy of
+   `SYLLABUS_LO_TOPICS` in `polymathlc/cer`), and copies drift. It is a fixed
+   public syllabus rather than anything any app computes, so it drifts only
+   when MOE changes the syllabus — at which point ALL THREE files want
+   editing. Search `SYLLABUS_TOPICS` in each.
+
+   THE TEACHER'S NOTES OUTRANK IT. `sylPromptBlock` says so in as many words:
+   the syllabus is what the buddy falls back on where the notes say nothing,
+   never a second authority beside them. A rule typed in Ans Key this morning
+   still wins over the objective printed here.
+
+   IT IS MATCHED, NEVER SENT WHOLE. Seventy-nine objectives is a few thousand
+   tokens on every call, so `sylObjectivesFor` finds the handful whose
+   keywords the question actually uses and the prompt carries those. A
+   question that matches nothing gets no syllabus block at all — which is
+   every maths question, and that is right: this is the SCIENCE syllabus and
+   a maths quiz is grounded in the notes and the paper alone. */
+var SYLLABUS_TOPICS = [
+  // ---------- DIVERSITY ----------
+  { topic: 'Diversity of Living and Non-Living Things', level: 'P3', theme: 'Diversity', los: [
+    { id: 'div-living', title: 'Characteristics of living things',
+      intro: 'Living things need air, food and water to survive, and they grow, respond to changes around them and reproduce.',
+      obj: 'Describe the characteristics of living things: they need water, food and air to survive, and they grow, respond and reproduce.',
+      kw: ['living thing', 'non-living', 'survive', 'grow', 'respond', 'reproduce', 'characteristic'] },
+    { id: 'div-infer', title: 'Telling living from non-living things',
+      intro: 'By observing carefully we can work out which things around us are alive and which are not.',
+      obj: 'Observe a variety of living and non-living things and infer the differences between them.',
+      kw: ['living', 'non-living', 'infer', 'difference', 'observe', 'alive'] },
+    { id: 'div-groups', title: 'Broad groups of living things',
+      intro: 'The great variety of living things is sorted into broad groups: plants, animals, fungi and bacteria.',
+      obj: 'Recognise broad groups of living things based on similarities and differences: plants (flowering, non-flowering); animals (amphibians, birds, fish, insects, mammals, reptiles); fungi (mould, mushroom, yeast); and bacteria.',
+      kw: ['flowering', 'non-flowering', 'mammal', 'reptile', 'amphibian', 'insect', 'bird', 'fish', 'fungi', 'fungus', 'bacteria', 'mould', 'mushroom', 'yeast'] },
+    { id: 'div-classify', title: 'Classifying living things',
+      intro: 'We put living things into groups by looking for characteristics they share and characteristics that set them apart.',
+      obj: 'Classify living things into broad groups based on similarities and differences in common observable characteristics.',
+      kw: ['classify', 'group', 'observable', 'characteristic', 'similarity', 'difference', 'sort'] },
+  ] },
+  { topic: 'Diversity of Materials', level: 'P3', theme: 'Diversity', los: [
+    { id: 'mat-uses', title: 'Materials and their uses',
+      intro: 'We choose a material for a job because of the properties it has.',
+      obj: 'Relate the use of various types of materials (wood, metal, ceramic, rubber, glass, plastic, fabric) to their physical properties.',
+      kw: ['material', 'wood', 'metal', 'ceramic', 'rubber', 'glass', 'plastic', 'fabric', 'property', 'used to make'] },
+    { id: 'mat-props', title: 'Comparing physical properties',
+      intro: 'Materials can be compared by how strong, flexible, waterproof or transparent they are, and by whether they float.',
+      obj: 'Compare the physical properties of materials: strength, flexibility, ability to float or sink in water, waterproofness and transparency.',
+      kw: ['strength', 'strong', 'flexibility', 'flexible', 'float', 'sink', 'waterproof', 'transparency', 'transparent', 'compare'] },
+  ] },
+  // ---------- CYCLES ----------
+  { topic: 'Cycles in Plants and Animals (Life Cycles)', level: 'P3', theme: 'Cycles', los: [
+    { id: 'lc-different', title: 'Different living things have different life cycles',
+      intro: 'Every living thing goes through a set of stages from young to adult, and those stages are not the same for every living thing.',
+      obj: 'Show an understanding that different living things have different life cycles.',
+      kw: ['life cycle', 'stage', 'adult', 'young', 'differ'] },
+    { id: 'lc-plants', title: 'Life cycles of plants grown from seeds',
+      intro: 'A seed germinates, grows into a seedling and then into an adult plant that makes seeds of its own.',
+      obj: 'Observe and compare the life cycles of plants grown from seeds over a period of time.',
+      kw: ['seed', 'germinate', 'germination', 'seedling', 'life cycle', 'plant', 'shoot'] },
+    { id: 'lc-animals', title: 'Life cycles of animals',
+      intro: 'Some animals change completely as they grow (butterfly, mosquito, frog); others simply get bigger.',
+      obj: 'Observe and compare the life cycles of animals over a period of time (chicken, cockroach, frog, grasshopper, beetle, butterfly, mosquito).',
+      kw: ['chicken', 'cockroach', 'frog', 'grasshopper', 'beetle', 'butterfly', 'mosquito', 'larva', 'pupa', 'nymph', 'tadpole', 'life cycle'] },
+  ] },
+  { topic: 'Cycles in Plants and Animals (Reproduction)', level: 'P5', theme: 'Cycles', los: [
+    { id: 'rep-cell', title: 'The cell — the basic unit of life',
+      intro: 'Every living thing is made of cells. Plant and animal cells share some parts and differ in others.',
+      obj: 'Recognise that a cell is the basic unit of life.',
+      kw: ['cell', 'nucleus', 'cell membrane', 'cytoplasm', 'chloroplast', 'cell wall', 'basic unit'] },
+    { id: 'rep-continuity', title: 'Reproduction and passing on characteristics',
+      intro: 'Living things reproduce so their kind continues, and offspring inherit many characteristics from their parents.',
+      obj: 'Show an understanding that living things reproduce to ensure the continuity of their kind, and that many characteristics of an organism are passed on from parents to offspring.',
+      kw: ['reproduce', 'reproduction', 'continuity', 'inherit', 'characteristic', 'parent', 'offspring', 'trait'] },
+    { id: 'rep-plant', title: 'Sexual reproduction in flowering plants',
+      intro: 'Pollen reaches the stigma, fertilisation happens in the ovary, seeds form, and the seeds are then dispersed.',
+      obj: 'Describe the processes in the sexual reproduction of flowering plants: pollination, fertilisation (seed production) and seed dispersal.',
+      kw: ['pollination', 'pollen', 'stigma', 'anther', 'ovary', 'ovule', 'fertilisation', 'seed dispersal', 'flower'] },
+    { id: 'rep-human', title: 'Fertilisation in humans',
+      intro: 'In humans a sperm nucleus fuses with an egg nucleus, and the fertilised egg develops in the womb.',
+      obj: 'Recognise the process of fertilisation in the sexual reproduction of humans.',
+      kw: ['sperm', 'egg', 'fertilisation', 'womb', 'uterus', 'embryo', 'foetus', 'human reproduction'] },
+    { id: 'rep-similar', title: 'What plant and human reproduction share',
+      intro: 'In both flowering plants and humans, fertilisation is the fusing of a male nucleus with a female nucleus.',
+      obj: 'Recognise the similarity, in terms of fertilisation, between the sexual reproduction of flowering plants and of humans.',
+      kw: ['fertilisation', 'similarity', 'sexual reproduction', 'fuse', 'nucleus', 'male', 'female'] },
+    { id: 'rep-ways', title: 'How plants reproduce',
+      intro: 'Not every plant makes seeds — some, such as ferns and moulds, reproduce by spores.',
+      obj: 'Investigate the ways in which plants reproduce — by spores and by seeds.',
+      kw: ['spore', 'seed', 'fern', 'mould', 'reproduce', 'plant'] },
+  ] },
+  { topic: 'Cycles in Matter and Water (Matter)', level: 'P4', theme: 'Cycles', los: [
+    { id: 'matt-def', title: 'What matter is',
+      intro: 'Everything around us that has mass and takes up space is matter — including air, which we cannot see.',
+      obj: 'State that matter is anything that has mass and occupies space.',
+      kw: ['matter', 'mass', 'occupies space', 'volume', 'takes up space'] },
+    { id: 'matt-states', title: 'The three states of matter',
+      intro: 'Solids keep their shape and volume, liquids keep volume but not shape, and gases keep neither.',
+      obj: 'Differentiate among the three states of matter (solid, liquid and gas) in terms of shape and volume.',
+      kw: ['solid', 'liquid', 'gas', 'state of matter', 'shape', 'volume', 'definite'] },
+    { id: 'matt-measure', title: 'Measuring mass and volume',
+      intro: 'Mass is measured with a balance and the volume of a liquid with a measuring cylinder.',
+      obj: 'Measure mass and volume using appropriate apparatus.',
+      kw: ['mass', 'volume', 'measuring cylinder', 'beaker', 'balance', 'measure', 'apparatus'] },
+  ] },
+  { topic: 'Cycles in Matter and Water (Water)', level: 'P5', theme: 'Cycles', los: [
+    { id: 'wat-three', title: 'Water in its three states',
+      intro: 'Water can be ice, liquid water or water vapour, and it can change back and forth between them.',
+      obj: 'Recognise that water can exist in three interchangeable states of matter.',
+      kw: ['water', 'ice', 'steam', 'water vapour', 'state', 'interchangeable'] },
+    { id: 'wat-change', title: 'How water changes state',
+      intro: 'Melting, freezing, boiling, evaporation and condensation are the changes water goes through as it gains or loses heat.',
+      obj: 'Show an understanding of how water changes from one state to another: melting, freezing, boiling, evaporation and condensation.',
+      kw: ['melting', 'freezing', 'boiling', 'evaporation', 'condensation', 'change of state'] },
+    { id: 'wat-points', title: 'Melting point and boiling point',
+      intro: 'Ice melts at 0°C and water boils at 100°C — the temperatures stay fixed while the change of state happens.',
+      obj: 'Show an understanding of the terms melting point of ice (or freezing point of water) and boiling point of water.',
+      kw: ['melting point', 'freezing point', 'boiling point', 'thermometer', 'remains constant'] },
+    { id: 'wat-heat', title: 'Heat gain and loss changing water',
+      intro: 'Adding heat melts ice and boils water; removing heat condenses vapour and freezes water.',
+      obj: 'Investigate the effect of heat gain or loss on the temperature and state of water.',
+      kw: ['heat gain', 'heat loss', 'temperature', 'ice', 'melt', 'boil', 'state', 'graph'] },
+    { id: 'wat-evap', title: 'What affects the rate of evaporation',
+      intro: 'Water evaporates faster when it is warmer, windier, or spread over a larger exposed surface.',
+      obj: 'Investigate the factors which affect the rate of evaporation: wind, temperature and exposed surface area.',
+      kw: ['evaporation', 'rate of evaporation', 'wind', 'temperature', 'exposed surface area', 'dry faster'] },
+    { id: 'wat-cycle', title: 'Evaporation and condensation in the water cycle',
+      intro: 'Water evaporates from the sea, condenses into clouds and falls again as rain.',
+      obj: 'Show an understanding of the roles of evaporation and condensation in the water cycle.',
+      kw: ['water cycle', 'evaporation', 'condensation', 'cloud', 'rain', 'precipitation'] },
+    { id: 'wat-import', title: 'Why the water cycle matters',
+      intro: 'The water cycle is what keeps returning fresh water to the land.',
+      obj: 'Recognise the importance of the water cycle.',
+      kw: ['water cycle', 'importance', 'fresh water', 'supply', 'rain'] },
+    { id: 'wat-life', title: 'Water and life processes',
+      intro: 'Living things need water for digestion, for transporting substances and for many other life processes.',
+      obj: 'Recognise the importance of water to life processes.',
+      kw: ['water', 'life process', 'digestion', 'transport', 'survive', 'importance'] },
+    { id: 'wat-poll', title: 'Water pollution',
+      intro: 'Polluting our water sources reduces the clean water available to living things.',
+      obj: "Describe the impact of water pollution on Earth's water resources.",
+      kw: ['water pollution', 'pollutant', 'contaminate', 'water resource', 'clean water'] },
+  ] },
+  // ---------- SYSTEMS ----------
+  { topic: 'Human System (Digestive System)', level: 'P4', theme: 'Systems', los: [
+    { id: 'hum-systems', title: 'The systems of the human body',
+      intro: 'The body is made of systems — digestive, respiratory, circulatory, skeletal and muscular — each with its own job.',
+      obj: 'Identify the human systems in the body and state their functions (digestive, respiratory, circulatory, skeletal and muscular).',
+      kw: ['digestive', 'respiratory', 'circulatory', 'skeletal', 'muscular', 'system', 'function'] },
+    { id: 'hum-digest', title: 'The digestive system',
+      intro: 'Food travels from the mouth through the gullet, stomach and intestines, being broken down and absorbed along the way.',
+      obj: 'Identify the parts in the human digestive system (mouth, gullet, stomach, small intestine and large intestine) and describe their functions.',
+      kw: ['mouth', 'gullet', 'oesophagus', 'stomach', 'small intestine', 'large intestine', 'digestion', 'digestive juice', 'absorb'] },
+  ] },
+  { topic: 'Human System (Respiratory and Circulatory Systems)', level: 'P5', theme: 'Systems', los: [
+    { id: 'air-gases', title: 'The gases in air',
+      intro: 'Air is a mixture — mostly nitrogen, with oxygen, carbon dioxide and water vapour.',
+      obj: 'Recognise that air is made up of gases such as nitrogen, carbon dioxide, oxygen and water vapour.',
+      kw: ['air', 'nitrogen', 'oxygen', 'carbon dioxide', 'water vapour', 'gas'] },
+    { id: 'resp-parts', title: 'The respiratory and circulatory systems',
+      intro: 'Air travels through the nose and windpipe to the lungs, and the heart pumps blood through blood vessels to the whole body.',
+      obj: 'Identify the parts of the human respiratory system (nose, windpipe, lungs) and circulatory system (heart, blood, blood vessels) and describe their functions.',
+      kw: ['nose', 'windpipe', 'lungs', 'heart', 'blood', 'blood vessel', 'respiratory', 'circulatory', 'breathe'] },
+    { id: 'sys-integrate', title: 'Systems working together',
+      intro: 'The digestive, respiratory and circulatory systems work as one to get oxygen and digested food to every cell.',
+      obj: 'Recognise the integration of the different systems (digestive, respiratory and circulatory) in carrying out life processes.',
+      kw: ['integration', 'work together', 'digestive', 'respiratory', 'circulatory', 'life process', 'oxygen', 'digested food'] },
+    { id: 'gas-exchange', title: 'How plants, fish and humans exchange gases',
+      intro: 'Humans use lungs, fish use gills and plants use tiny openings in their leaves — but all take in oxygen and give out carbon dioxide.',
+      obj: 'Compare how plants, fish and humans take in oxygen and give out carbon dioxide.',
+      kw: ['oxygen', 'carbon dioxide', 'gills', 'stomata', 'tiny openings', 'lungs', 'gaseous exchange', 'fish'] },
+  ] },
+  { topic: 'Transport in Humans and Plants', level: 'P5', theme: 'Systems', los: [
+    { id: 'trans-plant-parts', title: 'The plant transport system',
+      intro: 'Plants have two sets of tubes: one carries water and mineral salts up, the other carries food made in the leaves.',
+      obj: 'Identify the parts of the plant transport system and describe their functions.',
+      kw: ['water-carrying tube', 'food-carrying tube', 'tube', 'stem', 'root', 'transport', 'mineral salts'] },
+    { id: 'trans-plant-inv', title: 'How food and water move through a plant',
+      intro: 'Putting a stem in coloured water shows the path the water takes up the plant.',
+      obj: 'Investigate how food and water are transported in the plant.',
+      kw: ['transport', 'water', 'food', 'dye', 'coloured water', 'stem', 'tube', 'stained'] },
+    { id: 'trans-compare', title: 'Transport in plants compared with humans',
+      intro: 'Both plants and humans move substances around inside tubes — blood vessels in us, transport tubes in plants.',
+      obj: 'Compare the ways in which substances are transported within plants and within humans.',
+      kw: ['transport', 'blood vessel', 'tube', 'substance', 'compare', 'plant', 'human'] },
+  ] },
+  { topic: 'Plant System (Plant Parts and Functions)', level: 'P4', theme: 'Systems', los: [
+    { id: 'plant-parts', title: 'Parts of a plant and their functions',
+      intro: 'Roots anchor the plant and take in water, the stem holds it up and carries substances, and the leaf makes food.',
+      obj: 'Identify the different parts of plants and state their functions: leaf, stem and root.',
+      kw: ['leaf', 'stem', 'root', 'function', 'plant part', 'anchor', 'support', 'absorb'] },
+  ] },
+  { topic: 'Electrical System', level: 'P5', theme: 'Systems', los: [
+    { id: 'elec-circuit', title: 'What makes an electric circuit',
+      intro: 'A circuit needs an energy source and components — battery, wires, bulb and switch — joined into a system.',
+      obj: 'Recognise that an electric circuit, consisting of an energy source (battery) and other circuit components (wire, bulb, switch), forms an electrical system.',
+      kw: ['circuit', 'battery', 'wire', 'bulb', 'switch', 'electrical system', 'component'] },
+    { id: 'elec-closed', title: 'Closed circuits and current flow',
+      intro: 'Current only flows when the circuit is complete — one gap anywhere and everything stops.',
+      obj: 'Show an understanding that a closed circuit allows current to flow.',
+      kw: ['closed circuit', 'open circuit', 'current', 'flow', 'light up', 'complete', 'gap'] },
+    { id: 'elec-cond', title: 'Electrical conductors and insulators',
+      intro: 'Conductors let current through, insulators do not — which is why wires are metal inside and plastic outside.',
+      obj: 'Identify electrical conductors and insulators.',
+      kw: ['conductor', 'insulator', 'electricity', 'metal', 'plastic', 'rubber', 'conduct'] },
+    { id: 'elec-diagram', title: 'Circuit diagrams',
+      intro: 'A circuit diagram uses agreed symbols so any circuit can be drawn and read quickly.',
+      obj: 'Construct circuit diagrams.',
+      kw: ['circuit diagram', 'symbol', 'draw', 'construct', 'redraw'] },
+    { id: 'elec-arrange', title: 'How batteries and bulbs affect the current',
+      intro: 'More batteries make a bigger current; bulbs in series and in parallel behave differently.',
+      obj: 'Investigate how the number and arrangement of batteries and bulbs (in series and in parallel) affect the current in a circuit.',
+      kw: ['series', 'parallel', 'number of batteries', 'number of bulbs', 'brighter', 'dimmer', 'current', 'arrangement'] },
+  ] },
+  // ---------- INTERACTIONS ----------
+  { topic: 'Interaction of Forces (Magnets)', level: 'P3', theme: 'Interactions', los: [
+    { id: 'mag-push', title: 'A magnet can push or pull',
+      intro: 'A magnet exerts a force without touching — it can attract or repel.',
+      obj: 'Recognise that a magnet can exert a push or a pull.',
+      kw: ['magnet', 'push', 'pull', 'attract', 'repel', 'force'] },
+    { id: 'mag-char', title: 'Characteristics of magnets',
+      intro: 'Magnets have two poles, point north–south when freely suspended, and like poles repel while unlike poles attract.',
+      obj: 'Identify the characteristics of magnets: they can be made of iron or steel; they have two poles; a freely suspended magnet points in the north–south direction; and like poles repel while unlike poles attract.',
+      kw: ['pole', 'north', 'south', 'attract', 'repel', 'iron', 'steel', 'freely suspended', 'like poles'] },
+    { id: 'mag-uses', title: 'Uses of magnets',
+      intro: 'Magnets are used in everyday objects from fridge doors to compasses.',
+      obj: 'Recognise uses of magnets in everyday objects.',
+      kw: ['magnet', 'use', 'everyday', 'fridge', 'compass', 'door catch'] },
+    { id: 'mag-materials', title: 'Magnetic and non-magnetic materials',
+      intro: 'Only some materials are attracted to magnets — a magnetic material is not the same thing as a magnet.',
+      obj: 'Compare magnets, magnetic materials and non-magnetic materials.',
+      kw: ['magnetic material', 'non-magnetic', 'iron', 'steel', 'nickel', 'cobalt', 'attracted'] },
+    { id: 'mag-make', title: 'Making a magnet',
+      intro: 'A magnet can be made by stroking a magnetic material with a magnet, or by using electricity.',
+      obj: 'Make a magnet by the stroke method and by the electrical method.',
+      kw: ['stroke method', 'electrical method', 'make a magnet', 'magnetise', 'electromagnet', 'coil'] },
+  ] },
+  { topic: 'Interaction of Forces (Frictional, Gravitational and Elastic Spring Force)', level: 'P6', theme: 'Interactions', los: [
+    { id: 'force-what', title: 'A force is a push or a pull',
+      intro: 'Every force is either a push or a pull acting on an object.',
+      obj: 'Identify a force as a push or a pull.',
+      kw: ['force', 'push', 'pull'] },
+    { id: 'force-effects', title: 'What a force can do',
+      intro: 'A force can start motion, speed it up, slow it down, change its direction, stop it, or change an object’s shape.',
+      obj: 'Show an understanding of the effects of a force: it can move a stationary object, speed up, slow down or change the direction of a moving object, stop a moving object, and change the shape of an object.',
+      kw: ['stationary', 'speed up', 'slow down', 'change direction', 'stop', 'change shape', 'effect of a force'] },
+    { id: 'force-types', title: 'Types of forces',
+      intro: 'The forces in the syllabus are magnetic, gravitational, elastic spring and frictional force.',
+      obj: 'Recognise and give examples of the different types of forces: magnetic force, gravitational force, elastic spring force and frictional force.',
+      kw: ['magnetic force', 'gravitational force', 'elastic spring force', 'frictional force', 'type of force'] },
+    { id: 'force-weight', title: 'Weight and gravitational force',
+      intro: 'Weight is the pull of gravity on an object, which is why it is measured in newtons and not in grams.',
+      obj: 'Recognise that objects have weight because of the gravitational force acting on the object.',
+      kw: ['weight', 'gravity', 'gravitational force', 'newton', 'mass', 'pull of the earth'] },
+    { id: 'force-friction', title: 'Frictional force and motion',
+      intro: 'Friction acts against motion — rougher surfaces produce more of it, so objects travel less far.',
+      obj: 'Investigate the effect of frictional force on the motion of objects.',
+      kw: ['friction', 'frictional force', 'rough', 'smooth', 'surface', 'slow down', 'distance moved'] },
+    { id: 'force-spring', title: 'Elastic spring force',
+      intro: 'A stretched or compressed spring pulls or pushes back, and stretches further as the load increases.',
+      obj: 'Investigate the effects of elastic spring force.',
+      kw: ['elastic spring force', 'spring', 'stretch', 'compress', 'rubber band', 'extension', 'load', 'elastic'] },
+  ] },
+  { topic: 'Interactions within the Environment', level: 'P6', theme: 'Interactions', los: [
+    { id: 'env-survival', title: 'Factors affecting survival',
+      intro: 'Whether an organism survives depends on its surroundings and on the other living things around it.',
+      obj: 'Identify the factors that affect the survival of an organism: the physical characteristics of the environment (temperature, light, water) and its interactions with other living things (competition, predation, symbiosis).',
+      kw: ['survival', 'temperature', 'light', 'water', 'competition', 'predator', 'prey', 'symbiosis', 'factor'] },
+    { id: 'env-unfavourable', title: 'When the environment turns unfavourable',
+      intro: 'When conditions get worse, organisms either adapt, move away, or die.',
+      obj: 'Show an understanding of the effect on organisms when the environment becomes unfavourable — organisms adapt and survive, move to other places, or die.',
+      kw: ['unfavourable', 'adapt', 'move away', 'die', 'environment', 'change', 'survive'] },
+    { id: 'env-food', title: 'Food chains and food webs',
+      intro: 'Energy passes from the Sun to producers and then along the chain to consumers.',
+      obj: 'Show an understanding of the energy pathway from the Sun through living things, and identify the roles of organisms as producers, consumers, predators and prey in food chains and food webs.',
+      kw: ['food chain', 'food web', 'producer', 'consumer', 'predator', 'prey', 'energy', 'sun', 'arrow'] },
+    { id: 'env-levels', title: 'Organism, population and community',
+      intro: 'One living thing is an organism; a group of the same kind is a population; all the populations together are a community.',
+      obj: 'Differentiate among organism, population and community.',
+      kw: ['organism', 'population', 'community', 'habitat', 'same kind', 'group'] },
+    { id: 'env-habitat', title: 'Different habitats, different communities',
+      intro: 'A pond, a mangrove swamp and a seashore each support a different set of living things.',
+      obj: 'Show an understanding that different habitats support different communities (garden, field, pond, seashore, tree, mangrove swamp).',
+      kw: ['habitat', 'community', 'pond', 'seashore', 'mangrove', 'field', 'garden', 'tree'] },
+    { id: 'env-adapt', title: 'Adaptations for survival',
+      intro: 'Adaptations can be structural (a body part) or behavioural (something the animal does).',
+      obj: 'Show an understanding that adaptations serve to enhance survival and can be structural or behavioural.',
+      kw: ['adaptation', 'structural', 'behavioural', 'camouflage', 'beak', 'adapted', 'survive'] },
+    { id: 'env-man', title: "Man's impact on the environment",
+      intro: 'Human activity can damage the environment, and can also help to protect it.',
+      obj: "Give examples of man's impact, both positive and negative, on the environment.",
+      kw: ['deforestation', 'pollution', 'conservation', 'recycle', 'impact', 'human activity', 'global warming'] },
+  ] },
+  // ---------- ENERGY ----------
+  { topic: 'Energy Forms and Uses (Light)', level: 'P4', theme: 'Energy', los: [
+    { id: 'light-see', title: 'How we see objects',
+      intro: 'We see an object either because it gives out light or because it reflects light into our eyes.',
+      obj: 'Recognise that an object can be seen when it reflects light or when it is a source of light.',
+      kw: ['light', 'reflect', 'source of light', 'see', 'eye', 'shine'] },
+    { id: 'light-straight', title: 'Light travels in straight lines, and shadows',
+      intro: 'Because light travels in straight lines, an object that blocks it casts a shadow.',
+      obj: 'Recognise that light travels in straight lines and that a shadow is formed when light is completely or partially blocked by an object.',
+      kw: ['straight line', 'shadow', 'block', 'blocked', 'light', 'opaque'] },
+    { id: 'light-shadow-vars', title: 'What changes a shadow',
+      intro: 'A shadow changes with the shape, size and position of the object and with the distances between light, object and screen.',
+      obj: 'Investigate the variables that affect the shadows formed: the shape, size and position of the object, and the distance between the light source and object, and between the object and screen.',
+      kw: ['shadow', 'size', 'shape', 'position', 'distance', 'screen', 'light source', 'bigger', 'smaller'] },
+  ] },
+  { topic: 'Energy Forms and Uses (Heat)', level: 'P4', theme: 'Energy', los: [
+    { id: 'heat-sources', title: 'Sources of heat',
+      intro: 'The Sun, fire, a stove, a heater and even friction and electricity all give out heat.',
+      obj: 'Identify some common sources of heat.',
+      kw: ['source of heat', 'sun', 'fire', 'stove', 'heater', 'friction', 'electricity'] },
+    { id: 'heat-temp', title: 'Temperature measures how hot something is',
+      intro: 'Temperature tells us the degree of hotness of an object, and is measured with a thermometer.',
+      obj: 'State that the temperature of an object is a measurement of its degree of hotness.',
+      kw: ['temperature', 'degree of hotness', 'thermometer', 'hot', 'cold', 'measure'] },
+    { id: 'heat-energy', title: 'Heat is a form of energy',
+      intro: 'Heat is one of the forms energy takes, and it can move from one object to another.',
+      obj: 'State that heat is a form of energy.',
+      kw: ['heat', 'form of energy', 'energy'] },
+    { id: 'heat-vs-temp', title: 'Telling heat and temperature apart',
+      intro: 'Heat is the energy that flows; temperature is the measure of how hot something is. They are not the same thing.',
+      obj: 'Differentiate between heat and temperature.',
+      kw: ['heat', 'temperature', 'differentiate', 'difference', 'amount of heat'] },
+    { id: 'heat-flow', title: 'Heat flows from hotter to colder',
+      intro: 'Heat always moves from the hotter object to the colder one, until both reach the same temperature.',
+      obj: 'Show an understanding that heat flows from a hotter to a colder object, region or place until both reach the same temperature.',
+      kw: ['heat flow', 'hotter', 'colder', 'same temperature', 'gain heat', 'lose heat', 'until both'] },
+    { id: 'heat-change', title: 'Temperature change from heat gain or loss',
+      intro: 'An object warms up when it gains heat and cools down when it loses heat.',
+      obj: 'Relate the change in temperature of an object to the gain or loss of heat by the object.',
+      kw: ['temperature change', 'gain heat', 'lose heat', 'rise', 'fall', 'warmer', 'cooler'] },
+    { id: 'heat-effects', title: 'Effects of heat gain and loss',
+      intro: 'Gaining or losing heat makes things expand or contract, and can change their state.',
+      obj: 'List some effects of heat gain or loss in everyday life: the expansion and contraction of solids, liquids and gases, and the change in state of matter.',
+      kw: ['expand', 'expansion', 'contract', 'contraction', 'change of state', 'melt', 'boil', 'gap', 'crack'] },
+    { id: 'heat-cond', title: 'Good and poor conductors of heat',
+      intro: 'Metals conduct heat well; wood, plastic, air and rubber do not, which is why they are used as handles.',
+      obj: 'Identify good and poor conductors of heat — good conductors such as metals, and poor conductors such as wood, plastic, air and rubber.',
+      kw: ['conductor', 'insulator', 'metal', 'wood', 'plastic', 'air', 'rubber', 'conduct heat', 'handle'] },
+    { id: 'heat-measure', title: 'Measuring temperature',
+      intro: 'A thermometer or a datalogger with a temperature sensor gives a reading of how hot something is.',
+      obj: 'Measure temperature using a thermometer and a datalogger with temperature or heat sensors.',
+      kw: ['thermometer', 'datalogger', 'sensor', 'measure', 'temperature', 'reading', 'scale'] },
+  ] },
+  { topic: 'Energy Forms and Uses (Photosynthesis)', level: 'P6', theme: 'Energy', los: [
+    { id: 'photo-resp', title: 'Living things need energy from respiration',
+      intro: 'Respiration releases the energy stored in food so that life processes can happen.',
+      obj: 'Recognise that living things need energy from respiration to carry out life processes.',
+      kw: ['respiration', 'energy', 'life process', 'release energy', 'oxygen', 'food'] },
+    { id: 'photo-sun', title: 'The Sun as our primary source of energy',
+      intro: 'Almost all the energy we use can be traced back to the Sun.',
+      obj: 'Recognise that the Sun is our primary source of energy, providing light and heat.',
+      kw: ['sun', 'primary source', 'energy', 'light', 'heat'] },
+    { id: 'photo-obtain', title: 'How plants and animals obtain energy',
+      intro: 'Plants make their own food; animals must eat other living things to get theirs.',
+      obj: 'Differentiate between the ways in which plants and animals obtain energy.',
+      kw: ['plant', 'animal', 'obtain energy', 'make food', 'photosynthesis', 'eat', 'producer'] },
+    { id: 'photo-req', title: 'The requirements for photosynthesis',
+      intro: 'A plant needs water, light energy and carbon dioxide to make sugar and oxygen in its leaves.',
+      obj: 'Investigate the requirements — water, light energy and carbon dioxide — for photosynthesis, which produces sugar and oxygen.',
+      kw: ['photosynthesis', 'water', 'light', 'carbon dioxide', 'sugar', 'oxygen', 'chlorophyll', 'leaf'] },
+  ] },
+  { topic: 'Energy Conversion', level: 'P6', theme: 'Energy', los: [
+    { id: 'econv-sun', title: 'Energy resources come from the Sun',
+      intro: 'Trace almost any energy resource back far enough and you arrive at the Sun.',
+      obj: 'Recognise that the energy from most of our energy resources is derived in some way from the Sun.',
+      kw: ['energy resource', 'sun', 'derived', 'fossil fuel', 'solar'] },
+    { id: 'econv-forms', title: 'Forms of energy',
+      intro: 'Energy comes in several forms: kinetic, potential, light, electrical, sound and heat.',
+      obj: 'Recognise and give examples of the various forms of energy: kinetic energy, potential energy, light energy, electrical energy, sound energy and heat energy.',
+      kw: ['kinetic energy', 'potential energy', 'light energy', 'electrical energy', 'sound energy', 'heat energy', 'form of energy'] },
+    { id: 'econv-conversion', title: 'Converting energy from one form to another',
+      intro: 'A stretched rubber band or a wound spring turns stored energy into movement, sound and heat.',
+      obj: 'Investigate energy conversion from one form to another.',
+      kw: ['energy conversion', 'converted', 'convert', 'into kinetic', 'into sound', 'into heat', 'rubber band', 'spring'] },
+  ] },
+];
+
+
+/* Which level a level code is on the P3–P6 ladder, or 0 for one outside it
+   (a Sec 1 worksheet, an untagged one). 0 means "cap nothing": a student
+   whose year is not on the ladder is not narrowed by it. */
+function sylLevelNum(level) {
+  var m = /^P([3-6])$/i.exec(String(level || '').trim());
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/* Words as the matcher compares them: lower case, letters and digits only,
+   and a plural folded onto its singular the crude way — "living things" has
+   to find the objective whose keyword is "living thing", and "properties"
+   the one keyed "property". It is a heuristic with a threshold under it, so
+   a fold that misses now and then costs a match, never a wrong one. */
+function sylNorm(text) {
+  return String(text == null ? '' : text).toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map(function (w) {
+      if (w.length < 4) return w;
+      if (/ies$/.test(w)) return w.replace(/ies$/, 'y');
+      if (/ss$/.test(w)) return w;
+      return w.replace(/s$/, '');
+    })
+    .join(' ');
+}
+
+/* Every objective with its keywords normalised once, in syllabus order. It is
+   the same 79 rows every time, so it is built lazily and kept. */
+var _sylRows = null;
+function sylRows() {
+  if (_sylRows) return _sylRows;
+  _sylRows = [];
+  SYLLABUS_TOPICS.forEach(function (t) {
+    (t.los || []).forEach(function (lo) {
+      var kws = (lo.kw || []).map(function (k) { return String(k); });
+      var titleWords = sylNorm(lo.title).split(' ').filter(function (w) { return w.length >= 4; });
+      _sylRows.push({
+        id: lo.id, title: lo.title, obj: lo.obj, intro: lo.intro,
+        topic: t.topic, level: t.level, levelNum: sylLevelNum(t.level), theme: t.theme,
+        kw: kws, kwn: kws.map(sylNorm).filter(Boolean), titleWords: titleWords,
+        order: _sylRows.length
+      });
+    });
+  });
+  return _sylRows;
+}
+
+var SYL_MIN_SCORE = 2;     // two keywords, or one two-word phrase
+var SYL_MAX_MATCHES = 3;   // the prompt carries the best few, never the lot
+
+/* THE ONE MATCHER. Scores every objective by the keywords the text actually
+   uses — a two-word phrase counts double, because "water vapour" is a far
+   stronger sign than "water" — and hands back the best few over a floor.
+
+   It answers [] for a subject that is not science: this is the SCIENCE
+   syllabus, and a maths question that happens to mention "heat" must not be
+   told it is testing the transfer of heat energy. A worksheet with NO
+   subject set is treated as possibly science, because the floor is what
+   keeps a maths question from matching by accident.
+
+   The student's LEVEL caps it: a P4 worksheet is never told it is testing a
+   P6 objective, because it is not — but a P6 child is still reminded of P4
+   science, which is exactly what a P6 question builds on. */
+function sylObjectivesFor(text, subject, level) {
+  var subj = String(subject || '').toLowerCase();
+  if (subj && subj !== 'science' && subj !== 'both') return [];
+  var hay = ' ' + sylNorm(text) + ' ';
+  if (hay.trim().length < 8) return [];
+  var cap = sylLevelNum(level);
+  var scored = [];
+  sylRows().forEach(function (r) {
+    if (cap && r.levelNum > cap) return;
+    var score = 0, hits = [];
+    r.kwn.forEach(function (k, i) {
+      if (hay.indexOf(' ' + k + ' ') >= 0) { score += k.split(' ').length; hits.push(r.kw[i]); }
+    });
+    // The title's own words count once each, so "water cycle" in a question
+    // finds the water-cycle objective even when none of its keywords repeat.
+    var titleHit = 0;
+    r.titleWords.forEach(function (w) { if (hay.indexOf(' ' + w + ' ') >= 0) titleHit++; });
+    if (titleHit >= 2) score += 1;
+    if (score >= SYL_MIN_SCORE) {
+      scored.push({ id: r.id, title: r.title, obj: r.obj, topic: r.topic, level: r.level, theme: r.theme,
+                    kw: r.kw.slice(), score: score, hits: hits, order: r.order });
+    }
+  });
+  scored.sort(function (a, b) { return b.score - a.score || a.order - b.order; });
+  return scored.slice(0, SYL_MAX_MATCHES);
+}
+
+/* The matched objectives, in prompt form. It comes AFTER the teacher's notes
+   in every system prompt that carries it, and it says which of the two wins:
+   the notes are how THIS teacher teaches the topic, and the syllabus is the
+   floor under them, never a second authority beside them. */
+function sylPromptBlock(matches) {
+  if (!matches || !matches.length) return '';
+  return '\n\nTHE SYLLABUS (MOE Primary Science Syllabus 2023 — the objectives this question most likely tests, ' +
+    'best match first). Take the concept and the keywords from these wherever the teacher\'s notes above say ' +
+    'nothing; where the notes and the syllabus differ, the notes win:\n' +
+    matches.map(function (m) {
+      return '• ' + m.topic + ' (' + m.level + ') — ' + m.title + ': ' + m.obj +
+        (m.kw && m.kw.length ? ' Keywords: ' + m.kw.join(', ') + '.' : '');
+    }).join('\n');
+}
+/* ================= End the science syllabus ================= */
 
 /* ================= Tolerant JSON parse for model output =================
    Strips code fences, finds the array/object, and repairs a reply that was
@@ -2653,6 +3188,7 @@ async function loadPdf(bytes, name) {
   stopLiveTutor();
   liveTutor.transcript = [];
   wsEpoch++;
+  kwQuizClose();                      // a quiz about the last worksheet must not sit over this one
   pdfBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   docName = name || 'Untitled';
   currentDocId = null;
@@ -4906,6 +5442,9 @@ async function askHintAt(p, pt) {
       h.shown = 1;                      // ALWAYS the smallest hint first
       usageNote('hint', h.number ? 'Q' + h.number : '');
       setDirty(true);
+      // The 🧩 keyword check is built in the background off what this
+      // hint read, and pops up when it is ready. The hint never waits.
+      kwQuizAfterHint(h, epoch);
     }
   } catch (e) {
     h.working = false;
@@ -4934,6 +5473,618 @@ function deleteHint(id) {
   if (h) { var p = pages.find(function (pg) { return pg.num === h.page; }); if (p) renderPinsOn(p); }
   renderHints();
 }
+
+/* ================= THE KEYWORD QUIZ =================
+   A box that pops up over the page and asks the student to FILL IN the
+   words a question needs, instead of telling them: "Water turns into [1]
+   when it [2]." It is the "Concept & keywords" rung of the ladder asked as
+   a question rather than read out — a reminder they have to reach for,
+   which is the one that sticks.
+
+   It is built from THREE things and they are ranked: the teacher's own
+   notes (through `aiGrounding('hint')`, the keywords and the key facts),
+   the paper's own answer key (through `keyRuleBlock`, which restates the
+   ceiling), and the syllabus objectives the question matches
+   (`sylPromptBlock`, which says the notes win). One builder, one cleaner,
+   one box — the 💡 hint card and the 🎧 live tutor both reach it through
+   `kwQuizBuild` and `kwQuizShow`, so the two modes can never disagree about
+   what a quiz is allowed to hold.
+
+   IT SITS ON A RUNG, SO THE CEILING GATES IT. A quiz hands over exactly what
+   the "Concept & keywords" rung hands over, so it is offered only when that
+   rung is allowed (`kwQuizAllowed`), it is shown LOCKED rather than left
+   out when it is not, and `kwQuizClean` refuses a reply outright when the
+   level has changed under it. Below full help a blank whose word IS the
+   paper's answer is refused too (`kwQuizGivesAnswer`): the key never lifts
+   the ceiling, and "the puddle dried up because of [evaporation]" with
+   "evaporation" printed as the paper's answer is the answer with a box
+   round it.
+
+   IT IS A FLOATING BOX, NOT A MODAL. It sits over the page with no backdrop,
+   so the student can still write on the rest of the worksheet — and in live
+   mode still hear the tutor — while it is open. `pointer-events` are ON, of
+   course: it is the one thing over the page that is meant to be typed in.
+   It lifts the subtitle bar above itself so the two never overlap.
+
+   MODEL OUTPUT IS PAINTED AS TEXT, never as markup — the sentence, the
+   concept, the clues and the praise are all `textContent` or text nodes,
+   exactly like the transcript rows and the hint cards. */
+var KWQ_KEY = 'tutorKwQuiz';     // the on/off preference, per device
+var KWQ_RUNG = 'concepts';       // the rung a quiz sits on
+var KWQ_MAX_BLANKS = 4;          // more is a test, not a reminder
+var KWQ_ANSWER_MAX_WORDS = 4;    // a keyword is a term, never a sentence
+var KWQ_LIVE_GAP_MS = 45000;     // at most one live quiz this often
+
+/* The switch is a PREFERENCE, remembered per device, and a device that
+   refuses storage still gets quizzes: they are the default, and a refused
+   read is not a reason to take a learning aid away. */
+var kwQuizPref = { on: true };
+try { kwQuizPref.on = localStorage.getItem(KWQ_KEY) !== '0'; } catch (e) { /* storage refused — quizzes stay on */ }
+
+var kwQuiz = {
+  open: false, quiz: null, from: '', hintId: '', number: '', detail: '',
+  inputs: [], typed: {}, marks: {}, showClues: {}, tries: 0, revealed: false, solved: false,
+  message: '', epoch: 0, seq: 0, building: false, lastLiveAt: 0
+};
+/* Hints whose quiz is being built right now, by id. Kept OFF the hint
+   object on purpose: `hints` is saved into the worksheet body, and a busy
+   flag saved mid-flight would come back true for ever on the next open. */
+var kwQuizBusyHints = {};
+
+/* Whether the help level on this worksheet allows a quiz at all. It asks
+   the LADDER — a quiz is the "Concept & keywords" rung in another form, so
+   it is allowed exactly when that rung is, and nowhere is that decided a
+   second time. */
+function kwQuizAllowed() {
+  return rungsAllowed(wsMeta.guidance).some(function (r) { return r.key === KWQ_RUNG; });
+}
+function kwQuizLockedNote() {
+  return 'Keyword checks are switched off at this help level: they give away the concept and the keywords, ' +
+    'and "' + guidanceLabel(wsMeta.guidance) + '" stops before that.';
+}
+function setKwQuizPref(on) {
+  kwQuizPref.on = !!on;
+  try { localStorage.setItem(KWQ_KEY, on ? '1' : '0'); } catch (e) { /* remembered for this visit only */ }
+  renderLiveTutor();
+  renderHints();
+}
+function toggleKwQuizPref() { setKwQuizPref(!kwQuizPref.on); }
+
+/* ---- The prompt ---- */
+var KWQ_SYS =
+  'You are Chung GPT, a patient Singapore tuition teacher, writing ONE short fill-in-the-blank reminder for a ' +
+  'student (P3 to Secondary 1) who is working on a question of their own worksheet. It is NOT a test of the ' +
+  'answer: it reminds them which CONCEPT the question is testing and which KEYWORDS a full-mark answer needs, by ' +
+  'making them supply those words themselves.\n' +
+  'Reply with STRICT JSON only, no markdown, exactly this shape: ' +
+  '{"concept":"the idea being tested, in one short sentence a child can read",' +
+  '"sentence":"one or two plain sentences that state the concept, with each keyword replaced by [1], [2] … in order",' +
+  '"blanks":[{"n":1,"answer":"the exact word or short phrase that fills [1]","alt":["other accepted spellings or forms"],' +
+  '"clue":"a nudge towards the word that does not say it"}],' +
+  '"praise":"one warm sentence for when every blank is filled in"}.\n' +
+  'RULES. Between one and four blanks. Each blank is ONE word or a short phrase of at most three words, and each ' +
+  'is a KEYWORD a full-mark answer would use — prefer the teacher\'s preferred keywords where they are given, then ' +
+  'the syllabus objective\'s own words, then ordinary syllabus vocabulary. Every [n] in the sentence must have its ' +
+  'blank, in order, and the sentence must read naturally once the blanks are filled in. Never print an answer word ' +
+  'anywhere in the sentence except in its own blank. NEVER put the final answer to the question, any number it works ' +
+  'out to, or a step of the working into a blank, the sentence or the concept: a keyword is a term ("evaporation", ' +
+  '"denominator", "friction"), never a result. Plain text only: no markdown, no bullets, no line breaks.\n' +
+  'If no keyword reminder makes sense for this question, return {"concept":"","sentence":"","blanks":[]}.';
+
+/* The ceiling, restated where the quiz is built. It is already in the key
+   block, and it is said again here because this is the one prompt in the
+   app whose whole output is a set of blanks — the model needs telling that
+   a blank is a KEYWORD and not a place to put the answer. */
+function kwQuizCeilingRule() {
+  var allowed = rungsAllowed(wsMeta.guidance);
+  if (allowed.length >= HINT_RUNGS.length) return '';
+  return '\nTHE HELP LEVEL ON THIS WORKSHEET STOPS AT "' + allowed[allowed.length - 1].label.toUpperCase() + '". ' +
+    'A blank is a keyword and never the answer: do not put the final answer, a number it works out to, or a step ' +
+    'of the working into any blank, the sentence or the concept — however plainly the answer key states it.\n';
+}
+
+/* ---- Reading a reply ---- */
+/* Words as the box compares them: lower case, letters and digits, one
+   space between words. "Water-vapour", "water vapour" and "WATER VAPOUR."
+   are the same keyword to a child, and to this. */
+function kwQuizNorm(s) {
+  return String(s == null ? '' : s).toLowerCase()
+    .replace(/[‘’]/g, "'")
+    .replace(/[^\p{L}\p{N}\s']/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function kwQuizWordIn(hay, needle) {
+  return !!needle && (' ' + hay + ' ').indexOf(' ' + needle + ' ') >= 0;
+}
+/* The holes in a sentence, in order of first appearance. */
+function kwQuizPlaceholders(sentence) {
+  var seen = [], m, re = /\[(\d+)\]/g;
+  while ((m = re.exec(sentence))) {
+    var n = parseInt(m[1], 10);
+    if (seen.indexOf(n) < 0) seen.push(n);
+  }
+  return seen;
+}
+function kwQuizFill(sentence, blank) {
+  return sentence.replace(new RegExp('\\[' + blank.n + '\\]', 'g'), blank.answer);
+}
+
+/* The paper's own answers for this question, normalised — every row when
+   the number is not known, because a word that is ANY answer on the paper
+   is an answer on the paper. */
+function kwQuizKeyAnswers(number) {
+  if (!wsKey || !Array.isArray(wsKey.rows) || !wsKey.rows.length) return [];
+  var want = String(number || '').replace(/[^0-9a-z]/gi, '').toLowerCase();
+  return wsKey.rows.filter(function (r) {
+    var n = String(r.number || '').replace(/[^0-9a-z]/gi, '').toLowerCase();
+    return !want || n === want || n.replace(/[a-z]+$/, '') === want.replace(/[a-z]+$/, '');
+  }).map(function (r) { return kwQuizNorm(r.answer); }).filter(Boolean);
+}
+/* THE KEY NEVER LIFTS THE CEILING: a blank whose word (or any accepted
+   form of it) is exactly what the paper's key gives as the answer is the
+   answer with a box round it. */
+function kwQuizGivesAnswer(blank, keyAnswers) {
+  if (!keyAnswers || !keyAnswers.length) return false;
+  var forms = [blank.answer].concat(blank.alt || []).map(kwQuizNorm).filter(Boolean);
+  return keyAnswers.some(function (k) { return forms.indexOf(k) >= 0; });
+}
+
+/* THE ONE CLEANER. Every quiz shown anywhere came through here, so what a
+   quiz may hold is decided once:
+   - it is refused outright when the rung it sits on is locked — the prompt
+     is never sent then, and this is the belt to that brace;
+   - every hole in the sentence must have its blank and every blank its
+     hole, or the box asks for a word it cannot check;
+   - a blank that is the paper's own answer refuses the WHOLE quiz below full
+     help — filling that hole in would state the answer, and leaving it
+     empty would be a hole the student cannot fill;
+   - an answer word already printed in the sentence beside its own hole is a
+     blank the model filled in for them, so it is filled in properly and
+     dropped from the check;
+   - more than KWQ_MAX_BLANKS is a test, not a reminder, so the later holes
+     are filled in as given;
+   - what is left is renumbered 1..k in order of appearance, so the box and
+     the sentence can never disagree about which blank is which. */
+function kwQuizClean(res, source) {
+  if (!res || typeof res !== 'object' || Array.isArray(res)) return null;
+  if (!kwQuizAllowed()) return null;
+  var fold = function (v, max) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().slice(0, max); };
+  var sentence = fold(res.sentence, 600);
+  var concept = fold(res.concept, 240);
+  var praise = fold(res.praise, 200);
+  if (!sentence) return null;
+  var holes = kwQuizPlaceholders(sentence);
+  if (!holes.length) return null;
+  var byN = {};
+  (Array.isArray(res.blanks) ? res.blanks : []).forEach(function (b) {
+    if (!b || typeof b !== 'object') return;
+    var n = parseInt(b.n, 10), answer = fold(b.answer, 40);
+    if (!(n >= 1) || !answer || byN[n]) return;
+    if (answer.split(' ').length > KWQ_ANSWER_MAX_WORDS) return;
+    var alt = (Array.isArray(b.alt) ? b.alt : []).map(function (a) { return fold(a, 40); }).filter(Boolean).slice(0, 6);
+    byN[n] = { n: n, answer: answer, alt: alt, clue: fold(b.clue, 160) };
+  });
+  var blanks = [];
+  for (var i = 0; i < holes.length; i++) {
+    if (!byN[holes[i]]) return null;
+    blanks.push(byN[holes[i]]);
+  }
+  if (guidanceDepth(wsMeta.guidance) < HINT_RUNGS.length) {
+    var keyAns = kwQuizKeyAnswers(source && source.number);
+    if (blanks.some(function (b) { return kwQuizGivesAnswer(b, keyAns); })) return null;
+  }
+  var plain = kwQuizNorm(sentence.replace(/\[\d+\]/g, ' '));
+  var kept = [];
+  blanks.forEach(function (b) {
+    if (kwQuizWordIn(plain, kwQuizNorm(b.answer))) sentence = kwQuizFill(sentence, b);
+    else kept.push(b);
+  });
+  blanks = kept;
+  while (blanks.length > KWQ_MAX_BLANKS) sentence = kwQuizFill(sentence, blanks.pop());
+  if (!blanks.length) return null;
+  var map = {};
+  blanks.forEach(function (b, i) { map[b.n] = i + 1; });
+  sentence = sentence.replace(/\[(\d+)\]/g, function (m, d) { return '[' + map[parseInt(d, 10)] + ']'; });
+  blanks = blanks.map(function (b, i) { return { n: i + 1, answer: b.answer, alt: b.alt, clue: b.clue }; });
+  return { concept: concept, sentence: sentence, blanks: blanks, praise: praise, done: false };
+}
+
+/* Whether what was typed is the keyword. Exact after normalising, any of
+   the model's accepted forms, or the same words with a plural or a tense
+   ending on or off the LAST of them: "water vapours" is "water vapour" and
+   "condenses" is "condense" to a child who has the science right. */
+function kwQuizForms(w) {
+  var words = w.split(' '), last = words[words.length - 1], head = words.slice(0, -1).join(' ');
+  var out = [w];
+  if (last.length >= 4) {
+    ['s', 'es', 'ing', 'ed', 'd'].forEach(function (suf) {
+      if (last.length > suf.length + 2 && last.slice(-suf.length) === suf) {
+        out.push((head ? head + ' ' : '') + last.slice(0, -suf.length));
+      }
+    });
+  }
+  return out;
+}
+function kwQuizMatch(blank, typed) {
+  var t = kwQuizNorm(typed);
+  if (!t) return false;
+  var ok = [blank.answer].concat(blank.alt || []).map(kwQuizNorm).filter(Boolean);
+  if (ok.indexOf(t) >= 0) return true;
+  var mine = kwQuizForms(t);
+  return ok.some(function (w) {
+    var theirs = kwQuizForms(w);
+    return theirs.some(function (a) { return mine.indexOf(a) >= 0; });
+  });
+}
+
+/* ---- The builder ---- */
+/* ONE call, text only, grounded as a HINT: the keywords and the key facts
+   are what a quiz is built from, and the marking standards are not. The
+   key rides beside it and restates the ceiling, the syllabus comes AFTER
+   the notes because the notes win, and the ceiling is said once more at
+   the end where the blanks are decided. */
+async function kwQuizBuild(source, opts) {
+  source = source || {};
+  opts = opts || {};
+  var qLines = [];
+  var subj = wsMeta.subject ? subjectLabel(wsMeta.subject) : '';
+  var lvl = wsMeta.level ? levelLabel(wsMeta.level) : '';
+  if (subj || lvl) qLines.push('The student is doing ' + [lvl, subj].filter(Boolean).join(' ') + '.');
+  if (source.number) qLines.push('The paper\'s own number for the question: ' + source.number + '.');
+  qLines.push('THE QUESTION' +
+    (source.spoken ? ' (as the student asked it out loud — the speech recognition may be imperfect)' : ' (as printed on the worksheet)') +
+    ':\n' + (source.question || '(not known — work from what the tutor said below)'));
+  if (source.context) qLines.push('WHAT THE TUTOR HAS ALREADY TOLD THEM (build on it, do not repeat it):\n' + source.context);
+  if (source.keywords && source.keywords.length) {
+    qLines.push('Keywords already identified for this question, most important first: ' + source.keywords.join(', ') + '.');
+  }
+  qLines.push('Write the fill-in-the-blank reminder for THIS question now, as JSON.');
+  var matches = sylObjectivesFor([source.question, source.context].concat(source.keywords || []).join(' '), wsMeta.subject, wsMeta.level);
+  var raw = await window.askGemini(qLines.join('\n'), {
+    system: KWQ_SYS + aiGrounding('hint') + keyRuleBlock(source.question) + sylPromptBlock(matches) + kwQuizCeilingRule(),
+    maxOutputTokens: 700, temperature: 0.4, json: true, thinkingLevel: 'low',
+    timeoutMs: 30000, routeTimeoutMs: 12000, signal: opts.signal
+  });
+  var quiz = kwQuizClean(_parseAIJson(raw), source);
+  if (quiz) {
+    // What the box can SAY it was built from: the syllabus objectives by
+    // name, never their whole text, and only where there were any.
+    quiz.syllabus = matches.map(function (m) { return { id: m.id, title: m.title, level: m.level }; });
+  }
+  return quiz;
+}
+
+/* ---- The box ---- */
+function kwQuizShow(quiz, opts) {
+  opts = opts || {};
+  var box = $('kwQuiz');
+  if (!quiz || !box) return false;
+  kwQuiz.open = true;
+  kwQuiz.quiz = quiz;
+  kwQuiz.from = opts.from || '';
+  kwQuiz.hintId = opts.hintId || '';
+  kwQuiz.number = opts.number || '';
+  kwQuiz.detail = opts.detail || '';
+  kwQuiz.inputs = [];
+  kwQuiz.typed = {};
+  kwQuiz.marks = {};
+  kwQuiz.showClues = {};
+  kwQuiz.tries = 0;
+  kwQuiz.solved = !!quiz.done;
+  kwQuiz.revealed = !!quiz.done;
+  kwQuiz.message = quiz.done ? 'You have done this one — here it is again.' : '';
+  kwQuiz.epoch = wsEpoch;
+  if (opts.from === 'live') kwQuiz.lastLiveAt = Date.now();
+  kwQuizRender();
+  if (opts.focus && kwQuiz.inputs.length) {
+    var first = kwQuiz.inputs[0].input;
+    setTimeout(function () { try { first.focus(); } catch (e) { /* not focusable here */ } }, 30);
+  }
+  usageNote('quiz', kwQuiz.detail);
+  return true;
+}
+function kwQuizClose() {
+  if (!kwQuiz.open) return;
+  kwQuiz.open = false;
+  kwQuiz.quiz = null;
+  kwQuiz.inputs = [];
+  kwQuiz.hintId = '';
+  kwQuiz.from = '';
+  kwQuiz.message = '';
+  var box = $('kwQuiz');
+  if (box) { box.hidden = true; box.classList.remove('on'); box.replaceChildren(); }
+  kwQuizLayout();
+}
+/* The subtitle bar is lifted clear of the box while it is open, so a live
+   answer is never captioned underneath the quiz it just set. */
+function kwQuizLayout() {
+  var subs = $('liveSubs');
+  if (!subs) return;
+  var box = $('kwQuiz');
+  var h = (kwQuiz.open && box && box.offsetHeight) ? box.offsetHeight : 0;
+  var phone = (window.innerWidth || 1200) <= 900;
+  subs.style.bottom = h ? 'calc(' + (h + (phone ? 90 : 36)) + 'px + env(safe-area-inset-bottom, 0px))' : '';
+}
+function kwQuizRender() {
+  var box = $('kwQuiz');
+  var q = kwQuiz.quiz;
+  if (!box) return;
+  if (!kwQuiz.open || !q || kwQuiz.epoch !== wsEpoch) {
+    if (kwQuiz.open) { kwQuiz.open = false; kwQuiz.quiz = null; kwQuiz.inputs = []; }
+    box.hidden = true;
+    box.classList.remove('on');
+    box.replaceChildren();
+    kwQuizLayout();
+    return;
+  }
+  var doc = document;
+  var done = kwQuiz.solved || kwQuiz.revealed;
+  box.replaceChildren();
+  kwQuiz.inputs = [];
+
+  var head = doc.createElement('div');
+  head.className = 'kwqHead';
+  var title = doc.createElement('div');
+  title.className = 'kwqTitle';
+  title.textContent = '🧩 Keyword check' + (kwQuiz.number ? ' — Q' + kwQuiz.number : '');
+  var close = doc.createElement('button');
+  close.type = 'button';
+  close.className = 'kwqClose';
+  close.textContent = '✕';
+  close.setAttribute('aria-label', 'Close the keyword check');
+  close.addEventListener('click', function () { kwQuizClose(); });
+  head.appendChild(title);
+  head.appendChild(close);
+  box.appendChild(head);
+
+  if (q.concept) {
+    var c = doc.createElement('div');
+    c.className = 'kwqConcept';
+    c.textContent = q.concept;           // model output — never innerHTML
+    box.appendChild(c);
+  }
+
+  var sent = doc.createElement('div');
+  sent.className = 'kwqSentence';
+  q.sentence.split(/\[(\d+)\]/).forEach(function (part, i) {
+    if (i % 2 === 0) { if (part) sent.appendChild(doc.createTextNode(part)); return; }
+    var n = parseInt(part, 10);
+    var blank = q.blanks.filter(function (b) { return b.n === n; })[0];
+    if (!blank) { sent.appendChild(doc.createTextNode('____')); return; }
+    var input = doc.createElement('input');
+    input.type = 'text';
+    input.className = 'kwqBlank' + (kwQuiz.marks[n] === 'right' || done ? ' right' : kwQuiz.marks[n] === 'wrong' ? ' wrong' : '');
+    input.autocomplete = 'off';
+    input.autocapitalize = 'off';
+    input.spellcheck = false;
+    input.placeholder = String(n);
+    input.setAttribute('aria-label', 'Blank ' + n);
+    input.style.width = Math.max(6, Math.min(22, blank.answer.length + 2)) + 'ch';
+    input.value = done ? blank.answer : (kwQuiz.typed[n] || '');
+    input.disabled = done;
+    input.addEventListener('input', function () {
+      kwQuiz.typed[n] = input.value;
+      if (kwQuiz.marks[n] === 'wrong') { kwQuiz.marks[n] = ''; input.classList.remove('wrong'); }
+    });
+    input.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') { ev.preventDefault(); kwQuizCheck(); }
+      // The page's own one-letter tool shortcuts must not fire while a word
+      // is being typed into a blank.
+      ev.stopPropagation();
+    });
+    kwQuiz.inputs.push({ n: n, blank: blank, input: input });
+    sent.appendChild(input);
+    if (blank.clue && !done) {
+      var cb = doc.createElement('button');
+      cb.type = 'button';
+      cb.className = 'kwqClueBtn';
+      cb.textContent = 'ⓘ';
+      cb.title = 'A clue for blank ' + n;
+      cb.setAttribute('aria-label', 'A clue for blank ' + n);
+      cb.addEventListener('click', function () {
+        kwQuiz.showClues[n] = !kwQuiz.showClues[n];
+        kwQuizRender();
+      });
+      sent.appendChild(cb);
+    }
+  });
+  box.appendChild(sent);
+
+  var clueLines = q.blanks.filter(function (b) { return kwQuiz.showClues[b.n] && b.clue && !done; });
+  if (clueLines.length) {
+    var cl = doc.createElement('div');
+    cl.className = 'kwqClues';
+    clueLines.forEach(function (b) {
+      var p = doc.createElement('div');
+      p.textContent = 'Clue for ' + b.n + ': ' + b.clue;
+      cl.appendChild(p);
+    });
+    box.appendChild(cl);
+  }
+
+  var foot = doc.createElement('div');
+  foot.className = 'kwqFoot';
+  if (!done) {
+    var check = doc.createElement('button');
+    check.type = 'button';
+    check.className = 'btn btnSm btnPrimary kwqCheck';
+    check.textContent = 'Check';
+    check.addEventListener('click', function () { kwQuizCheck(); });
+    foot.appendChild(check);
+    // "Show me" appears only after one honest go: a box that offers the
+    // words before anything has been typed is a box nobody fills in.
+    if (kwQuiz.tries >= 1) {
+      var reveal = doc.createElement('button');
+      reveal.type = 'button';
+      reveal.className = 'btn btnSm kwqReveal';
+      reveal.textContent = 'Show me';
+      reveal.addEventListener('click', function () { kwQuizReveal(); });
+      foot.appendChild(reveal);
+    }
+  } else {
+    var ok = doc.createElement('button');
+    ok.type = 'button';
+    ok.className = 'btn btnSm btnPrimary kwqDone';
+    ok.textContent = 'Done';
+    ok.addEventListener('click', function () { kwQuizClose(); });
+    foot.appendChild(ok);
+  }
+  box.appendChild(foot);
+
+  if (kwQuiz.message) {
+    var r = doc.createElement('div');
+    r.className = 'kwqResult' + (kwQuiz.solved ? ' solved' : '');
+    if (kwQuiz.solved && typeof chungAvatar === 'function') {
+      try { r.appendChild(chungAvatar('happy', 36)); } catch (e) { /* the words are enough */ }
+    }
+    var t = doc.createElement('span');
+    t.textContent = kwQuiz.message;   // model praise — never innerHTML
+    r.appendChild(t);
+    box.appendChild(r);
+  }
+  if (q.syllabus && q.syllabus.length) {
+    var s = doc.createElement('div');
+    s.className = 'kwqFrom';
+    s.textContent = 'From the syllabus: ' + q.syllabus.map(function (m) { return m.title + ' (' + m.level + ')'; }).join(' · ');
+    box.appendChild(s);
+  }
+  box.hidden = false;
+  box.classList.add('on');
+  kwQuizLayout();
+}
+
+function kwQuizCheck() {
+  if (!kwQuiz.open || !kwQuiz.quiz || kwQuiz.solved || kwQuiz.revealed) return;
+  var right = 0, empty = 0;
+  kwQuiz.inputs.forEach(function (it) {
+    var v = String(it.input.value || '');
+    kwQuiz.typed[it.n] = v;
+    if (!kwQuizNorm(v)) { empty++; kwQuiz.marks[it.n] = ''; return; }
+    var ok = kwQuizMatch(it.blank, v);
+    kwQuiz.marks[it.n] = ok ? 'right' : 'wrong';
+    if (ok) right++;
+  });
+  var total = kwQuiz.inputs.length;
+  if (!total) return;
+  if (empty === total) { kwQuiz.message = 'Fill in the blanks first, then press Check.'; kwQuizRender(); return; }
+  kwQuiz.tries++;
+  if (right === total) { kwQuizSolved(); return; }
+  kwQuiz.message = right
+    ? right + ' of ' + total + ' right — have another go at the rest. ⓘ gives you a clue.'
+    : 'Not yet — think about the words the question is really about. ⓘ gives you a clue.';
+  kwQuizRender();
+}
+function kwQuizSolved() {
+  var q = kwQuiz.quiz;
+  kwQuiz.solved = true;
+  kwQuiz.message = (q && q.praise) || 'That is every keyword — now use them in your answer.';
+  kwQuizMarkDone();
+  usageNote('solved', kwQuiz.detail);
+  kwQuizTellTutor('The student filled in every blank of the keyword check correctly (' +
+    q.blanks.map(function (b) { return b.answer; }).join(', ') + '). Praise them briefly if it comes up, then carry on with the question.');
+  kwQuizRender();
+}
+function kwQuizReveal() {
+  if (!kwQuiz.open || !kwQuiz.quiz || kwQuiz.solved) return;
+  kwQuiz.revealed = true;
+  kwQuiz.message = 'Here are the words. Say each one out loud, then use them in your answer.';
+  kwQuizMarkDone();
+  kwQuizRender();
+}
+/* A quiz that came off a hint card is remembered ON the hint, so it is saved
+   with the worksheet and comes back done. */
+function kwQuizMarkDone() {
+  if (kwQuiz.quiz) kwQuiz.quiz.done = true;
+  if (!kwQuiz.hintId) return;
+  var h = hints.filter(function (x) { return x.id === kwQuiz.hintId; })[0];
+  if (h && h.quiz) {
+    h.quiz.done = true;
+    setDirty(true);
+    renderHints();
+  }
+}
+/* In live mode the tutor is TOLD what is on the screen, as context rather
+   than speech: a general `thinking.append` never makes it talk, and the
+   words are never read out — the student is meant to reach for them. */
+function kwQuizTellTutor(text) {
+  if (liveTutor.phase !== 'live') return false;
+  return liveSend({ type: 'session.thinking.append', delegation_id: null, content: text });
+}
+
+/* ---- From a 💡 hint ---- */
+/* Fired the moment a hint lands: the quiz is built in the background off
+   the question the hint read and the keywords it found, and pops up when it
+   is ready. Nothing about the hint waits for it, and nothing about the hint
+   is lost if it fails. */
+function kwQuizAfterHint(h, epoch) {
+  if (!kwQuizPref.on || !kwQuizAllowed()) return;
+  kwQuizForHint(h.id, { quiet: true, epoch: epoch }).catch(function () { /* the hint stands on its own */ });
+}
+async function kwQuizForHint(id, opts) {
+  opts = opts || {};
+  var h = hints.filter(function (x) { return x.id === id; })[0];
+  if (!h || h.working) return null;
+  var detail = h.number ? 'Q' + h.number : '';
+  if (h.quiz) {
+    kwQuizShow(h.quiz, { from: 'hint', hintId: h.id, number: h.number, detail: detail, focus: !!opts.focus });
+    return h.quiz;
+  }
+  if (!kwQuizAllowed()) { if (!opts.quiet) toast(kwQuizLockedNote(), 6000); return null; }
+  if (kwQuizBusyHints[h.id]) return null;
+  var epoch = typeof opts.epoch === 'number' ? opts.epoch : wsEpoch;
+  kwQuizBusyHints[h.id] = 1;
+  renderHints();
+  try {
+    var kws = [];
+    h.rungs.forEach(function (r) { (r.keywords || []).forEach(function (k) { if (kws.indexOf(k) < 0) kws.push(k); }); });
+    var quiz = await kwQuizBuild({
+      question: h.question, number: h.number, keywords: kws,
+      // The rungs the student has already been SHOWN, and no more: a rung
+      // still folded away is one the ladder has not handed over yet.
+      context: h.rungs.slice(0, h.shown).map(function (r) { return r.text; }).join(' ')
+    });
+    if (epoch !== wsEpoch) return null;       // another worksheet was opened while we waited
+    if (!hints.some(function (x) { return x.id === id; })) return null;   // the hint was removed meanwhile
+    if (!quiz) { if (!opts.quiet) toast('Chung GPT could not think of a keyword check for that one.', 5000); return null; }
+    h.quiz = quiz;
+    setDirty(true);
+    kwQuizShow(quiz, { from: 'hint', hintId: h.id, number: h.number, detail: detail, focus: !!opts.focus });
+    return quiz;
+  } catch (e) {
+    if (!opts.quiet) toast('Could not build the keyword check: ' + ((e && e.message) || 'please try again.'), 6000);
+    return null;
+  } finally {
+    delete kwQuizBusyHints[h.id];
+    renderHints();
+  }
+}
+
+/* ---- From the 🎧 live tutor ---- */
+/* Fired AFTER the spoken reply has been sent, never before it, so the
+   student hears the tutor at the same moment they always did and the box
+   arrives while it is talking. One quiz per reply at most, never while one
+   is still being done, and never more often than KWQ_LIVE_GAP_MS — a box
+   that popped on every "yes" would be a box that gets closed unread. */
+function kwQuizForLive(generation, question, reply) {
+  if (!kwQuizPref.on || !kwQuizAllowed() || !liveCurrent(generation)) return Promise.resolve(null);
+  if (kwQuiz.open && !kwQuiz.solved && !kwQuiz.revealed) return Promise.resolve(null);
+  if (Date.now() - kwQuiz.lastLiveAt < KWQ_LIVE_GAP_MS) return Promise.resolve(null);
+  if (kwQuiz.building) return Promise.resolve(null);
+  var seq = ++kwQuiz.seq, epoch = wsEpoch;
+  kwQuiz.building = true;
+  return kwQuizBuild({ question: question, context: reply, spoken: true }).then(function (quiz) {
+    kwQuiz.building = false;
+    if (!quiz || seq !== kwQuiz.seq || epoch !== wsEpoch || !liveCurrent(generation)) return null;
+    if (kwQuiz.open && !kwQuiz.solved && !kwQuiz.revealed) return null;
+    if (!kwQuizShow(quiz, { from: 'live', detail: 'live' })) return null;
+    kwQuizTellTutor('A keyword check box is now on the student\'s screen. It says: "' + quiz.sentence +
+      '" with ' + quiz.blanks.length + ' blank' + (quiz.blanks.length === 1 ? '' : 's') +
+      ' for them to fill in. You may mention it if they ask; never read out the missing words.');
+    return quiz;
+  }, function () { kwQuiz.building = false; return null; });
+}
+/* ================= End the keyword quiz ================= */
 
 /* ---- The pins on the page ----
    Drawn in SCREEN pixels divided by the zoom, so a pin stays the same size
@@ -7423,6 +8574,8 @@ function renderLiveTutor() {
   // press Start, not once the tutor is already talking.
   $('liveSubsBtn').textContent = 'Subtitles: ' + (liveSubs.on ? 'on' : 'off');
   $('liveSubsBtn').setAttribute('aria-pressed', String(liveSubs.on));
+  $('liveQuizBtn').textContent = 'Keyword quizzes: ' + (kwQuizPref.on ? 'on' : 'off');
+  $('liveQuizBtn').setAttribute('aria-pressed', String(kwQuizPref.on));
   renderLiveSubs();
   $('livePlaybackBtn').hidden = !liveTutor.playbackBlocked;
   $('liveClock').textContent = liveTutor.startedAt && liveActive()
@@ -7699,6 +8852,7 @@ async function runLiveDelegation(id, generation, queued) {
   liveStatus('Thinking…');
   var controller = new AbortController();
   liveTutor.checkController = controller;
+  var spokenQuestion = '';
   try {
     var out = await aiWithDeadline(async function (signal) {
       await Promise.all([aiWithDeadline(function () { return loadTeachingNotes(); }, 10000, signal, 'Teaching notes took too long to load. Please try again.'), keyEnsureReady(signal)]);
@@ -7715,6 +8869,7 @@ async function runLiveDelegation(id, generation, queued) {
         if (data) { imgs.push({ mimeType: 'image/jpeg', data: data }); imagePages.push(p.num); }
       }
       var lastQuestion = liveConversationParts().filter(function (part) { return part.who === 'student'; }).slice(-1).map(function (part) { return part.text; }).join('');
+      spokenQuestion = lastQuestion;
       var lines = ['Help the student with the latest spoken question in this conversation.',
         'Student level: ' + levelLabel(wsMeta.level) + '. Subject: ' + subjectLabel(wsMeta.subject) + '.',
         imgs.length ? 'Attached are the visible worksheet pages and the student’s working, in this order: ' + imagePages.join(', ') + '.' : 'No worksheet image is available. Use any supplied typed answer; if the question itself is missing, ask the student to read the question; do not guess.',
@@ -7737,9 +8892,14 @@ async function runLiveDelegation(id, generation, queued) {
       return;
     }
     if (wsMeta.guidance !== liveTutor.guidance) { stopLiveTutor('The help level changed. Start again to use the new level.'); return; }
+    var spokenReply = String(out || '').trim();
     if (!liveSend({ type: 'session.commentary.append', delegation_id: id,
-      content: String(out || '').trim() || 'I could not read that clearly. Please say the question again.' })) {
+      content: spokenReply || 'I could not read that clearly. Please say the question again.' })) {
       stopLiveTutor('The connection was lost. Please start again.');
+    } else if (spokenReply) {
+      // The 🧩 keyword check is built AFTER the reply is on its way, so the
+      // student hears the tutor exactly when they always did.
+      kwQuizForLive(generation, spokenQuestion, spokenReply);
     }
   } catch (e) {
     if (liveCurrent(generation)) liveSend({ type: liveTutor.pendingDelegation ? 'session.thinking.append' : 'session.commentary.append', delegation_id: id,
@@ -7765,7 +8925,7 @@ var view = 'home';
 var worksheets = [];
 
 function showView(v) {
-  if (v !== 'ws') { stopLiveTutor(); liveTutor.transcript = []; }
+  if (v !== 'ws') { stopLiveTutor(); liveTutor.transcript = []; kwQuizClose(); }
   view = v;
   ['home', 'ws', 'mistake'].forEach(function (k) {
     $(k + 'View').classList.toggle('on', k === v);
@@ -8029,6 +9189,26 @@ function renderHints() {
     (ground.length
       ? 'Grounded in ' + escHtml(ground.join(', ')) + '.'
       : 'Working from the syllabus alone — no teaching notes were readable.');
+  // The 🧩 keyword check sits on the "Concept & keywords" rung, so it is
+  // offered exactly when that rung is — and named as locked when it is not.
+  var qline = document.createElement('div');
+  qline.className = 'hintQuizLine';
+  var qnote = document.createElement('span');
+  qnote.textContent = !kwQuizAllowed()
+    ? '🔒 Keyword checks are switched off at this help level.'
+    : kwQuizPref.on
+      ? '🧩 A keyword check pops up with each hint — fill in the blanks to recall the words the answer needs.'
+      : '🧩 Keyword checks are off — press "Quiz me on the keywords" on a hint to get one.';
+  qline.appendChild(qnote);
+  if (kwQuizAllowed()) {
+    var qtog = document.createElement('button');
+    qtog.type = 'button';
+    qtog.className = 'btn btnSm';
+    qtog.textContent = kwQuizPref.on ? 'Turn them off' : 'Turn them on';
+    qtog.addEventListener('click', function () { toggleKwQuizPref(); });
+    qline.appendChild(qtog);
+  }
+  line.appendChild(qline);
 
   var box = $('hintList');
   box.innerHTML = '';
@@ -8108,6 +9288,28 @@ function hintCard(h, i) {
     }
     card.appendChild(d);
   });
+
+  // 🧩 The keyword check: the "Concept & keywords" rung asked as a question.
+  // It is offered from the first rung on — a student who wants to reach for
+  // the words rather than be told them should not have to climb to be
+  // asked — and shown LOCKED, like any rung, where the level forbids it.
+  if (kwQuizAllowed()) {
+    var qb = document.createElement('button');
+    qb.type = 'button';
+    qb.className = 'btn btnSm kwqBtn';
+    var qbusy = !!kwQuizBusyHints[h.id];
+    qb.textContent = qbusy ? '🧩 Building your keyword check…'
+      : h.quiz ? (h.quiz.done ? '🧩 Keyword check ✓ — see it again' : '🧩 Open the keyword check')
+      : '🧩 Quiz me on the keywords';
+    qb.disabled = qbusy;
+    qb.addEventListener('click', function () { kwQuizForHint(h.id, { focus: true }); });
+    card.appendChild(qb);
+  } else {
+    var ql = document.createElement('div');
+    ql.className = 'rungLocked';
+    ql.innerHTML = '🔒 <span><b>Keyword check</b> — switched off at this help level.</span>';
+    card.appendChild(ql);
+  }
 
   if (h.shown < h.rungs.length) {
     var next = HINT_RUNGS.find(function (x) { return x.key === h.rungs[h.shown].key; });
@@ -11536,7 +12738,9 @@ var USAGE_EVENTS = {
   sheet:    { label: 'Printed a mistake sheet', count: 'sheets' },
   paper:    { label: 'Printed the worksheet', count: 'papers' },
   again:    { label: 'Started a worksheet again', count: 'again' },
-  report:   { label: 'Opened the report', count: 'reports' }
+  report:   { label: 'Opened the report', count: 'reports' },
+  quiz:     { label: 'Took a keyword check', count: 'quizzes' },
+  solved:   { label: 'Filled in every keyword', count: 'solved' }
 };
 function usageLabel(key) {
   var e = USAGE_EVENTS[key];
@@ -11657,6 +12861,7 @@ function usageOf(p) {
     practice: n('practice'), practiceRight: n('practiceRight'),
     cleared: n('cleared'), sheets: n('sheets'), papers: n('papers'),
     again: n('again'), reports: n('reports'),
+    quizzes: n('quizzes'), solved: n('solved'),
     activeDays: n('activeDays'), lastDay: String(u.lastDay || ''),
     // Accuracy over questions that were ATTEMPTED. A blank was not an
     // attempt, and counting it as one reports a child who ran out of time
@@ -11876,7 +13081,8 @@ function openPersonUsage(id) {
    ['Hints', u.hints], ['Extra help taken', u.rungs], ['Questions asked', u.chats],
    ['Mistakes practised', u.practice], ['Got right on the retry', u.practiceRight],
    ['Sorted', u.cleared], ['Sheets printed', u.sheets], ['Papers printed', u.papers],
-   ['Done again', u.again], ['Days used', u.activeDays]]
+   ['Done again', u.again], ['Keyword checks', u.quizzes], ['Every keyword filled in', u.solved],
+   ['Days used', u.activeDays]]
     .forEach(function (row) {
       var b = document.createElement('div');
       b.className = 'usageBox';
@@ -12046,6 +13252,7 @@ if (auth) auth.onAuthStateChanged(function (user) {
 /* ================= Wiring ================= */
 $('liveStartBtn').addEventListener('click', startLiveTutor);
 $('liveSubsBtn').addEventListener('click', toggleLiveSubs);
+$('liveQuizBtn').addEventListener('click', toggleKwQuizPref);
 $('liveEndBtn').addEventListener('click', function () { stopLiveTutor(); });
 $('liveMuteBtn').addEventListener('click', muteLiveTutor);
 $('livePlaybackBtn').addEventListener('click', playLiveAudio);
@@ -12245,6 +13452,7 @@ document.addEventListener('keydown', function (e) {
     return;
   }
   if (e.key === 'Escape') {
+    kwQuizClose();
     // Every dialog but the first-sign-in gate. That one has to be answered.
     document.querySelectorAll('.modalBack.open:not(#onboardModal)').forEach(function (m) {
       m.classList.remove('open');
