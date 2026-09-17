@@ -2,6 +2,54 @@
 
 Guidance for Claude when working in this repo.
 
+## 💬 SUBTITLES — what the tutor just said, over the page (v1.16.0)
+
+`SUBS_KEY` / `SUBS_HOLD_MS` / `SUBS_MAX_CHARS` / `liveSubs` / **`liveSubsNote`**
+/ `liveSubsClear` / `renderLiveSubs` / `setLiveSubs` / `toggleLiveSubs` (search
+`SUBTITLES — what the tutor just SAID`), plus `#liveSubs`, `#liveSubsBtn` and
+the `#liveSubs` CSS.
+
+A spoken sentence is gone the moment it is said, and a student working on the
+question is looking at the PAGE, not at the transcript panel beside it. The
+tutor's own words are repeated across the bottom of the screen while they are
+being spoken — translucent grey, black text, centred over the worksheet.
+
+- **`pointer-events: none` IS LOAD-BEARING.** This sits over a page a child
+  writes on with a stylus. A box that swallowed a stroke — or a tap on a text
+  box under it — would be far worse than no subtitles at all, and it would look
+  like the pen had stopped working rather than like a caption in the way.
+- **ONLY THE TUTOR'S REPLIES.** A student knows what they themselves just said,
+  and captioning it back is noise printed over the very question they are
+  reading. `liveSubsNote` takes the `who` the one transcript handler already
+  decides, so the two can never disagree about who spoke. The panel still holds
+  both sides for anyone who wants them.
+- **IT IS A CUE, NOT A LOG, and two rules keep it one.** `fresh` is set the
+  moment the STUDENT speaks, so the next reply starts a new cue instead of
+  growing the last one for ever; and `SUBS_HOLD_MS` takes a finished reply off
+  the page. Drop either and the worksheet ends a ten-minute session under a
+  wall of transcript. The last reply is deliberately left up WHILE the student
+  answers — that is exactly when they are re-reading what they were asked.
+- **`SUBS_MAX_CHARS` keeps the TAIL**, so a long answer scrolls itself the way a
+  subtitle does rather than growing a paragraph over the page.
+- **THE CUE IS CLEARED WHERE THE PHASE BECOMES `closing`, not in `release()`.**
+  `stopLiveTutor` holds the transport open for up to three seconds waiting for
+  `session.closed`, and the screen is done with the caption the instant ending
+  begins. (The bar is hidden by the phase either way — `renderLiveSubs` asks
+  for `'live'` — but leaving the text in state is a caption waiting to come
+  back on the next render.)
+- **`textContent`, NEVER `innerHTML`.** This is model output painted onto the
+  page, exactly like the transcript rows beside it.
+- **The switch is a PREFERENCE, so it is offered whether or not a session is
+  running** — a student who turned subtitles off wants them back before they
+  press Start, not once the tutor is already talking. It is remembered per
+  device, and **an unreadable or unwritable `localStorage` still gets
+  subtitles**: they are the default, and a device that refuses storage is not a
+  reason to turn an accessibility aid off.
+- The bar clears the 💬 button on a phone. It can never collide with
+  `#voiceBar`, because dictation and live mode can never both hold the
+  microphone.
+- Run **`node --test tools/live-tutor-tests.mjs`** after touching any of it.
+
 ## Visible answers and quiet Live checks (v1.15.4)
 
 `syncActiveTextEditValue` reads the current contenteditable without committing it,
