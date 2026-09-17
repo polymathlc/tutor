@@ -518,6 +518,72 @@ test('transcript events render speech as text and keep chronological, bounded hi
   h.c.stopLiveTutor();
 });
 
+test('subtitles repeat the tutor\u2019s reply over the page, and only the tutor\u2019s', async () => {
+  const h = await connected();
+  const channel = h.c.liveTutor.channel, bar = h.element('liveSubs');
+  const spoken = '<img src=x onerror=alert(1)> & "hello"';
+  channel.receive({ type: 'session.input_transcript.delta', delta: spoken, start_ms: 10 });
+  assert.equal(bar.hidden, true, 'a student knows what they just said; it is noise over the question');
+  channel.receive({ type: 'session.output_transcript.delta', delta: 'Where does ', start_ms: 20 });
+  channel.receive({ type: 'session.output_transcript.delta', delta: 'the water go?', start_ms: 30 });
+  assert.equal(bar.hidden, false);
+  assert.equal(bar.classList.contains('on'), true);
+  assert.equal(bar.textContent, 'Where does the water go?');
+  assert.equal(bar.innerHTML, '', 'spoken text is painted as text, never as markup');
+  h.c.stopLiveTutor();
+});
+
+test('a reply is a cue, not a log: a new answer replaces the last and a pause clears it', async () => {
+  const h = await connected();
+  const channel = h.c.liveTutor.channel, bar = h.element('liveSubs');
+  channel.receive({ type: 'session.output_transcript.delta', delta: 'First reply.', start_ms: 10 });
+  channel.receive({ type: 'session.input_transcript.delta', delta: 'I think so', start_ms: 20 });
+  assert.equal(bar.textContent, 'First reply.', 'it stays up while the student answers the question it asked');
+  channel.receive({ type: 'session.output_transcript.delta', delta: 'Second reply.', start_ms: 30 });
+  assert.equal(bar.textContent, 'Second reply.', 'a new reply must not grow onto the last one');
+  const hold = [...h.calls.timers.values()].find(timer => timer.ms === h.c.SUBS_HOLD_MS);
+  assert.ok(hold, 'a finished reply is taken off the page rather than left there');
+  hold.fn();
+  assert.equal(bar.hidden, true);
+  assert.equal(bar.textContent, '');
+  channel.receive({ type: 'session.output_transcript.delta', delta: 'x'.repeat(400), start_ms: 40 });
+  assert.equal(bar.textContent.length, h.c.SUBS_MAX_CHARS, 'a long answer scrolls itself instead of covering the worksheet');
+  h.c.stopLiveTutor();
+});
+
+test('subtitles can be switched off, are remembered, and never outlive the session', async () => {
+  const store = new Map();
+  const h = await connected({ globals: { localStorage: {
+    getItem: key => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, String(value))
+  } } });
+  const channel = h.c.liveTutor.channel, bar = h.element('liveSubs'), button = h.element('liveSubsBtn');
+  channel.receive({ type: 'session.output_transcript.delta', delta: 'Keep going.', start_ms: 10 });
+  assert.equal(bar.hidden, false);
+  assert.equal(button.textContent, 'Subtitles: on');
+  h.c.toggleLiveSubs();
+  assert.equal(bar.hidden, true, 'switching them off takes them off the page at once');
+  assert.equal(button.textContent, 'Subtitles: off');
+  assert.equal(button.getAttribute('aria-pressed'), 'false');
+  assert.equal(store.get('tutorLiveSubs'), '0', 'the choice is remembered on the device');
+  channel.receive({ type: 'session.output_transcript.delta', delta: ' Still talking.', start_ms: 20 });
+  assert.equal(bar.hidden, true);
+  h.c.toggleLiveSubs();
+  assert.equal(bar.hidden, false, 'the reply still being spoken comes back');
+  assert.equal(bar.textContent, 'Keep going. Still talking.', 'switching on mid-answer catches the whole of it');
+  assert.equal(store.get('tutorLiveSubs'), '1');
+  h.c.stopLiveTutor();
+  assert.equal(bar.hidden, true, 'an ended session leaves nothing over the worksheet');
+  assert.equal(h.c.liveSubs.text, '');
+});
+
+test('a device that refuses storage still gets subtitles', () => {
+  const h = harness({ globals: { localStorage: { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } } } });
+  assert.equal(h.c.liveSubs.on, true, 'an unreadable preference is not a reason to turn an aid off');
+  h.c.toggleLiveSubs();
+  assert.equal(h.c.liveSubs.on, false, 'a refused write must not stop the switch working');
+});
+
 test('a pending dictation permission request prevents live mode and drops a late worksheet recording', async () => {
   const permission = deferred();
   const h = harness({ media: () => permission.promise, globals: { voiceSupported: () => true } });

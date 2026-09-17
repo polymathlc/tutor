@@ -12,6 +12,25 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.16.0 — Subtitles for what the tutor says
+
+Live tutoring now repeats **what Chung GPT just said** as subtitles across the
+bottom of the screen — translucent grey, black text, over the worksheet you are
+working on. The transcript beside the page is for reading a conversation back;
+this is for the sentence being spoken **right now**, while you are looking at
+the question rather than at the panel.
+
+- **Subtitles: on / off** is a button on the live tutoring card, next to Start.
+  It is remembered on your device and can be switched at any time — including
+  mid-answer, which catches the rest of the sentence.
+- Only the **tutor's** replies are subtitled. You know what you just said, and
+  captioning it back would cover the question you are reading; the panel still
+  keeps both sides of the conversation.
+- A reply clears itself a few seconds after it finishes, and a new reply
+  replaces the last one — so the worksheet never ends up under a wall of text.
+- They never swallow a pen stroke: the subtitle box cannot be tapped or drawn
+  on, so writing on the page underneath it works exactly as it always did.
+
 ## v1.15.4 — See typed answers and think quietly
 
 Live tutoring and Ask now read text that is still being edited on the worksheet,

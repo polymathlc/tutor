@@ -1066,6 +1066,32 @@
   #liveTranscript { margin-top: 20px; max-height: 280px; overflow-y: auto; overflow-wrap: anywhere; font-size: .88rem; }
   #liveTranscript p { margin: 12px 0; white-space: pre-wrap; }
   #liveTranscript:empty::before { content: 'Your conversation will appear here.'; color: var(--ink-faint); }
+  /* SUBTITLES — what the tutor just SAID, over the worksheet.
+     The panel beside the page is where a conversation is read back; this is
+     for the sentence being spoken right now, while the student is looking at
+     the question rather than at the panel.
+     `pointer-events: none` is load-bearing: this sits over a page a child
+     writes on with a stylus, and a box that swallowed a stroke would be far
+     worse than no subtitles. */
+  #liveSubs {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    z-index: 95; display: none; pointer-events: none;
+    max-width: min(760px, calc(100% - 32px));
+    padding: 11px 20px; border-radius: 14px;
+    background: rgba(118, 124, 132, .55);
+    -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+    color: #000; font-size: 1.05rem; font-weight: 600; line-height: 1.45;
+    text-align: center; white-space: pre-wrap; overflow-wrap: anywhere;
+    text-shadow: 0 1px 0 rgba(255,255,255,.4);
+  }
+  #liveSubs.on { display: block; }
+  @media (max-width: 900px) {
+    /* Clear the 💬 button, which is the only other thing down there while a
+       session runs — dictation and live mode can never both hold the mic. */
+    #liveSubs { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); font-size: .95rem; padding: 9px 14px; }
+  }
+  @media print { #liveSubs { display: none !important; } }
   .buddyTabs .bTab { min-width: 0; padding-left: 7px; padding-right: 7px; }
 </style>
 </head>
@@ -1248,6 +1274,7 @@
                 <div class="liveControls">
                   <button class="btn btnPrimary" id="liveStartBtn">Start live tutoring</button>
                   <button class="btn" id="liveMuteBtn" aria-pressed="false" hidden>Mute microphone</button>
+                  <button class="btn" id="liveSubsBtn" aria-pressed="true">Subtitles: on</button>
                   <button class="btn" id="liveEndBtn" hidden>End session</button>
                   <button class="btn" id="livePlaybackBtn" hidden>Enable sound</button>
                 </div>
@@ -1263,6 +1290,8 @@
         <button class="btn btnPrimary" id="buddyFab">💬 Ask Chung GPT</button>
         <!-- Painted by renderVoiceBar(); empty and hidden until the mic is on. -->
         <div id="voiceBar" role="status" aria-live="polite"></div>
+        <!-- What the tutor is saying, over the page. Painted by renderLiveSubs(). -->
+        <div id="liveSubs" role="status" aria-live="polite" hidden></div>
       </div>
     </div>
 
@@ -1700,7 +1729,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.15.4';
+var APP_VERSION = 'v1.16.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -7304,6 +7333,63 @@ var liveTutor = {
   transcript: [], delegations: new Set(), pendingDelegation: null, working: false, epoch: null, worksheetId: null, contextSnapshot: null
 };
 
+/* ---- SUBTITLES — what the tutor just SAID, over the worksheet ----
+   The transcript panel beside the page is a conversation read back; a student
+   working on the question is looking at the PAGE, and a spoken sentence they
+   half-heard is gone. So the tutor's own words are repeated at the bottom of
+   the screen while they are being said.
+
+   ONLY THE TUTOR'S REPLIES. A student knows what they themselves just said,
+   and captioning it back is noise over the very question they are reading —
+   the panel still holds both sides for anyone who wants them.
+
+   IT IS A CUE, NOT A LOG. `fresh` is set the moment the student speaks, so the
+   NEXT reply starts a new cue instead of growing the last one for ever, and
+   `SUBS_HOLD_MS` takes a finished reply off the page. Without either, the
+   worksheet ends a session wearing ten minutes of transcript. The last reply
+   is deliberately left up WHILE the student answers — that is exactly when
+   they are re-reading the question they were asked. */
+var SUBS_KEY = 'tutorLiveSubs';
+var SUBS_HOLD_MS = 7000;
+var SUBS_MAX_CHARS = 220;
+var liveSubs = { on: true, text: '', fresh: true, timer: null };
+// A device with no storage still gets subtitles: they are the default, and an
+// unreadable preference is not a reason to turn an accessibility aid off.
+try { liveSubs.on = localStorage.getItem(SUBS_KEY) !== '0'; } catch (e) {}
+
+function renderLiveSubs() {
+  var bar = $('liveSubs');
+  if (!bar) return;
+  var show = liveSubs.on && liveTutor.phase === 'live' && !!liveSubs.text;
+  // textContent, never innerHTML: this is model output painted onto the page.
+  bar.textContent = show ? liveSubs.text : '';
+  bar.hidden = !show;
+  bar.classList.toggle('on', show);
+}
+function liveSubsClear() {
+  clearTimeout(liveSubs.timer);
+  liveSubs.timer = null; liveSubs.text = ''; liveSubs.fresh = true;
+  renderLiveSubs();
+}
+function liveSubsNote(who, text) {
+  if (who !== 'buddy') { liveSubs.fresh = true; return; }
+  if (liveSubs.fresh) { liveSubs.text = ''; liveSubs.fresh = false; }
+  // Kept to a tail that fits the box; a long answer scrolls itself the way a
+  // subtitle does rather than growing a paragraph over the worksheet.
+  liveSubs.text = (liveSubs.text + text).slice(-SUBS_MAX_CHARS);
+  clearTimeout(liveSubs.timer);
+  liveSubs.timer = setTimeout(function () {
+    liveSubs.timer = null; liveSubs.text = ''; liveSubs.fresh = true; renderLiveSubs();
+  }, SUBS_HOLD_MS);
+  renderLiveSubs();
+}
+function setLiveSubs(on) {
+  liveSubs.on = !!on;
+  try { localStorage.setItem(SUBS_KEY, liveSubs.on ? '1' : '0'); } catch (e) {}
+  renderLiveTutor();
+}
+function toggleLiveSubs() { setLiveSubs(!liveSubs.on); }
+
 function liveActive() { return ['connecting', 'live', 'closing'].indexOf(liveTutor.phase) !== -1; }
 function liveCurrent(generation) {
   return generation === liveTutor.generation && liveActive() && liveTutor.phase !== 'closing' && liveTutor.epoch === wsEpoch &&
@@ -7332,6 +7418,12 @@ function renderLiveTutor() {
   $('liveMuteBtn').hidden = liveTutor.phase !== 'live';
   $('liveMuteBtn').textContent = liveTutor.muted ? 'Unmute microphone' : 'Mute microphone';
   $('liveMuteBtn').setAttribute('aria-pressed', String(liveTutor.muted));
+  // The switch is a PREFERENCE, so it is offered whether or not a session is
+  // running — a student who turned subtitles off wants them back before they
+  // press Start, not once the tutor is already talking.
+  $('liveSubsBtn').textContent = 'Subtitles: ' + (liveSubs.on ? 'on' : 'off');
+  $('liveSubsBtn').setAttribute('aria-pressed', String(liveSubs.on));
+  renderLiveSubs();
   $('livePlaybackBtn').hidden = !liveTutor.playbackBlocked;
   $('liveClock').textContent = liveTutor.startedAt && liveActive()
     ? Math.floor((Date.now() - liveTutor.startedAt) / 60000) + ':' +
@@ -7411,6 +7503,7 @@ function stopLiveTutor(message) {
   var finalMessage = typeof message === 'string' ? message : 'Session ended. Your microphone is off.';
   liveTutor.generation++;
   liveTutor.phase = 'closing';
+  liveSubsClear();
   if (liveTutor.checkController) liveTutor.checkController.abort();
   liveTutor.checkController = null;
   if (liveTutor.cancelIce) liveTutor.cancelIce();
@@ -7577,6 +7670,7 @@ function handleLiveEvent(event, generation) {
     if (typeof event.delta !== 'string' || !event.delta) return;
     var who = event.type === 'session.input_transcript.delta' ? 'student' : 'buddy';
     liveTutor.transcript.push({ who: who, text: event.delta.slice(0, 4000), start: Number(event.start_ms) || 0, end: Number(event.end_ms) || 0 });
+    liveSubsNote(who, event.delta.slice(0, 4000));
     liveTutor.transcript.sort(function (a, b) { return a.start - b.start; });
     while (liveTutor.transcript.length > 1000 || liveTutor.transcript.reduce(function (n, part) { return n + part.text.length; }, 0) > 24000) liveTutor.transcript.shift();
     renderLiveTutor();
@@ -11951,6 +12045,7 @@ if (auth) auth.onAuthStateChanged(function (user) {
 
 /* ================= Wiring ================= */
 $('liveStartBtn').addEventListener('click', startLiveTutor);
+$('liveSubsBtn').addEventListener('click', toggleLiveSubs);
 $('liveEndBtn').addEventListener('click', function () { stopLiveTutor(); });
 $('liveMuteBtn').addEventListener('click', muteLiveTutor);
 $('livePlaybackBtn').addEventListener('click', playLiveAudio);
