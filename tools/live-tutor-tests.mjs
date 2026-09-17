@@ -16,7 +16,16 @@ const deadlineSource = html.slice(html.indexOf('/* ================= AI request 
   html.indexOf('/* ================= End AI request deadlines ================= */'));
 const contextSource = html.slice(html.indexOf('/* Read screen rectangles'), start);
 const syncTextSource = html.slice(html.indexOf('function syncActiveTextEditValue()'), html.indexOf('function commitActiveTextEdit()'));
-const source = deadlineSource + syncTextSource + contextSource + html.slice(start, end);
+/* The 🧩 keyword check and what it stands on: the ladder (which rung it sits
+   on), the tolerant JSON parse, the syllabus matcher and the quiz section
+   itself. They are cut out of the file rather than stubbed, because the
+   gating and the cleaning are the things worth checking. */
+const ladderSource = html.slice(html.indexOf('var HINT_RUNGS = ['), html.indexOf('/* ================= THE SCIENCE SYLLABUS'));
+const syllabusSource = html.slice(html.indexOf('/* ================= THE SCIENCE SYLLABUS'), html.indexOf('/* ================= End the science syllabus'));
+const parseSource = html.slice(html.indexOf('/* ================= Tolerant JSON parse for model output'), html.indexOf('function aiEngineName() {'));
+const quizSource = html.slice(html.indexOf('/* ================= THE KEYWORD QUIZ ================='), html.indexOf('/* ================= End the keyword quiz'));
+assert.ok(ladderSource && syllabusSource && parseSource && quizSource, 'the ladder, the syllabus, the JSON parse and the keyword quiz can be loaded independently');
+const source = deadlineSource + syncTextSource + ladderSource + syllabusSource + parseSource + contextSource + quizSource + html.slice(start, end);
 const flattenSource = html.slice(html.indexOf('function drawAnnsOnCtx('), html.indexOf('/* A full-width band of the page'));
 const voiceSource = html.slice(html.indexOf('function startVoice(target) {'), html.indexOf('function _voiceClearTimers()'));
 
@@ -70,7 +79,7 @@ function node(tagName = 'div') {
 
 function harness(options = {}) {
   const nodes = new Map();
-  const calls = { media: [], fetch: [], ai: [], toast: [], timers: new Map(), peers: [], audio: [] };
+  const calls = { media: [], fetch: [], ai: [], toast: [], timers: new Map(), peers: [], audio: [], usage: [] };
   let nextTimer = 0;
   const element = id => {
     if (!nodes.has(id)) nodes.set(id, node());
@@ -166,7 +175,8 @@ function harness(options = {}) {
     CHAT_SYS: '[TUTOR_SYSTEM]',
     toast: message => calls.toast.push(message),
     renderMicBtns() {}, renderVoiceBar() {}, renderChat() {},
-    openBuddy() {}, usageNote() {}, setDirty() {}, syncTextEditValue() {},
+    openBuddy() {}, usageNote(key, detail) { calls.usage.push({ key, detail }); }, setDirty() {}, syncTextEditValue() {},
+    renderHints() {}, hints: [], wsKey: { rows: [] },
     escHtml: value => String(value).replace(/[&<>"']/g, ch => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[ch]))
@@ -582,6 +592,173 @@ test('a device that refuses storage still gets subtitles', () => {
   assert.equal(h.c.liveSubs.on, true, 'an unreadable preference is not a reason to turn an aid off');
   h.c.toggleLiveSubs();
   assert.equal(h.c.liveSubs.on, false, 'a refused write must not stop the switch working');
+});
+
+/* ---- 🧩 The keyword check in live mode ---- */
+const QUIZ_REPLY = JSON.stringify({
+  concept: 'Water changes state when heat is gained or lost.',
+  sentence: 'The puddle disappears because the water gains heat and changes into [1] by [2].',
+  blanks: [
+    { n: 1, answer: 'water vapour', alt: ['vapour'], clue: 'water as a gas' },
+    { n: 2, answer: 'evaporation', alt: ['evaporating'], clue: 'the process, not the water' }
+  ],
+  praise: 'Every keyword — now use them in your answer.'
+});
+function quizHarness(extra = {}) {
+  const answers = [];
+  return connected({
+    globals: Object.assign({ worksheetContextPages: () => [{ num: 3 }], wsMeta: { subject: 'science', level: 'P5', guidance: 'concepts' } }, extra.globals || {}),
+    ai: (prompt, config) => {
+      answers.push({ prompt, config });
+      return /fill-in-the-blank reminder/.test(config.system) ? (extra.quiz ?? QUIZ_REPLY) : 'Think about where the water goes.';
+    }
+  });
+}
+/* The quiz's own notes to the tutor. The view summary is a general
+   `thinking.append` too, so these are told apart by what they say. */
+function thoughts(channel) {
+  return channel.sent.filter(event => event.type === 'session.thinking.append' && event.delegation_id === null && /keyword check/i.test(event.content));
+}
+function inputsOf(box) {
+  const out = [];
+  const walk = n => { (n.children || []).forEach(c => { if (c.tagName === 'INPUT') out.push(c); walk(c); }); };
+  walk(box);
+  return out;
+}
+/* Everything the box shows or holds — text, placeholders and typed values —
+   flattened, so an assertion can say a word is nowhere in it. */
+function textOf(n) {
+  let out = String(n.textContent || '') + ' ' + String(n.value || '') + ' ' + String(n.placeholder || '');
+  (n.children || []).forEach(c => { out += ' ' + textOf(c); });
+  return out;
+}
+function buttonsOf(box, cls) {
+  const out = [];
+  const walk = n => { (n.children || []).forEach(c => { if (c.tagName === 'BUTTON' && String(c.className).includes(cls)) out.push(c); walk(c); }); };
+  walk(box);
+  return out;
+}
+
+test('a keyword check pops up after the spoken reply, built from the question, grounded, keyed and told to the tutor', async () => {
+  const h = await quizHarness();
+  const channel = h.c.liveTutor.channel, box = h.element('kwQuiz');
+  channel.receive({ type: 'session.input_transcript.delta', delta: 'Why does the puddle disappear on a sunny day? Is it evaporation, and where does the water vapour go?', start_ms: 10 });
+  channel.receive({ type: 'session.delegation.created', delegation: { id: 'teach-a', target: 'client' } });
+  await flush(); await flush();
+  assert.equal(h.calls.ai.length, 2, 'the teaching call, then ONE quiz call');
+  assert.equal(comments(channel)[0].content, 'Think about where the water goes.', 'the spoken reply is untouched');
+  const built = h.calls.ai[1];
+  assert.ok(h.calls.ai[0].config.images.length === 1 && !built.config.images, 'the quiz is text only — no page is sent twice');
+  assert.match(built.prompt, /Why does the puddle disappear on a sunny day\? Is it evaporation/);
+  assert.match(built.prompt, /Think about where the water goes/);
+  assert.match(built.prompt, /speech recognition may be imperfect/);
+  for (const rule of ['[TEACHER_GROUNDING:hint]', '[ANSWER_KEY_RULES]', 'THE SYLLABUS (MOE Primary Science Syllabus 2023', 'the notes win', 'CONCEPT & KEYWORDS']) {
+    assert.ok(built.config.system.includes(rule), rule);
+  }
+  assert.ok(built.config.system.indexOf('[TEACHER_GROUNDING:hint]') < built.config.system.indexOf('THE SYLLABUS'), 'the notes come before the syllabus');
+  assert.equal(box.hidden, false);
+  assert.equal(box.classList.contains('on'), true);
+  assert.equal(inputsOf(box).length, 2);
+  const text = textOf(box);
+  assert.ok(text.includes('The puddle disappears because') && !text.includes('evaporation') && !text.includes('water vapour'), 'the sentence is on the box and the missing words are nowhere in it');
+  assert.equal(thoughts(channel).length, 1, 'the tutor is told, as context');
+  assert.match(thoughts(channel)[0].content, /keyword check box is now on the student/);
+  assert.match(thoughts(channel)[0].content, /never read out the missing words/);
+  assert.ok(!thoughts(channel)[0].content.includes('evaporation'), 'and is not handed the words either');
+  assert.deepEqual(h.calls.usage.map(u => u.key), ['quiz']);
+  h.c.stopLiveTutor();
+});
+
+test('the check marks each blank, accepts a plural or a listed form, and a solved box tells the tutor', async () => {
+  const h = await quizHarness();
+  const channel = h.c.liveTutor.channel, box = h.element('kwQuiz');
+  await h.c.runLiveDelegation('teach-b', h.c.liveTutor.generation);
+  await flush(); await flush();
+  let inputs = inputsOf(box);
+  assert.equal(inputs.length, 2);
+  inputs[0].value = 'Water Vapours';
+  inputs[1].value = 'condensation';
+  buttonsOf(box, 'kwqCheck')[0].dispatch('click');
+  inputs = inputsOf(box);
+  assert.equal(inputs[0].className.includes('right'), true, 'a plural of the keyword is the keyword');
+  assert.equal(inputs[1].className.includes('wrong'), true);
+  assert.equal(inputs[1].value, 'condensation', 'what was typed survives the repaint');
+  assert.equal(h.c.kwQuiz.solved, false);
+  assert.equal(buttonsOf(box, 'kwqReveal').length, 1, 'Show me appears only after an honest go');
+  inputs[1].value = 'evaporating';
+  buttonsOf(box, 'kwqCheck')[0].dispatch('click');
+  assert.equal(h.c.kwQuiz.solved, true);
+  assert.equal(inputsOf(box).every(i => i.disabled), true);
+  assert.deepEqual(h.calls.usage.map(u => u.key), ['quiz', 'solved']);
+  assert.equal(thoughts(channel).length, 2);
+  assert.match(thoughts(channel)[1].content, /filled in every blank/);
+  assert.equal(buttonsOf(box, 'kwqDone').length, 1);
+  buttonsOf(box, 'kwqDone')[0].dispatch('click');
+  assert.equal(box.hidden, true);
+  assert.equal(h.c.kwQuiz.open, false);
+  h.c.stopLiveTutor();
+});
+
+test('no quiz is built on a help level that locks the concepts rung, when quizzes are off, or while one is still open', async () => {
+  const locked = await quizHarness({ globals: { wsMeta: { subject: 'science', level: 'P5', guidance: 'nudge' } } });
+  await locked.c.runLiveDelegation('teach-c', locked.c.liveTutor.generation);
+  await flush(); await flush();
+  assert.equal(locked.calls.ai.length, 1, 'nudges only: the rung the quiz sits on is locked, so nothing is asked for');
+  assert.equal(locked.c.kwQuiz.open, false);
+  assert.equal(locked.element('kwQuiz').classList.contains('on'), false);
+  locked.c.stopLiveTutor();
+
+  const off = await quizHarness();
+  off.c.setKwQuizPref(false);
+  assert.equal(off.element('liveQuizBtn').textContent, 'Keyword quizzes: off');
+  assert.equal(off.element('liveQuizBtn').getAttribute('aria-pressed'), 'false');
+  await off.c.runLiveDelegation('teach-d', off.c.liveTutor.generation);
+  await flush(); await flush();
+  assert.equal(off.calls.ai.length, 1, 'switched off: no quiz call at all');
+  off.c.stopLiveTutor();
+
+  const busy = await quizHarness();
+  await busy.c.runLiveDelegation('teach-e', busy.c.liveTutor.generation);
+  await flush(); await flush();
+  assert.equal(busy.calls.ai.length, 2);
+  busy.c.kwQuiz.lastLiveAt = 0;
+  await busy.c.runLiveDelegation('teach-f', busy.c.liveTutor.generation);
+  await flush(); await flush();
+  assert.equal(busy.calls.ai.length, 3, 'a box still being done is not replaced, so nothing is built');
+  busy.c.stopLiveTutor();
+});
+
+test('a reply that gives the answer away, or whose blanks do not match its holes, is refused rather than shown', async () => {
+  const gives = await quizHarness({ quiz: JSON.stringify({
+    concept: 'c', sentence: 'The puddle dried up because of [1].', blanks: [{ n: 1, answer: 'evaporation' }], praise: 'p'
+  }), globals: { wsKey: { rows: [{ number: '7', answer: 'Evaporation.', working: '' }] } } });
+  await gives.c.runLiveDelegation('teach-g', gives.c.liveTutor.generation);
+  await flush(); await flush();
+  assert.equal(gives.calls.ai.length, 2, 'the call was made…');
+  assert.equal(gives.c.kwQuiz.open, false, '…and the box stayed shut: the blank WAS the paper\'s answer');
+  assert.equal(gives.element('kwQuiz').classList.contains('on'), false);
+  gives.c.stopLiveTutor();
+
+  const ragged = await quizHarness({ quiz: JSON.stringify({
+    concept: 'c', sentence: 'Water turns into [1] and then [2].', blanks: [{ n: 1, answer: 'water vapour' }], praise: 'p'
+  }) });
+  await ragged.c.runLiveDelegation('teach-h', ragged.c.liveTutor.generation);
+  await flush(); await flush();
+  assert.equal(ragged.c.kwQuiz.open, false, 'a hole with no blank is a word the box cannot check');
+  ragged.c.stopLiveTutor();
+});
+
+test('leaving the worksheet or opening another closes the box, and Escape does too', async () => {
+  const h = await quizHarness();
+  const box = h.element('kwQuiz');
+  await h.c.runLiveDelegation('teach-i', h.c.liveTutor.generation);
+  await flush(); await flush();
+  assert.equal(box.hidden, false);
+  h.c.wsEpoch = 2;
+  h.c.kwQuizRender();
+  assert.equal(box.hidden, true, 'a quiz about the last worksheet never sits over the next one');
+  assert.equal(h.c.kwQuiz.open, false);
+  h.c.stopLiveTutor();
 });
 
 test('a pending dictation permission request prevents live mode and drops a late worksheet recording', async () => {
