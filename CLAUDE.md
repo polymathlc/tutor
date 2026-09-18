@@ -2,52 +2,79 @@
 
 Guidance for Claude when working in this repo.
 
-## 🔮 THE LIVE ORB — the tutor drawn as the logo, and no "let me check" (v1.19.0)
+## 🔮 THE LIVE ORB — the tutor drawn as the logo, in SAND, and no "let me check" (v1.20.0)
 
-`LIVE_ORB_N` / `LIVE_ORB_TEAL` … `LIVE_ORB_MAGENTA_DARK` / `LIVE_ORB_PALETTE` /
-`LIVE_ORB_TALK_MS` / `LIVE_ORB_TALK_FLOOR` / **`LIVE_ORB_LAYOUTS`** / `liveOrbDrift` /
-`orbSet` / `liveOrbHosts` / `liveOrbStage` / `liveOrbBuild` / **`liveOrbState`** /
-`liveOrbLayoutFor` / **`liveOrbPaint`** / `liveOrbListen` / `liveOrbHush` / `liveOrbSpoke`,
-and `LIVE_FILLER_LEAD` / `LIVE_FILLER_VERB` / `LIVE_FILLER_CLAUSE` / `LIVE_FILLER_RE` /
-`LIVE_FILLER_SENTENCE_RE` / **`liveStripFiller`** (search `THE LIVE ORB` and `NO "LET ME
-CHECK"`), plus `#liveOrb` in the live card, `#liveOrbFloat` beside `#liveSubs`, the
-`.liveOrb` / `.orbStage` / `.orbDot` / `.orbCap` CSS, the `orbAudio` / `level` /
-`spokeAt` / `orbTalking` fields on `liveTutor`, and the strengthened prompts in
-`worksheetContextRule`, `runLiveDelegation` and `functions/live-service.js`.
+`LIVE_ORB_TEAL` … `LIVE_ORB_MAGENTA_DARK` / `LIVE_ORB_PALETTE` / **`LIVE_ORB_MASK`** /
+`LIVE_ORB_MASK_W` / `LIVE_ORB_MASK_H` / `LIVE_ORB_N` / `LIVE_ORB_N_FLOAT` / `LIVE_ORB_LOGO_W` /
+`LIVE_ORB_TALK_MS` / `LIVE_ORB_TALK_FLOOR` / `LIVE_ORB_RING_R` / `LIVE_ORB_RING_BAND` /
+`LIVE_ORB_SPIN` / `LIVE_ORB_GUST_MS` / `LIVE_ORB_GUST_LEN` / `LIVE_ORB_GRAIN_PX` / `liveOrbRng` /
+`liveOrbMaskCells` / **`liveOrbGrains`** / `liveOrbModel` / **`liveOrbState`** / **`liveOrbTarget`**
+/ `liveOrbEnter` / **`liveOrbStep`** / `liveOrbSettle` / `liveOrbMotionOk` / `liveOrbHosts` /
+`liveOrbStage` / `liveOrbVisible` / `liveOrbDraw` / **`liveOrbFrame`** / `liveOrbLoopStart` /
+**`liveOrbPaint`** / `liveOrbListen` / `liveOrbHush` / `liveOrbSpoke`, and `LIVE_FILLER_LEAD` /
+`LIVE_FILLER_VERB` / `LIVE_FILLER_CLAUSE` / `LIVE_FILLER_RE` / `LIVE_FILLER_SENTENCE_RE` /
+**`liveStripFiller`** (search `THE LIVE ORB` and `NO "LET ME CHECK"`), plus `#liveOrb` in the live
+card, `#liveOrbFloat` beside `#liveSubs`, the `.liveOrb` / `.orbStage` / `.orbCap` CSS, the
+`orbAudio` / `level` / `spokeAt` / `orbTalking` fields on `liveTutor`, the repaint in `openBuddy`,
+and the strengthened prompts in `worksheetContextRule`, `runLiveDelegation` and
+`functions/live-service.js`.
 
 The live card was a line of text. It is the centre's own logo now — the teal block and the
-magenta ribbon that make the M — in sixteen tiny spheres, and what the spheres DO is what the
-session is doing: the M breathing while it listens, a ring that spins under the word *Thinking*
-while a check runs, a row that rises with the voice while it talks, and an occasional shuffle
-while it idles.
+magenta ribbon that make the M — in a thousand grains of sand on a canvas, and what the sand DOES
+is what the session is doing: the M breathing while it listens, a gust blowing the grains off it
+and settling back while it idles, a swirl into a ring of sand that spins under the word
+*Thinking* while a check runs, a row that rises with the voice while it talks. v1.19.0 drew it
+as sixteen DOM spheres moved by CSS transitions; sixteen spheres cannot look like the logo, and a
+transition is not physics. Both went.
 
-- **THE LAYOUTS ARE DATA AND THE MOTION IS CSS.** `LIVE_ORB_LAYOUTS` gives each state its
-  sixteen positions on a 0..100 grid; `liveOrbPaint` writes them as custom properties
-  (`--x --y --s --c --amp`) and the stylesheet transitions between them. The swirl into the ring
-  is the transition itself with a per-sphere delay (`--i`); the spin, the idle shuffle
-  (`orbIdle`), the breathing and the twinkle are keyframes. `--u` is the size of one grid unit
-  and is the ONLY thing that differs between the card's orb and the floating one.
+- **THE SHAPE IS THE ARTWORK.** `LIVE_ORB_MASK` is the logo itself, read off the centre's own
+  picture cell by cell (66 × 58, one letter per cell naming which of the six colours it is, a
+  dot for paper, run-length encoded) and `liveOrbGrains` samples every grain's HOME from those
+  cells. So the sand settles into the real logo — the block's lit face, its shadowed face and the
+  fold of the ribbon come out in their own colours without anybody drawing them — and a sketch of
+  the logo in polygons is exactly what this replaced. Re-reading the mask means re-running the
+  classification against the picture (six nearest colours, strays with fewer than three inked
+  neighbours dropped, cropped to the ink), never editing the string by hand.
+- **THE MOTION IS PHYSICS, NOT A KEYFRAME.** Each grain is a particle with a position and a
+  velocity. `liveOrbTarget` says where a grain WANTS to be in a state — its home, its spot on a
+  ring that turns with time, its place on a row whose height is a travelling wave scaled by the
+  voice level — and `liveOrbStep` pulls it there with a spring, damps it, and adds the state's
+  own field: a vortex while thinking, a gust while idling, a whisper of jitter always. A state
+  change never teleports a grain; `liveOrbEnter` only adds the impulse that makes the change
+  read (a kick along the ring's turn on the way in, a scatter on the way back to the M).
 - **`liveOrbState()` IS THE ONE PLACE THE PHASE BECOMES A STATE**, and both orbs are painted by
   the one `liveOrbPaint`, so the card and the float can never disagree about what the tutor is
   doing. Talking is READ OFF `liveTutor.spokeAt` — a timestamp, not a flag — so the 1-second
   tick's ordinary render lets the row settle back into the M.
 - **NOTHING HERE SETS A TIMER, and the harness counts.** Half a dozen cases assert
-  `timers.size === 0` after a session ends. An idle-shuffle `setInterval` would have failed all
-  of them and, worse, gone on running after End; a CSS keyframe costs nothing and stops with the
-  element. The only loop is the analyser's `requestAnimationFrame`, which exists only where Web
-  Audio does and is cancelled by `liveOrbHush()` in the same `release()` that closes the
+  `timers.size === 0` after a session ends. The loop is ONE `requestAnimationFrame`
+  (`liveOrbFrame`) that runs only while an orb is on screen (`liveOrbVisible`) and stops itself
+  when none is — `liveOrbPaint` starts it again, which is why `openBuddy` repaints when the
+  buddy reopens on the live tab. The idle gust is scheduled off the FRAME CLOCK inside that loop
+  (`model.nextGust`), never a `setTimeout`. The analyser's own `requestAnimationFrame` is
+  separate and is cancelled by `liveOrbHush()` in the same `release()` that closes the
   transport.
+- **THE MODEL IS PURE, and that is what makes it testable.** `liveOrbGrains`, `liveOrbTarget`,
+  `liveOrbStep` and `liveOrbSettle` touch no DOM, so the harness — which has no canvas and no
+  `requestAnimationFrame` — pins the physics by stepping the model by hand: the ring turns, the
+  wave rises with the level, a gust moves the sand off the M and it drifts back. Where there is
+  no frame loop (the harness) or the student asked for reduced motion (`liveOrbMotionOk`), the
+  grains are SETTLED straight onto their targets and drawn once.
+- **THE GRAINS ARE GROUPED BY COLOUR AT BIRTH**, so `liveOrbDraw` is six fills a frame — six
+  paths of a hundred-odd arcs — rather than a thousand DOM nodes. The float carries fewer,
+  smaller grains than the card (`LIVE_ORB_N_FLOAT`, `LIVE_ORB_GRAIN_PX_FLOAT`); `--u` sizes the
+  caption and is the only thing the stylesheet still knows about the grid.
 - **THE VOICE IS MEASURED, WITH A FALLBACK.** `liveOrbListen` hangs an AnalyserNode on the SAME
   remote track the speaker plays, so the row rises with the voice the student is hearing. Where
   Web Audio is missing (the harness, an iPad in Lockdown Mode) `liveOrbSpoke` counts each
   output-transcript delta as a heard syllable, so the row talks either way; the analyser's
-  level wins when both exist, because it is measured and the pulse is not.
-- **EVERY DOM CALL IS DEFENSIVE.** The harness runs the live block in a vm with a mock document
-  whose `style` is a bare object: `orbSet` writes a custom property either way, a host with no
-  stage grows one, and a missing host is simply not painted.
-- **THE FLOAT NEVER TAKES A POINTER** — it sits over a page a child writes on with a stylus,
-  the rule `#liveSubs` already carries — and it is up only while `liveActive()` on an open
-  worksheet.
+  level wins when both exist, because it is measured and the pulse is not. The loop reads
+  `liveTutor.level` every frame, so the analyser only paints on a talking transition.
+- **EVERY DOM CALL IS DEFENSIVE.** The harness runs the live block in a vm with a mock document:
+  a host with no stage grows a canvas, a stage with no 2D context draws nothing, and a missing
+  host is simply not painted.
+- **THE FLOAT NEVER TAKES A POINTER** — it sits over a page a child writes on with a stylus, the
+  rule `#liveSubs` already carries — and it is up only while `liveActive()` on an open worksheet.
 
 ### No "let me check" — the scrubber
 
@@ -1787,23 +1814,28 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
-- After touching **🔮 the live orb or the filler scrubber** (`LIVE_ORB_LAYOUTS`,
-  `liveOrbState`, `liveOrbPaint`, `liveOrbListen`, `liveOrbHush`, `liveOrbSpoke`,
-  `liveOrbBuild`, `LIVE_FILLER_RE`, `LIVE_FILLER_SENTENCE_RE`, `liveStripFiller`, the
-  `.liveOrb` CSS, or the prompts in `worksheetContextRule` / `runLiveDelegation` /
+- After touching **🔮 the live orb or the filler scrubber** (`LIVE_ORB_MASK`, `liveOrbGrains`,
+  `liveOrbTarget`, `liveOrbEnter`, `liveOrbStep`, `liveOrbSettle`, `liveOrbState`,
+  `liveOrbPaint`, `liveOrbFrame`, `liveOrbDraw`, `liveOrbVisible`, `liveOrbListen`,
+  `liveOrbHush`, `liveOrbSpoke`, `LIVE_FILLER_RE`, `LIVE_FILLER_SENTENCE_RE`, `liveStripFiller`,
+  the `.liveOrb` CSS, or the prompts in `worksheetContextRule` / `runLiveDelegation` /
   `functions/live-service.js`), run `node --test tools/live-tutor-tests.mjs`,
   `node tools/tutor-tests.mjs` and `cd functions && node --test test/*.test.js` **and watch
   one live session** — a drawing is the one thing reading the source cannot check. Every
-  failure is silent. Drive the idle shuffle or the talking state with a timer and End leaves
-  it running, on a session that says it has ended. Let the card and the float read the phase
-  separately and one spins while the other listens. Attach the analyser to a stream other than
-  the one the speaker plays and the row rises with nothing the student can hear; drop the
-  transcript fallback and an iPad in Lockdown Mode has a tutor that talks with a still face.
-  Loosen `LIVE_FILLER_VERB` and "let me know when you have tried it" is cut to "when you have
-  tried it"; tighten it and "Let me check the worksheet" is read aloud again, which is the one
-  sentence this whole change exists to remove. Hand an all-filler reply to the speaker and the
-  tutor says "Let me check." and stops. And leave a perpetual animation outside the
-  reduced-motion block and the orb spins for a child who asked it not to.
+  failure is silent. Schedule the idle gust or the talking state with a timer and End leaves
+  it running, on a session that says it has ended. Let the loop run while no orb is on screen
+  and a phone burns its battery drawing a thousand grains nobody can see; stop it and never
+  restart it from a paint and the orb freezes the next time the buddy is opened. Sample the
+  homes from anything but the mask and the sand settles into a sketch of the logo rather than
+  the logo. Let the card and the float read the phase separately and one spins while the other
+  listens. Attach the analyser to a stream other than the one the speaker plays and the row
+  rises with nothing the student can hear; drop the transcript fallback and an iPad in Lockdown
+  Mode has a tutor that talks with a still face. Loosen `LIVE_FILLER_VERB` and "let me know when
+  you have tried it" is cut to "when you have tried it"; tighten it and "Let me check the
+  worksheet" is read aloud again, which is the one sentence this whole change exists to remove.
+  Hand an all-filler reply to the speaker and the tutor says "Let me check." and stops. And
+  let the frame loop ignore `liveOrbMotionOk` and the sand swirls for a child who asked it not
+  to.
 - After touching **🧩 the keyword check or the syllabus** (`kwQuizAllowed`,
   `kwQuizClean`, `kwQuizGivesAnswer`, `kwQuizKeyAnswers`, `kwQuizMatch`,
   `kwQuizBuild`, `KWQ_SYS`, `kwQuizCeilingRule`, `kwQuizShow`, `kwQuizRender`,

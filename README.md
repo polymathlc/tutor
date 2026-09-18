@@ -12,6 +12,26 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.20.0 — the live tutor is the logo in sand, with physics
+
+Sixteen spheres could not look like the logo, so Chung GPT in live mode is now drawn as the
+centre's own logo in **a thousand grains of sand** — sampled from the real artwork, cell by cell,
+so the teal block, its shadowed face and the magenta ribbon's fold come out exactly as printed.
+The sand moves under **physics**: every grain is pulled to where the current state wants it and
+pushed by that state's own field, so a change of state is a flow, never a jump.
+
+- **Idle** — the M stands; every so often a gust of wind, a whirl or a puff blows the grains off
+  it and they drift back into place.
+- **Thinking** — the grains swirl out into a **ring of sand that spins**, Siri-style, under the
+  word *Thinking*.
+- **Talking** — a row of sand that rises and falls as a wave with the tutor's voice, measured
+  off the audio the student is hearing.
+- **Listening** — the M, breathing gently.
+
+It is drawn on a canvas by one frame loop that runs only while an orb is on screen, sets no
+timer, and stands still for *prefers-reduced-motion*. The floating orb over the worksheet is the
+same sand at a smaller size.
+
 ## v1.19.0 — the live tutor is the logo, in tiny spheres, and never says "let me check"
 
 Chung GPT in live mode is drawn as the centre's own logo — the teal block and the magenta
