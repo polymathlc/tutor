@@ -12,6 +12,26 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.21.0 — the live tutor is the WHOLE logo, in a glass sphere
+
+Chung GPT's orb is now the centre's logo **complete and solid** — one grain of sand per cell of
+the artwork, two and a half thousand of them, each drawn wide enough to touch its neighbours, so at
+rest there is no gap anywhere in the M. And it sits inside a **floating glass sphere**, Siri-style:
+lit from the top left, a specular highlight over the sand, a hairline rim, a glow that comes on
+while it works, and a soft shadow on the surface beneath it that shrinks as the sphere rises.
+
+- **Idle and listening** — the whole logo stands, still and solid (listening breathes it gently
+  and lets it drift in the glass). The idle gust of v1.20.0 is gone: nothing blows the logo apart
+  unless the tutor is working.
+- **Thinking** — the logo breaks apart into a **ring of sand that spins** under the word
+  *Thinking*, and the glass glows teal.
+- **Talking** — the logo breaks apart into a row that rises and falls with the tutor's voice, and
+  the glass glows magenta.
+- The moment either ends, the sand flies back and re-forms the logo **exactly, grain for grain**.
+
+The small orb over the worksheet is the same glass sphere at half the size, frosting the page
+behind it. Reduced motion stops the sphere's bob and its shadow's breath as well as the sand.
+
 ## v1.20.0 — the live tutor is the logo in sand, with physics
 
 Sixteen spheres could not look like the logo, so Chung GPT in live mode is now drawn as the

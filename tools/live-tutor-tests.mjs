@@ -1098,37 +1098,51 @@ test('a recoverable live response error invites retry while a startup error clos
    the M apart and it drifts back — and, the half that matters, none of it
    sets a timer. The scrubber is pinned in both directions: "let me check"
    goes, "let me know" stays. */
-test('the orb is the logo in sand: idle, a spinning ring while thinking, a row while talking, and no timer', async () => {
+test('the orb is the WHOLE logo, solid, in a glass sphere: it breaks apart only to think or talk, and sets no timer', async () => {
   const idle = harness();
   idle.c.renderLiveTutor();
   assert.equal(idle.element('liveOrb').getAttribute('data-state'), 'logo');
-  assert.equal(idle.calls.timers.size, 0, 'the idle gust is scheduled off the frame clock, never a timer');
+  assert.equal(idle.calls.timers.size, 0, 'the orb is driven off the frame clock, never a timer');
   const h = await connected();
   const orb = h.element('liveOrb'), float = h.element('liveOrbFloat');
   assert.equal(orb.getAttribute('data-state'), 'listening');
   assert.equal(float.getAttribute('data-state'), 'listening', 'the floating orb over the worksheet is painted by the same call');
   assert.equal(float.classList.contains('on'), true, 'the float shows while a session runs');
-  assert.equal(String(orb.children[0].tagName).toLowerCase(), 'canvas', 'the sand is drawn on a canvas, not as DOM nodes');
-  // The shape is the artwork: the mask decodes to the logo's own cells, in
-  // its six colours, and every grain's home is one of them.
+  const canvases = n => (n.children || []).filter(c => String(c.tagName).toLowerCase() === 'canvas').length + (n.children || []).reduce((a, c) => a + canvases(c), 0);
+  assert.equal(canvases(orb), 1, 'the sand is drawn on ONE canvas, not as DOM nodes');
+  // The shape is the artwork, and the logo is SOLID BY CONSTRUCTION: every
+  // cell of the mask is a grain, each grain's home is the exact centre of its
+  // cell, and a grain is drawn wide enough to cover its cell corner to corner.
   const cells = h.c.liveOrbMaskCells();
   assert.ok(cells.length > 2000, 'the mask is the whole logo, cell by cell');
   assert.ok(cells.every(cell => cell.c >= 0 && cell.c < 6 && cell.px < h.c.LIVE_ORB_MASK_W && cell.py < h.c.LIVE_ORB_MASK_H));
-  assert.ok(h.c.LIVE_ORB_N >= 500, 'sand, not spheres');
-  assert.ok(h.c.LIVE_ORB_N_FLOAT >= 250 && h.c.LIVE_ORB_N_FLOAT < h.c.LIVE_ORB_N, 'the float carries fewer grains than the card');
+  assert.equal(h.c.LIVE_ORB_STRIDE, 1, 'the card draws every cell');
+  assert.ok(h.c.LIVE_ORB_STRIDE_FLOAT > 1, 'the float draws every second cell');
+  assert.ok(h.c.LIVE_ORB_GRAIN_COVER >= Math.SQRT1_2 && h.c.LIVE_ORB_GRAIN_COVER < 1, 'a grain covers its own cell corner to corner, so the settled logo has no gaps');
+  assert.equal(h.c.LIVE_ORB_IDLE_GUSTS, false, 'idle: the logo stands whole — nothing blows it apart');
   const model = orb.orbModel, floatModel = float.orbModel;
-  assert.equal(model.grains.length, h.c.LIVE_ORB_N);
-  assert.equal(floatModel.grains.length, h.c.LIVE_ORB_N_FLOAT);
+  assert.equal(model.grains.length, cells.length, 'one grain per cell of the logo');
+  assert.equal(model.pitch, h.c.liveOrbPitch(1));
+  assert.ok(floatModel.grains.length > 400 && floatModel.grains.length < cells.length / 3, 'the float carries a quarter of the grains');
+  assert.equal(floatModel.pitch, h.c.liveOrbPitch(h.c.LIVE_ORB_STRIDE_FLOAT), 'each covering a bigger cell');
   const teal = model.grains.filter(g => g.c <= 2).length, magenta = model.grains.filter(g => g.c >= 3).length;
-  assert.ok(teal > 200 && magenta > 200, 'the teal block and the magenta ribbon are both there');
+  assert.ok(teal > 400 && magenta > 400, 'the teal block and the magenta ribbon are both there');
   assert.ok(model.grains.every(g => g.hx > 0 && g.hx < 100 && g.hy > 0 && g.hy < 100), 'every home is on the grid');
   const teals = model.grains.filter(g => g.c <= 2).reduce((a, g) => a + g.hx, 0) / teal;
   const magentas = model.grains.filter(g => g.c >= 3).reduce((a, g) => a + g.hx, 0) / magenta;
   assert.ok(teals < 50 && magentas > 50, 'the block is on the left of the M and the ribbon on the right');
   for (let i = 1; i < model.grains.length; i++) assert.ok(model.grains[i - 1].c <= model.grains[i].c, 'grains are grouped by colour so the renderer draws six paths');
-  assert.deepEqual(h.c.liveOrbGrains(40).map(g => g.hx), h.c.liveOrbGrains(40).map(g => g.hx), 'the sand is deterministic');
+  assert.deepEqual(h.c.liveOrbGrains(2).map(g => g.hx), h.c.liveOrbGrains(2).map(g => g.hx), 'the sand is deterministic');
+  // The homes are an exact lattice: every grain has a neighbour exactly one
+  // pitch away (the logo is one connected shape), and no two share a cell.
+  const homes = new Set(model.grains.map(g => g.hx.toFixed(4) + ',' + g.hy.toFixed(4)));
+  assert.equal(homes.size, model.grains.length, 'no two grains share a home');
+  const pitch = model.pitch;
+  const neighbour = g => [[pitch, 0], [-pitch, 0], [0, pitch], [0, -pitch]].some(([dx, dy]) => homes.has((g.hx + dx).toFixed(4) + ',' + (g.hy + dy).toFixed(4)));
+  assert.ok(model.grains.every(neighbour), 'every home touches another home one pitch away — no spacing between the particles');
   // Listening: settled, every grain is at (or within a breath of) its home.
-  assert.ok(model.grains.every(g => Math.hypot(g.x - g.hx, g.y - g.hy) < 2.5), 'listening is the M');
+  assert.ok(model.grains.every(g => Math.hypot(g.x - g.hx, g.y - g.hy) < 3), 'listening is the M');
+  assert.equal(model.sandy, 0, 'and the grains are solid tiles, not sand');
   // The subtitles hold is the one timer a reply legitimately arms; the orb adds none.
   const orbTimers = () => [...h.calls.timers.values()].filter(t => t.ms !== h.c.SUBS_HOLD_MS).length;
   const timersBefore = orbTimers();
@@ -1141,6 +1155,7 @@ test('the orb is the logo in sand: idle, a spinning ring while thinking, a row w
   const onRing = g => Math.abs(Math.hypot(g.x - 50, g.y - 50) - h.c.LIVE_ORB_RING_R) <= h.c.LIVE_ORB_RING_BAND / 2 + 0.01;
   assert.ok(model.grains.every(onRing), 'thinking is every grain on ONE ring of sand');
   assert.ok(floatModel.grains.every(onRing), 'the float too');
+  assert.equal(model.sandy, 1, 'broken apart, the grains are sand of their own sizes');
   // The physics: stepping the model in thinking turns the ring.
   const angle = g => Math.atan2(g.y - 50, g.x - 50);
   const before = model.grains.slice(0, 40).map(angle);
@@ -1160,12 +1175,14 @@ test('the orb is the logo in sand: idle, a spinning ring while thinking, a row w
   const xs = model.grains.map(g => g.x), ys = model.grains.map(g => g.y);
   assert.ok(Math.min(...xs) < 15 && Math.max(...xs) > 85, 'talking is a row across the orb');
   assert.ok(Math.min(...ys) < 50 && Math.max(...ys) > 50 && ys.every(y => Math.abs(y - 50) < 25), 'whose grains rise AND fall about the middle');
+  assert.equal(model.sandy, 1, 'talking breaks the logo apart into sand');
   // Louder is taller: the wave's height follows the level.
   const spread = level => { const m = { ...model, grains: model.grains.map(g => ({ ...g })) }; h.c.liveOrbSettle(m, 'talking', 3, level); const y = m.grains.map(g => g.y); return Math.max(...y) - Math.min(...y); };
   assert.ok(spread(1) > spread(0) * 2, 'a voice at full level swells the row far past silence');
   h.c.liveTutor.spokeAt = Date.now() - h.c.LIVE_ORB_TALK_MS - 1;
   h.calls.timers.get(h.c.liveTutor.tick).fn();
   assert.equal(orb.getAttribute('data-state'), 'listening', 'the tick lets the row settle back without a timer of its own');
+  assert.equal(model.sandy, 0, 'and the grains are tiles of the logo again');
   h.c.muteLiveTutor();
   assert.equal(orb.getAttribute('data-state'), 'muted');
   assert.equal(orbTimers(), timersBefore, 'the orb added no timer');
@@ -1175,18 +1192,35 @@ test('the orb is the logo in sand: idle, a spinning ring while thinking, a row w
   assert.equal(orb.getAttribute('data-state'), 'logo');
   assert.equal(float.classList.contains('on'), false);
   assert.equal(h.c.liveTutor.spokeAt, 0);
-  // Idle: a gust blows the sand off the M and it drifts back, all of it off
-  // the frame clock — the timer count above is the proof.
+  // Idle: the logo STANDS. Ten seconds of stepping moves nothing and blows
+  // nothing apart — only thinking and talking break the logo.
   const away = () => model.grains.reduce((a, g) => a + Math.hypot(g.x - g.hx, g.y - g.hy), 0) / model.grains.length;
   assert.ok(away() < 0.01, 'stopped, the sand is settled on the M');
   t = 200; model.nextGust = t;
+  for (let i = 0; i < 600; i++) { t += 1 / 60; h.c.liveOrbStep(model, 'logo', 1 / 60, t, 0); }
+  assert.equal(model.gust, null, 'no gust while idle');
+  assert.equal(away(), 0, 'and the logo has not moved by a hair: every grain exactly on its home');
+  assert.ok(model.grains.every(g => g.vx === 0 && g.vy === 0), 'nothing is moving');
+  // The physics still knows how to break the logo and re-form it: a step into
+  // thinking scatters the tiles, and the way back settles them exactly home.
+  h.c.liveOrbStep(model, 'thinking', 1 / 60, t, 0);
+  for (let i = 0; i < 30; i++) { t += 1 / 60; h.c.liveOrbStep(model, 'thinking', 1 / 60, t, 0); }
+  assert.ok(away() > 5, 'thinking breaks the logo apart');
+  for (let i = 0; i < 600; i++) { t += 1 / 60; h.c.liveOrbStep(model, 'logo', 1 / 60, t, 0); }
+  assert.equal(away(), 0, 'and it re-forms exactly, grain for grain');
+  assert.ok(model.sandy < 0.01, 'as solid tiles');
+  // The gust machinery is kept, switched off; with it on it still works, off
+  // the frame clock — the timer count above is the proof.
+  h.c.LIVE_ORB_IDLE_GUSTS = true;
+  model.nextGust = t;
   h.c.liveOrbStep(model, 'logo', 1 / 60, t, 0);
-  assert.ok(model.gust, 'the idle gust arrives on the frame clock');
+  assert.ok(model.gust, 'with gusts on, the idle gust arrives on the frame clock');
   for (let i = 0; i < 40; i++) { t += 1 / 60; h.c.liveOrbStep(model, 'logo', 1 / 60, t, 0); }
   assert.ok(away() > 0.8, 'the gust moves the sand off the M');
   for (let i = 0; i < 420; i++) { t += 1 / 60; h.c.liveOrbStep(model, 'logo', 1 / 60, t, 0); }
   assert.equal(model.gust, null, 'the gust has passed');
   assert.ok(away() < 0.9, 'and the sand has drifted back into the M');
+  h.c.LIVE_ORB_IDLE_GUSTS = false;
   assert.equal(h.calls.timers.size, 0, 'still no timer');
 });
 
