@@ -1892,22 +1892,29 @@ ok('it blinks, and the lid is scaled from its OWN top rather than the canvas’s
    /@keyframes cgBlink/.test(html));
 ok('…and everything that moves stops for prefers-reduced-motion',
    /@media \(prefers-reduced-motion: reduce\)[\s\S]{0,400}\.cgFace/.test(html));
-/* THE LIVE ORB (v1.19.0): the tutor drawn as the centre's logo in tiny
-   spheres. The layouts are JS and the motion is CSS, so what is pinned here
-   is the CSS half — the states the JS paints exist in the stylesheet, the
-   colours are the logo's own, the float never takes a pointer, and every
-   perpetual motion stops for reduced motion. */
-ok('the live orb has a state for idle, thinking, talking, listening and connecting',
-   ['logo', 'thinking', 'talking', 'listening', 'connecting'].every(st => new RegExp('\\.liveOrb\\[data-state="' + st + '"\\]').test(html)));
-ok('…its spheres wear the logo’s teal and magenta',
-   /LIVE_ORB_TEAL = '#5090a0'/.test(html) && /LIVE_ORB_MAGENTA = '#c00080'/.test(html));
-ok('…thinking spins the ring and idling shuffles the spheres, both in CSS, never a timer',
-   /data-state="thinking"\] \.orbStage \{ animation: orbSpin/.test(html) && /@keyframes orbIdle/.test(html) &&
-   !/function liveOrb[A-Za-z]*\([^)]*\) \{[^}]*setTimeout/.test(html));
+/* THE LIVE ORB (v1.20.0): the tutor drawn as the centre's logo in SAND — a
+   particle model stepped in JS and drawn on a canvas. What is pinned here is
+   what the live harness cannot see: the stylesheet still knows the states
+   the JS paints, the colours are the logo's own, the shape is the ARTWORK (a
+   mask read off the logo, not a sketch), the motion is a frame loop and
+   never a timer, the float never takes a pointer, and reduced motion is
+   honoured. */
+const orbBlock = html.slice(html.indexOf('/* ---- THE LIVE ORB'), html.indexOf('/* ---- NO "LET ME CHECK"'));
+ok('the live orb has a state for idle, thinking, talking, listening, connecting, muted and closing',
+   orbBlock.length > 2000 && ['logo', 'thinking', 'talking', 'listening', 'connecting', 'muted', 'closing'].every(st => orbBlock.includes("'" + st + "'")) &&
+   /\.liveOrb\[data-state="thinking"\] \.orbCap \{ opacity: 1; \}/.test(html));
+ok('…its sand wears the logo’s teal and magenta, and its shape is the logo’s own mask',
+   /LIVE_ORB_TEAL = '#5090a0'/.test(html) && /LIVE_ORB_MAGENTA = '#c00080'/.test(html) &&
+   /LIVE_ORB_MASK = '[0-9a-f.|]{500,}'/.test(html) && /LIVE_ORB_N = (?:[5-9]\d\d|\d{4});/.test(html));
+ok('…it is drawn on a canvas by ONE requestAnimationFrame loop, never a timer',
+   /<canvas class="orbStage" id="liveOrbStage"><\/canvas>/.test(html) && /<canvas class="orbStage"><\/canvas>/.test(html) &&
+   /function liveOrbFrame\(/.test(orbBlock) && !/setTimeout|setInterval/.test(orbBlock) &&
+   (orbBlock.match(/requestAnimationFrame\(liveOrbFrame\)/g) || []).length === 2);
 ok('…the floating orb never takes a pointer, and never prints',
    /#liveOrbFloat \{[^}]*pointer-events: none/.test(html) && /@media print \{ #liveOrbFloat \{ display: none !important; \} \}/.test(html));
-ok('…and everything in it that moves stops for prefers-reduced-motion',
-   /@media \(prefers-reduced-motion: reduce\)[\s\S]{0,200}\.liveOrb \.orbStage, \.liveOrb \.orbDot \{ animation: none !important; \}/.test(html));
+ok('…and it stands still for prefers-reduced-motion',
+   /function liveOrbMotionOk\(\) \{[^}]*prefers-reduced-motion: reduce/.test(orbBlock) && /if \(alive && liveOrbMotionOk\(\)\)/.test(orbBlock) &&
+   /if \(!motion\) \{ liveOrbSettle\(/.test(orbBlock));
 ok('a speech bubble has a tail, drawn as two triangles so it keeps its outline',
    /\.speech::before[\s\S]{0,200}border-right-color/.test(html) &&
    /\.speech::after[\s\S]{0,200}border-right-color/.test(html));

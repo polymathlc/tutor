@@ -1088,26 +1088,47 @@ test('a recoverable live response error invites retry while a startup error clos
   assert.equal(startup.track.stopped, 1);
 });
 
-/* ---- THE LIVE ORB and the filler scrubber (v1.19.0) ----
-   The orb is CSS moving between layouts the JS computes, so what the harness
-   can pin is the STATE the session's phase becomes, the layouts being real
-   layouts, and — the half that matters — that none of it sets a timer. The
-   scrubber is pinned in both directions: "let me check" goes, "let me know"
-   stays. */
-test('the orb is the logo idle, a spinning ring while thinking, a row while talking, and sets no timer', async () => {
+/* ---- THE LIVE ORB and the filler scrubber (v1.19.0, sand since v1.20.0) ----
+   The orb is a particle model the JS steps and a canvas it draws on. The
+   harness has no canvas and no requestAnimationFrame, so the drawing is a
+   no-op and every paint SETTLES the grains onto their targets — which is
+   exactly what lets the states be pinned by geometry: the logo is the mask,
+   thinking is a ring, talking is a row. The physics is pinned by stepping the
+   model by hand: the ring turns, the wave rises with the level, a gust blows
+   the M apart and it drifts back — and, the half that matters, none of it
+   sets a timer. The scrubber is pinned in both directions: "let me check"
+   goes, "let me know" stays. */
+test('the orb is the logo in sand: idle, a spinning ring while thinking, a row while talking, and no timer', async () => {
   const idle = harness();
   idle.c.renderLiveTutor();
   assert.equal(idle.element('liveOrb').getAttribute('data-state'), 'logo');
-  assert.equal(idle.calls.timers.size, 0, 'the idle shuffle is a CSS keyframe, never a timer');
+  assert.equal(idle.calls.timers.size, 0, 'the idle gust is scheduled off the frame clock, never a timer');
   const h = await connected();
   const orb = h.element('liveOrb'), float = h.element('liveOrbFloat');
   assert.equal(orb.getAttribute('data-state'), 'listening');
   assert.equal(float.getAttribute('data-state'), 'listening', 'the floating orb over the worksheet is painted by the same call');
   assert.equal(float.classList.contains('on'), true, 'the float shows while a session runs');
-  const stage = orb.children[0];
-  assert.equal(stage.children.length, h.c.LIVE_ORB_N, 'sixteen spheres, built once');
-  const dot = stage.children[0];
-  assert.equal(String(dot.style['--i']), '0');
+  assert.equal(String(orb.children[0].tagName).toLowerCase(), 'canvas', 'the sand is drawn on a canvas, not as DOM nodes');
+  // The shape is the artwork: the mask decodes to the logo's own cells, in
+  // its six colours, and every grain's home is one of them.
+  const cells = h.c.liveOrbMaskCells();
+  assert.ok(cells.length > 2000, 'the mask is the whole logo, cell by cell');
+  assert.ok(cells.every(cell => cell.c >= 0 && cell.c < 6 && cell.px < h.c.LIVE_ORB_MASK_W && cell.py < h.c.LIVE_ORB_MASK_H));
+  assert.ok(h.c.LIVE_ORB_N >= 500, 'sand, not spheres');
+  assert.ok(h.c.LIVE_ORB_N_FLOAT >= 250 && h.c.LIVE_ORB_N_FLOAT < h.c.LIVE_ORB_N, 'the float carries fewer grains than the card');
+  const model = orb.orbModel, floatModel = float.orbModel;
+  assert.equal(model.grains.length, h.c.LIVE_ORB_N);
+  assert.equal(floatModel.grains.length, h.c.LIVE_ORB_N_FLOAT);
+  const teal = model.grains.filter(g => g.c <= 2).length, magenta = model.grains.filter(g => g.c >= 3).length;
+  assert.ok(teal > 200 && magenta > 200, 'the teal block and the magenta ribbon are both there');
+  assert.ok(model.grains.every(g => g.hx > 0 && g.hx < 100 && g.hy > 0 && g.hy < 100), 'every home is on the grid');
+  const teals = model.grains.filter(g => g.c <= 2).reduce((a, g) => a + g.hx, 0) / teal;
+  const magentas = model.grains.filter(g => g.c >= 3).reduce((a, g) => a + g.hx, 0) / magenta;
+  assert.ok(teals < 50 && magentas > 50, 'the block is on the left of the M and the ribbon on the right');
+  for (let i = 1; i < model.grains.length; i++) assert.ok(model.grains[i - 1].c <= model.grains[i].c, 'grains are grouped by colour so the renderer draws six paths');
+  assert.deepEqual(h.c.liveOrbGrains(40).map(g => g.hx), h.c.liveOrbGrains(40).map(g => g.hx), 'the sand is deterministic');
+  // Listening: settled, every grain is at (or within a breath of) its home.
+  assert.ok(model.grains.every(g => Math.hypot(g.x - g.hx, g.y - g.hy) < 2.5), 'listening is the M');
   // The subtitles hold is the one timer a reply legitimately arms; the orb adds none.
   const orbTimers = () => [...h.calls.timers.values()].filter(t => t.ms !== h.c.SUBS_HOLD_MS).length;
   const timersBefore = orbTimers();
@@ -1117,33 +1138,56 @@ test('the orb is the logo idle, a spinning ring while thinking, a row while talk
   await flush();
   assert.equal(orb.getAttribute('data-state'), 'thinking');
   assert.equal(h.c.liveTutor.message, 'Thinking…', 'the status still says Thinking under the spinning ring');
-  const ring = h.c.LIVE_ORB_LAYOUTS.ring();
-  assert.equal(ring.length, h.c.LIVE_ORB_N);
-  assert.ok(ring.every(p => Math.abs(Math.hypot(p.x - 50, p.y - 50) - 36) < 0.01), 'thinking is every sphere on ONE circle');
+  const onRing = g => Math.abs(Math.hypot(g.x - 50, g.y - 50) - h.c.LIVE_ORB_RING_R) <= h.c.LIVE_ORB_RING_BAND / 2 + 0.01;
+  assert.ok(model.grains.every(onRing), 'thinking is every grain on ONE ring of sand');
+  assert.ok(floatModel.grains.every(onRing), 'the float too');
+  // The physics: stepping the model in thinking turns the ring.
+  const angle = g => Math.atan2(g.y - 50, g.x - 50);
+  const before = model.grains.slice(0, 40).map(angle);
+  // The paint settled the ring at the wall clock, so the physics steps on from it.
+  let t = Date.now() / 1000;
+  for (let i = 0; i < 60; i++) { h.c.liveOrbStep(model, 'thinking', 1 / 60, t, 0); t += 1 / 60; }
+  let turned = 0;
+  model.grains.slice(0, 40).forEach((g, i) => { let d = angle(g) - before[i]; while (d < -Math.PI) d += 2 * Math.PI; while (d > Math.PI) d -= 2 * Math.PI; turned += d; });
+  assert.ok(turned / 40 > 0.8, 'a second of thinking turns the ring, the way the target turns');
+  assert.ok(model.grains.every(g => Math.abs(Math.hypot(g.x - 50, g.y - 50) - h.c.LIVE_ORB_RING_R) < h.c.LIVE_ORB_RING_BAND + 4), 'and the grains stay in the ring while it turns');
   result.resolve('Compare the two beakers.');
   await pending;
   assert.equal(orb.getAttribute('data-state'), 'listening');
   h.c.liveTutor.channel.receive({ type: 'session.output_transcript.delta', delta: 'Compare ' });
   assert.equal(orb.getAttribute('data-state'), 'talking', 'a reply arriving is the tutor speaking');
-  assert.ok(Number(stage.style['--lv']) > 0, 'the transcript pulse gives the row a level');
-  const talk = h.c.LIVE_ORB_LAYOUTS.talk();
-  assert.ok(talk.every(p => p.y === 50) && talk.some(p => p.amp > 0) && talk.some(p => p.amp < 0), 'talking is a row whose spheres rise AND fall');
+  assert.ok(model.level > 0, 'the transcript pulse gives the row a level');
+  const xs = model.grains.map(g => g.x), ys = model.grains.map(g => g.y);
+  assert.ok(Math.min(...xs) < 15 && Math.max(...xs) > 85, 'talking is a row across the orb');
+  assert.ok(Math.min(...ys) < 50 && Math.max(...ys) > 50 && ys.every(y => Math.abs(y - 50) < 25), 'whose grains rise AND fall about the middle');
+  // Louder is taller: the wave's height follows the level.
+  const spread = level => { const m = { ...model, grains: model.grains.map(g => ({ ...g })) }; h.c.liveOrbSettle(m, 'talking', 3, level); const y = m.grains.map(g => g.y); return Math.max(...y) - Math.min(...y); };
+  assert.ok(spread(1) > spread(0) * 2, 'a voice at full level swells the row far past silence');
   h.c.liveTutor.spokeAt = Date.now() - h.c.LIVE_ORB_TALK_MS - 1;
   h.calls.timers.get(h.c.liveTutor.tick).fn();
   assert.equal(orb.getAttribute('data-state'), 'listening', 'the tick lets the row settle back without a timer of its own');
   h.c.muteLiveTutor();
   assert.equal(orb.getAttribute('data-state'), 'muted');
   assert.equal(orbTimers(), timersBefore, 'the orb added no timer');
-  const logo = h.c.LIVE_ORB_LAYOUTS.logo();
-  assert.equal(logo.length, h.c.LIVE_ORB_N);
-  assert.ok(logo.filter(p => /^#(5090a0|80c0d0|306070)$/i.test(p.c)).length >= 6, 'the teal block');
-  assert.ok(logo.filter(p => /^#(c00080|901060|701040)$/i.test(p.c)).length >= 8, 'the magenta ribbon');
   h.c.stopLiveTutor();
   await flush();
   assert.equal(h.calls.timers.size, 0);
   assert.equal(orb.getAttribute('data-state'), 'logo');
   assert.equal(float.classList.contains('on'), false);
   assert.equal(h.c.liveTutor.spokeAt, 0);
+  // Idle: a gust blows the sand off the M and it drifts back, all of it off
+  // the frame clock — the timer count above is the proof.
+  const away = () => model.grains.reduce((a, g) => a + Math.hypot(g.x - g.hx, g.y - g.hy), 0) / model.grains.length;
+  assert.ok(away() < 0.01, 'stopped, the sand is settled on the M');
+  t = 200; model.nextGust = t;
+  h.c.liveOrbStep(model, 'logo', 1 / 60, t, 0);
+  assert.ok(model.gust, 'the idle gust arrives on the frame clock');
+  for (let i = 0; i < 40; i++) { t += 1 / 60; h.c.liveOrbStep(model, 'logo', 1 / 60, t, 0); }
+  assert.ok(away() > 0.8, 'the gust moves the sand off the M');
+  for (let i = 0; i < 420; i++) { t += 1 / 60; h.c.liveOrbStep(model, 'logo', 1 / 60, t, 0); }
+  assert.equal(model.gust, null, 'the gust has passed');
+  assert.ok(away() < 0.9, 'and the sand has drifted back into the M');
+  assert.equal(h.calls.timers.size, 0, 'still no timer');
 });
 
 test('a spoken reply is scrubbed of "let me check" and thinking sounds, and teaching is never touched', async () => {

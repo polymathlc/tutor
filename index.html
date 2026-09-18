@@ -1082,81 +1082,33 @@
   .liveControls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
   .liveControls .btn { min-height: 44px; }
   #liveStatus { font-weight: 600; min-height: 3.2em; }
-  /* THE LIVE ORB — Chung GPT drawn as the centre's own logo, in tiny spheres.
-     Sixteen spheres in the logo's own colours (the teal block and the magenta
-     ribbon that make the M) stand in the live card and, while a session runs,
-     float over the worksheet. What they DO is the state of the session:
-       logo      — idle. Every so often the spheres drift apart and settle back
-                   into the M (the `orbIdle` keyframes, no timer anywhere).
-       thinking  — the spheres peel off in sequence into a ring and the whole
-                   ring SPINS, Siri-style, under the word "Thinking".
-       talking   — a row that rises and falls with the tutor's voice, the level
-                   coming from an AnalyserNode on the remote audio track (or a
-                   pulse per transcript delta where Web Audio is unavailable).
+  /* THE LIVE ORB — Chung GPT drawn as the centre's own logo, in SAND.
+     Several hundred grains in the logo's own colours (the teal block and the
+     magenta ribbon that make the M) stand in the live card and, while a
+     session runs, float over the worksheet. What the sand DOES is the state
+     of the session — and it is PHYSICS on a canvas, driven by the JS block
+     `THE LIVE ORB` (search `liveOrbStep`), not a keyframe here:
+       logo      — idle. The M stands; every so often a gust blows the grains
+                   off it and they drift back into place.
+       thinking  — the grains swirl out into a ring of sand that SPINS,
+                   Siri-style, under the word "Thinking".
+       talking   — a row that rises and falls with the tutor's voice.
        listening — the M, breathing gently.
-     THE LAYOUTS ARE COMPUTED IN JS (`LIVE_ORB_LAYOUTS`) and painted as custom
-     properties on each sphere; the CSS only moves between them, so the two
-     halves cannot disagree about which sphere is where. `--u` is the size of
-     one layout unit in px (the layouts are on a 0..100 grid), and it is the
-     ONLY thing that differs between the card's orb and the floating one.
-     Everything that moves for ever stops for prefers-reduced-motion. */
+     So the stylesheet owns only the FURNITURE: the host's size, the canvas
+     filling it, the caption, and the float over the worksheet. `--u` is the
+     size of one layout unit in px (the sand lives on a 0..100 grid) and it is
+     what sizes the caption; it is the ONLY thing that differs between the
+     card's orb and the floating one. Reduced motion is honoured in the JS
+     (`liveOrbMotionOk`): the sand is settled onto its shape and drawn once. */
   .liveOrb {
-    --u: 1.2px; --lv: 0;
+    --u: 1.2px;
     position: relative; width: calc(100 * var(--u)); height: calc(100 * var(--u));
     margin: 4px auto 6px; border-radius: 50%; display: block;
   }
   .liveOrb .orbStage {
-    position: absolute; inset: 0; border-radius: 50%;
-    transition: transform .6s ease, opacity .5s ease;
+    position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+    border-radius: 50%; transition: opacity .5s ease;
   }
-  .liveOrb .orbDot {
-    position: absolute; left: 0; top: 0; display: block;
-    width: calc(10 * var(--u)); height: calc(10 * var(--u)); border-radius: 50%;
-    background: radial-gradient(circle at 35% 32%, rgba(255,255,255,.55), rgba(255,255,255,0) 42%), var(--c, #5090a0);
-    box-shadow: 0 1px 2px rgba(0,0,0,.18), inset 0 -1px 2px rgba(0,0,0,.12);
-    transform: translate(calc((var(--x, 50) - 5) * var(--u)), calc((var(--y, 50) - 5) * var(--u))) scale(var(--s, 1));
-    transition: transform .85s cubic-bezier(.22,.9,.32,1.15), opacity .5s ease, background-color .6s ease;
-    transition-delay: calc(var(--i, 0) * 28ms);
-    will-change: transform;
-  }
-  /* Idle: the occasional rearrangement. Most of the cycle is the M standing
-     still; near the end the spheres drift out along their own `--dx/--dy`,
-     hover, and settle back. Each sphere is staggered by its index so the
-     drift reads as a shuffle rather than a breath. */
-  .liveOrb[data-state="logo"] .orbDot {
-    animation: orbIdle 11s ease-in-out infinite;
-    animation-delay: calc(var(--i, 0) * -0.45s);
-  }
-  @keyframes orbIdle {
-    0%, 74%, 100% { translate: 0 0; }
-    82% { translate: calc(var(--dx, 0) * var(--u)) calc(var(--dy, 0) * var(--u)); }
-    90% { translate: calc(var(--dx, 0) * -0.35 * var(--u)) calc(var(--dy, 0) * 0.6 * var(--u)); }
-  }
-  /* Listening: the M breathes. */
-  .liveOrb[data-state="listening"] .orbStage { animation: orbBreathe 3.4s ease-in-out infinite; }
-  @keyframes orbBreathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
-  .liveOrb[data-state="muted"] .orbStage { opacity: .45; }
-  /* Connecting: a slow, dim ring. Closing: the M, fading. */
-  .liveOrb[data-state="connecting"] .orbStage { animation: orbSpin 4.2s linear infinite; opacity: .7; }
-  .liveOrb[data-state="closing"] .orbStage { opacity: .35; }
-  /* Thinking: the ring spins. The spheres reach it through the transition
-     above, each a beat after the last (`--i`), which is the swirl. */
-  .liveOrb[data-state="thinking"] .orbStage { animation: orbSpin 1.9s linear infinite; }
-  .liveOrb[data-state="thinking"] .orbDot { animation: orbTwinkle 1.9s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -0.12s); }
-  @keyframes orbSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-  @keyframes orbTwinkle { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
-  /* Talking: a row that follows the voice. `--lv` (0..1) is the level the
-     analyser measured this frame, on the stage so every sphere inherits it;
-     `--amp` is each sphere's own share of it, alternating up and down so the
-     row reads as a waveform. The keyframes underneath keep it moving even at
-     a level of nothing, so a transcript pulse still looks like speech. */
-  .liveOrb[data-state="talking"] .orbDot {
-    transition-duration: .32s, .5s, .6s; transition-delay: calc(var(--i, 0) * 12ms);
-    transform: translate(calc((var(--x, 50) - 5) * var(--u)), calc((var(--y, 50) - 5 - var(--amp, 0) * var(--lv, 0)) * var(--u)))
-      scale(calc(var(--s, 1) * (1 + var(--lv, 0) * .45)));
-    animation: orbTalk 1.1s ease-in-out infinite; animation-delay: calc(var(--i, 0) * -0.09s);
-  }
-  @keyframes orbTalk { 0%, 100% { translate: 0 0; } 50% { translate: 0 calc(-2 * var(--u)); } }
   .liveOrb .orbCap {
     position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
     font-size: calc(9.5 * var(--u)); font-weight: 700; letter-spacing: .02em;
@@ -1173,12 +1125,12 @@
     box-shadow: var(--shadow); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
     box-sizing: content-box;
   }
+  #liveOrbFloat .orbStage { inset: calc(4 * var(--u)); width: calc(100 * var(--u)); height: calc(100 * var(--u)); }
   #liveOrbFloat.on { display: block; }
   @media (max-width: 900px) { #liveOrbFloat { bottom: calc(78px + env(safe-area-inset-bottom, 0px)); } }
   @media print { #liveOrbFloat { display: none !important; } }
   @media (prefers-reduced-motion: reduce) {
-    .liveOrb .orbStage, .liveOrb .orbDot { animation: none !important; }
-    .liveOrb .orbDot { transition-duration: .01s; }
+    .liveOrb .orbStage, .liveOrb .orbCap { transition: none; }
   }
   #liveTranscript { margin-top: 20px; max-height: 280px; overflow-y: auto; overflow-wrap: anywhere; font-size: .88rem; }
   #liveTranscript p { margin: 12px 0; white-space: pre-wrap; }
@@ -1428,7 +1380,7 @@
                 <p>Ask out loud and Chung GPT will talk you through it, one step at a time. You can interrupt or ask “why?” whenever you need.</p>
                 <p class="hint">You’re speaking with an AI tutor. Starting shares your microphone audio with OpenAI and the current worksheet page with the teaching AI. Audio stops when you end the session or leave this page.</p>
                 <div class="liveMeta"><span id="liveHelpLevel"></span><span id="liveClock">Up to 10 minutes</span></div>
-                <div class="liveOrb" id="liveOrb" data-state="logo" aria-hidden="true"><div class="orbStage" id="liveOrbStage"></div><span class="orbCap">Thinking</span></div>
+                <div class="liveOrb" id="liveOrb" data-state="logo" aria-hidden="true"><canvas class="orbStage" id="liveOrbStage"></canvas><span class="orbCap">Thinking</span></div>
                 <p id="liveStatus" role="status" aria-live="polite">Ready when you are.</p>
                 <div class="liveControls">
                   <button class="btn btnPrimary" id="liveStartBtn">Start live tutoring</button>
@@ -1452,7 +1404,7 @@
         <div id="voiceBar" role="status" aria-live="polite"></div>
         <!-- What the tutor is saying, over the page. Painted by renderLiveSubs(). -->
         <div id="liveSubs" role="status" aria-live="polite" hidden></div>
-        <div class="liveOrb" id="liveOrbFloat" data-state="logo" aria-hidden="true"><div class="orbStage"></div><span class="orbCap">Thinking</span></div>
+        <div class="liveOrb" id="liveOrbFloat" data-state="logo" aria-hidden="true"><canvas class="orbStage"></canvas><span class="orbCap">Thinking</span></div>
         <!-- The keyword check: a fill-in-the-blank box over the page. Painted by kwQuizRender(). -->
         <div id="kwQuiz" role="dialog" aria-label="Keyword check" hidden></div>
       </div>
@@ -1909,7 +1861,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.19.0';
+var APP_VERSION = 'v1.20.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -9549,143 +9501,142 @@ function setLiveSubs(on) {
 }
 function toggleLiveSubs() { setLiveSubs(!liveSubs.on); }
 
-/* ---- THE LIVE ORB — the tutor drawn as the logo, in tiny spheres ----
+/* ---- THE LIVE ORB — the tutor drawn as the logo, in SAND ----
    The live card used to be a line of text: "Thinking…", "Listening —". A
    child working alone reads a thing that MOVES very differently from a
    sentence, so Chung GPT is drawn as the centre's own logo — the teal block
-   and the magenta ribbon that make the M — in sixteen tiny spheres, and what
-   the spheres do is what the session is doing.
+   and the magenta ribbon that make the M — in several hundred grains of sand,
+   and what the sand does is what the session is doing: the M standing while
+   it listens, the grains blown off it and settling back while it idles, a
+   swirl into a spinning ring under the word "Thinking" while a check runs, a
+   row that rises with the voice while it talks.
 
-   THE LAYOUTS ARE DATA, on a 0..100 grid, and the CSS moves between them.
-   `liveOrbState()` is the ONE place the session's phase becomes a state, and
-   `liveOrbPaint()` the one place a state becomes positions — the card's orb
-   and the floating one over the worksheet are painted by the same call, so
-   the two can never disagree about what the tutor is doing.
+   THE SHAPE IS THE ARTWORK. `LIVE_ORB_MASK` is the logo itself, read off the
+   centre's own picture cell by cell and run-length encoded — a letter per
+   cell naming which of the six logo colours it is, a dot for paper. Every
+   grain is given a HOME sampled from those cells (`liveOrbGrains`), so the
+   sand settles into the real logo rather than a sketch of it, and the block's
+   lit face, its shadowed face and the fold of the ribbon all come out in
+   their own colours without anybody drawing them.
 
-   NOTHING HERE SETS A TIMER. The idle shuffle is a CSS keyframe, the thinking
-   spin is a CSS keyframe, and the talking state is READ off `liveTutor.spokeAt`
-   by the render the 1-second tick already runs — so ending a session leaves
-   exactly the timers it always left, which the harness counts. The only loop
-   is the analyser's requestAnimationFrame, which exists only where Web Audio
-   does and is cancelled in the same release() that closes the transport.
+   THE MOTION IS PHYSICS, NOT A KEYFRAME. Each grain is a particle with a
+   position and a velocity; every frame it is pulled towards its TARGET for
+   the current state by a spring, damped, and pushed by whatever field the
+   state adds (`liveOrbStep`) — a vortex while thinking, a wave while talking,
+   a gust while idling. A state change never teleports a grain: it changes the
+   target, and the sand flows there. `liveOrbState()` is still the ONE place
+   the session's phase becomes a state, and `liveOrbPaint()` the one place a
+   state reaches the hosts — the card's orb and the floating one over the
+   worksheet are painted by the same call, so they cannot disagree.
 
-   EVERY DOM CALL IS DEFENSIVE. The harness runs this block in a vm with a
-   mock document whose `style` is a bare object; `orbSet` writes a custom
-   property either way, and a missing host is simply not painted. */
-var LIVE_ORB_N = 16;
+   NOTHING HERE SETS A TIMER. The loop is one requestAnimationFrame
+   (`liveOrbFrame`), which runs only while an orb is on screen and stops itself
+   when none is; the idle gust is scheduled off the frame clock inside that
+   loop; talking is READ off `liveTutor.spokeAt` — a timestamp, not a flag —
+   so the 1-second tick's ordinary render lets the row settle back into the
+   M. The harness counts timers after a session ends and there are none of
+   ours. Where requestAnimationFrame does not exist (the harness), or the
+   student asked for reduced motion, the grains are SETTLED straight onto
+   their targets and drawn once (`liveOrbSettle`).
+
+   THE GRAINS ARE DRAWN ON A CANVAS, in six fills a frame — the grains are
+   grouped by colour at birth, so a frame is six paths of a hundred-odd arcs
+   rather than seven hundred DOM nodes. The harness's mock document has no
+   canvas: `liveOrbDraw` simply does nothing without a 2D context, and every
+   other DOM call is defensive for the same reason. The particle model itself
+   (`liveOrbGrains` / `liveOrbTarget` / `liveOrbStep` / `liveOrbSettle`) is
+   pure, which is what lets the harness test the physics without a screen. */
 var LIVE_ORB_TEAL = '#5090a0', LIVE_ORB_TEAL_LIGHT = '#80c0d0', LIVE_ORB_TEAL_DEEP = '#306070';
 var LIVE_ORB_MAGENTA = '#c00080', LIVE_ORB_MAGENTA_DEEP = '#901060', LIVE_ORB_MAGENTA_DARK = '#701040';
-var LIVE_ORB_PALETTE = [LIVE_ORB_TEAL, LIVE_ORB_MAGENTA, LIVE_ORB_TEAL_LIGHT, LIVE_ORB_MAGENTA_DEEP,
-  LIVE_ORB_TEAL_DEEP, LIVE_ORB_MAGENTA, LIVE_ORB_TEAL, LIVE_ORB_MAGENTA_DARK];
+// The mask's letters a..f, in this order.
+var LIVE_ORB_PALETTE = [LIVE_ORB_TEAL_LIGHT, LIVE_ORB_TEAL, LIVE_ORB_TEAL_DEEP, LIVE_ORB_MAGENTA, LIVE_ORB_MAGENTA_DEEP, LIVE_ORB_MAGENTA_DARK];
+// The logo, cell by cell: rows joined by '|', each row run-length encoded as
+// <count><letter> with the count omitted when it is 1. '.' is paper.
+var LIVE_ORB_MASK_W = 66, LIVE_ORB_MASK_H = 58;
+var LIVE_ORB_MASK = '44.ea20.|43.4ea18.|42.7ea16.|41.10ea14.|40.13ea12.|12.b26.16ea10.|11.3ba23.19ea8.|10.6ba20.22ea6.|9.10b17.22e2d6.|8.13b14.22e3d6.|7.15ba11.22e4d6.|6.18ba8.22e5d6.|5.21ba5.22e6d6.|4.24ba2.22e7da5.|3.28b21e9d5.|2.31b18e10d5.|.34b15e11d5.|2a35b12e12d5.|.3a35b9e13d5.|.5a35b6e14d5.|.7a35b3e15da4.|.9a35b17d4.|.11a32be17d4.|.13a29be18d4.|2.14a26be19d4.|2.16a23be20da3.|2.18a20b22da3.|2.20a17b23da3.|2.22a14b25d3.|2.24a11b25de3.|2.26a8b25d2e3.|3.27a5b25df2e3.|3.29a2b25def2ea2.|3.30ae24def3ea2.|3.30ab23de2f3ed2.|3.31a22d3f5e2.|4.30a21d4f5e2.|4.30a20de4f5e2.|4.b29a19de4f6ea.|4.bcb27a18d6f6ea.|4.2b2cb25a17d6f7ed.|4.3b3cb23ab15d7f8e.|4.a3b4cb22a14d2.b4f9e.|5.4b5cb20a13d5.e2f9e.|5.5b6cb18a12d8.10e.|5.6b7cb16a11d11.8ea|5.7b7cb15a10d14.d5ed|5.a7b6c3.13ab8d17.d4e|5.a8b4c6.12a7d20.d2e|5.a9b2c9.10a6d24.|6.10b12.8a5d25.|6.9b15.6a4d26.|6.8b18.4a3d27.|6.a6b21.2a2d28.|6.a5b24.a29.|6.a4b55.|7.3b56.|7.2b57.';
+var LIVE_ORB_N = 1000;         // grains in the card's orb
+var LIVE_ORB_N_FLOAT = 460;    // grains in the small orb floating over the worksheet
+var LIVE_ORB_LOGO_W = 78;      // the logo's width on the 0..100 grid; the height follows the mask's own ratio
 var LIVE_ORB_TALK_MS = 1400;   // how long after the last heard syllable the row keeps talking
 var LIVE_ORB_TALK_FLOOR = 0.05; // analyser level below which the tutor is not speaking
-var LIVE_ORB_LAYOUTS = {
-  // The logo: an isometric block on the left (seven spheres, the lit face
-  // lighter) and the folded ribbon that reads as an M on the right (nine).
-  logo: function () {
-    return [
-      // The block: six corners of an isometric cube and its near vertex, the
-      // faces the light falls on in the lighter teal, the shadowed ones deep.
-      { x: 25, y: 34, s: 1, c: LIVE_ORB_TEAL_LIGHT },  { x: 40, y: 43, s: 1, c: LIVE_ORB_TEAL },
-      { x: 40, y: 61, s: 1, c: LIVE_ORB_TEAL_DEEP },   { x: 25, y: 70, s: 1, c: LIVE_ORB_TEAL_DEEP },
-      { x: 10, y: 61, s: 1, c: LIVE_ORB_TEAL },        { x: 10, y: 43, s: 1, c: LIVE_ORB_TEAL_LIGHT },
-      { x: 25, y: 52, s: 1.1, c: LIVE_ORB_TEAL_LIGHT },
-      // The ribbon: five vertices of the M and the midpoint of each stroke,
-      // the feet of the legs in the deeper magenta where the fold shadows.
-      { x: 50, y: 72, s: .95, c: LIVE_ORB_MAGENTA_DEEP }, { x: 54, y: 52, s: .9, c: LIVE_ORB_MAGENTA },
-      { x: 58, y: 32, s: 1.05, c: LIVE_ORB_MAGENTA },     { x: 64, y: 46, s: .9, c: LIVE_ORB_MAGENTA },
-      { x: 70, y: 60, s: 1, c: LIVE_ORB_MAGENTA_DEEP },   { x: 76, y: 46, s: .9, c: LIVE_ORB_MAGENTA },
-      { x: 82, y: 32, s: 1.05, c: LIVE_ORB_MAGENTA },     { x: 86, y: 52, s: .9, c: LIVE_ORB_MAGENTA },
-      { x: 90, y: 72, s: .95, c: LIVE_ORB_MAGENTA_DARK }
-    ];
-  },
-  // The Siri-style ring: every sphere on one circle, colours alternating, and
-  // the stage spins under it (CSS). The spheres get here through the transition
-  // one beat after the next (`--i`), which is the swirl on the way in.
-  ring: function () {
-    var out = [];
-    for (var i = 0; i < LIVE_ORB_N; i++) {
-      var a = (i / LIVE_ORB_N) * Math.PI * 2 - Math.PI / 2;
-      out.push({ x: 50 + 36 * Math.cos(a), y: 50 + 36 * Math.sin(a), s: i % 4 === 0 ? 1 : .8, c: LIVE_ORB_PALETTE[i % LIVE_ORB_PALETTE.length] });
-    }
-    return out;
-  },
-  // The talking row: a line across the middle whose spheres rise and fall
-  // with the voice. `amp` follows a sine along the row so it reads as ONE
-  // waveform — alternating signs read as two rows — and it is largest in the
-  // middle, where a voice has most of its energy. Teal and magenta are
-  // interleaved in pairs so neither colour is the crest and the other the
-  // trough.
-  talk: function () {
-    var out = [];
-    for (var i = 0; i < LIVE_ORB_N; i++) {
-      var t = i / (LIVE_ORB_N - 1), centre = 1 - Math.abs(t - .5) * 1.4;
-      var teal = (i >> 1) % 2 === 0, shade = i % 4 < 2;
-      out.push({ x: 8 + t * 84, y: 50, s: .52 + centre * .26,
-        c: teal ? (shade ? LIVE_ORB_TEAL : LIVE_ORB_TEAL_LIGHT) : (shade ? LIVE_ORB_MAGENTA : LIVE_ORB_MAGENTA_DEEP),
-        amp: Math.sin(i * Math.PI / 2.6) * (5 + centre * 15) });
-    }
-    return out;
-  }
-};
-// The idle shuffle needs a drift per sphere; a fixed pseudo-random spread so
-// the same sphere wanders the same way every cycle and the shuffle reads as
-// a character rather than as noise.
-function liveOrbDrift(i) {
-  var a = i * 2.399, r = 10 + (i * 7) % 9;
-  return { dx: Math.round(Math.cos(a) * r), dy: Math.round(Math.sin(a) * r) };
+var LIVE_ORB_RING_R = 34, LIVE_ORB_RING_BAND = 8; // the thinking ring: radius, and the width of the band of sand on it
+var LIVE_ORB_SPIN = 3.1;       // rad/s the ring turns while thinking (a turn every two seconds, Siri's pace)
+var LIVE_ORB_SPIN_SLOW = 1.1;  // …and while connecting
+var LIVE_ORB_GUST_MS = 8500;   // idle: a gust of wind through the sand every so often (plus up to 4s of jitter)
+var LIVE_ORB_GUST_LEN = 1.6;   // …lasting this many seconds
+var LIVE_ORB_DT_MAX = 0.05;    // a frame longer than this (a tab coming back) is stepped as this
+var LIVE_ORB_GRAIN_PX = 1.0;   // radius of a grain in the card, in CSS px — sand, not sprinkles
+var LIVE_ORB_GRAIN_PX_FLOAT = 0.72;
+var liveOrbMaskCache = null;
+// A small deterministic PRNG (mulberry32), so the same host always gets the
+// same sand: the harness can reason about it, and the logo does not reshuffle
+// itself every time the live pane is opened.
+function liveOrbRng(seed) {
+  var s = seed >>> 0;
+  return function () {
+    s = (s + 0x6D2B79F5) >>> 0;
+    var t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
-function orbSet(el, name, value) {
-  if (!el || !el.style) return;
-  if (typeof el.style.setProperty === 'function') el.style.setProperty(name, String(value));
-  else el.style[name] = String(value);
-}
-function liveOrbHosts() {
-  var out = [];
-  [['liveOrb', false], ['liveOrbFloat', true]].forEach(function (pair) {
-    var el = null;
-    try { el = $(pair[0]); } catch (e) { el = null; }
-    if (el) out.push({ el: el, float: pair[1] });
-  });
-  return out;
-}
-function liveOrbStage(host) {
-  var stage = null;
-  try { stage = host.querySelector ? host.querySelector('.orbStage') : null; } catch (e) { stage = null; }
-  if (!stage && host.children) {
-    for (var i = 0; i < host.children.length; i++) {
-      var child = host.children[i];
-      if (child && child.classList && child.classList.contains('orbStage')) { stage = child; break; }
+/* The mask decoded: one cell per inked pixel of the logo, with its colour
+   index, in the logo's own pixel coordinates. Decoded once and kept. */
+function liveOrbMaskCells() {
+  if (liveOrbMaskCache) return liveOrbMaskCache;
+  var cells = [];
+  var rows = String(LIVE_ORB_MASK).split('|');
+  for (var y = 0; y < rows.length; y++) {
+    var x = 0, re = /(\d*)([a-f.])/g, m;
+    while ((m = re.exec(rows[y]))) {
+      var n = m[1] ? parseInt(m[1], 10) : 1, ch = m[2];
+      if (ch !== '.') {
+        var c = ch.charCodeAt(0) - 97;
+        for (var k = 0; k < n; k++) cells.push({ px: x + k, py: y, c: c });
+      }
+      x += n;
     }
   }
-  // A host with no stage grows one, so a hand-written host is never a blank.
-  if (!stage && host.appendChild) {
-    stage = document.createElement('div');
-    stage.className = 'orbStage';
-    if (stage.classList && stage.classList.add) stage.classList.add('orbStage');
-    host.appendChild(stage);
-  }
-  return stage;
+  liveOrbMaskCache = cells;
+  return cells;
 }
-// Build the spheres once per host, lazily on the first paint; `--i` and the
-// drift never change, so they are written here and only the layout later.
-function liveOrbBuild(host) {
-  var stage = liveOrbStage(host);
-  if (!stage) return null;
-  var dots = stage.orbDots;
-  if (dots && dots.length === LIVE_ORB_N) return dots;
-  dots = [];
-  if (typeof stage.replaceChildren === 'function') stage.replaceChildren();
-  for (var i = 0; i < LIVE_ORB_N; i++) {
-    var dot = document.createElement('i');
-    dot.className = 'orbDot';
-    var drift = liveOrbDrift(i);
-    orbSet(dot, '--i', i); orbSet(dot, '--dx', drift.dx); orbSet(dot, '--dy', drift.dy);
-    stage.appendChild(dot);
-    dots.push(dot);
+/* The grains for one host: n particles whose homes are sampled from the
+   mask's cells (a deterministic shuffle, then the first n, each jittered
+   inside its cell so the sand is not a lattice), each carrying the seeds the
+   other layouts read — where on the ring it belongs, where on the row, its
+   size. They are SORTED BY COLOUR so the renderer can draw each colour as one
+   path. */
+function liveOrbGrains(n) {
+  var cells = liveOrbMaskCells();
+  var rand = liveOrbRng(n * 7919 + 17);
+  var order = cells.map(function (cell, i) { return i; });
+  for (var i = order.length - 1; i > 0; i--) { var j = Math.floor(rand() * (i + 1)); var t = order[i]; order[i] = order[j]; order[j] = t; }
+  var scale = LIVE_ORB_LOGO_W / LIVE_ORB_MASK_W;
+  var ox = 50 - LIVE_ORB_MASK_W * scale / 2, oy = 50 - LIVE_ORB_MASK_H * scale / 2;
+  var grains = [];
+  var count = Math.max(1, Math.min(n, cells.length));
+  for (var g = 0; g < count; g++) {
+    // Past the number of cells (never, at these sizes) the sampling wraps.
+    var cell = cells[order[g % order.length]];
+    var hx = ox + (cell.px + rand()) * scale, hy = oy + (cell.py + rand()) * scale;
+    grains.push({
+      hx: hx, hy: hy, c: cell.c, x: hx, y: hy, vx: 0, vy: 0,
+      sa: rand() * Math.PI * 2,            // its angle on the thinking ring
+      sr: LIVE_ORB_RING_R + (rand() - 0.5) * LIVE_ORB_RING_BAND, // its radius on the ring (a band, so the ring is sand and not a wire)
+      st: rand(),                           // its place along the talking row, 0..1
+      sy: rand(),                           // its offset across the row's thickness, 0..1
+      sz: 0.75 + rand() * 0.5,              // its size, as a share of the grain radius
+      ph: rand() * Math.PI * 2              // a phase of its own for the wave and the shimmer
+    });
   }
-  stage.orbDots = dots;
-  return dots;
+  grains.sort(function (a, b) { return a.c - b.c || a.hy - b.hy; });
+  return grains;
+}
+function liveOrbModel(host, n) {
+  if (host.orbModel && host.orbModel.n === n) return host.orbModel;
+  host.orbModel = { n: n, grains: liveOrbGrains(n), state: null, since: 0, gust: null, nextGust: 0, gusts: 0, level: 0 };
+  return host.orbModel;
 }
 /* THE ONE PLACE the session's phase becomes an orb state. Talking is read off
    a timestamp rather than a flag so that a render a second later (the tick)
@@ -9700,37 +9651,231 @@ function liveOrbState() {
   if (liveTutor.muted) return 'muted';
   return 'listening';
 }
-function liveOrbLayoutFor(state) {
-  if (state === 'thinking' || state === 'connecting') return LIVE_ORB_LAYOUTS.ring();
-  if (state === 'talking') return LIVE_ORB_LAYOUTS.talk();
-  return LIVE_ORB_LAYOUTS.logo();
+/* Where a grain WANTS to be in a state, at time t (seconds) and voice level
+   (0..1). The logo states pull every grain home (listening breathes the
+   whole M by a few percent); the ring states put it on its own spot of a
+   circle that turns with time, so a spring towards that spot is what makes
+   the ring spin; talking puts it on a row whose height is a wave travelling
+   along it, larger in the middle where a voice has most of its energy, and
+   scaled by the level so silence is a ripple and speech a swell. */
+function liveOrbTarget(g, state, t, level) {
+  if (state === 'thinking' || state === 'connecting') {
+    var a = g.sa + t * (state === 'thinking' ? LIVE_ORB_SPIN : LIVE_ORB_SPIN_SLOW);
+    return { x: 50 + g.sr * Math.cos(a), y: 50 + g.sr * Math.sin(a) };
+  }
+  if (state === 'talking') {
+    var x = 8 + g.st * 84, centre = 1 - Math.abs(g.st - 0.5) * 1.4;
+    var amp = 1.6 + level * (5 + 14 * centre);
+    var wave = Math.sin(x * 0.14 - t * 8.5 + g.ph * 0.35) * amp;
+    return { x: x, y: 50 + (g.sy - 0.5) * 9 - wave };
+  }
+  var f = state === 'listening' ? 1 + 0.035 * Math.sin(t * 1.85) : 1;
+  return { x: 50 + (g.hx - 50) * f, y: 50 + (g.hy - 50) * f };
 }
-/* Paint every host. Positions are only rewritten when the STATE changes —
-   the analyser calls this every frame while the tutor talks, and sixteen
-   custom properties a frame is noise the level alone does not need. */
+/* Entering a state. A change of target is what moves the sand, so this only
+   has to add the IMPULSE that makes the change read: a burst outwards and
+   sideways into the ring (the swirl), a scatter out of the ring back towards
+   the M (the re-alignment), nothing at all for a breath or a mute. */
+function liveOrbEnter(model, state, t) {
+  var was = model.state;
+  model.state = state; model.since = t;
+  if (state === 'logo') model.nextGust = t + 2.5;
+  var ring = state === 'thinking' || state === 'connecting', wasRing = was === 'thinking' || was === 'connecting';
+  if (!ring && !wasRing) return;
+  var rand = liveOrbRng(Math.floor(t * 1000) + model.gusts);
+  model.grains.forEach(function (g) {
+    var dx = g.x - 50, dy = g.y - 50, d = Math.hypot(dx, dy) || 1;
+    if (ring && !wasRing) {
+      // Off the logo and into the swirl: a kick along the ring's direction of
+      // turn, and a little outwards, so the grains spiral out to the circle
+      // rather than sliding to it in straight lines.
+      var k = 38 + rand() * 30;
+      g.vx += (-dy / d) * k + (dx / d) * 14; g.vy += (dx / d) * k + (dy / d) * 14;
+    } else if (!ring && wasRing) {
+      // Out of the ring: a scatter, so the sand visibly re-forms the M rather
+      // than shrinking onto it.
+      g.vx += (rand() - 0.5) * 40; g.vy += (rand() - 0.5) * 40;
+    }
+  });
+}
+/* One physics step. Semi-implicit Euler: spring to the target, damping, the
+   state's own field, a whisper of jitter so the sand always shimmers. The
+   spring is soft while the target moves (thinking, talking) so the grains
+   trail it, and stiffer for a still target so the M snaps crisp. */
+function liveOrbStep(model, state, dt, t, level) {
+  if (!(dt > 0)) return;
+  dt = Math.min(LIVE_ORB_DT_MAX, dt);
+  if (model.state !== state) liveOrbEnter(model, state, t);
+  var ring = state === 'thinking' || state === 'connecting';
+  var k = ring ? 14 : state === 'talking' ? 22 : 30;
+  var damp = ring ? 4.2 : state === 'talking' ? 5.5 : 7;
+  var jitter = ring ? 60 : state === 'talking' ? 40 : 14;
+  var lv = Math.max(0, Math.min(1, Number(level) || 0));
+  model.level = lv;
+  // The idle gust: every so often a wind or a whirl runs through the M, the
+  // spring goes slack for its duration so the grains really fly, and then
+  // they drift back home. Scheduled off the frame clock — never a timer.
+  var gust = model.gust;
+  if (state === 'logo') {
+    if (!gust && t >= model.nextGust) {
+      var rand = liveOrbRng(++model.gusts * 2654435761);
+      var kinds = ['whirl', 'wind', 'burst'];
+      gust = model.gust = { kind: kinds[model.gusts % kinds.length], cx: 30 + rand() * 40, cy: 30 + rand() * 40,
+        dir: rand() < 0.5 ? -1 : 1, ax: (rand() - 0.5) * 2, ay: (rand() - 0.5) * 0.6, until: t + LIVE_ORB_GUST_LEN };
+      model.nextGust = t + LIVE_ORB_GUST_MS / 1000 + rand() * 4;
+    }
+    if (gust && t >= gust.until) gust = model.gust = null;
+    if (gust) { k = 3; damp = 2.2; }
+  } else if (gust) { gust = model.gust = null; }
+  var swirl = ring ? (state === 'thinking' ? 55 : 22) : 0;
+  var age = t - model.since;
+  var grains = model.grains;
+  for (var i = 0; i < grains.length; i++) {
+    var g = grains[i], tg = liveOrbTarget(g, state, t, lv);
+    var ax = (tg.x - g.x) * k - g.vx * damp, ay = (tg.y - g.y) * k - g.vy * damp;
+    if (swirl) {
+      // The vortex: a push along the tangent, strongest in the first second
+      // so the grains spiral in and then settle into orbit.
+      var dx = g.x - 50, dy = g.y - 50, d = Math.hypot(dx, dy) || 1;
+      var s = swirl * (age < 1 ? 1.8 : 1);
+      ax += (-dy / d) * s; ay += (dx / d) * s;
+    }
+    if (gust) {
+      var gx = g.x - gust.cx, gy = g.y - gust.cy, gd = Math.hypot(gx, gy) || 1, fall = 1 / (1 + gd / 22);
+      if (gust.kind === 'whirl') { ax += (-gy / gd) * gust.dir * 340 * fall; ay += (gx / gd) * gust.dir * 340 * fall; }
+      else if (gust.kind === 'wind') { ax += gust.ax * 240; ay += gust.ay * 240 + Math.sin(t * 9 + g.ph) * 60; }
+      else { var blow = Math.max(0, 1 - (t - (gust.until - LIVE_ORB_GUST_LEN)) / 0.6); ax += (gx / gd) * 480 * fall * blow; ay += (gy / gd) * 480 * fall * blow; }
+    }
+    ax += (Math.random() - 0.5) * jitter; ay += (Math.random() - 0.5) * jitter;
+    g.vx += ax * dt; g.vy += ay * dt;
+    g.x += g.vx * dt; g.y += g.vy * dt;
+  }
+}
+/* No motion: every grain on its target, still. For the harness and for a
+   student who asked for reduced motion. */
+function liveOrbSettle(model, state, t, level) {
+  if (model.state !== state) { model.state = state; model.since = t; model.gust = null; }
+  model.level = Math.max(0, Math.min(1, Number(level) || 0));
+  model.grains.forEach(function (g) {
+    var tg = liveOrbTarget(g, state, t, model.level);
+    g.x = tg.x; g.y = tg.y; g.vx = 0; g.vy = 0;
+  });
+}
+function liveOrbMotionOk() {
+  try { return !(typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) { return true; }
+}
+function liveOrbHosts() {
+  var out = [];
+  [['liveOrb', false], ['liveOrbFloat', true]].forEach(function (pair) {
+    var el = null;
+    try { el = $(pair[0]); } catch (e) { el = null; }
+    if (el) out.push({ el: el, float: pair[1] });
+  });
+  return out;
+}
+/* The canvas the sand is drawn on. A host with no stage grows one, so a
+   hand-written host is never a blank. */
+function liveOrbStage(host) {
+  var stage = null;
+  try { stage = host.querySelector ? host.querySelector('.orbStage') : null; } catch (e) { stage = null; }
+  if (!stage && host.children) {
+    for (var i = 0; i < host.children.length; i++) {
+      var child = host.children[i];
+      if (child && child.classList && child.classList.contains('orbStage')) { stage = child; break; }
+    }
+  }
+  if (!stage && host.appendChild) {
+    stage = document.createElement('canvas');
+    stage.className = 'orbStage';
+    if (stage.classList && stage.classList.add) stage.classList.add('orbStage');
+    host.appendChild(stage);
+  }
+  return stage;
+}
+function liveOrbVisible(host) {
+  try {
+    if (typeof host.checkVisibility === 'function') return host.checkVisibility();
+    if (typeof host.getClientRects === 'function') return host.getClientRects().length > 0;
+  } catch (e) {}
+  return true;
+}
+/* Draw one host: six fills, one per colour, the grains grouped by colour at
+   birth. Muted and closing are dimmer; a grain's own size jitters so the
+   sand reads as sand and not as confetti. */
+function liveOrbDraw(host, model, isFloat, state) {
+  var stage = liveOrbStage(host);
+  if (!stage || typeof stage.getContext !== 'function') return;
+  var ctx = null;
+  try { ctx = stage.getContext('2d'); } catch (e) { ctx = null; }
+  if (!ctx) return;
+  var css = host.clientWidth || host.offsetWidth || 0;
+  if (!(css > 0)) return;
+  var dpr = Math.max(1, Math.min(3, (typeof devicePixelRatio === 'number' && devicePixelRatio) || 1));
+  var px = Math.round(css * dpr);
+  if (stage.width !== px || stage.height !== px) { stage.width = px; stage.height = px; }
+  ctx.clearRect(0, 0, px, px);
+  var unit = px / 100, radius = (isFloat ? LIVE_ORB_GRAIN_PX_FLOAT : LIVE_ORB_GRAIN_PX) * dpr;
+  ctx.globalAlpha = state === 'closing' ? 0.35 : state === 'muted' ? 0.5 : state === 'connecting' ? 0.75 : 1;
+  var grains = model.grains, i = 0, TAU = Math.PI * 2;
+  while (i < grains.length) {
+    var c = grains[i].c;
+    ctx.fillStyle = LIVE_ORB_PALETTE[c] || LIVE_ORB_TEAL;
+    ctx.beginPath();
+    for (; i < grains.length && grains[i].c === c; i++) {
+      var g = grains[i], r = radius * g.sz, x = g.x * unit, y = g.y * unit;
+      ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, TAU);
+    }
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+var liveOrbLoop = { frame: null, last: 0 };
+function liveOrbFrame(ts) {
+  liveOrbLoop.frame = null;
+  var now = typeof ts === 'number' ? ts : Date.now();
+  var dt = liveOrbLoop.last ? (now - liveOrbLoop.last) / 1000 : 1 / 60;
+  liveOrbLoop.last = now;
+  var t = now / 1000, state = liveOrbState();
+  var level = state === 'talking' ? Math.max(0, Math.min(1, Number(liveTutor.level) || 0)) : 0;
+  var alive = false;
+  liveOrbHosts().forEach(function (entry) {
+    if (!liveOrbVisible(entry.el)) return;
+    alive = true;
+    var model = liveOrbModel(entry.el, entry.float ? LIVE_ORB_N_FLOAT : LIVE_ORB_N);
+    liveOrbStep(model, state, dt, t, level);
+    liveOrbDraw(entry.el, model, entry.float, state);
+  });
+  // No orb on screen: stop, and let the next paint start the loop again.
+  if (alive && liveOrbMotionOk()) liveOrbLoop.frame = requestAnimationFrame(liveOrbFrame);
+  else liveOrbLoop.last = 0;
+}
+function liveOrbLoopStart() {
+  if (liveOrbLoop.frame !== null) return;
+  if (typeof requestAnimationFrame !== 'function') return;
+  liveOrbLoop.last = 0;
+  liveOrbLoop.frame = requestAnimationFrame(liveOrbFrame);
+}
+/* Paint every host: the state onto the host (the caption and the dimming
+   read it), the float on or off, and the loop running — or, with no loop to
+   run, the sand settled onto its targets and drawn once. */
 function liveOrbPaint() {
   var state = liveOrbState();
+  var t = Date.now() / 1000;
   var level = state === 'talking' ? Math.max(0, Math.min(1, Number(liveTutor.level) || 0)) : 0;
+  var motion = liveOrbMotionOk() && typeof requestAnimationFrame === 'function';
   liveOrbHosts().forEach(function (entry) {
     var host = entry.el;
-    var dots = liveOrbBuild(host);
-    if (!dots) return;
-    var stage = liveOrbStage(host);
+    var model = liveOrbModel(host, entry.float ? LIVE_ORB_N_FLOAT : LIVE_ORB_N);
     if (host.orbState !== state) {
-      var layout = liveOrbLayoutFor(state);
-      dots.forEach(function (dot, i) {
-        var p = layout[i] || layout[layout.length - 1];
-        orbSet(dot, '--x', p.x.toFixed(1)); orbSet(dot, '--y', p.y.toFixed(1));
-        orbSet(dot, '--s', p.s); orbSet(dot, '--c', p.c); orbSet(dot, '--amp', p.amp || 0);
-      });
       if (host.setAttribute) host.setAttribute('data-state', state);
       if (host.dataset) host.dataset.state = state;
       host.orbState = state;
     }
-    if (stage) orbSet(stage, '--lv', level.toFixed(3));
     // The float is only ever up while a session runs on an open worksheet.
     if (entry.float && host.classList) host.classList.toggle('on', liveActive() && view === 'ws');
+    if (!motion) { liveOrbSettle(model, state, t, level); liveOrbDraw(host, model, entry.float, state); }
   });
+  if (motion) liveOrbLoopStart();
 }
 /* The voice, measured. An AnalyserNode on the remote track gives a level per
    frame; the row above rises with it. It exists only where Web Audio does —
@@ -9768,7 +9913,7 @@ function liveOrbListen(stream, generation) {
     if (smooth > LIVE_ORB_TALK_FLOOR && !liveTutor.muted) liveTutor.spokeAt = Date.now();
     var wasTalking = liveTutor.orbTalking, talking = liveOrbState() === 'talking';
     liveTutor.orbTalking = talking;
-    liveOrbPaint();
+    if (wasTalking !== talking) liveOrbPaint();
     // The row settling back into the M is a change worth a full render, so
     // the caption and the float agree with the card.
     if (wasTalking && !talking) renderLiveTutor();
@@ -10260,6 +10405,8 @@ function openBuddy(pane) {
   $('buddy').classList.remove('closed');
   $('buddyFab').classList.add('hidden');
   if (pane) showBuddyPane(pane);
+  // Reopened on the live tab: the orb's frame loop stopped when it was hidden, so paint restarts it.
+  else if (buddyPane === 'live') liveOrbPaint();
 }
 function closeBuddy() {
   stopLiveTutor();
