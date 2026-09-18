@@ -819,10 +819,10 @@ written into a text box exactly where they tapped.
 
 ## 📖 THE PAPER, READ AT UPLOAD — subject, level, name and key pages off its first and last pages (v1.22.0)
 
-`PAPER_READ_HEAD` / `PAPER_READ_TAIL` / `PAPER_READ_ROUNDS` / `PAPER_READ_PX` /
+`PAPER_READ_HEAD` / `PAPER_READ_TAIL` / `KEY_WALK_MAX` / `PAPER_READ_PX` /
 `PAPER_READ_TITLE_MAX` / `PAPER_READ_SYS` / `paperReadWindow` / `paperReadSubject` /
 `paperReadLevel` / **`paperReadClean`** / **`paperReadEnds`** / **`paperApplyRead`** /
-**`keyEyeOn`** / `keyScanByEye` / **`keyExtendTail`** / `keyScanPdf(read)` /
+**`keyEyeOn`** / `keyScanByEye` / **`keyWalkBack`** / `keyScanPdf(read)` /
 `keyAutoScan(defer, read)` (all inside the 🔑 THE ANSWER KEY section — search `THE PAPER, READ AT
 UPLOAD`), the `read` / `got` half of `handleUpload`, the ✨ *Let Chung GPT read it off the paper*
 rows on `#upLevel` and `#upSubject`, and the 🔑 hint in the upload dialog.
@@ -850,12 +850,24 @@ the paper IS.
   found. The whole-paper eye pass stands down only when the read already saw every page
   (`readSawAll`), which on a paper of seven pages or fewer it did: the same question asked twice is
   a second bill for the same answer.
-- **THE TAIL IS WALKED BACKWARDS** (`keyExtendTail`). A marking scheme is often longer than the
-  last four pages, and a read that stops at the window's edge hides pages 11–12 and serves page 10
-  of the same key. When the FIRST page of the tail window is a key page, the four before it are
-  shown to `keyEyeOn`, and again, until a window's first page is not a key or `PAPER_READ_ROUNDS`
-  is spent. `keyEyeOn` is `keyScanByEye`'s body lifted out to take a page list, so the whole-paper
+- **THE KEY IS WALKED BACKWARDS, ONE PAGE AT A TIME** (`keyWalkBack`, v1.23.0 — it was
+  `keyExtendTail`, four pages a call, until then). A marking scheme is often longer than the last
+  four pages, and a read that stops at the window's edge hides pages 11–12 and serves page 10 of
+  the same key. So from just below the HIGHEST key page already known in the tail (the last page
+  when none is) each page is shown to `keyEyeOn` **on its own**, added while it is a key, and
+  **THE FIRST PAGE CONFIRMED NOT TO BE A KEY ENDS THE WALK**. `KEY_WALK_MAX` bounds the calls;
+  the never-every-page guard in `keyScanPdf` is what stops a paper that is all key being hidden
+  whole. `keyEyeOn` is `keyScanByEye`'s body lifted out to take a page list, so the whole-paper
   look and the walk are one eye and the `KEY_EYE_SYS` exemption is still used by a real call.
+  - **ONE PAGE PER CALL, deliberately.** Four pages in one call let the model answer the batch
+    rather than each page — a key that ended on page 10 came back with 9 and 8 tagged along as
+    "the same section", and a page asked beside three keys is a page it can be talked into. Asked
+    alone the question is simply *is THIS page a key*, and the one it says no to is the edge.
+  - **IT STARTS FROM THE TOP OF THE KNOWN PAGES, NOT THE BOTTOM.** A page the text scan already
+    called a key is stepped over rather than asked again — but the walk begins just below the
+    highest known page, so a page the text scan MISSED between two it found is still asked instead
+    of being left showing below them. Started from the lowest known page, that gap could never be
+    reached.
 - **A KEY PAGE THE MODEL NEVER SAW IS NOT A KEY PAGE.** `paperReadClean` keeps only page numbers
   that were in the window, deduped and sorted; the model is told the numbers as LABELLED beside
   each picture, so a paper of twelve pages is asked about 9–12, not "the third picture".
@@ -874,6 +886,80 @@ the paper IS.
 - **IT IS UNGROUNDED BY DESIGN and exempt from the census by name** (`PAPER_READ_SYS`). It reads
   what a paper IS — metadata — and says no science to anybody; grounded, it would file every paper
   under whatever the teaching notes happen to be about.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
+## 🏫 THE SCHOOL IS IN THE NAME, and 📚 THE WORKSHEETS ARE ON A BOOKSHELF (v1.23.0)
+
+`PAPER_READ_SCHOOL_MAX` / `PAPER_READ_TOPIC_MAX` / the `school` / `exam` / `topic` fields of
+`PAPER_READ_SYS` and `paperReadClean` / **`paperReadName`** / the `school` / `topic` / `exam` on
+`paperApplyRead`'s answer, the two fields on `wsMeta` (written by `performSave`, read back by
+`openWorksheet`, set by `handleUpload`), and the shelf — `SHELF_LEVEL_ORDER` /
+`SHELF_SUBJECT_ORDER` / `SHELF_WHEEL_TURN` / `SHELF_WHEEL_DEPTH` / `SHELF_WHEEL_SHRINK` /
+`SHELF_WHEEL_MAX` / `shelfLevelRank` / `shelfSubjectRank` / `shelfStamp` / `shelfCompare` /
+**`shelfGroups`** / `shelfTitle` / **`shelfWheelPose`** / `shelfWheelCss` / `shelfWheelApply` /
+`shelfWheelWatch` / `shelfNudge` / **`shelfNode`** / `wsCardNode` (all just above
+`/* ---- The worksheet list ---- */`, so `SRC_COVER` in the harness loads them), plus the
+`.shelf*` / `.chipTopic` / `.chipSchool` CSS.
+
+### 🏫 The school's name is read off the cover and put in the file name
+
+An exam paper prints the school that set it across the top of its first page, and *"P5 Science
+SA2 2024"* is a name that fits eleven papers on one shelf. The read (v1.22.0) now asks for the
+**school** as printed, whether the paper is an **exam** (a cover sheet, marks, a time allowed —
+not a topical worksheet), and for a topical worksheet the ONE **topic** it drills.
+
+- **`paperReadName` IS THE ONE PLACE THE NAME IS PUT TOGETHER**, and it puts the school in ONLY
+  on an exam paper: a school worksheet on fractions is a fractions worksheet, and prefixing every
+  one of them with the school's name is what makes a shelf of thirty unreadable. A title that
+  already names the school is left alone — *"Nan Hua Primary School — Nan Hua P5 SA2"* is the
+  name read twice — and a paper the model could not title at all becomes *"<school> exam paper"*
+  rather than the file's own name.
+- **IT FILLS THE NAME ONLY WHEN NOBODY TYPED ONE**, exactly as v1.22.0's title did: a name the
+  uploader wrote is theirs, and only a bare file name is replaced.
+- **`school` and `topic` are FIELDS on the worksheet, never parsed back out of the name.** The
+  shelf sorts on the topic and the card wears both as chips, and a topic that had to be cut out of
+  a title would be wrong the first time a title did not follow the pattern. They are written on
+  every save and read back on every open, so a worksheet uploaded before this simply has neither
+  and sorts to the end of its shelf.
+- **THE MODEL IS TOLD NEVER TO GUESS THE SCHOOL.** A name not printed on the paper is `""`; a
+  school invented from the paper's style is a wrong name on a file for good.
+
+### 📚 The bookshelf — level, then subject, then a wheel of topics
+
+The list of worksheets was one grid, newest first. It is a **bookshelf** now: one shelf per
+level-and-subject (P3 · Science, P5 · Science, P5 · Maths, …), levels in the ladder's order and
+subjects in the app's, and on each shelf the papers stand in a **row that scrolls sideways like
+a wheel** — the card in the middle faces you, the ones either side turn away, sink back and
+shrink — sorted by **topic** (alphabetically, untopiced papers last) and then newest first.
+
+- **`shelfGroups` IS THE ONE PLACE THE SHELVES ARE DECIDED**, and it is pure: a list in, ordered
+  groups out. A worksheet with a level or subject the app does not know is shelved AFTER the known
+  ones rather than dropped — a Sec 1 paper set up in Ans Key is still somebody's paper — and a
+  worksheet with neither goes on one last *Any level · Any subject* shelf. **Nothing is ever
+  filtered out here.** A shelf that lost a paper would look exactly like a shelf that never had
+  it, which is the fault the whole list exists to prevent.
+- **`shelfStamp` reads a Firestore stamp, a `Date`, a number or nothing**, the same way
+  `stampOf` does for the backup: a worksheet whose date will not parse sorts as oldest rather
+  than throwing the render.
+- **`shelfWheelPose` IS PURE, and that is what makes the wheel testable.** It takes a card's
+  distance from the row's centre in viewport widths and gives back the turn, the sink, the shrink
+  and the fade, clamped at `SHELF_WHEEL_MAX` so a card ten screens away is posed exactly like one
+  a screen away; `shelfWheelCss` turns that into one `transform`. With `motion === false` — or
+  junk in — it is the identity, which is how `prefers-reduced-motion` gets a flat row through
+  `liveOrbMotionOk()`, the ONE motion preference this app already keeps.
+- **THE POSE IS PAINTED ON SCROLL, NEVER ON A TIMER.** `shelfWheelWatch` listens to the row's
+  own `scroll` (passive) and to `resize`, and coalesces into one `requestAnimationFrame` — a row
+  of thirty cards re-posed on every scroll event is a list that stutters on an iPad, and a timer
+  is what the live orb's house rule forbids. `scroll-snap-type: x mandatory` on the row is what
+  makes it settle on a card rather than between two.
+- **‹ › nudge by one card and scroll the ROW, not the page**, so the shelves above and below stay
+  where they are; on a phone the buttons go and the row is swiped, which is the gesture the wheel
+  was built for.
+- **`wsCardNode` is the card factored OUT of the render**, unchanged in what it draws except the
+  two new chips — the cover stack, the setter chip, the attempts, every button and every handler
+  are the same node they were, so the shelf changed where a card SITS and not what it does.
+- The row's side padding is `calc(50% - <half a card>)`, so the first and last card can reach
+  the centre and be faced; without it the first paper on every shelf is permanently turned away.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## 🔑 THE ANSWER KEY — hidden from the student, read by the buddy (v1.1.0)
@@ -1913,9 +1999,25 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **🏫 the school in the name or 📚 the bookshelf** (`paperReadName`, the `school`
+  / `exam` / `topic` fields in `PAPER_READ_SYS` / `paperReadClean` / `paperApplyRead`, the two
+  `wsMeta` fields and their `performSave` / `openWorksheet` / `handleUpload` lines, `shelfGroups`,
+  `shelfCompare`, `shelfStamp`, `shelfWheelPose`, `shelfWheelCss`, `shelfWheelApply`,
+  `shelfWheelWatch`, `shelfNudge`, `shelfNode`, `wsCardNode`, or the `.shelf*` CSS), run
+  `node tools/tutor-tests.mjs` **and look at the home screen**. Every failure is silent and the
+  list still paints. Put the school on every worksheet's name and a shelf of thirty reads as one
+  name repeated thirty times; put it on a title that already carries it and the name reads twice.
+  Parse the topic back out of the name instead of reading the field and the first title that does
+  not follow the pattern shelves the paper in the wrong place. Let `shelfGroups` FILTER anything —
+  an unknown level, a blank subject — and a paper vanishes from a list that looks complete, which
+  is the one fault the list exists to prevent. Pose the wheel on a timer, or on every scroll event
+  without the frame, and the row stutters on an iPad and runs after the tab is closed; ignore
+  `motion === false` and the cards turn for a child who asked them not to; drop the side padding
+  and the first paper on every shelf can never face the reader. And stop writing `school` / `topic`
+  in `performSave` and both chips vanish on the next open, on a card that otherwise looks right.
 - After touching **📖 the paper read at upload** (`PAPER_READ_SYS`, `paperReadWindow`,
   `paperReadSubject`, `paperReadLevel`, `paperReadClean`, `paperReadEnds`, `paperApplyRead`,
-  `keyEyeOn`, `keyExtendTail`, `keyScanPdf`'s `read`, `keyAutoScan`'s `read`, the `read` / `got`
+  `keyEyeOn`, `keyWalkBack`, `KEY_WALK_MAX`, `keyScanPdf`'s `read`, `keyAutoScan`'s `read`, the `read` / `got`
   half of `handleUpload`, or the ✨ rows on `#upLevel` / `#upSubject`), run
   `node tools/tutor-tests.mjs`. Every failure is silent and the upload still lands. Let
   `paperApplyRead` take the paper's level over a STUDENT's own and a P5 child's worksheet is filed
@@ -1924,7 +2026,10 @@ the two in step; a fix to either belongs in both.
   never saw and a question page is put away as a key. Substitute the read for the text scan instead
   of unioning it and a text-layer key the read did not see comes back on screen; drop the
   `readSawAll` guard and a short scanned paper pays for the same look twice. Stop walking the tail
-  and pages 11–12 of a marking scheme are hidden while page 10 of it is served. Read the level from
+  and pages 11–12 of a marking scheme are hidden while page 10 of it is served; walk it four pages
+  a call again and the model answers the batch rather than each page, so the edge of the key lands
+  wherever the batch happened to end; start the walk from the LOWEST known key page and a page the
+  text scan missed between two it found is never asked and is served to the student. Read the level from
   how hard the questions look and a P4 revision sheet is filed at P6. Move the read after
   `keyAutoScan` and the key pages it found are never put away; move `keyAutoScan` after
   `ensureCover` and the marking scheme's last page can be the cover. And ground the prompt and

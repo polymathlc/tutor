@@ -356,6 +356,45 @@
   }
   .keyRow .dim, .keyState .dim { color: var(--ink-faint); }
   .wsCard.setCard { border-color: var(--accent-deep, #1E88E5); }
+
+  /* ---------- 📚 THE BOOKSHELF ---------- */
+  .shelf { margin: 0 0 30px; }
+  .shelfHead { display: flex; align-items: center; gap: 10px; margin: 0 6px 10px; }
+  .shelfHead h3 { font-size: 1.02rem; font-weight: 800; letter-spacing: .01em; }
+  .shelfCount { font-size: 0.8rem; color: var(--ink-faint); }
+  .shelfBtn { width: 34px; height: 34px; font-size: 1.3rem; line-height: 1; border-radius: 50%; }
+  /* The row is the scroller and the wheel: perspective on the row, the
+     cards posed by JS off where the row is scrolled to. Scroll-snap so a
+     flick lands ON a paper rather than between two. The horizontal padding
+     is what lets the first and last cards reach the middle of the shelf. */
+  .shelfRow {
+    display: flex; gap: 18px; overflow-x: auto; overflow-y: visible;
+    scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+    padding: 14px calc(50% - 150px) 26px; scrollbar-width: none;
+    perspective: 900px; perspective-origin: 50% 40%;
+  }
+  .shelfRow::-webkit-scrollbar { display: none; }
+  .shelfItem {
+    flex: 0 0 300px; width: 300px; scroll-snap-align: center;
+    transform-style: preserve-3d; will-change: transform;
+    transition: transform .18s ease-out, opacity .18s ease-out;
+  }
+  .shelfItem .wsCard { height: 100%; }
+  /* The plank the papers stand on: a warm strip with a shadow under it,
+     which is what makes a row of cards read as a shelf and not a carousel. */
+  .shelfPlank {
+    height: 12px; margin: -18px 2px 0; border-radius: 4px;
+    background: linear-gradient(#E8D9C3, #CBB393);
+    box-shadow: 0 6px 12px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.55);
+  }
+  .chip.chipTopic { background: rgba(0,150,136,.12); color: #00695C; font-weight: 700; }
+  .chip.chipSchool { background: rgba(94,53,177,.10); color: #4527A0; }
+  @media (max-width: 640px) {
+    .shelfItem { flex-basis: 250px; width: 250px; }
+    .shelfRow { padding-left: calc(50% - 125px); padding-right: calc(50% - 125px); }
+    .shelfBtn { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .shelfItem { transition: none; } }
   .chip.chipSet { background: rgba(30,136,229,.12); color: var(--accent-deep, #1E88E5); font-weight: 700; }
   /* The listening bar sits over the worksheet, above the page and below the
      buddy panel: a student mid-sentence has to be able to see that the app
@@ -1921,7 +1960,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.22.0';
+var APP_VERSION = 'v1.23.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -2034,7 +2073,7 @@ function subjectLabel(s) {
 /* What the notes are being applied to right now — the open worksheet's own
    level and subject. `noteAppliesHere` reads this object exactly as Ans Key
    reads its own `wsMeta` and Scan & Answer reads its pickers. */
-var wsMeta = { level: '', subject: '', guidance: 'method', assignmentId: '', setBy: '', guidanceLocked: false };
+var wsMeta = { level: '', subject: '', school: '', topic: '', guidance: 'method', assignmentId: '', setBy: '', guidanceLocked: false };
 
 /* ================= THE HELP LADDER =================
    The whole app turns on this. A student handed the answer has learned
@@ -3351,7 +3390,7 @@ async function loadPdf(bytes, name) {
   chat = [];
   attempts = 1;
   keyReset();
-  wsMeta = { level: '', subject: '', guidance: HINT_DEFAULT, assignmentId: '', setBy: '', guidanceLocked: false };
+  wsMeta = { level: '', subject: '', school: '', topic: '', guidance: HINT_DEFAULT, assignmentId: '', setBy: '', guidanceLocked: false };
   setDirty(false);
 
   // pdf.js transfers (detaches) the buffer it is given — hand it a copy.
@@ -5108,8 +5147,9 @@ async function keyReadOwnPages(signal) {
      • THE KEY IT NAMES IS ADDED TO THE SCAN, never substituted for it. The
        text scan and the ink guard stay exactly as they were; what the read
        adds is the pages a SCANNED paper's text layer could never show, and
-       the tail is walked backwards from there (`keyExtendTail`) because a
-       long marking scheme starts before the last four pages.
+       the key is then walked BACKWARDS from there ONE PAGE AT A TIME
+       (`keyWalkBack`) until a page is confirmed not to be a key, because a
+       marking scheme is very often longer than the last four pages.
      • IT ERRS TOWARDS LEAVING A PAGE ALONE, the rule the whole 🔑 section
        carries: a key page left showing is one tap to put away, a question
        page wrongly hidden is a question that has VANISHED.
@@ -5117,19 +5157,29 @@ async function keyReadOwnPages(signal) {
    what a paper IS — metadata — and says no science to anybody. */
 var PAPER_READ_HEAD = 3;      // the front pages: the cover, the instructions, question 1
 var PAPER_READ_TAIL = 4;      // the back pages: where a key is printed
-var PAPER_READ_ROUNDS = 3;    // how many times the tail may be walked backwards
+var KEY_WALK_MAX = 60;        // pages the walk from the back may ask about, one call each
 var PAPER_READ_PX = 800;      // small on purpose: this asks what a page IS
 var PAPER_READ_TITLE_MAX = 80;
+var PAPER_READ_SCHOOL_MAX = 60;
+var PAPER_READ_TOPIC_MAX = 40;
 
 var PAPER_READ_SYS =
   'You are looking at the FIRST few and the LAST few pages of one school worksheet or exam paper from ' +
   'Singapore, in order, to say what the paper IS. Reply with STRICT JSON only: ' +
-  '{"subject":"science","level":"P5","title":"P5 Science SA2 2024","keyPages":[11,12]}. ' +
+  '{"subject":"science","level":"P5","title":"P5 Science SA2 2024","school":"Nan Hua Primary School",' +
+  '"exam":true,"topic":"","keyPages":[11,12]}. ' +
   'subject is exactly one of "science", "math", "english", "chinese", or "" when the paper does not make ' +
   'it plain. level is the year the paper is SET FOR as PRINTED on it — "P3", "P4", "P5", "P6" or "S1" — ' +
   'read off its own heading ("Primary 5", "P5", "Sec 1", "Secondary 1"); never guess a level from how hard ' +
   'the questions look, and use "" when nothing on the paper says. title is what the paper calls itself, in ' +
-  'at most ten words, or "" when it has no heading. keyPages are the PAGE NUMBERS, as labelled beside ' +
+  'at most ten words, or "" when it has no heading. school is the NAME OF THE SCHOOL printed on the ' +
+  'paper (its heading, crest or footer — "Nan Hua Primary School", "Raffles Girls\' Primary"), exactly as ' +
+  'printed, or "" when no school is named; never guess one. exam is true when the paper is an EXAMINATION ' +
+  'paper — a CA, SA, WA, prelim, PSLE, mid-year or end-of-year paper with a cover sheet, marks and a time ' +
+  'allowed — and false for an ordinary worksheet, a homework sheet or a set of notes. topic is the ONE ' +
+  'topic the paper is about when it is a topical worksheet ("Heat", "Fractions", "Comprehension"), in at ' +
+  'most four words, or "" for an exam paper or anything covering several topics. keyPages are the PAGE ' +
+  'NUMBERS, as labelled beside ' +
   'each picture, of the pages that are the ANSWER KEY rather than questions for the student to answer: an ' +
   'answer key, answer sheet, marking scheme, model answers, suggested answers, 参考答案 or 答案 — a list of ' +
   'answers to questions printed elsewhere. A page of questions is NOT a key page even when answers have ' +
@@ -5189,14 +5239,34 @@ function paperReadClean(res, nums) {
     if (i >= 1 && shown[i] && !seen[i]) { seen[i] = 1; keyPages.push(i); }
   });
   keyPages.sort(function (a, b) { return a - b; });
-  var title = String(res.title || '').replace(/\s+/g, ' ').trim();
-  if (title.length > PAPER_READ_TITLE_MAX) title = title.slice(0, PAPER_READ_TITLE_MAX).trim();
+  var line = function (v, cap) {
+    var t = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+    return t.length > cap ? t.slice(0, cap).trim() : t;
+  };
   return {
     subject: paperReadSubject(res.subject),
     level: paperReadLevel(res.level),
-    title: title,
+    title: line(res.title, PAPER_READ_TITLE_MAX),
+    school: line(res.school, PAPER_READ_SCHOOL_MAX),
+    exam: res.exam === true || String(res.exam).toLowerCase() === 'true',
+    topic: line(res.topic, PAPER_READ_TOPIC_MAX),
     keyPages: keyPages
   };
+}
+
+/* What a paper is CALLED, from what it says about itself. An EXAM paper
+   carries the school's name in front of its title — "Nan Hua Primary School
+   — P6 Science SA2 2024" — because that is how a past paper is known and
+   filed; a topical worksheet does not, because a school is not what a
+   revision sheet is about. A title that already names the school is left
+   alone rather than saying it twice. */
+function paperReadName(read) {
+  read = read || {};
+  var title = String(read.title || '').trim();
+  var school = String(read.school || '').trim();
+  if (!read.exam || !school) return title;
+  if (title && title.toLowerCase().indexOf(school.toLowerCase()) >= 0) return title;
+  return title ? school + ' — ' + title : school + ' exam paper';
 }
 
 /* Show the ends of the open PDF to the model and ask what the paper is.
@@ -5236,7 +5306,8 @@ async function paperReadEnds() {
 function paperApplyRead(read, chosen) {
   read = read || {};
   chosen = chosen || {};
-  var out = { level: chosen.level || '', subject: chosen.subject || '', name: chosen.name || '', filled: [] };
+  var out = { level: chosen.level || '', subject: chosen.subject || '', name: chosen.name || '',
+              school: String(read.school || ''), topic: String(read.topic || ''), exam: !!read.exam, filled: [] };
   var allowed = Array.isArray(chosen.subjects) ? chosen.subjects.filter(function (s) { return SUBJECT_OK[s]; }) : null;
   if (!out.level && chosen.levelFree !== false && read.level && LEVELS.indexOf(read.level) >= 0) {
     out.level = read.level;
@@ -5253,10 +5324,12 @@ function paperApplyRead(read, chosen) {
       out.subject = allowed[0];
     }
   }
-  if (!chosen.nameTyped && read.title) {
-    out.name = read.title;
-    out.filled.push('“' + read.title + '”');
+  var readName = paperReadName(read);
+  if (!chosen.nameTyped && readName) {
+    out.name = readName;
+    out.filled.push('“' + readName + '”');
   }
+  if (out.topic) out.filled.push('topic ' + out.topic);
   return out;
 }
 
@@ -5292,10 +5365,13 @@ async function keyScanPdf(read) {
     catch (e) { console.warn('The look for answer-key pages failed', e); }
   }
   // A marking scheme that starts before the last pages: walk backwards
-  // from the ones already found until a page is not a key.
-  if (found.length && aiAvailable(true)) {
-    try { found = await keyExtendTail(found); }
-    catch (e) { console.warn('Extending the answer key backwards failed', e); }
+  // from the back, one page at a time, until a page is confirmed not to be
+  // a key. It runs whenever the paper was read at all (the read may have
+  // found nothing in its window and the key still starts one page above
+  // it), and never with the AI off.
+  if ((found.length || read) && aiAvailable(true)) {
+    try { found = await keyWalkBack(found); }
+    catch (e) { console.warn('Walking the answer key back from the last page failed', e); }
   }
   var inked = {};
   annotations.forEach(function (a) { inked[a.page] = 1; });
@@ -5345,24 +5421,36 @@ async function keyScanByEye() {
   return keyEyeOn(pages.map(function (p) { return p.num; }));
 }
 
-/* A marking scheme is often LONGER than the last four pages. When the
-   FIRST page of the tail window is itself a key page, the key may run on
-   backwards past what was shown — so the pages before it are looked at, a
-   window at a time, until one of them is not a key or the paper runs out.
-   Bounded by PAPER_READ_ROUNDS: a paper that is all key is the guard in
-   keyScanPdf's job, not this one's. */
-async function keyExtendTail(found) {
+/* THE WALK FROM THE BACK. A marking scheme is very often LONGER than the
+   last four pages the read looked at — a PSLE-style paper's is eight or
+   ten — and a key found only in its last four pages is a key whose first
+   six are served to the student as ordinary pages. So the key is walked
+   BACKWARDS, ONE PAGE AT A TIME: starting just below the HIGHEST key page
+   already known in the tail (or at the last page when none is), each page
+   is shown to the eye on its own and added while it is a key, and THE FIRST
+   PAGE CONFIRMED NOT TO BE A KEY ENDS THE WALK. A page the text scan has
+   already called a key is stepped over rather than asked again — and the
+   walk starts from the TOP of the known pages rather than the bottom, so a
+   page the text scan missed BETWEEN two it found is still asked instead of
+   being left showing below them.
+
+   One page per call on purpose: the question is "is THIS page a key", and a
+   page asked alone cannot be talked into an answer by the pages beside it.
+   `KEY_WALK_MAX` bounds the calls; keyScanPdf's never-every-page guard is
+   what stops a paper that is all key being hidden whole. */
+async function keyWalkBack(found) {
   var out = found.slice();
-  var lo = pages.length - PAPER_READ_TAIL + 1;
-  for (var round = 0; round < PAPER_READ_ROUNDS; round++) {
-    if (lo <= 1 || out.indexOf(lo) < 0) break;
-    var nums = [];
-    for (var n = Math.max(1, lo - PAPER_READ_TAIL); n < lo; n++) nums.push(n);
-    if (!nums.length) break;
-    var more = await keyEyeOn(nums);
-    more.forEach(function (n) { if (out.indexOf(n) < 0) out.push(n); });
-    if (more.indexOf(nums[0]) < 0) break;   // the run ended inside this window
-    lo = nums[0];
+  if (!pages.length) return out;
+  var lo = Math.max(1, pages.length - PAPER_READ_TAIL + 1);
+  var known = out.filter(function (n) { return n >= lo; });
+  var start = known.length ? Math.max.apply(null, known) + 1 : pages.length + 1;
+  var asked = 0;
+  for (var n = start - 1; n >= 1 && asked < KEY_WALK_MAX; n--) {
+    if (out.indexOf(n) >= 0) continue;          // the text scan already called it a key
+    asked++;
+    var hit = await keyEyeOn([n]);
+    if (hit.indexOf(n) < 0) break;              // the first page that is NOT a key ends the walk
+    out.push(n);
   }
   out.sort(function (a, b) { return a - b; });
   return out;
@@ -12708,6 +12796,146 @@ function coverNode(w, hint) {
   return wrap;
 }
 
+/* =====================================================================
+   📚 THE BOOKSHELF — the home screen, sorted by level then subject
+   ---------------------------------------------------------------------
+   A grid of cards newest-first is fine for six worksheets and useless for
+   sixty: a P5 child's Heat revision sits beside a P3 science paper their
+   sibling uploaded and last term's maths prelim, in the order they were
+   last touched. So the home screen is a BOOKSHELF. One shelf per level and
+   subject — P6 Science, P6 Mathematics, P5 Science … — and each shelf is a
+   WHEEL: the papers stand in a row that scrolls sideways, the one in the
+   middle facing you and the rest turned away like the spines of books, and
+   they are ordered by TOPIC along the shelf so the Heat papers sit together.
+
+   `shelfGroups` is the ONE place the sorting is decided and it is pure, so
+   the harness can pin it: levels in the ladder's order, subjects in the
+   centre's order, an untagged paper on its own shelf at the END rather than
+   dropped — a worksheet uploaded before the tags existed is still somebody's
+   work. Within a shelf a paper is filed by its topic, blank topics last,
+   then newest first, so the row reads like a shelf and not like a log. */
+var SHELF_LEVEL_ORDER = LEVELS.slice();
+var SHELF_SUBJECT_ORDER = SUBJECTS.map(function (x) { return x.value; });
+var SHELF_WHEEL_TURN = 42;      // degrees a card turns at one viewport-width from the centre
+var SHELF_WHEEL_DEPTH = 150;    // px a card sinks at one viewport-width from the centre
+var SHELF_WHEEL_SHRINK = 0.14;  // how much smaller the furthest card is drawn
+var SHELF_WHEEL_MAX = 1;        // beyond this (in viewport widths) the pose stops changing
+
+function shelfLevelRank(l) { var i = SHELF_LEVEL_ORDER.indexOf(l); return i < 0 ? SHELF_LEVEL_ORDER.length : i; }
+function shelfSubjectRank(sj) { var i = SHELF_SUBJECT_ORDER.indexOf(sj); return i < 0 ? SHELF_SUBJECT_ORDER.length : i; }
+function shelfStamp(w) {
+  var v = w && w.updatedAt;
+  if (!v) return 0;
+  if (typeof v.toMillis === 'function') return v.toMillis();
+  if (v instanceof Date) return v.getTime();
+  return Number(v) || 0;
+}
+/* Two papers on one shelf: the one with a topic before the one without,
+   topics in alphabetical order so the Heat papers sit together, and the
+   newest first inside a topic. */
+function shelfCompare(a, b) {
+  var ta = String((a && a.topic) || '').trim().toLowerCase();
+  var tb = String((b && b.topic) || '').trim().toLowerCase();
+  if (ta !== tb) {
+    if (!ta) return 1;
+    if (!tb) return -1;
+    return ta < tb ? -1 : 1;
+  }
+  return shelfStamp(b) - shelfStamp(a);
+}
+/* Every worksheet → an ordered list of shelves, each `{ level, subject,
+   items }`. A level or a subject the app does not know sorts after the ones
+   it does and is still shown, because a shelf that quietly drops a paper is
+   a paper nobody can find. */
+function shelfGroups(list) {
+  var byKey = {};
+  (list || []).forEach(function (w) {
+    if (!w) return;
+    var level = String(w.level || '');
+    var subject = String(w.subject || '');
+    var key = level + '|' + subject;
+    if (!byKey[key]) byKey[key] = { level: level, subject: subject, items: [] };
+    byKey[key].items.push(w);
+  });
+  var out = Object.keys(byKey).map(function (k) { return byKey[k]; });
+  out.forEach(function (g) { g.items.sort(shelfCompare); });
+  out.sort(function (a, b) {
+    var la = shelfLevelRank(a.level), lb = shelfLevelRank(b.level);
+    if (la !== lb) return la - lb;
+    if (a.level !== b.level) return a.level < b.level ? -1 : 1;
+    var sa = shelfSubjectRank(a.subject), sb = shelfSubjectRank(b.subject);
+    if (sa !== sb) return sa - sb;
+    return a.subject < b.subject ? -1 : a.subject > b.subject ? 1 : 0;
+  });
+  return out;
+}
+function shelfTitle(g) {
+  var lv = g.level ? levelLabel(g.level) : 'Any level';
+  var sj = g.subject ? subjectLabel(g.subject) : 'Any subject';
+  return lv + ' · ' + sj;
+}
+/* THE WHEEL. A card's pose is a function of ONE number: how far its centre
+   is from the middle of the shelf, in viewport widths (negative to the
+   left). The card in the middle faces you; the further along the shelf a
+   card is, the more it turns away and the deeper it sinks, so the row reads
+   as a wheel of paper turning under the thumb. It is pure so the harness
+   can pin it: the middle card is untouched, a card to the left turns the
+   opposite way to a card on the right, and the pose is clamped so a card
+   far along the shelf is not turned edge-on into nothing. With motion
+   switched off a card is never turned at all. */
+function shelfWheelPose(d, motion) {
+  var x = Number(d) || 0;
+  if (motion === false) return { rot: 0, z: 0, scale: 1, op: 1 };
+  var c = Math.max(-SHELF_WHEEL_MAX, Math.min(SHELF_WHEEL_MAX, x));
+  var a = Math.abs(c);
+  return {
+    rot: -c * SHELF_WHEEL_TURN,
+    z: -a * SHELF_WHEEL_DEPTH,
+    scale: 1 - a * SHELF_WHEEL_SHRINK,
+    op: 1 - a * 0.35
+  };
+}
+function shelfWheelCss(pose) {
+  return 'perspective(900px) translateZ(' + pose.z.toFixed(1) + 'px) rotateY(' + pose.rot.toFixed(2) + 'deg) scale(' + pose.scale.toFixed(3) + ')';
+}
+/* Poses every card on a shelf from where the shelf is scrolled to. Called
+   on scroll (coalesced to one paint a frame), on resize and once on paint. */
+function shelfWheelApply(row) {
+  if (!row || !row.getBoundingClientRect) return;
+  var box = row.getBoundingClientRect();
+  var mid = box.left + box.width / 2;
+  var span = Math.max(1, box.width);
+  var motion = liveOrbMotionOk();
+  var cards = row.querySelectorAll('.shelfItem');
+  for (var i = 0; i < cards.length; i++) {
+    var r = cards[i].getBoundingClientRect();
+    var d = (r.left + r.width / 2 - mid) / span;
+    var pose = shelfWheelPose(d, motion);
+    cards[i].style.transform = shelfWheelCss(pose);
+    cards[i].style.opacity = String(pose.op);
+    cards[i].style.zIndex = String(100 - Math.round(Math.abs(d) * 50));
+  }
+}
+function shelfWheelWatch(row) {
+  var pending = false;
+  var kick = function () {
+    if (pending) return;
+    pending = true;
+    var run = function () { pending = false; shelfWheelApply(row); };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run); else run();
+  };
+  row.addEventListener('scroll', kick, { passive: true });
+  if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', kick);
+  kick();
+}
+/* Scroll a shelf by one card, the ‹ › buttons on a mouse. */
+function shelfNudge(row, dir) {
+  var card = row.querySelector('.shelfItem');
+  var step = card ? card.getBoundingClientRect().width + 18 : row.clientWidth * 0.6;
+  try { row.scrollBy({ left: dir * step, behavior: liveOrbMotionOk() ? 'smooth' : 'auto' }); }
+  catch (e) { row.scrollLeft += dir * step; }
+}
+
 /* ---- The worksheet list ---- */
 function renderWorksheets() {
   var box = $('wsList');
@@ -12726,9 +12954,63 @@ function renderWorksheets() {
     box.appendChild(pad);
     return;
   }
-  var grid = document.createElement('div');
-  grid.className = 'wsGrid';
-  worksheets.forEach(function (w) {
+  // THE BOOKSHELF: one shelf per level and subject, each a wheel of paper
+  // that scrolls sideways, filed by topic along the shelf.
+  var groups = shelfGroups(worksheets);
+  groups.forEach(function (g) { box.appendChild(shelfNode(g)); });
+}
+
+/* One shelf: its heading, the ‹ › buttons, and the row of cards on a
+   plank. The row is the scroller; the cards are `.shelfItem`s the wheel
+   poses off the scroll position. */
+function shelfNode(g) {
+  var shelf = document.createElement('section');
+  shelf.className = 'shelf';
+  var head = document.createElement('div');
+  head.className = 'shelfHead';
+  var h = document.createElement('h3');
+  h.textContent = shelfTitle(g);
+  head.appendChild(h);
+  var count = document.createElement('span');
+  count.className = 'shelfCount';
+  count.textContent = g.items.length + (g.items.length === 1 ? ' paper' : ' papers');
+  head.appendChild(count);
+  var sp = document.createElement('span');
+  sp.className = 'spacer';
+  head.appendChild(sp);
+  var prev = document.createElement('button');
+  prev.className = 'iconBtn shelfBtn';
+  prev.textContent = '‹';
+  prev.title = 'Earlier on the shelf';
+  var next = document.createElement('button');
+  next.className = 'iconBtn shelfBtn';
+  next.textContent = '›';
+  next.title = 'Further along the shelf';
+  head.appendChild(prev);
+  head.appendChild(next);
+  shelf.appendChild(head);
+
+  var row = document.createElement('div');
+  row.className = 'shelfRow';
+  g.items.forEach(function (w) {
+    var item = document.createElement('div');
+    item.className = 'shelfItem';
+    item.appendChild(wsCardNode(w));
+    row.appendChild(item);
+  });
+  shelf.appendChild(row);
+  var plank = document.createElement('div');
+  plank.className = 'shelfPlank';
+  shelf.appendChild(plank);
+  prev.addEventListener('click', function () { shelfNudge(row, -1); });
+  next.addEventListener('click', function () { shelfNudge(row, 1); });
+  // Fewer cards than the shelf can show need no buttons and no wheel.
+  shelfWheelWatch(row);
+  return shelf;
+}
+
+/* One worksheet card, the same on every shelf. */
+function wsCardNode(w) {
     var card = document.createElement('div');
     card.className = 'wsCard';
     card.appendChild(coverNode(w, 'Open it once and the front page shows here'));
@@ -12740,6 +13022,8 @@ function renderWorksheets() {
     meta.className = 'wsMeta';
     if (w.level) meta.appendChild(chipNode(levelLabel(w.level), 'chip chipLevel'));
     if (w.subject) meta.appendChild(chipNode(subjectLabel(w.subject), 'chip'));
+    if (w.topic) meta.appendChild(chipNode('📖 ' + w.topic, 'chip chipTopic'));
+    if (w.school) meta.appendChild(chipNode('🏫 ' + w.school, 'chip chipSchool'));
     var grule = guidanceRule(w);
     meta.appendChild(chipNode((grule.locked ? '🔒 ' : '💡 ') + guidanceLabel(grule.level), 'chip chipGrade'));
     if (w.score && w.score.attempted) {
@@ -12799,9 +13083,7 @@ function renderWorksheets() {
     del.addEventListener('click', function () { deleteWorksheet(w.id); });
     foot.appendChild(del);
     card.appendChild(foot);
-    grid.appendChild(card);
-  });
-  box.appendChild(grid);
+    return card;
 }
 
 /* =====================================================================
@@ -13232,6 +13514,11 @@ async function performSave(quiet) {
       name: docName,
       level: wsMeta.level || '',
       subject: wsMeta.subject || '',
+      // What the paper read at upload said about it: the school it came
+      // from and the one topic it covers. Both are what the shelves sort
+      // and label by, so they ride every save like the level does.
+      school: wsMeta.school || '',
+      topic: wsMeta.topic || '',
       guidance: wsMeta.guidance || HINT_DEFAULT,
       score: scoreOf(),
       // The paper filed under the syllabus, small enough to ride every
@@ -13496,6 +13783,8 @@ async function openWorksheet(id) {
     attempts = Math.max(1, parseInt(w.attempts, 10) || 1);
     wsMeta.level = w.level || '';
     wsMeta.subject = w.subject || '';
+    wsMeta.school = w.school || '';
+    wsMeta.topic = w.topic || '';
     wsMeta.assignmentId = w.assignmentId || '';
     wsMeta.setBy = w.setBy || '';
     // A LOCKED level is read live from the assignment, so on a cold start
@@ -13728,6 +14017,8 @@ async function handleUpload(file) {
     if (currentDocId === id) {
       wsMeta.level = got.level;
       wsMeta.subject = got.subject;
+      wsMeta.school = got.school;
+      wsMeta.topic = got.topic;
       if (got.name && got.name !== docName) {
         docName = got.name;
         $('wsTitle').textContent = docName;

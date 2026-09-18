@@ -537,7 +537,23 @@ eq('key pages are only the pages that were SHOWN, deduped and sorted — 4 and 9
    cleaned.keyPages, [11, 12]);
 ok('a title is cut to a line', S.paperReadClean({ title: 'x'.repeat(300) }, []).title.length <= S.PAPER_READ_TITLE_MAX);
 eq('a reply that is not an object is an empty read',
-   S.paperReadClean(null, [1, 2]), { subject: '', level: '', title: '', keyPages: [] });
+   S.paperReadClean(null, [1, 2]), { subject: '', level: '', title: '', school: '', exam: false, topic: '', keyPages: [] });
+/* The school, the exam flag and the topic. */
+const rich = S.paperReadClean({ school: '  Nan Hua   Primary School ', exam: 'true', topic: ' Heat ' }, []);
+eq('the school is tidied to a line', rich.school, 'Nan Hua Primary School');
+ok('exam is a real boolean, read from true or "true" and nothing else', rich.exam === true &&
+   S.paperReadClean({ exam: 'yes' }, []).exam === false && S.paperReadClean({ exam: 1 }, []).exam === false);
+eq('the topic is tidied', rich.topic, 'Heat');
+ok('a school name is cut to a line', S.paperReadClean({ school: 'x'.repeat(200) }, []).school.length <= S.PAPER_READ_SCHOOL_MAX);
+/* THE NAME: an exam paper carries its school; a worksheet does not. */
+eq('an exam paper is named with its school in front', S.paperReadName({ title: 'P6 Science SA2 2024', school: 'Nan Hua Primary School', exam: true }),
+   'Nan Hua Primary School — P6 Science SA2 2024');
+eq('a topical worksheet is NOT given the school', S.paperReadName({ title: 'Heat revision', school: 'Nan Hua Primary School', exam: false }), 'Heat revision');
+eq('a title that already names the school is left alone',
+   S.paperReadName({ title: 'Nan Hua Primary School P6 Prelim', school: 'nan hua primary school', exam: true }), 'Nan Hua Primary School P6 Prelim');
+eq('an exam paper with a school and no title is still named', S.paperReadName({ title: '', school: 'Rosyth School', exam: true }), 'Rosyth School exam paper');
+eq('no school is just the title', S.paperReadName({ title: 'P5 Maths CA1', school: '', exam: true }), 'P5 Maths CA1');
+eq('no read at all is no name', S.paperReadName(null), '');
 eq('keyPages that is not a list is no key pages', S.paperReadClean({ keyPages: 'all' }, [1, 2]).keyPages, []);
 
 /* THE RULE THAT MATTERS: nothing chosen is overridden, and a blank is only
@@ -553,6 +569,14 @@ eq('the teacher\'s blank level is filled from the paper', ap.level, 'P6');
 eq('…and the blank subject', ap.subject, 'math');
 eq('…and a file name is replaced by what the paper calls itself', ap.name, 'P6 Maths Prelim');
 eq('…and each is named back', ap.filled, ['P6', 'Mathematics', '“P6 Maths Prelim”']);
+ap = S.paperApplyRead({ subject: 'science', level: 'P6', title: 'P6 Science Prelim 2024', school: 'Nan Hua Primary School', exam: true, topic: '' },
+                      { level: '', levelFree: true, subject: '', subjects: null, name: 'scan0042.pdf', nameTyped: false });
+eq('an exam paper\'s file name becomes school — title', ap.name, 'Nan Hua Primary School — P6 Science Prelim 2024');
+eq('…and the school and the exam flag travel with it', [ap.school, ap.exam, ap.topic], ['Nan Hua Primary School', true, '']);
+ap = S.paperApplyRead({ subject: 'science', level: 'P5', title: 'Heat', school: 'Nan Hua Primary School', exam: false, topic: 'Heat' },
+                      { level: '', levelFree: true, subject: '', subjects: null, name: 'x', nameTyped: true });
+eq('a topic is carried and named back', [ap.topic, ap.filled[ap.filled.length - 1]], ['Heat', 'topic Heat']);
+eq('…and a typed name is still kept, school or no school', ap.name, 'x');
 ap = S.paperApplyRead(readP6, { level: '', levelFree: false, subject: '', subjects: ['science'], name: 'x', nameTyped: true });
 eq('a level that is not free stays blank even when the paper names one', ap.level, '');
 eq('a subject the student does not take is refused, and their own stands in', ap.subject, 'science');
@@ -570,9 +594,54 @@ ok('the scan UNIONS the read\'s key pages with what the text found',
    /readPages\.forEach\(function \(n\) \{ if \(found\.indexOf\(n\) < 0\) found\.push\(n\); \}\);/.test(scanSrc));
 ok('…and only looks at the whole paper when the read has not already',
    /if \(!anyText && !found\.length && !readSawAll && aiAvailable\(true\)\)/.test(scanSrc));
-ok('…and walks the key backwards from the tail', /found = await keyExtendTail\(found\);/.test(scanSrc));
+ok('…and walks the key backwards from the last page, one page at a time', /found = await keyWalkBack\(found\);/.test(scanSrc));
+ok('…whenever the paper was read at all, never with the AI off', /if \(\(found\.length \|\| read\) && aiAvailable\(true\)\)/.test(scanSrc));
 ok('the whole-paper look goes through the one eye', /async function keyScanByEye\(\) \{\n\s*return keyEyeOn\(pages\.map/.test(SRC_KEY));
-ok('the tail walk is bounded', /for \(var round = 0; round < PAPER_READ_ROUNDS; round\+\+\)/.test(SRC_KEY));
+ok('the walk is bounded', /asked < KEY_WALK_MAX/.test(SRC_KEY));
+ok('the walk asks ONE page per call', /var hit = await keyEyeOn\(\[n\]\);/.test(SRC_KEY));
+
+/* THE WALK, driven by hand: a stubbed eye that knows which pages are the
+   key, and a count of what it was asked. */
+{
+  const eyeLog = [];
+  const savedEye = S.keyEyeOn, savedPages = S.pages;
+  const withKey = (n, keySet) => {
+    S.pages = Array.from({ length: n }, (_, i) => ({ num: i + 1 }));
+    eyeLog.length = 0;
+    S.keyEyeOn = async nums => { eyeLog.push(nums.slice()); return nums.filter(x => keySet.indexOf(x) >= 0); };
+  };
+  // A 12-page paper whose key is pages 5–12: the read saw 9–12, so the
+  // walk starts at 8 and asks 8, 7, 6, 5, then 4 — which is not a key.
+  withKey(12, [5, 6, 7, 8, 9, 10, 11, 12]);
+  eq('the walk carries on down from the lowest key page the read found until a page is NOT a key',
+     await S.keyWalkBack([9, 10, 11, 12]), [5, 6, 7, 8, 9, 10, 11, 12]);
+  eq('…asking one page per call, in order, and stopping at the first that is not a key',
+     eyeLog, [[8], [7], [6], [5], [4]]);
+  // The read found nothing: the walk asks the last page itself first.
+  withKey(6, [5, 6]);
+  eq('with nothing known it starts at the last page', await S.keyWalkBack([]), [5, 6]);
+  eq('…and stops at the first page that is not', eyeLog, [[6], [5], [4]]);
+  // A blank back cover: the read saw the last four, called 8–9 the key and
+  // 10 not, so the walk starts at 7 and never re-asks page 10.
+  withKey(10, [6, 7, 8, 9]);
+  eq('a page the read has already ruled out is not asked again', await S.keyWalkBack([8, 9]), [6, 7, 8, 9]);
+  eq('…the walk starts just above the lowest known key page', eyeLog[0], [7]);
+  // A page the text scan already called a key is stepped over, not asked.
+  withKey(8, [4, 5, 6, 7, 8]);
+  eq('a page the text scan already called a key is stepped over', await S.keyWalkBack([5, 7, 8]), [4, 5, 6, 7, 8]);
+  ok('…and never asked about', !eyeLog.some(a => a[0] === 5 || a[0] === 7), JSON.stringify(eyeLog));
+  // A paper that is ALL key walks to page 1 and hands the never-every-page
+  // guard the whole lot to refuse.
+  withKey(5, [1, 2, 3, 4, 5]);
+  eq('a paper that is all key comes back whole for the guard in keyScanPdf to refuse', await S.keyWalkBack([5]), [1, 2, 3, 4, 5]);
+  // The bound: a very long key stops asking at KEY_WALK_MAX.
+  const many = Array.from({ length: 200 }, (_, i) => i + 1);
+  withKey(200, many);
+  await S.keyWalkBack([200]);
+  ok('the walk never asks more than KEY_WALK_MAX pages', eyeLog.length === S.KEY_WALK_MAX, 'asked ' + eyeLog.length);
+  eq('a paper with no pages walks nowhere', await (async () => { S.pages = []; return S.keyWalkBack([3]); })(), [3]);
+  S.keyEyeOn = savedEye; S.pages = savedPages;
+}
 ok('the read is ONE call over small pictures, with a deadline',
    /system: PAPER_READ_SYS, maxOutputTokens: 500, temperature: 0, json: true, thinkingLevel: 'low',\n\s*images: imgs, timeoutMs: 45000/.test(SRC_KEY));
 ok('the read swallows its own failure at upload', /try \{ read = await paperReadEnds\(\); \}\n\s*catch/.test(html));
@@ -2504,6 +2573,57 @@ eq('one page is one sheet', S.coverSheets(1), 0);
 eq('two pages puts one behind it', S.coverSheets(2), 1);
 eq('a whole paper is a stack', S.coverSheets(9), 2);
 eq('…and it never grows past two', S.coverSheets(400), 2);
+
+/* =====================================================================
+   📚 THE BOOKSHELF — level, then subject, then topic along the shelf
+   ===================================================================== */
+section('The bookshelf');
+{
+  const ws = [
+    { id: 'a', level: 'P5', subject: 'science', topic: 'Heat', updatedAt: 10 },
+    { id: 'b', level: 'P6', subject: 'math', topic: '', updatedAt: 50 },
+    { id: 'c', level: 'P5', subject: 'science', topic: '', updatedAt: 90 },
+    { id: 'd', level: 'P5', subject: 'science', topic: 'Cells', updatedAt: 20 },
+    { id: 'e', level: 'P5', subject: 'math', topic: 'Fractions', updatedAt: 30 },
+    { id: 'f', level: '', subject: '', updatedAt: 99 },
+    { id: 'g', level: 'P5', subject: 'science', topic: 'heat', updatedAt: 40 },
+    { id: 'h', level: 'S1', subject: 'science', updatedAt: 1 },
+    { id: 'i', level: 'P3', subject: 'science', updatedAt: 1 }
+  ];
+  const groups = S.shelfGroups(ws);
+  eq('one shelf per level and subject, levels up the ladder, subjects in the centre\'s order, untagged LAST',
+     groups.map(g => g.level + '|' + g.subject), ['P3|science', 'P5|science', 'P5|math', 'P6|math', 'S1|science', '|']);
+  const p5sci = groups[1];
+  eq('along a shelf the papers are filed by topic, a topic\'s newest first, no topic at the end',
+     p5sci.items.map(w => w.id), ['d', 'g', 'a', 'c']);
+  eq('an untagged worksheet is on its own shelf rather than dropped', groups[5].items.map(w => w.id), ['f']);
+  eq('a shelf says what it holds', [S.shelfTitle(p5sci), S.shelfTitle(groups[5])], ['P5 · Science', 'Any level · Any subject']);
+  eq('an empty list is no shelves', S.shelfGroups([]), []);
+  eq('a Firestore stamp, a Date and a number all order a shelf',
+     S.shelfGroups([
+       { id: 'x', level: 'P4', subject: 'math', updatedAt: { toMillis: () => 5 } },
+       { id: 'y', level: 'P4', subject: 'math', updatedAt: new Date(9) },
+       { id: 'z', level: 'P4', subject: 'math', updatedAt: 7 }
+     ])[0].items.map(w => w.id), ['y', 'z', 'x']);
+  /* THE WHEEL, pinned as a function of distance from the middle. */
+  const mid = S.shelfWheelPose(0);
+  eq('the card in the middle faces you, full size', [mid.rot, mid.z, mid.scale, mid.op], [0, 0, 1, 1]);
+  const l = S.shelfWheelPose(-0.5), r = S.shelfWheelPose(0.5);
+  ok('a card to the left turns the opposite way to a card to the right, by the same amount', l.rot === -r.rot && r.rot < 0, JSON.stringify([l, r]));
+  ok('…and both sink and shrink the same', l.z === r.z && l.z < 0 && l.scale === r.scale && l.scale < 1);
+  ok('the pose is clamped, so a card far along the shelf is not turned edge-on into nothing',
+     S.shelfWheelPose(4).rot === S.shelfWheelPose(1).rot && S.shelfWheelPose(4).scale > 0.5 && S.shelfWheelPose(-9).op > 0.5);
+  ok('a card nearer the middle is turned less', Math.abs(S.shelfWheelPose(0.2).rot) < Math.abs(S.shelfWheelPose(0.6).rot));
+  eq('with motion switched off a card is never turned at all', S.shelfWheelPose(0.7, false), { rot: 0, z: 0, scale: 1, op: 1 });
+  ok('junk is the middle pose', S.shelfWheelPose('x').rot === 0 && S.shelfWheelPose(undefined).scale === 1);
+  ok('the row is the scroller and snaps to a paper', /\.shelfRow \{[^}]*scroll-snap-type: x mandatory/.test(html) && /\.shelfItem \{[^}]*scroll-snap-align: center/.test(html));
+  ok('the wheel is posed off the scroll, one paint a frame', /row\.addEventListener\('scroll', kick, \{ passive: true \}\)/.test(html) && /requestAnimationFrame\(run\)/.test(html));
+  ok('the home screen is built from shelfGroups', /var groups = shelfGroups\(worksheets\);\n\s*groups\.forEach\(function \(g\) \{ box\.appendChild\(shelfNode\(g\)\); \}\);/.test(html));
+  ok('a card wears its topic and its school', /chipNode\('📖 ' \+ w\.topic, 'chip chipTopic'\)/.test(html) && /chipNode\('🏫 ' \+ w\.school, 'chip chipSchool'\)/.test(html));
+  ok('the school and the topic ride every save', /school: wsMeta\.school \|\| '',\n\s*topic: wsMeta\.topic \|\| '',/.test(html));
+  ok('…and come back when a worksheet is opened', /wsMeta\.school = w\.school \|\| '';\n\s*wsMeta\.topic = w\.topic \|\| '';/.test(html));
+  ok('…and are taken off the paper at upload', /wsMeta\.school = got\.school;\n\s*wsMeta\.topic = got\.topic;/.test(html));
+}
 eq('an unknown page count is not a stack', S.coverSheets(undefined), 0);
 
 /* ---- Drawing it ---- */

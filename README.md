@@ -12,6 +12,21 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.23.0 — the school in the name, a bookshelf, and the whole answer key put away
+
+- **An exam paper is named after the school that set it.** The read now takes the **school** off
+  the cover as printed and, for an exam paper, puts it at the front of the name — *"Nan Hua
+  Primary School — P5 Science SA2 2024"*. A topical worksheet keeps its own name; a name you typed
+  is never touched. The school and the worksheet's **topic** are shown as chips on the card.
+- **Your worksheets are on a bookshelf.** One shelf per level and subject — P3 · Science,
+  P5 · Science, P5 · Maths… — and on each shelf the papers stand in a row you **swipe sideways
+  like a wheel**, sorted by topic and then newest first. The paper in the middle faces you; the
+  ones either side turn away. ‹ › nudge one paper at a time on a laptop.
+- **The answer key is walked back one page at a time.** A marking scheme longer than four pages
+  used to be only partly hidden. The buddy now reads from the last page backwards, one page per
+  look, hiding each page that is a key and stopping at the **first page confirmed not to be one**
+  — so a ten-page key is put away whole and the question page before it is left where it was.
+
 ## v1.22.0 — the paper is read when it is uploaded
 
 Upload a PDF and Chung GPT reads its **first three and last four pages** once, as pictures, and
