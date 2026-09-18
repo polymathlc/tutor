@@ -497,6 +497,93 @@ ok('…and never hides a page the student has written on',
    /annotations\.forEach[\s\S]{0,120}inked\[a\.page\]/.test(scanSrc) && /!inked\[n\]/.test(scanSrc),
    scanSrc.slice(0, 900).replace(/\s+/g, ' '));
 
+/* =====================================================================
+   📖 THE PAPER, READ AT UPLOAD — subject, level, name and key pages off
+   the first and last pages. Every failure here is silent: a level
+   overridden files a student's worksheet where they cannot see it, a
+   subject they do not take does the same, and a key page the model
+   invented for a page it never saw is a question page gone.
+   ===================================================================== */
+section('The paper, read at upload');
+
+eq('the window is the first three and the last four pages, in order',
+   S.paperReadWindow(12), [1, 2, 3, 9, 10, 11, 12]);
+eq('a short paper is every page once, never twice', S.paperReadWindow(5), [1, 2, 3, 4, 5]);
+eq('a one-page paper is one page', S.paperReadWindow(1), [1]);
+eq('no pages is no window', S.paperReadWindow(0), []);
+eq('the head and the tail can be chosen', S.paperReadWindow(20, 1, 2), [1, 19, 20]);
+ok('the window covers a paper no bigger than head plus tail, which is what stops the eye pass running twice',
+   S.paperReadWindow(7).length >= 7 && S.paperReadWindow(8).length < 8);
+
+/* What the model wrote, made ours. */
+eq('"Mathematics" is math', S.paperReadSubject('Mathematics'), 'math');
+eq('"Maths" is math', S.paperReadSubject('maths'), 'math');
+eq('"Science (Primary)" is science', S.paperReadSubject('Science (Primary)'), 'science');
+eq('华文 is chinese', S.paperReadSubject('华文'), 'chinese');
+eq('a subject the centre does not teach is nothing', S.paperReadSubject('Social Studies'), '');
+eq('"Primary 5" is P5', S.paperReadLevel('Primary 5'), 'P5');
+eq('"p6" is P6', S.paperReadLevel('p6'), 'P6');
+eq('"Secondary 1" and "Sec 1" are S1', [S.paperReadLevel('Secondary 1'), S.paperReadLevel('Sec 1')], ['S1', 'S1']);
+eq('a level off the ladder is nothing — "Grade 5", "5", "hard"',
+   [S.paperReadLevel('Grade 5'), S.paperReadLevel('5'), S.paperReadLevel('hard')], ['', '', '']);
+eq('P1 is not a level this centre takes', S.paperReadLevel('P1'), '');
+
+const cleaned = S.paperReadClean(
+  { subject: 'MATHS', level: 'primary 5', title: '  P5   Maths  SA2 2024 ', keyPages: ['12', 11, 11, 4, 99, 'x'] },
+  [1, 2, 3, 9, 10, 11, 12]);
+eq('the clean read carries our subject, our level and a tidied title',
+   [cleaned.subject, cleaned.level, cleaned.title], ['math', 'P5', 'P5 Maths SA2 2024']);
+eq('key pages are only the pages that were SHOWN, deduped and sorted — 4 and 99 were never on screen',
+   cleaned.keyPages, [11, 12]);
+ok('a title is cut to a line', S.paperReadClean({ title: 'x'.repeat(300) }, []).title.length <= S.PAPER_READ_TITLE_MAX);
+eq('a reply that is not an object is an empty read',
+   S.paperReadClean(null, [1, 2]), { subject: '', level: '', title: '', keyPages: [] });
+eq('keyPages that is not a list is no key pages', S.paperReadClean({ keyPages: 'all' }, [1, 2]).keyPages, []);
+
+/* THE RULE THAT MATTERS: nothing chosen is overridden, and a blank is only
+   ever filled with a value this account may hold. */
+const readP6 = { subject: 'math', level: 'P6', title: 'P6 Maths Prelim', keyPages: [10] };
+let ap = S.paperApplyRead(readP6, { level: 'P4', levelFree: false, subject: 'science', subjects: ['science'], name: 'Heat', nameTyped: true });
+eq('a STUDENT\'s own level is never overridden by the paper', ap.level, 'P4');
+eq('…nor a subject already chosen', ap.subject, 'science');
+eq('…nor a name the uploader typed', ap.name, 'Heat');
+eq('…so nothing was filled', ap.filled, []);
+ap = S.paperApplyRead(readP6, { level: '', levelFree: true, subject: '', subjects: null, name: 'scan0042', nameTyped: false });
+eq('the teacher\'s blank level is filled from the paper', ap.level, 'P6');
+eq('…and the blank subject', ap.subject, 'math');
+eq('…and a file name is replaced by what the paper calls itself', ap.name, 'P6 Maths Prelim');
+eq('…and each is named back', ap.filled, ['P6', 'Mathematics', '“P6 Maths Prelim”']);
+ap = S.paperApplyRead(readP6, { level: '', levelFree: false, subject: '', subjects: ['science'], name: 'x', nameTyped: true });
+eq('a level that is not free stays blank even when the paper names one', ap.level, '');
+eq('a subject the student does not take is refused, and their own stands in', ap.subject, 'science');
+ap = S.paperApplyRead({ subject: 'science', level: 'P5' }, { level: '', levelFree: true, subject: '', subjects: ['math', 'science'], name: 'x', nameTyped: true });
+eq('a student who takes both is filed under the one the paper says', ap.subject, 'science');
+ap = S.paperApplyRead(null, { level: '', levelFree: true, subject: '', subjects: ['math', 'science'], name: 'x', nameTyped: true });
+eq('with NO read at all a two-subject student still gets a subject they take', ap.subject, 'math');
+eq('…and nothing else moves', [ap.level, ap.name, ap.filled], ['', 'x', []]);
+ap = S.paperApplyRead({ subject: 'Social Studies', level: 'Grade 9' }, { level: '', levelFree: true, subject: '', subjects: null, name: 'x', nameTyped: false });
+eq('a read the cleaner would refuse fills nothing', [ap.level, ap.subject, ap.filled], ['', '', []]);
+
+/* Against the file: the read is ADDED to the scan, the tail is walked
+   backwards, and the whole-paper eye stands down when the read saw it all. */
+ok('the scan UNIONS the read\'s key pages with what the text found',
+   /readPages\.forEach\(function \(n\) \{ if \(found\.indexOf\(n\) < 0\) found\.push\(n\); \}\);/.test(scanSrc));
+ok('…and only looks at the whole paper when the read has not already',
+   /if \(!anyText && !found\.length && !readSawAll && aiAvailable\(true\)\)/.test(scanSrc));
+ok('…and walks the key backwards from the tail', /found = await keyExtendTail\(found\);/.test(scanSrc));
+ok('the whole-paper look goes through the one eye', /async function keyScanByEye\(\) \{\n\s*return keyEyeOn\(pages\.map/.test(SRC_KEY));
+ok('the tail walk is bounded', /for \(var round = 0; round < PAPER_READ_ROUNDS; round\+\+\)/.test(SRC_KEY));
+ok('the read is ONE call over small pictures, with a deadline',
+   /system: PAPER_READ_SYS, maxOutputTokens: 500, temperature: 0, json: true, thinkingLevel: 'low',\n\s*images: imgs, timeoutMs: 45000/.test(SRC_KEY));
+ok('the read swallows its own failure at upload', /try \{ read = await paperReadEnds\(\); \}\n\s*catch/.test(html));
+ok('what the read changed is applied only to the worksheet still open', /if \(currentDocId === id\) \{\n\s*wsMeta\.level = got\.level;/.test(html));
+ok('the upload dialog offers the blank the read fills — the level', /<option value="">✨ Let Chung GPT read it off the paper<\/option>/.test(html));
+ok('…and the subject, only where there is more than one to choose from',
+   /if \(subs\.length >= 2\) \{\n\s*var auto = document\.createElement\('option'\);\n\s*auto\.value = '';/.test(html));
+ok('the prompt says to LEAVE OUT a page it is not sure of', /LEAVE IT OUT/.test(S.PAPER_READ_SYS));
+ok('…and never to guess a level from how hard the questions look', /never guess a level/.test(S.PAPER_READ_SYS));
+ok('…and that handwriting is not a key', /handwriting is the student/.test(S.PAPER_READ_SYS));
+
 /* What actually reaches the model. The rows are TEXT, so they can travel in
    every batch — the difference between "the key is considered" and "the key
    is considered on the first page". */
@@ -1076,6 +1163,9 @@ const UNGROUNDED_BY_DESIGN = {
                 'writes that down instead of what is printed, and a key rewritten on the way in is a whole ' +
                 'class marked against something the paper never said.',
   KEY_EYE_SYS:  'asks which PAGES are the answer key. It returns page numbers, not science said to anybody.',
+  PAPER_READ_SYS: 'reads what a paper IS — its subject, its level, its name and which of its pages are its ' +
+                  'answer key — off its first and last pages. Metadata about the paper, not science said to ' +
+                  'anybody; grounded, it would file every paper under whatever the notes happen to be about.',
   MB_BUILD_SYS: 'REPRODUCES a printed question so it can be tried again. It is a transcriber with a ruler: it ' +
                 'sets out what is on the page and draws rectangles round the figures. A reproducer told how ' +
                 'this teacher words an answer rewords the QUESTION, and a question quietly improved on the way ' +
@@ -2206,7 +2296,9 @@ ok('the list is filtered by the rule', /worksheets = out\.filter\(canSeeWorkshee
 /* A worksheet tagged with a level the student is not is one that vanishes
    from their own list the moment it is saved. */
 ok('an upload takes the level off the active student, never a picker',
-   /var level = \(!isAdmin\(currentUser\) && upSt && upSt\.level\) \? upSt\.level/.test(html));
+   /var levelFixed = !!\(!isAdmin\(currentUser\) && upSt && upSt\.level\);\n\s*var level = levelFixed \? upSt\.level : \$\('upLevel'\)\.value;/.test(html));
+ok('…and the paper read at upload is TOLD that level is not free',
+   /paperApplyRead\(read, \{\n\s*level: level, levelFree: !levelFixed,/.test(html));
 ok('the students are dropped on every account change',
    /myStudents = \[\];[\s\S]{0,120}currentDocId = null;/.test(html));
 
@@ -2489,7 +2581,10 @@ S.currentUser = null;
 ok('the cover is drawn from the pages the STUDENT has',
    /makeCoverDataUrl[\s\S]{0,400}studentPages\(\)/.test(html));
 ok('…and it is made after the key scan, never before it',
-   html.indexOf('await keyAutoScan(true)') < html.indexOf("await ensureCover(id, '')"));
+   html.indexOf('await keyAutoScan(true, read)') < html.indexOf("await ensureCover(id, '')"));
+ok('…which itself comes after the paper has been read, so the read\'s key pages are put away too',
+   html.indexOf('read = await paperReadEnds()') > 0 &&
+   html.indexOf('read = await paperReadEnds()') < html.indexOf('await keyAutoScan(true, read)'));
 ok('an older worksheet gets one the first time it is opened',
    /offerLocalBackup\(id[\s\S]{0,320}ensureCover\(id, w\.cover\)/.test(html));
 /* A class of thirty costs one render, the same way the key rows travel

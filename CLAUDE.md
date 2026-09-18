@@ -817,6 +817,65 @@ written into a text box exactly where they tapped.
   scrolls while a student is speaking, and a ⏹ Done button that scrolls away is
   one they cannot find.
 
+## 📖 THE PAPER, READ AT UPLOAD — subject, level, name and key pages off its first and last pages (v1.22.0)
+
+`PAPER_READ_HEAD` / `PAPER_READ_TAIL` / `PAPER_READ_ROUNDS` / `PAPER_READ_PX` /
+`PAPER_READ_TITLE_MAX` / `PAPER_READ_SYS` / `paperReadWindow` / `paperReadSubject` /
+`paperReadLevel` / **`paperReadClean`** / **`paperReadEnds`** / **`paperApplyRead`** /
+**`keyEyeOn`** / `keyScanByEye` / **`keyExtendTail`** / `keyScanPdf(read)` /
+`keyAutoScan(defer, read)` (all inside the 🔑 THE ANSWER KEY section — search `THE PAPER, READ AT
+UPLOAD`), the `read` / `got` half of `handleUpload`, the ✨ *Let Chung GPT read it off the paper*
+rows on `#upLevel` and `#upSubject`, and the 🔑 hint in the upload dialog.
+
+A worksheet arrives as a PDF and nothing about it is known until somebody says: the upload dialog
+asked for the level, the subject and the name, and got most of them blank or wrong — *Not sure*,
+the first subject on the list, the file's own name. The key scan then read the PDF's text layer,
+which a scanned paper does not have, so a marking scheme at the back of a photographed paper was
+served to the student as ordinary pages. The paper already prints all four things on its cover and
+its last pages, so **those pages are shown to the model ONCE, as pictures**, and it is asked what
+the paper IS.
+
+- **IT FILLS BLANKS AND OVERRIDES NOTHING, and `paperApplyRead` is the ONE place that is
+  decided.** A student's level comes off THEIR OWN ROW (see EVERY STUDENT HAS A LEVEL) and is
+  handed in with `levelFree: false`, so a paper that says "Primary 6" cannot re-tag a P5 child's
+  worksheet — which would take it off their own list the moment it was saved, with nothing on any
+  screen to say why. A subject is filled only from the list the student takes (`subjects`), and a
+  two-subject student whose paper names neither gets the FIRST of their own, never one they do not
+  take. A name the uploader TYPED is kept; only a file name is replaced by what the paper calls
+  itself. Everything filled is named back in a toast, because a worksheet quietly re-titled and
+  re-filed is one nobody can find.
+- **THE READ IS ADDED TO THE SCAN, NEVER SUBSTITUTED FOR IT.** `keyScanPdf(read)` still runs the
+  text pass, still refuses to hide an inked page and still refuses to hide every page — the two
+  guards the 🔑 section has always carried — and UNIONS the read's key pages with what the text
+  found. The whole-paper eye pass stands down only when the read already saw every page
+  (`readSawAll`), which on a paper of seven pages or fewer it did: the same question asked twice is
+  a second bill for the same answer.
+- **THE TAIL IS WALKED BACKWARDS** (`keyExtendTail`). A marking scheme is often longer than the
+  last four pages, and a read that stops at the window's edge hides pages 11–12 and serves page 10
+  of the same key. When the FIRST page of the tail window is a key page, the four before it are
+  shown to `keyEyeOn`, and again, until a window's first page is not a key or `PAPER_READ_ROUNDS`
+  is spent. `keyEyeOn` is `keyScanByEye`'s body lifted out to take a page list, so the whole-paper
+  look and the walk are one eye and the `KEY_EYE_SYS` exemption is still used by a real call.
+- **A KEY PAGE THE MODEL NEVER SAW IS NOT A KEY PAGE.** `paperReadClean` keeps only page numbers
+  that were in the window, deduped and sorted; the model is told the numbers as LABELLED beside
+  each picture, so a paper of twelve pages is asked about 9–12, not "the third picture".
+- **IT ERRS TOWARDS LEAVING A PAGE ALONE**, the rule the whole 🔑 section carries, and the prompt
+  says so twice: leave a doubtful page out, and handwriting is the student's work, not the key.
+- **THE LEVEL IS READ OFF THE PAPER'S OWN HEADING, never guessed from difficulty.** The prompt
+  says that in as many words, and `paperReadLevel` accepts only the ladder (`LEVELS`) after folding
+  "Primary 5" / "Pri 5" / "Sec 1" — "Grade 5", "5" and "hard" come back empty, and an empty level
+  leaves the field blank rather than filing the worksheet somewhere.
+- **IT IS ONE CALL, SMALL, WITH A DEADLINE, and it runs AFTER the worksheet is on screen.** Seven
+  pages at `PAPER_READ_PX`, `timeoutMs` 45 s, and a failure is caught and read as "nothing learned":
+  an upload with the AI off, or a read that times out, is byte-for-byte the upload it always was.
+  It sits between the "Ready" toast and `keyAutoScan(true, read)`, which still runs before
+  `ensureCover` — the read's key pages must be put away before the cover is drawn, or a marking
+  scheme on the last page is still an ordinary page when the front page is chosen.
+- **IT IS UNGROUNDED BY DESIGN and exempt from the census by name** (`PAPER_READ_SYS`). It reads
+  what a paper IS — metadata — and says no science to anybody; grounded, it would file every paper
+  under whatever the teaching notes happen to be about.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 🔑 THE ANSWER KEY — hidden from the student, read by the buddy (v1.1.0)
 
 `wsKey` / `pageIsKey` / **`studentPages`** / `applyKeyVisibility` /
@@ -1854,6 +1913,22 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📖 the paper read at upload** (`PAPER_READ_SYS`, `paperReadWindow`,
+  `paperReadSubject`, `paperReadLevel`, `paperReadClean`, `paperReadEnds`, `paperApplyRead`,
+  `keyEyeOn`, `keyExtendTail`, `keyScanPdf`'s `read`, `keyAutoScan`'s `read`, the `read` / `got`
+  half of `handleUpload`, or the ✨ rows on `#upLevel` / `#upSubject`), run
+  `node tools/tutor-tests.mjs`. Every failure is silent and the upload still lands. Let
+  `paperApplyRead` take the paper's level over a STUDENT's own and a P5 child's worksheet is filed
+  at P6 and vanishes from their list the moment it is saved; let it fill a subject they do not take
+  and the same happens through the other field. Let `paperReadClean` keep a page number the model
+  never saw and a question page is put away as a key. Substitute the read for the text scan instead
+  of unioning it and a text-layer key the read did not see comes back on screen; drop the
+  `readSawAll` guard and a short scanned paper pays for the same look twice. Stop walking the tail
+  and pages 11–12 of a marking scheme are hidden while page 10 of it is served. Read the level from
+  how hard the questions look and a P4 revision sheet is filed at P6. Move the read after
+  `keyAutoScan` and the key pages it found are never put away; move `keyAutoScan` after
+  `ensureCover` and the marking scheme's last page can be the cover. And ground the prompt and
+  every paper is filed under whatever the notes are about that week.
 - After touching **🔮 the live orb or the filler scrubber** (`LIVE_ORB_MASK`, `LIVE_ORB_STRIDE`,
   `LIVE_ORB_GRAIN_COVER`, `LIVE_ORB_IDLE_GUSTS`, `LIVE_ORB_SNAP`, `liveOrbPitch`,
   `liveOrbGrains`, `liveOrbBroken`, `liveOrbTarget`, `liveOrbEnter`, `liveOrbStep`,

@@ -1508,7 +1508,7 @@
              The teacher, who uploads for whoever, keeps both. -->
         <div class="field hidden" id="upLevelWrap">
           <label for="upLevel">Level</label>
-          <select id="upLevel"><option value="">Not sure</option></select>
+          <select id="upLevel"><option value="">✨ Let Chung GPT read it off the paper</option></select>
         </div>
         <div class="field" id="upSubjectWrap">
           <label for="upSubject">Subject</label>
@@ -1526,9 +1526,11 @@
 
       <h3 style="margin-top:24px;font-size:1rem;font-weight:700">🔑 Does it have an answer key?</h3>
       <p class="hint" style="margin-top:5px">
-        If the answers are printed at the back, Chung GPT finds those pages and <b>puts them away</b> — you
-        will not see them, and they are not marked. Attach a separate marking scheme here if you have one; it
-        is never shown on screen, only used to mark you and to aim the hints.
+        Chung GPT reads the first and last pages of the paper when it is uploaded: it fills in the level,
+        the subject and the name if you left them blank, and if the answers are printed at the back it finds
+        those pages and <b>puts them away</b> — you will not see them, and they are not marked. Attach a
+        separate marking scheme here if you have one; it is never shown on screen, only used to mark you and
+        to aim the hints.
       </p>
       <div class="rowBtns" style="margin-top:12px">
         <button class="btn" id="upKeyBtn">📎 Attach an answer key (optional)</button>
@@ -1919,7 +1921,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.21.0';
+var APP_VERSION = 'v1.22.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -5083,6 +5085,181 @@ async function keyReadOwnPages(signal) {
   return keyReadImages(imgs, 'this worksheet\'s own answer key', signal);
 }
 
+/* ---- 📖 THE PAPER, READ AT UPLOAD ----
+   A worksheet arrives as a PDF and NOTHING about it — its subject, the
+   level it is set for, what it calls itself, and which of its pages are the
+   answer key — is known until somebody says. The upload dialog used to ask
+   for all four and get most of them wrong or blank: "Not sure" on the
+   level, the first subject on the list, the file's own name, and a key
+   found only where the PDF happened to carry a text layer.
+
+   The paper already says all four, on its front page and on its last few.
+   So the FIRST few and the LAST few pages are shown to the model ONCE, as
+   pictures, and it is asked what the paper IS. That is a read of the
+   COVER and the BACK — the places a school paper prints its own name, its
+   level and its answer key — and never a read of the questions.
+
+   Three rules hold it, and each is a way it could go quietly wrong:
+     • IT FILLS BLANKS AND OVERRIDES NOTHING. A student's level comes off
+       THEIR OWN ROW and is never a guess (see EVERY STUDENT HAS A LEVEL): a
+       worksheet tagged with a level they are not vanishes from their list
+       the moment it is saved. A subject a student does not take is refused
+       for the same reason, and a name the uploader typed is kept.
+     • THE KEY IT NAMES IS ADDED TO THE SCAN, never substituted for it. The
+       text scan and the ink guard stay exactly as they were; what the read
+       adds is the pages a SCANNED paper's text layer could never show, and
+       the tail is walked backwards from there (`keyExtendTail`) because a
+       long marking scheme starts before the last four pages.
+     • IT ERRS TOWARDS LEAVING A PAGE ALONE, the rule the whole 🔑 section
+       carries: a key page left showing is one tap to put away, a question
+       page wrongly hidden is a question that has VANISHED.
+   It is ungrounded by design and exempt from the census by name: it reads
+   what a paper IS — metadata — and says no science to anybody. */
+var PAPER_READ_HEAD = 3;      // the front pages: the cover, the instructions, question 1
+var PAPER_READ_TAIL = 4;      // the back pages: where a key is printed
+var PAPER_READ_ROUNDS = 3;    // how many times the tail may be walked backwards
+var PAPER_READ_PX = 800;      // small on purpose: this asks what a page IS
+var PAPER_READ_TITLE_MAX = 80;
+
+var PAPER_READ_SYS =
+  'You are looking at the FIRST few and the LAST few pages of one school worksheet or exam paper from ' +
+  'Singapore, in order, to say what the paper IS. Reply with STRICT JSON only: ' +
+  '{"subject":"science","level":"P5","title":"P5 Science SA2 2024","keyPages":[11,12]}. ' +
+  'subject is exactly one of "science", "math", "english", "chinese", or "" when the paper does not make ' +
+  'it plain. level is the year the paper is SET FOR as PRINTED on it — "P3", "P4", "P5", "P6" or "S1" — ' +
+  'read off its own heading ("Primary 5", "P5", "Sec 1", "Secondary 1"); never guess a level from how hard ' +
+  'the questions look, and use "" when nothing on the paper says. title is what the paper calls itself, in ' +
+  'at most ten words, or "" when it has no heading. keyPages are the PAGE NUMBERS, as labelled beside ' +
+  'each picture, of the pages that are the ANSWER KEY rather than questions for the student to answer: an ' +
+  'answer key, answer sheet, marking scheme, model answers, suggested answers, 参考答案 or 答案 — a list of ' +
+  'answers to questions printed elsewhere. A page of questions is NOT a key page even when answers have ' +
+  'been filled in by hand: handwriting is the student\'s work, not the paper\'s key. If you are not sure ' +
+  'about a page, LEAVE IT OUT — a question page wrongly called a key disappears out of the student\'s ' +
+  'worksheet. Return "keyPages":[] when none of the pages shown is a key.';
+
+/* The pages to show: the first `head` and the last `tail`, as PAGE NUMBERS,
+   in order and never twice — a five-page paper is five pages, not seven. */
+function paperReadWindow(count, head, tail) {
+  count = Math.max(0, parseInt(count, 10) || 0);
+  head = head === undefined ? PAPER_READ_HEAD : head;
+  tail = tail === undefined ? PAPER_READ_TAIL : tail;
+  var seen = {}, out = [];
+  var add = function (n) { if (n >= 1 && n <= count && !seen[n]) { seen[n] = 1; out.push(n); } };
+  for (var i = 1; i <= head; i++) add(i);
+  for (var j = count - tail + 1; j <= count; j++) add(j);
+  out.sort(function (a, b) { return a - b; });
+  return out;
+}
+
+/* One place a subject the model wrote becomes one of ours, or nothing.
+   "Maths", "Mathematics", "Science (Primary)" and "华文" all come up. */
+function paperReadSubject(v) {
+  var s = String(v || '').trim().toLowerCase();
+  if (!s) return '';
+  if (SUBJECT_OK[s]) return s;
+  if (/math/.test(s)) return 'math';
+  if (/science/.test(s)) return 'science';
+  if (/english/.test(s)) return 'english';
+  if (/chinese|华|华文|mandarin/.test(s)) return 'chinese';
+  return '';
+}
+
+/* One place a level the model wrote becomes one of ours, or nothing.
+   "Primary 5", "Pri 5", "p5", "Secondary 1" and "Sec 1" are all the same
+   rung; "Grade 5", "5" and "hard" are not a rung at all. */
+function paperReadLevel(v) {
+  var s = String(v || '').trim().toUpperCase();
+  if (!s) return '';
+  s = s.replace(/^PRIMARY\s*/, 'P').replace(/^PRI\.?\s*/, 'P')
+       .replace(/^SECONDARY\s*/, 'S').replace(/^SEC\.?\s*/, 'S')
+       .replace(/\s+/g, '');
+  return LEVELS.indexOf(s) >= 0 ? s : '';
+}
+
+/* What the model said, made safe: only our subjects, only our levels, a
+   title cut to a line, and key pages that were actually SHOWN — a page
+   number the model invented for a page it never saw is not a key page. */
+function paperReadClean(res, nums) {
+  res = res && typeof res === 'object' ? res : {};
+  var shown = {};
+  (nums || []).forEach(function (n) { shown[n] = 1; });
+  var seen = {}, keyPages = [];
+  (Array.isArray(res.keyPages) ? res.keyPages : []).forEach(function (n) {
+    var i = parseInt(n, 10);
+    if (i >= 1 && shown[i] && !seen[i]) { seen[i] = 1; keyPages.push(i); }
+  });
+  keyPages.sort(function (a, b) { return a - b; });
+  var title = String(res.title || '').replace(/\s+/g, ' ').trim();
+  if (title.length > PAPER_READ_TITLE_MAX) title = title.slice(0, PAPER_READ_TITLE_MAX).trim();
+  return {
+    subject: paperReadSubject(res.subject),
+    level: paperReadLevel(res.level),
+    title: title,
+    keyPages: keyPages
+  };
+}
+
+/* Show the ends of the open PDF to the model and ask what the paper is.
+   ONE call. Null when there is nothing to read or no AI to read it — and
+   every caller treats null as "nothing learned", so an upload with the AI
+   off is byte-for-byte the upload it always was. */
+async function paperReadEnds() {
+  if (!pdfDoc || !pages.length || !aiAvailable(true)) return null;
+  var nums = paperReadWindow(pages.length);
+  var imgs = [], got = [];
+  for (var i = 0; i < nums.length; i++) {
+    var p = pages[nums[i] - 1];
+    if (!p) continue;
+    await ensurePageRaster(p);
+    var data = compositeJpeg(p, PAPER_READ_PX, 0.7);
+    if (data) { imgs.push({ mimeType: 'image/jpeg', data: data }); got.push(p.num); }
+  }
+  if (!imgs.length) return null;
+  var raw = await window.askGemini(
+    'These are pages ' + got.join(', ') + ' of a ' + pages.length + '-page paper, in that order. ' +
+    'What subject and level is it, what is it called, and which of these pages are its answer key?',
+    { system: PAPER_READ_SYS, maxOutputTokens: 500, temperature: 0, json: true, thinkingLevel: 'low',
+      images: imgs, timeoutMs: 45000, routeTimeoutMs: 25000 });
+  return paperReadClean(_parseAIJson(raw), got);
+}
+
+/* What the read is allowed to change, decided ONCE. `chosen` is what the
+   upload dialog already knows:
+     level      — the level in hand ('' when nobody said)
+     levelFree  — false when the level is the STUDENT'S OWN and not a guess
+     subject    — the subject in hand
+     subjects   — the subjects this student may upload in, or null for any
+     name       — the name in hand
+     nameTyped  — true when the uploader typed it, false when it is the file's
+   Nothing already chosen is overridden; a blank is filled only with a value
+   this account is allowed to hold. `filled` says what changed, in words. */
+function paperApplyRead(read, chosen) {
+  read = read || {};
+  chosen = chosen || {};
+  var out = { level: chosen.level || '', subject: chosen.subject || '', name: chosen.name || '', filled: [] };
+  var allowed = Array.isArray(chosen.subjects) ? chosen.subjects.filter(function (s) { return SUBJECT_OK[s]; }) : null;
+  if (!out.level && chosen.levelFree !== false && read.level && LEVELS.indexOf(read.level) >= 0) {
+    out.level = read.level;
+    out.filled.push(levelLabel(read.level));
+  }
+  if (!out.subject) {
+    var want = paperReadSubject(read.subject);
+    if (want && (allowed ? allowed.indexOf(want) >= 0 : SUBJECT_OK[want])) {
+      out.subject = want;
+      out.filled.push(subjectLabel(want));
+    } else if (allowed && allowed.length) {
+      // A student who takes two subjects and a paper that says neither: the
+      // first of THEIR subjects, never one they do not take.
+      out.subject = allowed[0];
+    }
+  }
+  if (!chosen.nameTyped && read.title) {
+    out.name = read.title;
+    out.filled.push('“' + read.title + '”');
+  }
+  return out;
+}
+
 /* ---- Finding the key pages when the worksheet is opened ----
    Runs ONCE per worksheet, on upload. Two guards are what make hiding pages
    safe at all, and neither is optional:
@@ -5090,7 +5267,7 @@ async function keyReadOwnPages(signal) {
        is not a worksheet, it is a bug that looks like a failed upload;
      • it will never hide a page the student has already written on — ink on
        a page is proof it was theirs to answer, whatever it looks like. */
-async function keyScanPdf() {
+async function keyScanPdf(read) {
   if (!pdfDoc || !pages.length) return [];
   var found = [];
   var anyText = false;
@@ -5099,16 +5276,31 @@ async function keyScanPdf() {
     if (t.replace(/\s+/g, '').length > 40) anyText = true;
     if (keyPageLooksLikeKey(t)) found.push(pages[i].num);
   }
+  // What the paper read at upload said its key pages were is ADDED to what
+  // the text found — it saw the back pages as pictures, which is the one
+  // thing the text pass cannot do on a scanned paper.
+  var readPages = (read && Array.isArray(read.keyPages)) ? read.keyPages : [];
+  readPages.forEach(function (n) { if (found.indexOf(n) < 0) found.push(n); });
   // A scanned or photographed worksheet has no text layer at all, so the
   // reading above could not have found anything. That is not "no key" — it
-  // is "nothing to read", and it is the commonest kind of paper here.
-  if (!anyText && !found.length && aiAvailable(true)) {
+  // is "nothing to read", and it is the commonest kind of paper here. When
+  // the paper read already looked at every page, looking again is the same
+  // question asked twice.
+  var readSawAll = !!read && paperReadWindow(pages.length).length >= pages.length;
+  if (!anyText && !found.length && !readSawAll && aiAvailable(true)) {
     try { found = await keyScanByEye(); }
     catch (e) { console.warn('The look for answer-key pages failed', e); }
+  }
+  // A marking scheme that starts before the last pages: walk backwards
+  // from the ones already found until a page is not a key.
+  if (found.length && aiAvailable(true)) {
+    try { found = await keyExtendTail(found); }
+    catch (e) { console.warn('Extending the answer key backwards failed', e); }
   }
   var inked = {};
   annotations.forEach(function (a) { inked[a.page] = 1; });
   found = found.filter(function (n) { return !inked[n]; });
+  found.sort(function (a, b) { return a - b; });
   if (found.length >= pages.length) return [];
   return found;
 }
@@ -5122,15 +5314,20 @@ var KEY_EYE_SYS =
   'a page, LEAVE IT OUT — a question page wrongly called a key disappears out of the student\'s worksheet. ' +
   'The numbers are 1 for the first attached picture. Return {"keyPages":[]} when none of them is a key.';
 
-async function keyScanByEye() {
+/* Show a run of pages to the model and ask which are the key. `nums` are
+   PAGE NUMBERS; what comes back are page numbers too, only ever from that
+   list. The whole-paper look is this over every page. */
+async function keyEyeOn(nums) {
   var imgs = [];
-  var nums = [];
-  for (var i = 0; i < pages.length; i++) {
-    await ensurePageRaster(pages[i]);
+  var shown = [];
+  for (var i = 0; i < nums.length; i++) {
+    var p = pages[nums[i] - 1];
+    if (!p) continue;
+    await ensurePageRaster(p);
     // Small on purpose: this asks what a page IS, not what it says, and a
     // dozen full-size pages is a big bill for one yes-or-no per page.
-    var data = compositeJpeg(pages[i], 800, 0.7);
-    if (data) { imgs.push({ mimeType: 'image/jpeg', data: data }); nums.push(pages[i].num); }
+    var data = compositeJpeg(p, 800, 0.7);
+    if (data) { imgs.push({ mimeType: 'image/jpeg', data: data }); shown.push(p.num); }
   }
   if (!imgs.length) return [];
   var raw = await window.askGemini(
@@ -5140,8 +5337,34 @@ async function keyScanByEye() {
   var out = [];
   ((res && res.keyPages) || []).forEach(function (n) {
     var i = parseInt(n, 10);
-    if (i >= 1 && i <= nums.length) out.push(nums[i - 1]);
+    if (i >= 1 && i <= shown.length && out.indexOf(shown[i - 1]) < 0) out.push(shown[i - 1]);
   });
+  return out;
+}
+async function keyScanByEye() {
+  return keyEyeOn(pages.map(function (p) { return p.num; }));
+}
+
+/* A marking scheme is often LONGER than the last four pages. When the
+   FIRST page of the tail window is itself a key page, the key may run on
+   backwards past what was shown — so the pages before it are looked at, a
+   window at a time, until one of them is not a key or the paper runs out.
+   Bounded by PAPER_READ_ROUNDS: a paper that is all key is the guard in
+   keyScanPdf's job, not this one's. */
+async function keyExtendTail(found) {
+  var out = found.slice();
+  var lo = pages.length - PAPER_READ_TAIL + 1;
+  for (var round = 0; round < PAPER_READ_ROUNDS; round++) {
+    if (lo <= 1 || out.indexOf(lo) < 0) break;
+    var nums = [];
+    for (var n = Math.max(1, lo - PAPER_READ_TAIL); n < lo; n++) nums.push(n);
+    if (!nums.length) break;
+    var more = await keyEyeOn(nums);
+    more.forEach(function (n) { if (out.indexOf(n) < 0) out.push(n); });
+    if (more.indexOf(nums[0]) < 0) break;   // the run ended inside this window
+    lo = nums[0];
+  }
+  out.sort(function (a, b) { return a - b; });
   return out;
 }
 
@@ -5149,12 +5372,12 @@ async function keyScanByEye() {
    step swallows its own failure — a worksheet whose key could not be read
    is still a worksheet, and it works exactly as it did before any of this
    existed. */
-async function keyAutoScan(defer) {
+async function keyAutoScan(defer, read) {
   if (wsKey.scanned) return;
   wsKey.scanned = true;
   var epoch = wsEpoch;
   var found = [];
-  try { found = await keyScanPdf(); }
+  try { found = await keyScanPdf(read); }
   catch (e) { console.warn('Answer-key scan failed', e); return; }
   if (epoch !== wsEpoch || !found.length) return;
   wsKey.pages = found;
@@ -13392,6 +13615,15 @@ function openUploadModal() {
     : studentSubjectList(st);
   var sel = $('upSubject');
   sel.innerHTML = '';
+  // With more than one subject to choose from, the first row lets the
+  // paper say which it is: the read at upload fills a BLANK subject and
+  // never changes a chosen one, so the blank has to be offered.
+  if (subs.length >= 2) {
+    var auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = '✨ Let Chung GPT read it off the paper';
+    sel.appendChild(auto);
+  }
   subs.forEach(function (v) {
     var o = document.createElement('option');
     o.value = v;
@@ -13424,11 +13656,18 @@ async function handleUpload(file) {
     toast('Please choose a PDF file.');
     return;
   }
+  var nameTyped = !!$('upName').value.trim();
   var name = $('upName').value.trim() || file.name.replace(/\.pdf$/i, '');
-  // The active student's OWN level, never a picker they could get wrong.
+  // The active student's OWN level, never a picker they could get wrong —
+  // and never the paper's own heading either: `levelFixed` is what keeps
+  // the read at upload from overriding it (see paperApplyRead).
   var upSt = activeStudent();
-  var level = (!isAdmin(currentUser) && upSt && upSt.level) ? upSt.level : $('upLevel').value;
+  var levelFixed = !!(!isAdmin(currentUser) && upSt && upSt.level);
+  var level = levelFixed ? upSt.level : $('upLevel').value;
   var subject = $('upSubject').value;
+  // The subjects this upload may be filed under: any for the teacher, only
+  // the student's own for a student.
+  var upSubjects = (isAdmin(currentUser) || !upSt) ? null : studentSubjectList(upSt);
   // Read while the dialog is still on screen: the fields are cleared the
   // next time it opens, and the upload below has several awaits in it.
   var keyFile = upKeyFile;
@@ -13473,6 +13712,31 @@ async function handleUpload(file) {
     if (window.innerWidth > 900) openBuddy('hints'); else closeBuddy();
     loadWorksheets();
     toast('Ready — write your answers on it, and tap 💡 when you get stuck.', 5000);
+    // The paper is READ now, after the worksheet is on screen: the first
+    // and last pages go to the model once, and what comes back fills in the
+    // subject, the level and the name that were left blank, and names the
+    // answer-key pages the scan below then puts away. A read that fails is
+    // an upload exactly as it always was.
+    var read = null;
+    try { read = await paperReadEnds(); }
+    catch (e) { console.warn('Reading the paper at upload failed', e); }
+    var got = paperApplyRead(read, {
+      level: level, levelFree: !levelFixed,
+      subject: subject, subjects: upSubjects,
+      name: name, nameTyped: nameTyped
+    });
+    if (currentDocId === id) {
+      wsMeta.level = got.level;
+      wsMeta.subject = got.subject;
+      if (got.name && got.name !== docName) {
+        docName = got.name;
+        $('wsTitle').textContent = docName;
+      }
+      if (got.filled.length) {
+        setDirty(true);
+        toast('✨ Chung GPT read the paper: ' + got.filled.join(' · '), 6000);
+      }
+    }
     // The key is dealt with AFTER the worksheet is on screen and saved: it
     // takes AI calls and tens of seconds, and a student watching a spinner
     // before they can write on their own paper is the wrong trade. Every
@@ -13480,12 +13744,13 @@ async function handleUpload(file) {
     // Attach, then find the key pages, then read the lot ONCE: reading after
     // each step would transcribe the marking scheme twice.
     if (keyFile) { try { await attachKeyPdf(keyFile, true); } catch (e) { console.warn('key attach failed', e); } }
-    await keyAutoScan(true);
+    await keyAutoScan(true, read);
     if (keyHasAnything()) await keyRefreshRows();
     await performSave(true);
     // AFTER the key scan: `studentPages()` is what the cover reads, and
     // before it has run a marking scheme on page 1 is still an ordinary page.
     await ensureCover(id, '');
+    if (got.filled.length) await loadWorksheets();
     if (pushIt) { await loadWorksheets(); await pushWorksheet(id); }
   } catch (e) {
     console.error(e);
