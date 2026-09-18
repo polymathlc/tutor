@@ -12,6 +12,36 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.18.0 — the diagnostic: every question filed under the syllabus, and kept for the long run
+
+Marking a worksheet now files every question under the **MOE syllabus topic and learning objective**
+it tests, and the report opens with a **diagnostic table** — one line per topic, its objectives
+under it, with the **full marks** and the **marks obtained** on each, the rate over what was
+attempted, and a result in words (Strong · Getting there · Revise · Untried). It is the table a
+parent asks for and the one a student can keep an eye on over a term: the same objective on next
+month's paper lands on the same line.
+
+- **The lists are the teacher's own.** Science is filed under the Science Learning Portal's rapid-add
+  topics (*Heat*, *Electrical Systems*, *Food Chains and Webs*…) and its learning-objective selector —
+  the 79 Learning Outcomes of the MOE Primary Science Syllabus 2023 — and Mathematics under the
+  Maths app's MOE Primary Mathematics syllabus for P3 to P6, all 171 objectives. The ids are those
+  apps' own (`heat-flow`, `P5.FR.2.6`), so a weak objective here is the objective the question banks
+  there are filed under.
+- **The list is narrowed to the worksheet's level**, exactly as ⚡ Rapid add's batch level narrows the
+  topics the AI may choose from: a P5 paper is filed under P5 objectives, and a worksheet with no
+  level is offered the whole subject.
+- **A question the marking cannot place is shown, never forced into the nearest topic.** It keeps the
+  marking's own wording under *Not on the syllabus list*, where it can be seen. English, Chinese and
+  Sec 1 papers have no list yet and are reported by topic as before.
+- **📈 My progress**, on the home screen, adds the diagnostic up across every worksheet you have
+  marked — per subject, in syllabus order, with each objective's marks over time (*40% → 60% →
+  80%*) and a short *Work on* line naming the weakest. It is read straight off your worksheet list,
+  so it opens instantly, and it copies and prints like the report.
+- A worksheet marked before this existed is still placed where its topics happen to be syllabus
+  names, so the old papers are not all "unlisted".
+
+---
+
 ## v1.17.0 — 🧩 Keyword checks: fill in the blanks
 
 A fill-in-the-blank box now pops up over the worksheet to remind you which

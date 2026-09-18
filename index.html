@@ -895,6 +895,23 @@
   .repVerdict.vBlank { color: var(--ink-faint); }
   .repTotal td { font-weight: 700; border-top: 2px solid var(--ink); background: var(--bg); }
 
+  /* The diagnostic: a topic line carrying its subtotal, its objectives
+     indented under it, and the result as a word on every row. */
+  .repSub { margin: -4px 4px 14px; font-size: 0.82rem; line-height: 1.6; }
+  .diagTable { min-width: 680px; }
+  .diagTable .repTopicName { min-width: 170px; max-width: 220px; }
+  .diagTable .repObjCell { min-width: 230px; }
+  .repGroup td { font-weight: 700; background: var(--bg-soft); border-top: 1px solid var(--line); }
+  .repGroup .repObjCell { font-weight: 400; color: var(--ink-soft); }
+  .repObjRow .repIndent { width: 22px; }
+  .repObjCell { max-width: 320px; }
+  .repPct { font-weight: 700; white-space: nowrap; text-align: right; }
+  .repTrend { font-size: 0.74rem; color: var(--ink-faint); white-space: nowrap; }
+  .repSmall { display: block; font-size: 0.7rem; color: var(--ink-faint); font-weight: 400; margin-top: 2px; white-space: nowrap; }
+  .repGroup.vNo td:first-child, .repObjRow.vNo .repObjCell { border-left: 4px solid var(--v-no); }
+  .repGroup.vHalf td:first-child, .repObjRow.vHalf .repObjCell { border-left: 4px solid var(--v-half); }
+  .repGroup.vOk td:first-child, .repObjRow.vOk .repObjCell { border-left: 4px solid var(--v-ok); }
+
   .repTopicCard {
     border: 1px solid var(--line); border-left: 4px solid var(--v-no);
     border-radius: var(--radius-sm); padding: 16px 18px; margin-bottom: 12px; background: var(--bg);
@@ -942,14 +959,16 @@
        its id worked while it was the only printable thing in the app and
        hid the worksheet the moment there were two. */
     body > *:not(.printMe) { display: none !important; }
+    /* Any printable window — the report and 📈 My progress alike — stops
+       being a window. Keyed off `.printMe`, never an id, for the reason
+       above. */
     .modalBack.printMe { position: static; display: block !important; padding: 0; background: none; }
-    #reportModal { position: static; display: block !important; padding: 0; background: none; }
-    #reportModal .modalCard {
+    .modalBack.printMe .modalCard {
       max-width: none; max-height: none; width: auto; box-shadow: none; border-radius: 0; display: block;
     }
-    #reportModal .modalHead { border: 0; padding: 0 0 12px; }
-    #reportModal .modalBody { overflow: visible; padding: 0; }
-    #reportModal .modalFoot { display: none !important; }
+    .modalBack.printMe .modalHead { border: 0; padding: 0 0 12px; }
+    .modalBack.printMe .modalBody { overflow: visible; padding: 0; }
+    .modalBack.printMe .modalFoot { display: none !important; }
     .repScroll { overflow: visible; }
     .repTable { min-width: 0; font-size: 9pt; }
     .repTable tr, .repTopicCard, .repNote { page-break-inside: avoid; }
@@ -1199,6 +1218,7 @@
           <div class="sectionHead">
             <h2>My worksheets</h2>
             <span class="spacer"></span>
+            <button class="btn" id="progressBtn" title="Every topic and learning objective, with your marks on it, added up across every worksheet you have marked">📈 My progress</button>
             <button class="btn btnPrimary" id="uploadBtn">⬆️ Upload a worksheet</button>
           </div>
           <div id="wsList"></div>
@@ -1637,6 +1657,23 @@
   </div>
 </div>
 
+<!-- ============ My progress ============
+     The long run: every marked worksheet's diagnostic added up, per subject,
+     in syllabus order. Printable and copyable like the report. -->
+<div class="modalBack" id="progressModal">
+  <div class="modalCard tnWide">
+    <div class="modalHead">
+      <h2>📈 My progress</h2>
+    </div>
+    <div class="modalBody" id="progressBody"></div>
+    <div class="modalFoot">
+      <button class="btn" id="progCopy">📋 Copy</button>
+      <button class="btn" id="progPrint">🖨 Print</button>
+      <button class="btn btnPrimary" id="progClose">Done</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ AI engine (admin only) ============ -->
 <div class="modalBack" id="engineModal">
   <div class="modalCard">
@@ -1772,7 +1809,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.17.0';
+var APP_VERSION = 'v1.18.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -6398,7 +6435,8 @@ var MARK_TOPIC_RULE =
   'one question each and are worth nothing. Name the topic the question BELONGS TO; do not describe the question. ' +
   '"objective" is what the student has to be able to DO to answer it, in ONE sentence beginning with a verb: ' +
   '"Add two fractions with different denominators." Where a question does not plainly belong to a topic, leave ' +
-  'BOTH empty rather than invent one. ';
+  'BOTH empty rather than invent one. When a SYLLABUS LIST follows, "topic" is copied from it and "lo" is the ' +
+  'objective id beside it — see that list. ';
 
 /* THE MARKS. A marked paper without marks on it is a paper a student cannot
    read, so a mark allocation is worked out for EVERY question rather than
@@ -6435,7 +6473,8 @@ var MARK_SYS =
   'empty string","verdict":"correct | partial | wrong, or an empty string when nothing was written",' +
   '"marks":"awarded/total, as \'2/3\'","at":[520,180],' +
   '"feedback":"what to say to the student about what they wrote, or an empty string",' +
-  '"topic":"the syllabus topic","objective":"what the student must be able to do"}]}. ' +
+  '"topic":"the syllabus topic","lo":"the learning objective\'s id from the syllabus list, or an empty string",' +
+  '"objective":"what the student must be able to do"}]}. ' +
   'Rules: one entry for every question actually PRINTED on the attached pictures, in the order they appear, ' +
   'keeping the paper\'s own numbering in "number" ("16", "3a"). ONE ENTRY PER LETTERED PART: a question printed ' +
   'as 8(a) and 8(b) is TWO entries, because they are answered separately. EVERY question is covered, whatever ' +
@@ -6580,7 +6619,7 @@ function _markFields(r) {
    so page 4 of the worksheet may be the 3rd picture in the run. Get this
    wrong and the mistake book keeps a picture of the wrong page — silently,
    because both numbers are perfectly plausible. */
-function _markNewItem(r, pageNums) {
+function _markNewItem(r, pageNums, ctx) {
   if (!r || typeof r !== 'object') return null;
   var question = _mkStr(r.question, 1400);
   var answer = _mkStr(r.answer, 900);
@@ -6599,6 +6638,13 @@ function _markNewItem(r, pageNums) {
   if (!(page >= 1 && page <= pageNums.length)) page = 1;
   var real = pageNums[page - 1];
   var mk = _markFields(r);
+  // WHERE IT FILES. With a syllabus list in hand (`ctx` names the subject
+  // and level), the topic is the list's own name and `lo` the objective's
+  // id — or neither, and the model's wording is kept unplaced. With no
+  // context (a subject with no list, an older caller) this is the raw
+  // topic exactly as before.
+  var place = ctx ? diagPlace(ctx.subject, ctx.level, r.topic, r.lo)
+                  : { topic: _mkStr(r.topic, 70), lo: '', sylTopic: '', onList: false };
   return {
     number: _mkStr(r.number, 16),
     page: real,                       // the PDF's own page number
@@ -6609,7 +6655,9 @@ function _markNewItem(r, pageNums) {
     option: option,
     answer: answer,
     explanation: _mkStr(r.explanation, 2400),
-    topic: _mkStr(r.topic, 70),
+    topic: place.topic,
+    lo: place.lo,
+    sylTopic: place.sylTopic,
     objective: _mkStr(r.objective, 220),
     at: _markAt(r.at),
     atPage: real,
@@ -6627,9 +6675,9 @@ function _markNewItem(r, pageNums) {
    that question rather than filed as half a question of its own — with the
    answer taken from THIS entry, because only now can the whole question be
    seen. */
-function _markFoldRows(rows, pageNums, into) {
+function _markFoldRows(rows, pageNums, into, ctx) {
   (rows || []).forEach(function (r, i) {
-    var it = _markNewItem(r, pageNums);
+    var it = _markNewItem(r, pageNums, ctx);
     if (!it) return;
     var prev = into[into.length - 1];
     if (i === 0 && r && r.continuation === true && prev) {
@@ -6639,7 +6687,9 @@ function _markFoldRows(rows, pageNums, into) {
       if (it.option && !prev.option) prev.option = it.option;
       if (it.answer) prev.answer = it.answer;
       if (it.explanation) prev.explanation = it.explanation;
-      if (it.topic) prev.topic = it.topic;
+      // The placement travels with the topic: the second half is the half
+      // that saw the whole question, so its filing is the better one.
+      if (it.topic) { prev.topic = it.topic; prev.lo = it.lo; prev.sylTopic = it.sylTopic; }
       if (it.objective) prev.objective = it.objective;
       // The marks and the tick's position come from this half whether or not
       // it is the half that was written on: the allocation belongs to the
@@ -6772,14 +6822,18 @@ async function runMarking() {
           // The paper's own answer key goes in BESIDE the grounding, never
           // instead of it: the key says what the answer is, the teaching
           // notes say what counts as a full-mark one.
-          system: MARK_SYS + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule(),
+          // The syllabus list goes in last, so the report can file every
+          // question under the objective it tests — see THE DIAGNOSTIC.
+          system: MARK_SYS + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
+                  markSyllabusBlock(wsMeta.subject, wsMeta.level),
           maxOutputTokens: 8000, temperature: 0.2, json: true, thinkingLevel: 'high',
           timeoutMs: 120000, routeTimeoutMs: 45000,
           images: imgs
         });
         if (run !== _markRun || epoch !== wsEpoch) return;
         var res = _parseAIJson(raw);
-        _markFoldRows((res && res.questions) || [], pageNums, marking.items);
+        _markFoldRows((res && res.questions) || [], pageNums, marking.items,
+                      { subject: wsMeta.subject, level: wsMeta.level });
       } catch (e) {
         // ONE unreadable batch never sinks the rest of the worksheet: those
         // pages are reported and the run carries on.
@@ -7698,6 +7752,854 @@ async function mbRebuild(it, id, context) {
   } catch (e) { console.warn('question rebuild failed', e); return null; }
 }
 
+/* =====================================================================
+   THE DIAGNOSTIC — every question filed under the SYLLABUS, and the marks
+   on each objective kept for the long run
+
+   The report above groups by whatever topic the marking happened to name.
+   That answers "what went wrong on THIS paper" and cannot answer the
+   question a student and a parent bring back a month later — "is Heat
+   still the problem?" — because a topic named freely is named five ways
+   over five papers and never adds up.
+
+   So the marking is handed THE SAME TWO LISTS the teacher's own apps file a
+   question under: the rapid-add TOPIC list and the LEARNING-OBJECTIVE
+   selector. `SYLLABUS.science` is the Science Learning Portal's
+   `SYLLABUS_LO_TOPICS` — the Learning Outcomes of the MOE Primary Science
+   Syllabus 2023, 18 headings and 79 objectives, each heading tagged with
+   the portal's own rapid-add topic (`bank`) — and `SYLLABUS.math` is the
+   Maths app's `MOE_SYLLABUS`, the content column of the MOE Primary
+   Mathematics Syllabus 2021 for P3 to P6, 171 objectives. THE IDS ARE
+   THEIRS, byte for byte (`heat-flow`, `P5.FR.2.6`): a diagnostic filed here
+   names the same objective a question in those banks is filed under, which
+   is what lets a weak objective on this report be matched to practice
+   there. Edit an id and the two stop meaning the same thing with nothing
+   anywhere to say so — the harness pins both counts and a sample of ids.
+
+   Three rules, and each is a way this goes quietly wrong:
+
+   • THE LIST IS NARROWED TO THE WORKSHEET'S LEVEL (`diagChoices`), the way
+     ⚡ Rapid add's batch level narrows the topics the AI may choose from.
+     A P5 paper is filed under P5 objectives even where a P4 one would fit
+     better — the year is not in question, only which objective within it
+     — and a worksheet with NO level is offered the whole subject, which is
+     that picker's "Any level" row. A subject with no list (English,
+     Chinese, a Sec 1 paper) gets no block at all, and the marking names a
+     topic freely exactly as it always did.
+   • A REPLY OFF THE LIST IS NOT SNAPPED, it is SHOWN (`diagPlace`). The
+     portal's guard files an off-list topic into the level's first topic
+     and marks it low, because a person vets every low there. Nobody vets a
+     diagnostic — it is written straight into a record the student keeps
+     for years — so a wrong snap here is a lesson filed under the wrong
+     topic for good. An objective id that is real wins outright (it is the
+     more specific answer); a topic that matches a name on the list is
+     placed under it with no objective; anything else keeps the model's own
+     wording under "Not on the syllabus list", where it is visible and can
+     be re-marked, rather than being quietly counted into a topic somebody
+     else's question is in.
+   • EVERYTHING BELOW IS PLAIN CODE from the marking that already happened
+     — no second AI call, the rule the report above already carries. And
+     the placement is re-read at RENDER time for a worksheet marked before
+     this existed (`diagItemPlace`), so an old marking whose topic happens
+     to be a syllabus name still lands in the table instead of every old
+     paper reading as unlisted.
+
+   What survives the tab is `diagSummary()`: one small row per
+   topic-and-objective on the worksheet document, beside `score`, so the
+   home screen can read the long run off the list it already holds without
+   opening a single body. `progressRows` adds those up across every marked
+   worksheet the student can see.
+   ===================================================================== */
+
+var SYLLABUS = {
+  /* SCIENCE — cer's SYLLABUS_LO_TOPICS. Each entry is [id, title, objective]
+     with an optional fourth element naming the rapid-add topic the objective
+     files under when its heading spans more than one (Reproduction is two
+     topics in that app, the Environment three). */
+  science: [
+    { level: 'P3', group: 'Diversity', topic: 'Diversity of Living and Non-Living Things', bank: 'Living and non-living things', los: [
+      ['div-living', 'Characteristics of living things', 'Describe the characteristics of living things: they need water, food and air to survive, and they grow, respond and reproduce.'],
+      ['div-infer', 'Telling living from non-living things', 'Observe a variety of living and non-living things and infer the differences between them.'],
+      ['div-groups', 'Broad groups of living things', 'Recognise broad groups of living things based on similarities and differences: plants (flowering, non-flowering); animals (amphibians, birds, fish, insects, mammals, reptiles); fungi (mould, mushroom, yeast); and bacteria.'],
+      ['div-classify', 'Classifying living things', 'Classify living things into broad groups based on similarities and differences in common observable characteristics.'],
+    ] },
+    { level: 'P3', group: 'Diversity', topic: 'Diversity of Materials', bank: 'Materials', los: [
+      ['mat-uses', 'Materials and their uses', 'Relate the use of various types of materials (wood, metal, ceramic, rubber, glass, plastic, fabric) to their physical properties.'],
+      ['mat-props', 'Comparing physical properties', 'Compare the physical properties of materials: strength, flexibility, ability to float or sink in water, waterproofness and transparency.'],
+    ] },
+    { level: 'P3', group: 'Cycles', topic: 'Cycles in Plants and Animals (Life Cycles)', bank: 'Life Cycles', los: [
+      ['lc-different', 'Different living things have different life cycles', 'Show an understanding that different living things have different life cycles.'],
+      ['lc-plants', 'Life cycles of plants grown from seeds', 'Observe and compare the life cycles of plants grown from seeds over a period of time.'],
+      ['lc-animals', 'Life cycles of animals', 'Observe and compare the life cycles of animals over a period of time (chicken, cockroach, frog, grasshopper, beetle, butterfly, mosquito).'],
+    ] },
+    { level: 'P5', group: 'Cycles', topic: 'Cycles in Plants and Animals (Reproduction)', bank: 'Plant Reproduction', los: [
+      ['rep-cell', 'The cell — the basic unit of life', 'Recognise that a cell is the basic unit of life.'],
+      ['rep-continuity', 'Reproduction and passing on characteristics', 'Show an understanding that living things reproduce to ensure the continuity of their kind, and that many characteristics of an organism are passed on from parents to offspring.'],
+      ['rep-plant', 'Sexual reproduction in flowering plants', 'Describe the processes in the sexual reproduction of flowering plants: pollination, fertilisation (seed production) and seed dispersal.'],
+      ['rep-human', 'Fertilisation in humans', 'Recognise the process of fertilisation in the sexual reproduction of humans.', 'Human Reproduction'],
+      ['rep-similar', 'What plant and human reproduction share', 'Recognise the similarity, in terms of fertilisation, between the sexual reproduction of flowering plants and of humans.', 'Human Reproduction'],
+      ['rep-ways', 'How plants reproduce', 'Investigate the ways in which plants reproduce — by spores and by seeds.'],
+    ] },
+    { level: 'P4', group: 'Cycles', topic: 'Cycles in Matter and Water (Matter)', bank: 'Matter and its 3 States', los: [
+      ['matt-def', 'What matter is', 'State that matter is anything that has mass and occupies space.'],
+      ['matt-states', 'The three states of matter', 'Differentiate among the three states of matter (solid, liquid and gas) in terms of shape and volume.'],
+      ['matt-measure', 'Measuring mass and volume', 'Measure mass and volume using appropriate apparatus.'],
+    ] },
+    { level: 'P5', group: 'Cycles', topic: 'Cycles in Matter and Water (Water)', bank: 'Water and its 3 States', los: [
+      ['wat-three', 'Water in its three states', 'Recognise that water can exist in three interchangeable states of matter.'],
+      ['wat-change', 'How water changes state', 'Show an understanding of how water changes from one state to another: melting, freezing, boiling, evaporation and condensation.'],
+      ['wat-points', 'Melting point and boiling point', 'Show an understanding of the terms melting point of ice (or freezing point of water) and boiling point of water.'],
+      ['wat-heat', 'Heat gain and loss changing water', 'Investigate the effect of heat gain or loss on the temperature and state of water.'],
+      ['wat-evap', 'What affects the rate of evaporation', 'Investigate the factors which affect the rate of evaporation: wind, temperature and exposed surface area.'],
+      ['wat-cycle', 'Evaporation and condensation in the water cycle', 'Show an understanding of the roles of evaporation and condensation in the water cycle.'],
+      ['wat-import', 'Why the water cycle matters', 'Recognise the importance of the water cycle.'],
+      ['wat-life', 'Water and life processes', 'Recognise the importance of water to life processes.'],
+      ['wat-poll', 'Water pollution', 'Describe the impact of water pollution on Earth\'s water resources.'],
+    ] },
+    { level: 'P4', group: 'Systems', topic: 'Human System (Digestive System)', bank: 'Human Body Systems', los: [
+      ['hum-systems', 'The systems of the human body', 'Identify the human systems in the body and state their functions (digestive, respiratory, circulatory, skeletal and muscular).'],
+      ['hum-digest', 'The digestive system', 'Identify the parts in the human digestive system (mouth, gullet, stomach, small intestine and large intestine) and describe their functions.'],
+    ] },
+    { level: 'P5', group: 'Systems', topic: 'Human System (Respiratory and Circulatory Systems)', bank: 'Human and Plant Respiration', los: [
+      ['air-gases', 'The gases in air', 'Recognise that air is made up of gases such as nitrogen, carbon dioxide, oxygen and water vapour.'],
+      ['resp-parts', 'The respiratory and circulatory systems', 'Identify the parts of the human respiratory system (nose, windpipe, lungs) and circulatory system (heart, blood, blood vessels) and describe their functions.'],
+      ['sys-integrate', 'Systems working together', 'Recognise the integration of the different systems (digestive, respiratory and circulatory) in carrying out life processes.'],
+      ['gas-exchange', 'How plants, fish and humans exchange gases', 'Compare how plants, fish and humans take in oxygen and give out carbon dioxide.'],
+    ] },
+    { level: 'P5', group: 'Systems', topic: 'Transport in Humans and Plants', bank: 'Human and Plant Transport', los: [
+      ['trans-plant-parts', 'The plant transport system', 'Identify the parts of the plant transport system and describe their functions.'],
+      ['trans-plant-inv', 'How food and water move through a plant', 'Investigate how food and water are transported in the plant.'],
+      ['trans-compare', 'Transport in plants compared with humans', 'Compare the ways in which substances are transported within plants and within humans.'],
+    ] },
+    { level: 'P4', group: 'Systems', topic: 'Plant System (Plant Parts and Functions)', bank: 'Plant Systems', los: [
+      ['plant-parts', 'Parts of a plant and their functions', 'Identify the different parts of plants and state their functions: leaf, stem and root.'],
+    ] },
+    { level: 'P5', group: 'Systems', topic: 'Electrical System', bank: 'Electrical Systems', los: [
+      ['elec-circuit', 'What makes an electric circuit', 'Recognise that an electric circuit, consisting of an energy source (battery) and other circuit components (wire, bulb, switch), forms an electrical system.'],
+      ['elec-closed', 'Closed circuits and current flow', 'Show an understanding that a closed circuit allows current to flow.'],
+      ['elec-cond', 'Electrical conductors and insulators', 'Identify electrical conductors and insulators.'],
+      ['elec-diagram', 'Circuit diagrams', 'Construct circuit diagrams.'],
+      ['elec-arrange', 'How batteries and bulbs affect the current', 'Investigate how the number and arrangement of batteries and bulbs (in series and in parallel) affect the current in a circuit.'],
+    ] },
+    { level: 'P3', group: 'Interactions', topic: 'Interaction of Forces (Magnets)', bank: 'Magnets', los: [
+      ['mag-push', 'A magnet can push or pull', 'Recognise that a magnet can exert a push or a pull.'],
+      ['mag-char', 'Characteristics of magnets', 'Identify the characteristics of magnets: they can be made of iron or steel; they have two poles; a freely suspended magnet points in the north–south direction; and like poles repel while unlike poles attract.'],
+      ['mag-uses', 'Uses of magnets', 'Recognise uses of magnets in everyday objects.'],
+      ['mag-materials', 'Magnetic and non-magnetic materials', 'Compare magnets, magnetic materials and non-magnetic materials.'],
+      ['mag-make', 'Making a magnet', 'Make a magnet by the stroke method and by the electrical method.'],
+    ] },
+    { level: 'P6', group: 'Interactions', topic: 'Interaction of Forces (Frictional, Gravitational and Elastic Spring Force)', bank: 'Forces', los: [
+      ['force-what', 'A force is a push or a pull', 'Identify a force as a push or a pull.'],
+      ['force-effects', 'What a force can do', 'Show an understanding of the effects of a force: it can move a stationary object, speed up, slow down or change the direction of a moving object, stop a moving object, and change the shape of an object.'],
+      ['force-types', 'Types of forces', 'Recognise and give examples of the different types of forces: magnetic force, gravitational force, elastic spring force and frictional force.'],
+      ['force-weight', 'Weight and gravitational force', 'Recognise that objects have weight because of the gravitational force acting on the object.'],
+      ['force-friction', 'Frictional force and motion', 'Investigate the effect of frictional force on the motion of objects.'],
+      ['force-spring', 'Elastic spring force', 'Investigate the effects of elastic spring force.'],
+    ] },
+    { level: 'P6', group: 'Interactions', topic: 'Interactions within the Environment', bank: 'Living Together', los: [
+      ['env-survival', 'Factors affecting survival', 'Identify the factors that affect the survival of an organism: the physical characteristics of the environment (temperature, light, water) and its interactions with other living things (competition, predation, symbiosis).'],
+      ['env-unfavourable', 'When the environment turns unfavourable', 'Show an understanding of the effect on organisms when the environment becomes unfavourable — organisms adapt and survive, move to other places, or die.'],
+      ['env-food', 'Food chains and food webs', 'Show an understanding of the energy pathway from the Sun through living things, and identify the roles of organisms as producers, consumers, predators and prey in food chains and food webs.', 'Food Chains and Webs'],
+      ['env-levels', 'Organism, population and community', 'Differentiate among organism, population and community.'],
+      ['env-habitat', 'Different habitats, different communities', 'Show an understanding that different habitats support different communities (garden, field, pond, seashore, tree, mangrove swamp).'],
+      ['env-adapt', 'Adaptations for survival', 'Show an understanding that adaptations serve to enhance survival and can be structural or behavioural.'],
+      ['env-man', 'Man\'s impact on the environment', 'Give examples of man\'s impact, both positive and negative, on the environment.', 'Humans and the Environment'],
+    ] },
+    { level: 'P4', group: 'Energy', topic: 'Energy Forms and Uses (Light)', bank: 'Light', los: [
+      ['light-see', 'How we see objects', 'Recognise that an object can be seen when it reflects light or when it is a source of light.'],
+      ['light-straight', 'Light travels in straight lines, and shadows', 'Recognise that light travels in straight lines and that a shadow is formed when light is completely or partially blocked by an object.'],
+      ['light-shadow-vars', 'What changes a shadow', 'Investigate the variables that affect the shadows formed: the shape, size and position of the object, and the distance between the light source and object, and between the object and screen.'],
+    ] },
+    { level: 'P4', group: 'Energy', topic: 'Energy Forms and Uses (Heat)', bank: 'Heat', los: [
+      ['heat-sources', 'Sources of heat', 'Identify some common sources of heat.'],
+      ['heat-temp', 'Temperature measures how hot something is', 'State that the temperature of an object is a measurement of its degree of hotness.'],
+      ['heat-energy', 'Heat is a form of energy', 'State that heat is a form of energy.'],
+      ['heat-vs-temp', 'Telling heat and temperature apart', 'Differentiate between heat and temperature.'],
+      ['heat-flow', 'Heat flows from hotter to colder', 'Show an understanding that heat flows from a hotter to a colder object, region or place until both reach the same temperature.'],
+      ['heat-change', 'Temperature change from heat gain or loss', 'Relate the change in temperature of an object to the gain or loss of heat by the object.'],
+      ['heat-effects', 'Effects of heat gain and loss', 'List some effects of heat gain or loss in everyday life: the expansion and contraction of solids, liquids and gases, and the change in state of matter.'],
+      ['heat-cond', 'Good and poor conductors of heat', 'Identify good and poor conductors of heat — good conductors such as metals, and poor conductors such as wood, plastic, air and rubber.'],
+      ['heat-measure', 'Measuring temperature', 'Measure temperature using a thermometer and a datalogger with temperature or heat sensors.'],
+    ] },
+    { level: 'P6', group: 'Energy', topic: 'Energy Forms and Uses (Photosynthesis)', bank: 'Energy in Food', los: [
+      ['photo-resp', 'Living things need energy from respiration', 'Recognise that living things need energy from respiration to carry out life processes.'],
+      ['photo-sun', 'The Sun as our primary source of energy', 'Recognise that the Sun is our primary source of energy, providing light and heat.'],
+      ['photo-obtain', 'How plants and animals obtain energy', 'Differentiate between the ways in which plants and animals obtain energy.'],
+      ['photo-req', 'The requirements for photosynthesis', 'Investigate the requirements — water, light energy and carbon dioxide — for photosynthesis, which produces sugar and oxygen.'],
+    ] },
+    { level: 'P6', group: 'Energy', topic: 'Energy Conversion', bank: 'Energy Conversion', los: [
+      ['econv-sun', 'Energy resources come from the Sun', 'Recognise that the energy from most of our energy resources is derived in some way from the Sun.'],
+      ['econv-forms', 'Forms of energy', 'Recognise and give examples of the various forms of energy: kinetic energy, potential energy, light energy, electrical energy, sound energy and heat energy.'],
+      ['econv-conversion', 'Converting energy from one form to another', 'Investigate energy conversion from one form to another.'],
+    ] },  ],
+  /* MATHS — the Maths app's MOE_SYLLABUS, P3 to P6. An objective's id is the
+     entry's `code` plus its own number ('P5.FR' + '2.6'). A few objectives
+     read short ("properties of", "perimeter of") because the syllabus PDF
+     lists what follows as sub-bullets that app never carried; they are kept
+     as written so the ids and the wording stay that app's. */
+  math: [
+    { level: 'P3', group: 'Number and Algebra', code: 'P3.WN', sub: 'Whole Numbers', topic: 'Numbers up to 10 000', los: [
+      ['1.1', 'counting in hundreds/thousands'],
+      ['1.2', 'number notation, representations and place values (thousands, hundreds, tens, ones)'],
+      ['1.3', 'reading and writing numbers in numerals and in words'],
+      ['1.4', 'comparing and ordering numbers'],
+      ['1.5', 'patterns in number sequences'],
+    ] },
+    { level: 'P3', group: 'Number and Algebra', code: 'P3.WN', sub: 'Whole Numbers', topic: 'Addition and Subtraction', los: [
+      ['2.1', 'addition and subtraction algorithms (up to 4 digits)'],
+      ['2.2', 'solving up to 2-step word problems involving addition and subtraction'],
+      ['2.3', 'mental calculation involving addition and subtraction of two 2-digit numbers'],
+    ] },
+    { level: 'P3', group: 'Number and Algebra', code: 'P3.WN', sub: 'Whole Numbers', topic: 'Multiplication and Division', los: [
+      ['3.1', 'multiplication tables of 6, 7, 8 and 9'],
+      ['3.2', 'multiplying and dividing within the multiplication tables'],
+      ['3.3', 'division with remainder'],
+      ['3.4', 'multiplication and division algorithms (up to 3 digits by 1 digit)'],
+      ['3.5', 'solving up to 2-step word problems involving the 4 operations'],
+      ['3.6', 'mental calculation involving multiplication and division within the multiplication tables'],
+    ] },
+    { level: 'P3', group: 'Number and Algebra', code: 'P3.FR', sub: 'Fractions', topic: 'Equivalent fractions', los: [
+      ['1.1', 'equivalent fractions'],
+      ['1.2', 'expressing a fraction in its simplest form'],
+      ['1.3', 'comparing and ordering unlike fractions with denominators of given fractions not exceeding 12'],
+      ['1.4', 'writing the equivalent fraction of a fraction given the denominator or the numerator'],
+    ] },
+    { level: 'P3', group: 'Number and Algebra', code: 'P3.FR', sub: 'Fractions', topic: 'Addition and subtraction', los: [
+      ['2.1', 'adding and subtracting two related fractions within one whole with denominators of given fractions not exceeding 12'],
+    ] },
+    { level: 'P3', group: 'Number and Algebra', code: 'P3.MON', sub: 'Money', topic: 'Money', los: [
+      ['1.1', 'adding and subtracting money in decimal notation'],
+      ['1.2', 'solving word problems involving addition and subtraction of money in decimal notation'],
+    ] },
+    { level: 'P3', group: 'Measurement and Geometry', code: 'P3.MEA', sub: 'Measurement', topic: 'Length, Mass and Volume', los: [
+      ['1.1', 'measuring'],
+      ['1.2', 'measuring length/mass/volume (of liquid) in compound units'],
+      ['1.3', 'converting a measurement in compound units to the smaller unit, and vice versa'],
+      ['1.4', 'solving word problems involving length/mass/ volume/capacity excluding fractions and compound units'],
+    ] },
+    { level: 'P3', group: 'Measurement and Geometry', code: 'P3.MEA', sub: 'Measurement', topic: 'Time', los: [
+      ['2.1', 'telling time to the minute'],
+      ['2.2', 'use of ‘past’ and ‘to’ to tell time'],
+      ['2.3', 'measuring time in hours and minutes'],
+      ['2.4', 'converting time in hours and minutes to minutes only, and vice versa'],
+      ['2.5', 'finding the starting time, finishing time or duration given the other two quantities'],
+      ['2.6', 'solving problems involving time in hours and minutes'],
+    ] },
+    { level: 'P3', group: 'Measurement and Geometry', code: 'P3.AV', sub: 'Area and Volume', topic: 'Area and Perimeter', los: [
+      ['1.1', 'concepts of area and perimeter of a plane figure'],
+      ['1.2', 'measuring area in square units, cm² and m², excluding conversion between cm² and m²'],
+      ['1.3', 'perimeter of'],
+      ['1.4', 'area of rectangle/square'],
+    ] },
+    { level: 'P3', group: 'Measurement and Geometry', code: 'P3.GEO', sub: 'Geometry', topic: 'Angles', los: [
+      ['1.1', 'concepts of angle'],
+      ['1.2', 'right angles, angles greater than/smaller than a right angle'],
+    ] },
+    { level: 'P3', group: 'Measurement and Geometry', code: 'P3.GEO', sub: 'Geometry', topic: 'Perpendicular and Parallel Lines', los: [
+      ['2.1', 'perpendicular and parallel lines'],
+      ['2.2', 'draw perpendicular and parallel lines on square grid'],
+    ] },
+    { level: 'P3', group: 'Statistics', code: 'P3.DRI', sub: 'Data Representation and Interpretation', topic: 'Bar Graphs', los: [
+      ['1.1', 'reading and interpreting data from bar graphs'],
+      ['1.2', 'using different scales on axis'],
+      ['1.3', 'solving 1-step problems using data from bar graphs'],
+    ] },
+    { level: 'P4', group: 'Number and Algebra', code: 'P4.WN', sub: 'Whole Numbers', topic: 'Numbers up to 100 000', los: [
+      ['1.1', 'number notation, representations and place values (ten thousands, thousands, hundreds, tens, ones)'],
+      ['1.2', 'reading and writing numbers in numerals and in words'],
+      ['1.3', 'comparing and ordering numbers'],
+      ['1.4', 'patterns in number sequences'],
+      ['1.5', 'rounding numbers to the nearest 10, 100 or 1000'],
+      ['1.6', 'use of ≈'],
+    ] },
+    { level: 'P4', group: 'Number and Algebra', code: 'P4.WN', sub: 'Whole Numbers', topic: 'Factors and Multiples', los: [
+      ['2.1', 'factors, multiples and their relationship'],
+      ['2.2', 'determining if a 1-digit number is a factor of a given number within 100'],
+      ['2.3', 'finding the common factors of two given numbers'],
+      ['2.4', 'determining if a number is a multiple of a given 1-digit number'],
+      ['2.5', 'finding the common multiples of two given 1-digit numbers'],
+    ] },
+    { level: 'P4', group: 'Number and Algebra', code: 'P4.WN', sub: 'Whole Numbers', topic: 'Four Operations', los: [
+      ['3.1', 'multiplication algorithm'],
+      ['3.2', 'division algorithm (up to 4 digits by 1 digit)'],
+      ['3.3', 'solving up to 3-step word problems involving the 4 operations'],
+    ] },
+    { level: 'P4', group: 'Number and Algebra', code: 'P4.FR', sub: 'Fractions', topic: 'Mixed Numbers and Improper Fractions', los: [
+      ['1.1', 'mixed numbers, improper fractions and their relationships'],
+    ] },
+    { level: 'P4', group: 'Number and Algebra', code: 'P4.FR', sub: 'Fractions', topic: 'Fraction of a Set of Objects', los: [
+      ['2.1', 'fraction as part of a set of objects'],
+    ] },
+    { level: 'P4', group: 'Number and Algebra', code: 'P4.FR', sub: 'Fractions', topic: 'Addition and Subtraction', los: [
+      ['3.1', 'adding and subtracting fractions with denominators of given fractions not exceeding 12 and not more than two different denominators'],
+      ['3.2', 'solving up to 2-step word problems involving addition and subtraction'],
+    ] },
+    { level: 'P4', group: 'Number and Algebra', code: 'P4.DEC', sub: 'Decimals', topic: 'Decimals up to 3 decimal places', los: [
+      ['1.1', 'notation, representations and place values (tenths, hundredths, thousandths)'],
+      ['1.2', 'comparing and ordering decimals'],
+      ['1.3', 'dividing a whole number by a whole number with quotient as a decimal'],
+      ['1.4', 'converting decimals to fractions'],
+      ['1.5', 'converting fractions to decimals when the denominator is a factor of 10 or 100'],
+      ['1.6', 'rounding decimals to'],
+    ] },
+    { level: 'P4', group: 'Number and Algebra', code: 'P4.DEC', sub: 'Decimals', topic: 'Addition and Subtraction', los: [
+      ['2.1', 'adding and subtracting decimals (up to 2 decimal places)'],
+    ] },
+    { level: 'P4', group: 'Number and Algebra', code: 'P4.DEC', sub: 'Decimals', topic: 'Multiplication and Division', los: [
+      ['3.1', 'multiplying and dividing decimals (up to 2 decimal places) by a 1-digit whole number'],
+      ['3.2', 'solving up to 2-step word problems involving the 4 operations'],
+      ['3.3', 'rounding off answers to a specified degree of accuracy'],
+    ] },
+    { level: 'P4', group: 'Measurement and Geometry', code: 'P4.MEA', sub: 'Measurement', topic: 'Time', los: [
+      ['1.1', 'measuring time in seconds'],
+      ['1.2', '24-hour clock'],
+      ['1.3', 'solving problems involving time in 24-hour clock'],
+    ] },
+    { level: 'P4', group: 'Measurement and Geometry', code: 'P4.AV', sub: 'Area and Volume', topic: 'Area and Perimeter', los: [
+      ['1.1', 'finding one dimension of a rectangle given the other dimension and its area/perimeter'],
+      ['1.2', 'finding the length of one side of a square given its area/perimeter'],
+      ['1.3', 'finding the area and perimeter of composite figures made up of rectangles and squares'],
+    ] },
+    { level: 'P4', group: 'Measurement and Geometry', code: 'P4.GEO', sub: 'Geometry', topic: 'Angles', los: [
+      ['1.1', 'using notation such as ABC and a to name angles'],
+      ['1.2', 'measuring angles in degrees'],
+      ['1.3', 'drawing an angle of given size'],
+      ['1.4', 'relating quarter, half and complete turns to angles in degrees'],
+      ['1.5', '8-point compass'],
+    ] },
+    { level: 'P4', group: 'Measurement and Geometry', code: 'P4.GEO', sub: 'Geometry', topic: 'Rectangle and Square', los: [
+      ['2.1', 'properties of rectangle and square, excluding diagonal properties'],
+      ['2.2', 'drawing rectangles and squares on square grid'],
+    ] },
+    { level: 'P4', group: 'Measurement and Geometry', code: 'P4.GEO', sub: 'Geometry', topic: 'Line Symmetry', los: [
+      ['3.1', 'identifying symmetric figures'],
+      ['3.2', 'determining whether a straight line is a line of symmetry of a symmetric figure'],
+      ['3.3', 'completing a symmetric figure with respect to a given line of symmetry on square grid'],
+    ] },
+    { level: 'P4', group: 'Statistics', code: 'P4.DRI', sub: 'Data Representation and Interpretation', topic: 'Tables and Line Graphs', los: [
+      ['1.1', 'completing a table from given data'],
+      ['1.2', 'reading and interpreting data from tables/line graphs'],
+      ['1.3', 'solve 1-step problems using data from tables/graphs'],
+    ] },
+    { level: 'P5', group: 'Number and Algebra', code: 'P5.WN', sub: 'Whole Numbers', topic: 'Numbers up to 10 million', los: [
+      ['1.1', 'reading and writing numbers in numerals and in words'],
+    ] },
+    { level: 'P5', group: 'Number and Algebra', code: 'P5.WN', sub: 'Whole Numbers', topic: 'Four Operations', los: [
+      ['2.1', 'multiplying and dividing by 10, 100, 1000 and their multiples without calculator'],
+      ['2.2', 'order of operations without calculator'],
+      ['2.3', 'use of brackets without calculator'],
+      ['2.4', 'solving word problems involving the 4 operations'],
+    ] },
+    { level: 'P5', group: 'Number and Algebra', code: 'P5.FR', sub: 'Fractions', topic: 'Fraction and Division', los: [
+      ['1.1', 'dividing a whole number by a whole number with quotient as a fraction'],
+      ['1.2', 'converting fractions to decimals'],
+    ] },
+    { level: 'P5', group: 'Number and Algebra', code: 'P5.FR', sub: 'Fractions', topic: 'Four Operations', los: [
+      ['2.1', 'adding and subtracting mixed numbers'],
+      ['2.2', 'multiplying a proper/improper fraction and a whole number without calculator'],
+      ['2.3', 'multiplying a proper fraction and a proper/ improper fractions without calculator'],
+      ['2.4', 'multiplying two improper fractions'],
+      ['2.5', 'multiplying a mixed number and a whole number'],
+      ['2.6', 'solving word problems involving addition, subtraction and multiplication'],
+    ] },
+    { level: 'P5', group: 'Number and Algebra', code: 'P5.DEC', sub: 'Decimals', topic: 'Four Operations', los: [
+      ['1.1', 'multiplying and dividing decimals (up to 3 decimal places) by 10, 100, 1000 and their multiples without calculator'],
+      ['1.2', 'converting a measurement from a smaller unit to a larger unit in decimal form, and vice versa'],
+      ['1.3', 'solving word problems involving the 4 operations'],
+    ] },
+    { level: 'P5', group: 'Number and Algebra', code: 'P5.PCT', sub: 'Percentage', topic: 'Percentage', los: [
+      ['1.1', 'expressing a part of a whole as a percentage'],
+      ['1.2', 'use of %'],
+      ['1.3', 'finding a percentage part of a whole'],
+      ['1.4', 'finding discount, GST and annual interest'],
+      ['1.5', 'solving up to 2-step word problems involving percentage'],
+    ] },
+    { level: 'P5', group: 'Number and Algebra', code: 'P5.RAT', sub: 'Ratio', topic: 'Ratio', los: [
+      ['1.1', 'notation, representations and interpretation of a:b and a:b:c, where a, b and c are whole numbers, excluding ratios involving fractions and decimals'],
+      ['1.2', 'equivalent ratios'],
+      ['1.3', 'dividing a quantity in a given ratio'],
+      ['1.4', 'expressing a ratio in its simplest form'],
+      ['1.5', 'finding the ratio of two or three given quantities'],
+      ['1.6', 'finding the missing term in a pair of equivalent ratios'],
+      ['1.7', 'solving up to 2-step word problems involving ratio'],
+    ] },
+    { level: 'P5', group: 'Number and Algebra', code: 'P5.RS', sub: 'Rate and Speed', topic: 'Rate', los: [
+      ['1.1', 'rate as the amount of a quantity per unit of another quantity'],
+      ['1.2', 'finding rate, total amount or number of units given the other two quantities'],
+      ['1.3', 'solving word problems involving rate'],
+    ] },
+    { level: 'P5', group: 'Measurement and Geometry', code: 'P5.AV', sub: 'Area and Volume', topic: 'Area of Triangle', los: [
+      ['1.1', 'concepts of base and height of a triangle'],
+      ['1.2', 'area of triangle'],
+      ['1.3', 'finding the area of composite figures made up of rectangles, squares and triangles'],
+    ] },
+    { level: 'P5', group: 'Measurement and Geometry', code: 'P5.AV', sub: 'Area and Volume', topic: 'Volume of Cube and Cuboid', los: [
+      ['2.1', 'building solids with unit cubes'],
+      ['2.2', 'measuring volume in cubic units, cm³ and m³, excluding conversion between cm³ and m³'],
+      ['2.3', 'drawing cubes and cuboids on isometric grid'],
+      ['2.4', 'volume of a cube/cuboid'],
+      ['2.5', 'finding the volume of liquid in a rectangular tank'],
+      ['2.6', 'relationship between ℓ (or ml) and cm³'],
+    ] },
+    { level: 'P5', group: 'Measurement and Geometry', code: 'P5.GEO', sub: 'Geometry', topic: 'Angles', los: [
+      ['1.1', 'angles on a straight line'],
+      ['1.2', 'angles at a point'],
+      ['1.3', 'vertically opposite angles'],
+      ['1.4', 'finding unknown angles'],
+    ] },
+    { level: 'P5', group: 'Measurement and Geometry', code: 'P5.GEO', sub: 'Geometry', topic: 'Triangle', los: [
+      ['2.1', 'properties of'],
+      ['2.2', 'angle sum of a triangle'],
+      ['2.3', 'finding unknown angles without additional construction of lines'],
+    ] },
+    { level: 'P5', group: 'Measurement and Geometry', code: 'P5.GEO', sub: 'Geometry', topic: 'Parallelogram, Rhombus and Trapezium', los: [
+      ['3.1', 'properties of'],
+      ['3.2', 'finding unknown angles without additional construction of lines'],
+    ] },
+    { level: 'P5', group: 'Statistics', code: 'P5.DA', sub: 'Data Analysis', topic: 'Average of a Set of Data', los: [
+      ['1.1', 'average as ‘total value ÷ number of data’'],
+      ['1.2', 'relationship between average, total value and number of data'],
+    ] },
+    { level: 'P6', group: 'Number and Algebra', code: 'P6.FR', sub: 'Fractions', topic: 'Four Operations', los: [
+      ['1.1', 'dividing a proper fraction by a whole number without calculator'],
+      ['1.2', 'dividing a whole number/proper fraction by a proper fraction without calculator'],
+      ['1.3', 'solving word problems involving the 4 operations'],
+    ] },
+    { level: 'P6', group: 'Number and Algebra', code: 'P6.PCT', sub: 'Percentage', topic: 'Percentage', los: [
+      ['1.1', 'finding the whole given a part and the percentage'],
+      ['1.2', 'finding percentage increase/decrease'],
+      ['1.3', 'solving word problems involving percentage'],
+    ] },
+    { level: 'P6', group: 'Number and Algebra', code: 'P6.RAT', sub: 'Ratio', topic: 'Ratio', los: [
+      ['1.1', 'relationship between fraction and ratio'],
+      ['1.2', 'solving word problems involving ratio including changing ratios'],
+    ] },
+    { level: 'P6', group: 'Number and Algebra', code: 'P6.RS', sub: 'Rate and Speed', topic: 'Distance, Time and Speed', los: [
+      ['1.1', 'concepts of speed and average speed'],
+      ['1.2', 'relationship between distance, time and speed exclude conversion of units e.g. km/h to m/min'],
+      ['1.3', 'writing speed in different units such as km/h, m/min, m/s and cm/s'],
+      ['1.4', 'solving up to 3-step word problems involving speed and average speed'],
+    ] },
+    { level: 'P6', group: 'Number and Algebra', code: 'P6.ALG', sub: 'Algebra', topic: 'Algebra', los: [
+      ['1.1', 'using a letter to represent an unknown number'],
+      ['1.2', 'notation, representations and interpretation of simple algebraic expressions such as'],
+      ['1.3', 'simplifying simple linear expressions excluding brackets'],
+      ['1.4', 'evaluating simple linear expressions by substitution'],
+      ['1.5', 'solving simple linear equations involving whole number coefficient only in simple context'],
+    ] },
+    { level: 'P6', group: 'Measurement and Geometry', code: 'P6.AV', sub: 'Area and Volume', topic: 'Area and Circumference of Circle', los: [
+      ['1.1', 'area and circumference of circle'],
+      ['1.2', 'finding the area and perimeter of'],
+      ['1.3', 'finding the area and perimeter of composite figures made up of square, rectangle, triangle, semicircle and quarter circle'],
+    ] },
+    { level: 'P6', group: 'Measurement and Geometry', code: 'P6.AV', sub: 'Area and Volume', topic: 'Volume of Cube and Cuboid', los: [
+      ['2.1', 'finding one dimension of a cuboid given its volume and the other dimensions'],
+      ['2.2', 'finding the length of one edge of a cube given its volume'],
+      ['2.3', 'finding the height of a cuboid given its volume and base area'],
+      ['2.4', 'finding the area of a face of a cuboid given its volume and one dimension'],
+      ['2.5', 'use of √ and ∛'],
+    ] },
+    { level: 'P6', group: 'Measurement and Geometry', code: 'P6.GEO', sub: 'Geometry', topic: 'Special Quadrilaterals', los: [
+      ['1.1', 'finding unknown angles, without additional construction of lines, in composite geometric figures involving'],
+    ] },
+    { level: 'P6', group: 'Measurement and Geometry', code: 'P6.GEO', sub: 'Geometry', topic: 'Nets', los: [
+      ['2.1', 'identifying and drawing 2D representations of'],
+      ['2.2', 'identifying the nets of 3D solids'],
+      ['2.3', 'identifying the solid which can be formed by a given net'],
+    ] },
+    { level: 'P6', group: 'Statistics', code: 'P6.DRI', sub: 'Data Representation and Interpretation', topic: 'Pie Charts', los: [
+      ['1.1', 'reading and interpreting data from pie charts'],
+      ['1.2', 'solving 1-step problems using data from tables/graphs'],
+    ] },  ]
+};
+
+var DIAG_UNLISTED = 'Not on the syllabus list';
+var DIAG_ROWS_MAX = 120;      // a summary is one field on a document that also holds the body
+
+/* THE ONE READER of the catalogue: every syllabus topic entry flattened to
+   one row per objective, in syllabus order, with the two things a caller
+   needs to name a row — `tkey`, which is unique across the subject (a maths
+   topic is "Fractions: Four Operations" and there is a "Whole Numbers: Four
+   Operations" beside it and an "Angles" at three levels), and `topic`, the
+   name a student reads, which for science is the portal's rapid-add topic
+   rather than the syllabus's own heading. Cached per subject: it is asked
+   for on every row of every table. */
+var _sylCache = {};
+function syllabusEntries(subject) {
+  var key = String(subject || '');
+  if (_sylCache[key]) return _sylCache[key];
+  var src = SYLLABUS[key];
+  var out = [];
+  (Array.isArray(src) ? src : []).forEach(function (t, ti) {
+    (t.los || []).forEach(function (l, li) {
+      var maths = !!t.code;
+      var topic = maths ? (t.sub + ': ' + t.topic) : (l[3] || t.bank || t.topic);
+      out.push({
+        id: maths ? (t.code + '.' + l[0]) : l[0],
+        level: t.level,
+        group: maths ? t.group : t.topic,       // the syllabus's own heading
+        topic: topic,
+        bare: maths ? t.topic : topic,          // the name without its strand, for a reply that drops it
+        tkey: maths ? (t.code + ' ' + topic) : topic,
+        title: l[1],
+        obj: maths ? l[1] : l[2],
+        order: ti * 1000 + li
+      });
+    });
+  });
+  _sylCache[key] = out;
+  return out;
+}
+function syllabusLo(subject, id) {
+  var all = syllabusEntries(subject);
+  var want = String(id || '').trim().toLowerCase();
+  if (!want) return null;
+  for (var i = 0; i < all.length; i++) if (all[i].id.toLowerCase() === want) return all[i];
+  return null;
+}
+function syllabusTopic(subject, tkey) {
+  var all = syllabusEntries(subject);
+  for (var i = 0; i < all.length; i++) if (all[i].tkey === tkey) return all[i];
+  return null;
+}
+
+/* THE SELECTOR — what the marking may choose from. The worksheet's own
+   level when it has one and the list knows it, else the whole subject.
+   `level` in the answer says which of the two was offered, so the prompt
+   and the harness can say so too. */
+function diagChoices(subject, level) {
+  var all = syllabusEntries(subject);
+  if (!all.length) return { entries: [], level: '' };
+  var lv = String(level || '');
+  var inLevel = lv ? all.filter(function (e) { return e.level === lv; }) : [];
+  return inLevel.length ? { entries: inLevel, level: lv } : { entries: all, level: '' };
+}
+
+/* THE PROMPT BLOCK, appended to the marking's system prompt beside the
+   grounding. One line per topic with its objectives after it, so the model
+   reads the topic and the objective together — an objective on its own
+   ("properties of") says nothing without the heading it sits under. Empty
+   when the subject has no list, and then the marking's own generic topic
+   rule stands exactly as before. */
+function markSyllabusBlock(subject, level) {
+  var ch = diagChoices(subject, level);
+  if (!ch.entries.length) return '';
+  var byTopic = {}, lines = [];
+  ch.entries.forEach(function (e) {
+    var k = '#' + e.tkey;
+    if (!byTopic[k]) { byTopic[k] = { topic: e.topic, level: e.level, los: [] }; lines.push(byTopic[k]); }
+    byTopic[k].los.push(e.id + ' — ' + e.obj);
+  });
+  var list = lines.map(function (l) {
+    return '• ' + l.topic + ' [' + l.level + ']: ' + l.los.join('; ');
+  }).join('\n');
+  return '\nTHE SYLLABUS LIST. This is a ' + (ch.level ? ch.level + ' ' : '') + subjectLabel(subject) +
+    ' worksheet, and the report files every question under the syllabus topic and learning objective it ' +
+    'tests, so "topic" and "lo" come from THIS list and nowhere else. "topic" is copied EXACTLY as written ' +
+    'below, without the level in brackets. "lo" is the id of the ONE learning objective the question mainly ' +
+    'tests, from the same list. ' +
+    (ch.level
+      ? 'Choose from this ' + ch.level + ' list even where an objective you know from another year would fit ' +
+        'better — the year is not in question here, only which objective within it. '
+      : '') +
+    'Where the topic fits but no objective under it does, give the topic and leave "lo" empty. Where NOTHING ' +
+    'on the list fits, leave both empty rather than force a fit: a question filed under the wrong objective ' +
+    'is worse than one left unfiled. "objective" stays your own one-sentence description of what the ' +
+    'student must be able to do.\n' + list + '\n';
+}
+
+/* WHERE A REPLY LANDS. A real objective id wins outright; a topic that
+   matches a name on the list is placed under that topic with no objective,
+   preferring the worksheet's own level where the name exists at several
+   (an "Angles" question on a P5 paper is P5 Angles); anything else keeps
+   the model's own wording, unplaced. Never snapped — see the section head. */
+function diagPlace(subject, level, topicRaw, loRaw) {
+  var topic = _mkStr(topicRaw, 70);
+  var all = syllabusEntries(subject);
+  if (!all.length) return { topic: topic, lo: '', sylTopic: '', onList: false };
+  var hit = syllabusLo(subject, loRaw);
+  if (hit) return { topic: hit.topic, lo: hit.id, sylTopic: hit.tkey, onList: true };
+  var key = reportTopicKey(topic);
+  if (key) {
+    var lv = String(level || '');
+    var exact = all.filter(function (e) { return reportTopicKey(e.topic) === key; });
+    if (!exact.length) exact = all.filter(function (e) { return reportTopicKey(e.bare) === key; });
+    var pick = null;
+    for (var i = 0; i < exact.length && !pick; i++) if (exact[i].level === lv) pick = exact[i];
+    if (!pick && exact.length) pick = exact[0];
+    if (pick) return { topic: pick.topic, lo: '', sylTopic: pick.tkey, onList: true };
+  }
+  return { topic: topic, lo: '', sylTopic: '', onList: false };
+}
+
+/* An item marked by this version carries its placement; one marked before
+   is placed by NAME at read time, so an old paper whose topics happen to be
+   syllabus names still lands in the table. */
+function diagItemPlace(it, subject, level) {
+  if (it && (it.sylTopic || it.lo)) {
+    return { topic: it.topic || '', lo: it.lo || '', sylTopic: it.sylTopic || '', onList: true };
+  }
+  return diagPlace(subject, level, it && it.topic, '');
+}
+function diagRowKey(p) {
+  return p.sylTopic ? (p.sylTopic + '|' + (p.lo || '')) : ('~' + reportTopicKey(p.topic));
+}
+
+/* THE PAPER FILED UNDER THE SYLLABUS — one row per topic-and-objective, in
+   syllabus order, with the full marks and the marks obtained on each; the
+   rows grouped under their topic with a subtotal. Unplaced rows come last,
+   each under the model's own wording, and a question with no topic at all
+   last of those. Plain code over the marking, like `reportTopics`. */
+function reportDiagnostic(items, subject, level) {
+  items = items || marking.items;
+  if (subject == null) subject = wsMeta.subject;
+  if (level == null) level = wsMeta.level;
+  var by = {}, rows = [];
+  items.forEach(function (it) {
+    var p = diagItemPlace(it, subject, level);
+    var k = '#' + diagRowKey(p);
+    var r = by[k];
+    if (!r) {
+      var e = p.lo ? syllabusLo(subject, p.lo) : (p.sylTopic ? syllabusTopic(subject, p.sylTopic) : null);
+      r = by[k] = {
+        key: k, topic: p.topic || REPORT_UNLABELLED, sylTopic: p.sylTopic, lo: p.lo, onList: p.onList,
+        labelled: !!p.topic, level: e ? e.level : '', group: e ? e.group : '',
+        objective: (p.lo && e) ? e.title : '',
+        // An objective row sits in the syllabus's own order; a topic-only row
+        // after every objective of its topic; an unplaced row after the lot.
+        order: e ? (p.lo ? e.order : e.order + 999) : 1e9,
+        n: 0, total: 0, awarded: 0, attempted: 0, blankMarks: 0,
+        correct: 0, partial: 0, wrong: 0, blank: 0, items: []
+      };
+      rows.push(r);
+    }
+    r.items.push(it);
+    r.n++;
+    // A row with no syllabus objective shows what the marking said the
+    // question tests, so the line is never bare.
+    if (!r.objective && it.objective) r.objective = String(it.objective).trim();
+    if (!it.marked) r.blank++;
+    else if (it.verdict === 'correct') r.correct++;
+    else if (it.verdict === 'partial') r.partial++;
+    else if (it.verdict === 'wrong') r.wrong++;
+    var pair = markPairOf(it);
+    if (pair) {
+      r.total += pair.total;
+      r.awarded += pair.awarded;
+      if (it.marked) r.attempted += pair.total; else r.blankMarks += pair.total;
+    }
+  });
+  rows.sort(diagRowCmp);
+  var groups = [], gby = {};
+  rows.forEach(function (r) {
+    var gk = '#' + (r.sylTopic || ('~' + reportTopicKey(r.topic)));
+    var g = gby[gk];
+    if (!g) {
+      g = gby[gk] = { key: gk, topic: r.topic, sylTopic: r.sylTopic, onList: r.onList, labelled: r.labelled,
+                      level: r.level, order: r.order, rows: [], n: 0, total: 0, awarded: 0, attempted: 0,
+                      blankMarks: 0, correct: 0, partial: 0, wrong: 0, blank: 0 };
+      groups.push(g);
+    }
+    g.rows.push(r);
+    ['n', 'total', 'awarded', 'attempted', 'blankMarks', 'correct', 'partial', 'wrong', 'blank'].forEach(function (f) {
+      g[f] += r[f];
+    });
+  });
+  return { rows: rows, groups: groups, hasList: syllabusEntries(subject).length > 0 };
+}
+function diagRowCmp(a, b) {
+  if (a.onList !== b.onList) return a.onList ? -1 : 1;
+  if (a.labelled !== b.labelled) return a.labelled ? -1 : 1;
+  if (a.order !== b.order) return a.order - b.order;
+  var t = a.topic.localeCompare(b.topic);
+  if (t) return t;
+  return String(a.lo || '').localeCompare(String(b.lo || ''));
+}
+/* The rate over what was ATTEMPTED, the rule the headline score follows: a
+   blank is not a wrong answer. Null when nothing was attempted, which the
+   table prints as untried rather than as nought per cent. */
+function diagPct(r) {
+  return r.attempted > 0 ? Math.round((r.awarded / r.attempted) * 100) : null;
+}
+/* The result as a WORD with a class, never a colour alone, for the same
+   reason the report's verdicts are. */
+function diagResult(r) {
+  var p = diagPct(r);
+  if (p === null) return { cls: 'vBlank', text: 'Untried' };
+  if (p >= 80) return { cls: 'vOk', text: 'Strong' };
+  if (p >= 50) return { cls: 'vHalf', text: 'Getting there' };
+  return { cls: 'vNo', text: 'Revise' };
+}
+
+/* WHAT IS SAVED. Small on purpose — the topic key, the objective id and
+   the numbers — because it rides the worksheet document beside `score` on
+   every save, and the home screen adds it up across every worksheet
+   without reading one body. The model's own wording is kept for an
+   unplaced row (`n`), so the long run can still name it. */
+function diagSummary() {
+  if (!marking.items.length) return null;
+  var d = reportDiagnostic();
+  return {
+    v: 1,
+    subject: wsMeta.subject || '',
+    level: wsMeta.level || '',
+    at: marking.runAt || Date.now(),
+    rows: d.rows.slice(0, DIAG_ROWS_MAX).map(function (r) {
+      return { t: r.sylTopic || '', n: _mkStr(r.topic, 80), lo: r.lo || '', q: r.n,
+               tot: r.total, got: r.awarded, att: r.attempted,
+               ok: r.correct, half: r.partial, no: r.wrong, blank: r.blank };
+    })
+  };
+}
+
+/* THE LONG RUN — every marked worksheet's summary added up, per subject,
+   in syllabus order. A summary written by a later version with rows this
+   build cannot read is skipped row by row rather than dropped whole. */
+var DIAG_SUBJECT_ORDER = ['science', 'math', 'english', 'chinese'];
+function progressRows(list) {
+  var out = {}, subjects = [];
+  (list || []).forEach(function (w) {
+    var d = w && w.diagnostic;
+    if (!d || !Array.isArray(d.rows) || !d.rows.length) return;
+    var subj = String(d.subject || w.subject || '');
+    var s = out['#' + subj];
+    if (!s) { s = out['#' + subj] = { subject: subj, papers: 0, rows: [], by: {} }; subjects.push(s); }
+    s.papers++;
+    var at = typeof d.at === 'number' ? d.at : (stampOf(d.at) || stampOf(w.updatedAt) || 0);
+    d.rows.forEach(function (r) {
+      if (!r || typeof r !== 'object') return;
+      var placed = !!r.t;
+      var k = '#' + (placed ? (r.t + '|' + (r.lo || '')) : ('~' + reportTopicKey(r.n)));
+      var g = s.by[k];
+      if (!g) {
+        var e = r.lo ? syllabusLo(subj, r.lo) : (placed ? syllabusTopic(subj, r.t) : null);
+        g = s.by[k] = {
+          key: k, topic: e ? e.topic : (String(r.n || '').trim() || REPORT_UNLABELLED),
+          sylTopic: r.t || '', lo: r.lo || '', onList: placed, labelled: !!(e || String(r.n || '').trim()),
+          level: e ? e.level : '', objective: (r.lo && e) ? e.title : '',
+          order: e ? (r.lo ? e.order : e.order + 999) : 1e9,
+          papers: 0, n: 0, total: 0, awarded: 0, attempted: 0, blankMarks: 0,
+          correct: 0, partial: 0, wrong: 0, blank: 0, history: []
+        };
+        s.rows.push(g);
+      }
+      g.papers++;
+      g.n += +r.q || 0;
+      g.total += +r.tot || 0;
+      g.awarded += +r.got || 0;
+      g.attempted += +r.att || 0;
+      g.blankMarks += Math.max(0, (+r.tot || 0) - (+r.att || 0));
+      g.correct += +r.ok || 0; g.partial += +r.half || 0; g.wrong += +r.no || 0; g.blank += +r.blank || 0;
+      g.history.push({ at: at, awarded: +r.got || 0, attempted: +r.att || 0, name: w.name || '' });
+    });
+  });
+  subjects.forEach(function (s) {
+    s.rows.sort(diagRowCmp);
+    s.rows.forEach(function (g) { g.history.sort(function (a, b) { return a.at - b.at; }); });
+    delete s.by;
+  });
+  subjects.sort(function (a, b) {
+    var ia = DIAG_SUBJECT_ORDER.indexOf(a.subject), ib = DIAG_SUBJECT_ORDER.indexOf(b.subject);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  return subjects;
+}
+/* WHAT TO WORK ON, across the long run: the objectives under the mark, the
+   weakest first and then the ones with the most marks behind them — a
+   score over more marks is a more certain one. A topic-only row counts
+   too: a weakness the marking could only place to a topic is still a
+   weakness with a name. */
+var DIAG_FOCUS_PCT = 70;
+var DIAG_FOCUS_MAX = 6;
+function progressFocus(rows) {
+  return (rows || []).filter(function (g) {
+    var p = diagPct(g);
+    return g.labelled && p !== null && p < DIAG_FOCUS_PCT;
+  }).sort(function (a, b) {
+    var d = diagPct(a) - diagPct(b);
+    if (d) return d;
+    return b.attempted - a.attempted;
+  }).slice(0, DIAG_FOCUS_MAX);
+}
+
+/* ---- The table's plain-code half: totals, trend lines, groups and the
+   text copy. Kept here, beside the numbers, so the harness can pin them
+   without a DOM; the DOM builders sit with the screens. ---- */
+/* Sum a list of rows into one line with the same fields, for the foot. */
+function diagTotals(rows) {
+  var t = { n: 0, papers: 0, total: 0, awarded: 0, attempted: 0, blankMarks: 0 };
+  (rows || []).forEach(function (r) {
+    t.n += r.n || 0; t.total += r.total || 0; t.awarded += r.awarded || 0;
+    t.attempted += r.attempted || 0; t.blankMarks += r.blankMarks || 0;
+  });
+  return t;
+}
+/* The last few results on an objective, oldest first, so a line reads the
+   way time runs: "40% → 60% → 80%". A paper it was not attempted on is a
+   dash rather than a nought. */
+var DIAG_TREND_MAX = 5;
+function diagTrendText(history) {
+  var h = (history || []).slice(-DIAG_TREND_MAX);
+  if (!h.length) return '';
+  return h.map(function (x) {
+    return x.attempted > 0 ? Math.round((x.awarded / x.attempted) * 100) + '%' : '–';
+  }).join(' → ');
+}
+/* The same table as text, one line a row, for the report's Copy button. */
+function diagAsText(groups, opts) {
+  opts = opts || {};
+  var out = [];
+  groups.forEach(function (g) {
+    var single = g.rows.length === 1 && !g.rows[0].lo;
+    out.push(diagLineText(g.topic + (g.level ? ' (' + levelLabel(g.level) + ')' : '') +
+      (!g.onList && opts.hasList ? ' — ' + DIAG_UNLISTED : ''), g, opts, single ? g.rows[0].objective : ''));
+    if (single) return;
+    g.rows.forEach(function (r) {
+      out.push('   ' + diagLineText(r.lo ? r.objective : (r.objective || '(no objective named)'), r, opts, ''));
+    });
+  });
+  return out;
+}
+function diagLineText(name, r, opts, extra) {
+  var p = diagPct(r);
+  var bits = [name];
+  if (extra) bits.push(extra);
+  bits.push((opts.history ? (r.papers || 0) + ' paper' + ((r.papers || 0) === 1 ? '' : 's') : (r.n || 0) + ' Q'));
+  bits.push(r.total > 0
+    ? markPretty(r.awarded) + '/' + markPretty(r.total) + ' marks' +
+      (r.blankMarks > 0 ? ' (' + markPretty(r.blankMarks) + ' not attempted)' : '')
+    : 'no marks');
+  bits.push(p === null ? 'untried' : p + '% · ' + diagResult(r).text);
+  if (opts.history && r.history && r.history.length > 1) bits.push(diagTrendText(r.history));
+  return bits.join('  |  ');
+}
+
+/* Rows into topic groups with subtotals — the shape the table draws. The
+   report gets its groups from `reportDiagnostic`; the long run's rows are
+   already sorted, so this only folds them. */
+function diagGroupsOf(rows) {
+  var groups = [], by = {};
+  rows.forEach(function (r) {
+    var gk = '#' + (r.sylTopic || ('~' + reportTopicKey(r.topic)));
+    var g = by[gk];
+    if (!g) {
+      g = by[gk] = { key: gk, topic: r.topic, sylTopic: r.sylTopic, onList: r.onList, labelled: r.labelled,
+                     level: r.level, order: r.order, rows: [], n: 0, papers: 0, total: 0, awarded: 0,
+                     attempted: 0, blankMarks: 0, correct: 0, partial: 0, wrong: 0, blank: 0, history: [] };
+      groups.push(g);
+    }
+    g.rows.push(r);
+    ['n', 'total', 'awarded', 'attempted', 'blankMarks', 'correct', 'partial', 'wrong', 'blank'].forEach(function (f) {
+      g[f] += r[f] || 0;
+    });
+    // Papers are counted once per topic however many objectives were on
+    // each; the trend line of a topic is left to its objectives.
+    g.papers = Math.max(g.papers, r.papers || 0);
+  });
+  return groups;
+}
+
+
 /* ================= The mistake book =================
    Every question the student did not get right, kept so that it can be done
    AGAIN — because a worksheet gets handed in, and a mistake described in
@@ -7786,6 +8688,10 @@ async function fileMistakes() {
       verdict: it.verdict,
       marks: it.marks || '',
       topic: it.topic || '',
+      // Where the question files, so the book can one day be read by
+      // objective too. The ids are the sibling apps' own.
+      lo: it.lo || '',
+      sylTopic: it.sylTopic || '',
       blocks: [],
       imagePath: '',
       shot: '',
@@ -9630,6 +10536,24 @@ function renderReport() {
   score.appendChild(counts);
   body.appendChild(score);
 
+  /* ---- the diagnostic: the paper filed under the syllabus ---- */
+  var dg = reportDiagnostic();
+  var hd = document.createElement('h3');
+  hd.className = 'repH';
+  hd.textContent = 'Diagnostic — by topic and learning objective';
+  body.appendChild(hd);
+  var dsub = document.createElement('p');
+  dsub.className = 'sub repSub';
+  dsub.textContent = dg.hasList
+    ? 'Every question filed under the MOE syllabus, with the full marks and the marks you got on each ' +
+      'objective. Keep an eye on it over time — 📈 My progress on the home screen adds it up across every ' +
+      'worksheet you do.'
+    : 'The marking named these topics itself — there is no syllabus list for this subject yet.';
+  body.appendChild(dsub);
+  body.appendChild(diagTableNode(dg.groups, mt.has ? {
+    n: marking.items.length, total: mt.total, awarded: mt.awarded, attempted: mt.attempted, blankMarks: mt.blank
+  } : null, { hasList: dg.hasList }));
+
   /* ---- every question ---- */
   var h2 = document.createElement('h3');
   h2.className = 'repH';
@@ -9662,6 +10586,12 @@ function renderReport() {
     tn.className = 'repTopicName';
     tn.textContent = it.topic || REPORT_UNLABELLED;
     td.appendChild(tn);
+    if (dg.hasList && it.topic && !diagItemPlace(it, wsMeta.subject, wsMeta.level).onList) {
+      var unl = document.createElement('div');
+      unl.className = 'repObj';
+      unl.textContent = DIAG_UNLISTED;
+      td.appendChild(unl);
+    }
     if (it.objective) {
       var ob = document.createElement('div');
       ob.className = 'repObj';
@@ -9796,6 +10726,10 @@ function reportAsText() {
   }
   out.push(c.correct + ' correct · ' + c.partial + ' partly right · ' + c.wrong + ' wrong · ' + c.blank + ' blank');
   out.push('');
+  out.push('DIAGNOSTIC — BY TOPIC AND LEARNING OBJECTIVE');
+  var dg = reportDiagnostic();
+  out.push.apply(out, diagAsText(dg.groups, { hasList: dg.hasList }));
+  out.push('');
   out.push('EVERY QUESTION');
   marking.items.forEach(function (it) {
     var pair = markPairOf(it);
@@ -9818,6 +10752,177 @@ function reportAsText() {
     out.push('');
     out.push('Not attempted at all: ' + rev.untried.map(function (g) { return g.name; }).join(', '));
   }
+  return out.join('\n');
+}
+
+/* ---- The diagnostic table, and the long run ----
+   One builder draws BOTH tables — the report's, for one paper, and the
+   home screen's, across every paper — so the two cannot disagree about
+   what a row is. The verdict is a word with a class, never a colour on its
+   own, for the reason the report's verdicts are. */
+function diagTableNode(groups, totals, opts) {
+  opts = opts || {};
+  var scroll = document.createElement('div');
+  scroll.className = 'repScroll';
+  var table = document.createElement('table');
+  table.className = 'repTable diagTable';
+  var thead = document.createElement('thead');
+  var hr = document.createElement('tr');
+  var cols = ['Topic', 'Learning objective (concept)',
+              opts.history ? 'Papers' : 'Qs', 'Full marks', 'Marks obtained', '%'];
+  if (opts.history) cols.push('Over time');
+  cols.push('Result');
+  cols.forEach(function (t) {
+    var th = document.createElement('th');
+    th.textContent = t;
+    hr.appendChild(th);
+  });
+  thead.appendChild(hr);
+  table.appendChild(thead);
+  var tbody = document.createElement('tbody');
+
+  function marksCells(tr, r) {
+    repCell(tr, String(opts.history ? (r.papers || 0) : (r.n || 0)), 'repMarks');
+    repCell(tr, r.total > 0 ? markPretty(r.total) : '', 'repMarks');
+    repCell(tr, r.total > 0 ? markPretty(r.awarded) : '', 'repMarks');
+    var p = diagPct(r);
+    repCell(tr, p === null ? '—' : p + '%', 'repPct');
+    if (opts.history) repCell(tr, diagTrendText(r.history), 'repTrend');
+    var v = diagResult(r);
+    var vt = repCell(tr, v.text, 'repVerdict ' + v.cls);
+    if (r.blankMarks > 0) {
+      var sm = document.createElement('span');
+      sm.className = 'repSmall';
+      sm.textContent = markPretty(r.blankMarks) + ' mark' + (r.blankMarks === 1 ? '' : 's') + ' not attempted';
+      vt.appendChild(sm);
+    }
+  }
+
+  groups.forEach(function (g) {
+    // The topic's own line carries its subtotal; the objectives sit under
+    // it. A topic with one unlabelled row IS that row, so it is drawn once.
+    var single = g.rows.length === 1 && !g.rows[0].lo;
+    var tr = document.createElement('tr');
+    tr.className = 'repGroup ' + diagResult(g).cls;
+    var tc = repCell(tr, g.topic, 'repTopicName');
+    if (g.level) {
+      var lv = document.createElement('span');
+      lv.className = 'repSmall';
+      lv.textContent = levelLabel(g.level);
+      tc.appendChild(lv);
+    }
+    var objCell = repCell(tr, '', 'repObjCell');
+    if (single && g.rows[0].objective) objCell.textContent = g.rows[0].objective;
+    if (!g.onList && opts.hasList) {
+      var un = document.createElement('span');
+      un.className = 'repSmall';
+      un.textContent = DIAG_UNLISTED;
+      objCell.appendChild(un);
+    }
+    marksCells(tr, g);
+    tbody.appendChild(tr);
+    if (single) return;
+    g.rows.forEach(function (r) {
+      var rr = document.createElement('tr');
+      rr.className = 'repObjRow ' + diagResult(r).cls;
+      repCell(rr, '', 'repIndent');
+      repCell(rr, (r.lo ? r.objective : (r.objective || '(no objective named)')), 'repObj repObjCell');
+      marksCells(rr, r);
+      tbody.appendChild(rr);
+    });
+  });
+  if (totals) {
+    var tot = document.createElement('tr');
+    tot.className = 'repTotal';
+    repCell(tot, opts.history ? 'Across every worksheet' : 'Whole paper', 'repTopicName');
+    repCell(tot, '', '');
+    marksCells(tot, totals);
+    tbody.appendChild(tot);
+  }
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+  return scroll;
+}
+/* ---- 📈 My progress: the long run, on the home screen ----
+   Added up off the worksheets the student can already see — the summary
+   rides each document beside `score`, so no body is read for it. */
+function openProgress() {
+  usageNote('progress', '');
+  renderProgress();
+  $('progressModal').classList.add('open');
+}
+function closeProgress() { $('progressModal').classList.remove('open'); }
+function renderProgress() {
+  var body = $('progressBody');
+  body.innerHTML = '';
+  var subs = progressRows(worksheets);
+  var st = activeStudent();
+  var head = document.createElement('div');
+  head.className = 'repHead';
+  var h = document.createElement('div');
+  h.className = 'repTitle';
+  h.textContent = (st && st.name ? st.name + ' — ' : '') + 'Progress by topic and learning objective';
+  head.appendChild(h);
+  var papers = subs.reduce(function (n, s) { return n + s.papers; }, 0);
+  var when = document.createElement('div');
+  when.className = 'repWhen';
+  when.textContent = 'Across ' + papers + ' marked worksheet' + (papers === 1 ? '' : 's') + ' · as at ' +
+    new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  head.appendChild(when);
+  body.appendChild(head);
+  if (!subs.length) {
+    var pad = document.createElement('div');
+    pad.className = 'emptyPad';
+    pad.innerHTML = '<div class="padIcon">📈</div>' +
+      '<div class="padTitle">Nothing to add up yet</div>' +
+      '<div class="padSub">Mark a worksheet and its diagnostic lands here — every topic and learning ' +
+      'objective, with the marks you got on it, added up across every paper you do.</div>';
+    body.appendChild(pad);
+    return;
+  }
+  subs.forEach(function (s) {
+    var h2 = document.createElement('h3');
+    h2.className = 'repH';
+    h2.textContent = (subjectLabel(s.subject) || 'Other') + ' · ' + s.papers + ' worksheet' + (s.papers === 1 ? '' : 's');
+    body.appendChild(h2);
+    var focus = progressFocus(s.rows);
+    if (focus.length) {
+      var f = document.createElement('div');
+      f.className = 'repNote';
+      f.textContent = 'Work on: ' + focus.map(function (g) {
+        return g.topic + (g.objective ? ' — ' + g.objective : '') + ' (' + diagPct(g) + '%)';
+      }).join(' · ');
+      body.appendChild(f);
+    } else {
+      var ok = document.createElement('div');
+      ok.className = 'repNote repGood';
+      ok.textContent = 'Every objective you have attempted in ' + (subjectLabel(s.subject) || 'this subject') +
+        ' is at ' + DIAG_FOCUS_PCT + '% or better. Keep going.';
+      body.appendChild(ok);
+    }
+    var tot = diagTotals(s.rows);
+    tot.papers = s.papers;
+    body.appendChild(diagTableNode(diagGroupsOf(s.rows), tot,
+      { history: true, hasList: syllabusEntries(s.subject).length > 0 }));
+  });
+}
+function progressAsText() {
+  var subs = progressRows(worksheets);
+  var out = [];
+  var st = activeStudent();
+  out.push((st && st.name ? st.name + ' — ' : '') + 'progress by topic and learning objective');
+  if (!subs.length) { out.push('Nothing to add up yet — mark a worksheet first.'); return out.join('\n'); }
+  subs.forEach(function (s) {
+    out.push('');
+    out.push((subjectLabel(s.subject) || 'OTHER').toUpperCase() + ' · ' + s.papers + ' worksheet' + (s.papers === 1 ? '' : 's'));
+    var focus = progressFocus(s.rows);
+    if (focus.length) {
+      out.push('Work on: ' + focus.map(function (g) {
+        return g.topic + (g.objective ? ' — ' + g.objective : '') + ' (' + diagPct(g) + '%)';
+      }).join('; '));
+    }
+    out.push.apply(out, diagAsText(diagGroupsOf(s.rows), { history: true, hasList: syllabusEntries(s.subject).length > 0 }));
+  });
   return out.join('\n');
 }
 
@@ -11208,6 +12313,9 @@ async function performSave(quiet) {
       subject: wsMeta.subject || '',
       guidance: wsMeta.guidance || HINT_DEFAULT,
       score: scoreOf(),
+      // The paper filed under the syllabus, small enough to ride every
+      // save: the long run is added up off the list, never off the bodies.
+      diagnostic: diagSummary(),
       attempts: attempts,
       pageCount: pdfDoc ? pdfDoc.numPages : 0,
       // Summary only: the card needs to say "the buddy has the key" without
@@ -12739,6 +13847,7 @@ var USAGE_EVENTS = {
   paper:    { label: 'Printed the worksheet', count: 'papers' },
   again:    { label: 'Started a worksheet again', count: 'again' },
   report:   { label: 'Opened the report', count: 'reports' },
+  progress: { label: 'Opened their progress', count: 'progress' },
   quiz:     { label: 'Took a keyword check', count: 'quizzes' },
   solved:   { label: 'Filled in every keyword', count: 'solved' }
 };
@@ -13319,6 +14428,10 @@ $('peopleCopy').addEventListener('click', function () { copyText(peopleAsText(),
 $('repClose').addEventListener('click', closeReport);
 $('repPrint').addEventListener('click', function () { printThis($('reportModal')); });
 $('repCopy').addEventListener('click', function () { copyText(reportAsText(), 'Report copied'); });
+$('progressBtn').addEventListener('click', openProgress);
+$('progClose').addEventListener('click', closeProgress);
+$('progPrint').addEventListener('click', function () { printThis($('progressModal')); });
+$('progCopy').addEventListener('click', function () { copyText(progressAsText(), 'Progress copied'); });
 $('qnCancel').addEventListener('click', function () { $('quickNoteModal').classList.remove('open'); });
 $('qnSave').addEventListener('click', quickNoteSave);
 
