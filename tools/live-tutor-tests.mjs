@@ -1087,3 +1087,92 @@ test('a recoverable live response error invites retry while a startup error clos
   assert.equal(startup.c.liveTutor.phase, 'idle');
   assert.equal(startup.track.stopped, 1);
 });
+
+/* ---- THE LIVE ORB and the filler scrubber (v1.19.0) ----
+   The orb is CSS moving between layouts the JS computes, so what the harness
+   can pin is the STATE the session's phase becomes, the layouts being real
+   layouts, and — the half that matters — that none of it sets a timer. The
+   scrubber is pinned in both directions: "let me check" goes, "let me know"
+   stays. */
+test('the orb is the logo idle, a spinning ring while thinking, a row while talking, and sets no timer', async () => {
+  const idle = harness();
+  idle.c.renderLiveTutor();
+  assert.equal(idle.element('liveOrb').getAttribute('data-state'), 'logo');
+  assert.equal(idle.calls.timers.size, 0, 'the idle shuffle is a CSS keyframe, never a timer');
+  const h = await connected();
+  const orb = h.element('liveOrb'), float = h.element('liveOrbFloat');
+  assert.equal(orb.getAttribute('data-state'), 'listening');
+  assert.equal(float.getAttribute('data-state'), 'listening', 'the floating orb over the worksheet is painted by the same call');
+  assert.equal(float.classList.contains('on'), true, 'the float shows while a session runs');
+  const stage = orb.children[0];
+  assert.equal(stage.children.length, h.c.LIVE_ORB_N, 'sixteen spheres, built once');
+  const dot = stage.children[0];
+  assert.equal(String(dot.style['--i']), '0');
+  // The subtitles hold is the one timer a reply legitimately arms; the orb adds none.
+  const orbTimers = () => [...h.calls.timers.values()].filter(t => t.ms !== h.c.SUBS_HOLD_MS).length;
+  const timersBefore = orbTimers();
+  const result = deferred();
+  h.c.window.askGemini = async () => result.promise;
+  const pending = h.c.runLiveDelegation('orb', h.c.liveTutor.generation);
+  await flush();
+  assert.equal(orb.getAttribute('data-state'), 'thinking');
+  assert.equal(h.c.liveTutor.message, 'Thinking…', 'the status still says Thinking under the spinning ring');
+  const ring = h.c.LIVE_ORB_LAYOUTS.ring();
+  assert.equal(ring.length, h.c.LIVE_ORB_N);
+  assert.ok(ring.every(p => Math.abs(Math.hypot(p.x - 50, p.y - 50) - 36) < 0.01), 'thinking is every sphere on ONE circle');
+  result.resolve('Compare the two beakers.');
+  await pending;
+  assert.equal(orb.getAttribute('data-state'), 'listening');
+  h.c.liveTutor.channel.receive({ type: 'session.output_transcript.delta', delta: 'Compare ' });
+  assert.equal(orb.getAttribute('data-state'), 'talking', 'a reply arriving is the tutor speaking');
+  assert.ok(Number(stage.style['--lv']) > 0, 'the transcript pulse gives the row a level');
+  const talk = h.c.LIVE_ORB_LAYOUTS.talk();
+  assert.ok(talk.every(p => p.y === 50) && talk.some(p => p.amp > 0) && talk.some(p => p.amp < 0), 'talking is a row whose spheres rise AND fall');
+  h.c.liveTutor.spokeAt = Date.now() - h.c.LIVE_ORB_TALK_MS - 1;
+  h.calls.timers.get(h.c.liveTutor.tick).fn();
+  assert.equal(orb.getAttribute('data-state'), 'listening', 'the tick lets the row settle back without a timer of its own');
+  h.c.muteLiveTutor();
+  assert.equal(orb.getAttribute('data-state'), 'muted');
+  assert.equal(orbTimers(), timersBefore, 'the orb added no timer');
+  const logo = h.c.LIVE_ORB_LAYOUTS.logo();
+  assert.equal(logo.length, h.c.LIVE_ORB_N);
+  assert.ok(logo.filter(p => /^#(5090a0|80c0d0|306070)$/i.test(p.c)).length >= 6, 'the teal block');
+  assert.ok(logo.filter(p => /^#(c00080|901060|701040)$/i.test(p.c)).length >= 8, 'the magenta ribbon');
+  h.c.stopLiveTutor();
+  await flush();
+  assert.equal(h.calls.timers.size, 0);
+  assert.equal(orb.getAttribute('data-state'), 'logo');
+  assert.equal(float.classList.contains('on'), false);
+  assert.equal(h.c.liveTutor.spokeAt, 0);
+});
+
+test('a spoken reply is scrubbed of "let me check" and thinking sounds, and teaching is never touched', async () => {
+  const strip = harness().c.liveStripFiller;
+  assert.equal(strip('Let me check the worksheet. The ball speeds up because gravity pulls it. What happens next?'),
+    'The ball speeds up because gravity pulls it. What happens next?');
+  assert.equal(strip('Okay, let me think about this. Hmm. Look at the graph: which line rises fastest?'),
+    'Look at the graph: which line rises fastest?');
+  assert.equal(strip('One moment. Let me take a quick look at your answer. You wrote 24, but the unit is missing.'),
+    'You wrote 24, but the unit is missing.');
+  assert.equal(strip('I’ll check that for you. The key word is condense. Let me check that for you.'),
+    'The key word is condense.');
+  assert.equal(strip('The mass is 24 g. Hmm, what is the unit?'), 'The mass is 24 g. What is the unit?');
+  assert.equal(strip('Let me know when you have tried it, then read the second sentence again.'),
+    'Let me know when you have tried it, then read the second sentence again.', '"let me KNOW" is teaching');
+  assert.equal(strip('Look at the diagram first. Which arrow points to the stem?'),
+    'Look at the diagram first. Which arrow points to the stem?');
+  assert.equal(strip('Wait, that is not right: 2.5 kg is heavier than 1.8 kg.'),
+    'Wait, that is not right: 2.5 kg is heavier than 1.8 kg.');
+  assert.equal(strip('Try 2.5 kg first. e.g. weigh it, then compare.'), 'Try 2.5 kg first. e.g. weigh it, then compare.');
+  assert.equal(strip('Let me check.'), '', 'a reply that was ALL filler is empty, so the fallback line speaks');
+  const h = await connected({ ai: () => 'Let me think… Hmm. Water turns into vapour when it gains heat. So what does the puddle do at noon?' });
+  const channel = h.c.liveTutor.channel;
+  await h.c.runLiveDelegation('scrub', h.c.liveTutor.generation);
+  assert.equal(comments(channel)[0].content, 'Water turns into vapour when it gains heat. So what does the puddle do at noon?');
+  assert.match(h.calls.ai[0].config.system, /READ ALOUD[\s\S]*never open with, or include, "let me check", "let me think"/i);
+  h.c.stopLiveTutor();
+  const all = await connected({ ai: () => 'Let me check the worksheet.' });
+  await all.c.runLiveDelegation('all-filler', all.c.liveTutor.generation);
+  assert.equal(comments(all.c.liveTutor.channel)[0].content, 'I could not read that clearly. Please say the question again.');
+  all.c.stopLiveTutor();
+});

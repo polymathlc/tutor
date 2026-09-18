@@ -12,6 +12,26 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.19.0 — the live tutor is the logo, in tiny spheres, and never says "let me check"
+
+Chung GPT in live mode is drawn as the centre's own logo — the teal block and the magenta
+ribbon that make the **M** — in sixteen tiny spheres, in the live card and floating over the
+worksheet while a session runs. What the spheres do is what the tutor is doing:
+
+- **Thinking** — the spheres peel off one after another into a ring that **spins**, Siri-style,
+  under the word *Thinking*. Nothing is spoken until the teaching result is ready.
+- **Talking** — a row that rises and falls with the tutor's voice, measured off the audio the
+  student is hearing, so there is feedback while it speaks.
+- **Listening** — the M, breathing gently. **Idle** — every so often the spheres drift apart and
+  settle back into the M.
+
+The tutor also **never says “let me check”, “let me think”, “let me see”, “one moment” or “hmm”
+any more.** The voice model is told, twice over, to stay silent while it waits and to begin with
+the teaching itself; and the spoken reply is **scrubbed on the way to the speaker**, so a text
+model that opens with “Let me check the worksheet…” has that cut before the student hears it.
+Teaching is never touched — “let me *know* when you have tried it” stays exactly as written.
+Everything that moves stops for *prefers-reduced-motion*.
+
 ## v1.18.0 — the diagnostic: every question filed under the syllabus, and kept for the long run
 
 Marking a worksheet now files every question under the **MOE syllabus topic and learning objective**

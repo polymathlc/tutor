@@ -55,6 +55,8 @@ test('valid start authenticates before reserving and sends only fixed server con
   assert.match(config.instructions, /current worksheet image and the student's typed answers/);
   assert.match(config.instructions, /Wait for that result before deciding whether anything is missing/);
   assert.match(config.instructions, /While a delegation is pending, remain silent/);
+  assert.match(config.instructions, /"let me think", "let me see", "let me look"/);
+  assert.match(config.instructions, /begin with the first teaching sentence itself/);
   assert.doesNotMatch(config.instructions, /only acknowledge that you are checking|You cannot see pictures/);
   assert.ok(!config.instructions.includes('give all answers'));
   assert.equal(result.headers['Cache-Control'], 'no-store');

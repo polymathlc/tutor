@@ -130,6 +130,12 @@ Use a saved worksheet while signed into Study Buddy with a Google account:
 5. Check Cloud Functions logs for sanitized failure codes if startup fails. Verify the key's
    OpenAI project has access to the Live model and sufficient quota.
 
+6. Watch the orb in the live card (and the small one over the worksheet): the logo's spheres
+   should breathe while listening, peel into a **spinning ring under “Thinking”** during a check,
+   and rise and fall in a row while the tutor speaks. Listen for the tutor **never** saying
+   “let me check”, “let me think”, “one moment” or “hmm” — the server prompt forbids it and the
+   client scrubs the spoken reply (`liveStripFiller`) before it reaches the speaker.
+
 Automated tests use mocked browser, Firebase, and OpenAI boundaries. They verify protocol
 payloads and application behavior without spending API credits; they do not establish actual
 model access or audio quality. A real spoken session is required for those checks.

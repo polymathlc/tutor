@@ -2,6 +2,73 @@
 
 Guidance for Claude when working in this repo.
 
+## 🔮 THE LIVE ORB — the tutor drawn as the logo, and no "let me check" (v1.19.0)
+
+`LIVE_ORB_N` / `LIVE_ORB_TEAL` … `LIVE_ORB_MAGENTA_DARK` / `LIVE_ORB_PALETTE` /
+`LIVE_ORB_TALK_MS` / `LIVE_ORB_TALK_FLOOR` / **`LIVE_ORB_LAYOUTS`** / `liveOrbDrift` /
+`orbSet` / `liveOrbHosts` / `liveOrbStage` / `liveOrbBuild` / **`liveOrbState`** /
+`liveOrbLayoutFor` / **`liveOrbPaint`** / `liveOrbListen` / `liveOrbHush` / `liveOrbSpoke`,
+and `LIVE_FILLER_LEAD` / `LIVE_FILLER_VERB` / `LIVE_FILLER_CLAUSE` / `LIVE_FILLER_RE` /
+`LIVE_FILLER_SENTENCE_RE` / **`liveStripFiller`** (search `THE LIVE ORB` and `NO "LET ME
+CHECK"`), plus `#liveOrb` in the live card, `#liveOrbFloat` beside `#liveSubs`, the
+`.liveOrb` / `.orbStage` / `.orbDot` / `.orbCap` CSS, the `orbAudio` / `level` /
+`spokeAt` / `orbTalking` fields on `liveTutor`, and the strengthened prompts in
+`worksheetContextRule`, `runLiveDelegation` and `functions/live-service.js`.
+
+The live card was a line of text. It is the centre's own logo now — the teal block and the
+magenta ribbon that make the M — in sixteen tiny spheres, and what the spheres DO is what the
+session is doing: the M breathing while it listens, a ring that spins under the word *Thinking*
+while a check runs, a row that rises with the voice while it talks, and an occasional shuffle
+while it idles.
+
+- **THE LAYOUTS ARE DATA AND THE MOTION IS CSS.** `LIVE_ORB_LAYOUTS` gives each state its
+  sixteen positions on a 0..100 grid; `liveOrbPaint` writes them as custom properties
+  (`--x --y --s --c --amp`) and the stylesheet transitions between them. The swirl into the ring
+  is the transition itself with a per-sphere delay (`--i`); the spin, the idle shuffle
+  (`orbIdle`), the breathing and the twinkle are keyframes. `--u` is the size of one grid unit
+  and is the ONLY thing that differs between the card's orb and the floating one.
+- **`liveOrbState()` IS THE ONE PLACE THE PHASE BECOMES A STATE**, and both orbs are painted by
+  the one `liveOrbPaint`, so the card and the float can never disagree about what the tutor is
+  doing. Talking is READ OFF `liveTutor.spokeAt` — a timestamp, not a flag — so the 1-second
+  tick's ordinary render lets the row settle back into the M.
+- **NOTHING HERE SETS A TIMER, and the harness counts.** Half a dozen cases assert
+  `timers.size === 0` after a session ends. An idle-shuffle `setInterval` would have failed all
+  of them and, worse, gone on running after End; a CSS keyframe costs nothing and stops with the
+  element. The only loop is the analyser's `requestAnimationFrame`, which exists only where Web
+  Audio does and is cancelled by `liveOrbHush()` in the same `release()` that closes the
+  transport.
+- **THE VOICE IS MEASURED, WITH A FALLBACK.** `liveOrbListen` hangs an AnalyserNode on the SAME
+  remote track the speaker plays, so the row rises with the voice the student is hearing. Where
+  Web Audio is missing (the harness, an iPad in Lockdown Mode) `liveOrbSpoke` counts each
+  output-transcript delta as a heard syllable, so the row talks either way; the analyser's
+  level wins when both exist, because it is measured and the pulse is not.
+- **EVERY DOM CALL IS DEFENSIVE.** The harness runs the live block in a vm with a mock document
+  whose `style` is a bare object: `orbSet` writes a custom property either way, a host with no
+  stage grows one, and a missing host is simply not painted.
+- **THE FLOAT NEVER TAKES A POINTER** — it sits over a page a child writes on with a stylus,
+  the rule `#liveSubs` already carries — and it is up only while `liveActive()` on an open
+  worksheet.
+
+### No "let me check" — the scrubber
+
+The voice model is told, in `functions/live-service.js`, to stay silent while a delegation is
+pending and to begin with the first teaching sentence when the result arrives; the delegation's
+own system prompt says the reply is READ ALOUD and must never open with filler. A text model
+still opens with "Let me check the worksheet…" often enough that the reply is **scrubbed before
+it is handed to the speaker** (`liveStripFiller` on `spokenReply`).
+
+- **IT IS A SCRUBBER, NOT A REWRITER.** Only a leading run of filler clauses is cut, then any
+  whole sentence that is nothing but filler, then a thinking sound opening a sentence ("Hmm,
+  what is the unit?"). The teaching itself is never touched.
+- **"LET ME KNOW" IS DELIBERATELY NOT FILLER.** `LIVE_FILLER_VERB` names the verbs that mean
+  waiting — think, check, see, look, read, go over, figure out — so "Let me know when you have
+  tried it" survives, as does a bare "Wait, that is not right" and "Look at the diagram first".
+- **A REPLY THAT WAS ALL FILLER COMES BACK EMPTY**, so the caller's existing fallback line
+  speaks — better than reading "Let me check." to a child and stopping.
+- **Only the FIRST letter is recapitalised** after a cut: an "e.g." mid-reply is an abbreviation.
+- Run **`node --test tools/live-tutor-tests.mjs`**, **`node tools/tutor-tests.mjs`** and
+  **`cd functions && node --test test/*.test.js`** after touching any of it.
+
 ## 🧩 KEYWORD CHECKS — the concepts rung asked as a question (v1.17.0)
 
 `KWQ_KEY` / `KWQ_RUNG` / `KWQ_MAX_BLANKS` / `KWQ_LIVE_GAP_MS` / `kwQuizPref` /
@@ -1720,6 +1787,23 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **🔮 the live orb or the filler scrubber** (`LIVE_ORB_LAYOUTS`,
+  `liveOrbState`, `liveOrbPaint`, `liveOrbListen`, `liveOrbHush`, `liveOrbSpoke`,
+  `liveOrbBuild`, `LIVE_FILLER_RE`, `LIVE_FILLER_SENTENCE_RE`, `liveStripFiller`, the
+  `.liveOrb` CSS, or the prompts in `worksheetContextRule` / `runLiveDelegation` /
+  `functions/live-service.js`), run `node --test tools/live-tutor-tests.mjs`,
+  `node tools/tutor-tests.mjs` and `cd functions && node --test test/*.test.js` **and watch
+  one live session** — a drawing is the one thing reading the source cannot check. Every
+  failure is silent. Drive the idle shuffle or the talking state with a timer and End leaves
+  it running, on a session that says it has ended. Let the card and the float read the phase
+  separately and one spins while the other listens. Attach the analyser to a stream other than
+  the one the speaker plays and the row rises with nothing the student can hear; drop the
+  transcript fallback and an iPad in Lockdown Mode has a tutor that talks with a still face.
+  Loosen `LIVE_FILLER_VERB` and "let me know when you have tried it" is cut to "when you have
+  tried it"; tighten it and "Let me check the worksheet" is read aloud again, which is the one
+  sentence this whole change exists to remove. Hand an all-filler reply to the speaker and the
+  tutor says "Let me check." and stops. And leave a perpetual animation outside the
+  reduced-motion block and the orb spins for a child who asked it not to.
 - After touching **🧩 the keyword check or the syllabus** (`kwQuizAllowed`,
   `kwQuizClean`, `kwQuizGivesAnswer`, `kwQuizKeyAnswers`, `kwQuizMatch`,
   `kwQuizBuild`, `KWQ_SYS`, `kwQuizCeilingRule`, `kwQuizShow`, `kwQuizRender`,
