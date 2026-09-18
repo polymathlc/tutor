@@ -1024,6 +1024,86 @@ that already has words in it — and passes only inside half a page unit.
 - Like scan's `mobile-check`, it needs `playwright-core` and the Chromium
   already on the machine, so it is a tool you reach for rather than a gate.
 
+## 🧭 THE DIAGNOSTIC — every question filed under the SYLLABUS, and kept for the long run (v1.18.0)
+
+`SYLLABUS` / `syllabusEntries` / `syllabusLo` / `syllabusTopic` / `diagChoices` /
+`markSyllabusBlock` / **`diagPlace`** / `diagItemPlace` / `reportDiagnostic` /
+`diagPct` / `diagResult` / **`diagSummary`** / `progressRows` / `progressFocus` /
+`diagAsText` / `diagTrendText` / `diagGroupsOf` (search `THE DIAGNOSTIC — every
+question filed`), the `ctx` on `_markNewItem` / `_markFoldRows`, `diagTableNode`
+/ `renderProgress` / `progressAsText` beside the report's renderers, the
+`diagnostic` field `performSave` writes, `#progressModal` and 📈 **My progress**
+on Home.
+
+The report grouped by whatever topic the marking happened to name — right for
+"what went wrong on THIS paper" and useless for "is Heat still the problem?",
+because a topic named freely is named five ways over five papers and never adds
+up. So the marking is handed THE SAME TWO LISTS the teacher's own apps file a
+question under, and every question lands on a syllabus line.
+
+- **`SYLLABUS.science` is cer's `SYLLABUS_LO_TOPICS` and `SYLLABUS.math` is
+  the Maths app's `MOE_SYLLABUS` (P3–P6), IDS AND ALL** — `heat-flow`,
+  `P5.FR.2.6`. A diagnostic filed here names the objective a question in those
+  banks is filed under, which is what lets a weak line be matched to practice
+  there. Each science heading is tagged with the portal's rapid-add TOPIC
+  (`bank`, with a per-objective override where one heading spans several —
+  Reproduction is two topics there, the Environment three), so the student
+  reads *Heat*, not *Energy Forms and Uses (Heat)*. **Edit an id and the two
+  apps stop meaning the same thing with nothing anywhere to say so** — the
+  harness pins both counts (79 and 171) and a sample of ids. MOE changes the
+  syllabus rarely; when it does, all three files want editing.
+- **`syllabusEntries` is the ONE reader** of the catalogue: one row per
+  objective, in syllabus order, with `tkey` unique across the subject. A maths
+  topic is "Fractions: Four Operations" with its strand, because "Four
+  Operations" is two topics at P5 and "Angles" is a topic at three levels.
+- **THE LIST IS NARROWED TO THE WORKSHEET'S LEVEL** (`diagChoices`), the way
+  ⚡ Rapid add's batch level narrows the topics — and, like that picker's "Any
+  level" row, a worksheet with no level is offered the whole subject. A subject
+  with no list (English, Chinese, a Sec 1 paper) gets **no block at all**
+  (`markSyllabusBlock` returns `''`) and the generic topic rule stands byte for
+  byte. The block goes into the SYSTEM prompt beside the grounding and the key.
+- **A REPLY OFF THE LIST IS SHOWN, NEVER SNAPPED** (`diagPlace`). The portal's
+  `_rapidApplyLevel` files an off-list topic into the level's first topic and
+  marks it low because a person vets every low there. Nobody vets a diagnostic
+  — it is written into a record the student keeps for years — so a wrong snap
+  here is a lesson filed under the wrong topic for good. A real objective id
+  wins outright; a topic matching a name on the list is placed under it with no
+  objective, preferring the worksheet's level where the name exists at several;
+  anything else keeps the model's own wording, unplaced, under *Not on the
+  syllabus list* — visible, and last.
+- **The placement rides the ITEM** (`lo`, `sylTopic`) and the fold carries it
+  with the topic, from the half that saw the whole question. **A worksheet
+  marked before this is placed BY NAME at render time** (`diagItemPlace`), so an
+  old paper is not all "unlisted".
+- **EVERYTHING IS PLAIN CODE over the marking that already happened** — no
+  second AI call, the rule the report has always carried; the harness fails on
+  an `askGemini` anywhere in the block.
+- **The rate is over what was ATTEMPTED** (`diagPct`), the headline score's own
+  rule: a blank keeps its full marks, adds nothing obtained, is counted blank
+  and never wrong, and a row nothing was attempted on reads *Untried* rather
+  than nought per cent. The result is a WORD with a class, never a colour
+  alone, for the reason the report's verdicts are.
+- **`diagSummary()` is what survives the tab**: one small row per
+  topic-and-objective — the topic key, the objective id and the numbers,
+  capped at `DIAG_ROWS_MAX` — written beside `score` on EVERY save, because
+  the long run is added up off the worksheet LIST and never off a body. An
+  unplaced row keeps the model's wording (`n`) so the long run can still name
+  it. No marking is `null`, never an empty summary.
+- **`progressRows` adds the summaries up across every worksheet the student
+  can see**, per subject, in syllabus order, with each objective's history
+  oldest first; a row that is not a row is skipped, not the paper. The
+  objective's wording is read from the CATALOGUE, never from the summary.
+  `progressFocus` is the weakest first, under `DIAG_FOCUS_PCT`, then the most
+  marks behind them.
+- **ONE table builder draws both tables** (`diagTableNode`) and ONE text
+  renderer both copies (`diagAsText`), so the report and 📈 My progress cannot
+  disagree about what a row is. The print rules key off `.modalBack.printMe`
+  rather than the report's id — a second printable window was exactly the case
+  `printThis` was written for.
+- A filed mistake carries `topic` / `lo` / `sylTopic` too, so the book can one
+  day be read by objective.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 📊 The report, and the ticks on the page (v1.3.0)
 
 `MARK_TOPIC_RULE` / `MARK_MARKS_RULE` / `MARK_WHERE_RULE` / `_markPair` /
@@ -1785,6 +1865,28 @@ the two in step; a fix to either belongs in both.
   reading. A blank marked wrong is the one mistake this whole app is built not
   to make. And the pictures not awaited is the quietest of them: the dialog
   opens, the sheet prints, and the questions are simply not on it.
+- After touching **🧭 the diagnostic** (`SYLLABUS`, `syllabusEntries`,
+  `diagChoices`, `markSyllabusBlock`, `diagPlace`, `diagItemPlace`,
+  `reportDiagnostic`, `diagPct`, `diagResult`, `diagSummary`, `progressRows`,
+  `progressFocus`, `diagAsText`, `diagGroupsOf`, the `ctx` on `_markNewItem` /
+  `_markFoldRows`, or the `diagnostic` field in `performSave`), run
+  `node tools/tutor-tests.mjs`. Every failure here is silent and lands in a
+  record the student keeps for years. Snap an off-list reply into the nearest
+  topic and a question is filed under the wrong objective for good, on a table
+  that looks perfectly complete; drop the id check and a real objective from
+  another year is thrown away for the level's first topic. Edit an id — or
+  rebuild the catalogue from anything but cer's `SYLLABUS_LO_TOPICS` and the
+  Maths app's `MOE_SYLLABUS` — and a weak line here stops naming the objective
+  the question banks there are filed under. Stop narrowing to the level and a
+  P5 paper is filed across four years' objectives; narrow a subject with no
+  list and the marking is handed an empty list, which it fills in. Read the
+  rate over the full marks rather than what was attempted and a child who ran
+  out of time is reported as a child who got it wrong. Fold the fold's `ctx`
+  away and every question is unlisted while the prompt still asks for the id.
+  Stop writing `diagnostic` on the save and 📈 My progress is empty for ever
+  with nothing to say why; write the items into it instead of the numbers and
+  the document holds the marking twice. And add a second AI call anywhere in
+  it and the same marked paper stops producing the same diagnostic twice.
 - After touching **📊 the report, the marks or the ticks on the page**
   (`MARK_TOPIC_RULE`, `MARK_MARKS_RULE`, `MARK_WHERE_RULE`, `_markPair`,
   `markPairOf`, `_markAt`, `markMarkTally`, `reportTopicKey`, `reportTopics`,

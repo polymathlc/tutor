@@ -1624,6 +1624,247 @@ eq('a worksheet marked before the marks existed reports no score, not zero',
    S.markMarkTally().has, false);
 
 /* =====================================================================
+   THE DIAGNOSTIC — the paper filed under the syllabus, kept for the long
+   run. Every failure here is silent: a question filed under the wrong
+   objective prints perfectly and is wrong in the record for years.
+   ===================================================================== */
+section('The diagnostic — the syllabus catalogue');
+
+/* The two lists are COPIES of the sibling apps' own — cer's
+   SYLLABUS_LO_TOPICS and the Maths app's MOE_SYLLABUS (P3–P6) — and the
+   ids have to stay theirs byte for byte, or a weak objective here stops
+   naming the question bank's objective there. The counts and a sample of
+   ids pin the copy. */
+const sci = S.syllabusEntries('science');
+const mth = S.syllabusEntries('math');
+eq('science carries every one of the portal\'s 79 objectives', sci.length, 79);
+eq('…under its 18 syllabus headings', S.SYLLABUS.science.length, 18);
+eq('maths carries the 171 P3–P6 objectives of the maths app', mth.length, 171);
+ok('a science id is cer\'s own', !!S.syllabusLo('science', 'heat-flow'));
+ok('a maths id is the maths app\'s own', !!S.syllabusLo('math', 'P5.FR.2.6'));
+eq('…and reads level.sub-strand.number', S.syllabusLo('math', 'P5.FR.2.6').level, 'P5');
+ok('every id is unique within its subject',
+   new Set(sci.map(e => e.id)).size === 79 && new Set(mth.map(e => e.id)).size === 171);
+/* The TOPIC a student reads is the portal's rapid-add topic, not the
+   syllabus's own heading: "Heat", not "Energy Forms and Uses (Heat)". */
+eq('a science topic is the rapid-add name', S.syllabusLo('science', 'heat-flow').topic, 'Heat');
+eq('…with the syllabus heading kept as its group', S.syllabusLo('science', 'heat-flow').group,
+   'Energy Forms and Uses (Heat)');
+eq('a heading spanning several rapid-add topics files each objective under its own',
+   S.syllabusLo('science', 'env-food').topic, 'Food Chains and Webs');
+eq('…and the rest under the heading\'s default', S.syllabusLo('science', 'env-adapt').topic, 'Living Together');
+eq('a maths topic carries its sub-strand, because "Four Operations" is two topics at P5',
+   S.syllabusLo('math', 'P5.FR.2.6').topic, 'Fractions: Four Operations');
+ok('…and the two are different keys',
+   S.syllabusLo('math', 'P5.FR.2.6').tkey !== S.syllabusLo('math', 'P5.WN.2.4').tkey);
+ok('the entries come out in syllabus order',
+   sci.every((e, i) => i === 0 || e.order > sci[i - 1].order));
+eq('a subject with no list has no entries', S.syllabusEntries('english').length, 0);
+eq('…and neither does nothing at all', S.syllabusEntries('').length, 0);
+
+section('The diagnostic — the selector');
+/* The list is narrowed to the worksheet's level, the way ⚡ Rapid add's
+   batch level narrows the topics the AI may choose from. */
+const p5 = S.diagChoices('science', 'P5');
+ok('a P5 science worksheet is offered the P5 objectives only',
+   p5.entries.length > 0 && p5.entries.every(e => e.level === 'P5'));
+eq('…and says which level was offered', p5.level, 'P5');
+eq('no level is the whole subject — the picker\'s "Any level" row', S.diagChoices('science', '').entries.length, 79);
+eq('a level the list does not know falls back to the whole subject', S.diagChoices('science', 'S1').entries.length, 79);
+eq('…and says no level was applied', S.diagChoices('science', 'S1').level, '');
+eq('a subject with no list offers nothing', S.diagChoices('english', 'P5').entries.length, 0);
+
+const blk = S.markSyllabusBlock('science', 'P5');
+ok('the prompt block names the P5 objectives', blk.indexOf('wat-evap') !== -1 && blk.indexOf('elec-cond') !== -1);
+ok('…and not the P4 ones', blk.indexOf('heat-flow') === -1);
+ok('…and says the year is not in question', /year is not in question/.test(blk));
+ok('…and says to leave both empty rather than force a fit', /leave both empty/.test(blk));
+ok('the whole subject goes when there is no level',
+   S.markSyllabusBlock('science', '').indexOf('heat-flow') !== -1 && S.markSyllabusBlock('science', '').indexOf('wat-evap') !== -1);
+eq('a subject with no list gets NO block, so the generic topic rule stands', S.markSyllabusBlock('english', 'P5'), '');
+ok('the block puts each objective beside its topic',
+   /• Water and its 3 States \[P5\]: wat-three — /.test(blk));
+
+section('The diagnostic — where a reply lands');
+/* A real id wins outright, whatever the topic said. */
+let pl = S.diagPlace('science', 'P5', 'Heat', 'wat-evap');
+eq('an objective id wins over the topic beside it', pl.topic, 'Water and its 3 States');
+eq('…and files the objective', pl.lo, 'wat-evap');
+eq('…on the list', pl.onList, true);
+eq('an id is matched whatever its case', S.diagPlace('science', 'P5', '', 'WAT-EVAP').lo, 'wat-evap');
+/* A topic that matches a name is placed under it with no objective. */
+pl = S.diagPlace('science', 'P5', '  electrical   systems ', '');
+eq('a topic matching a name on the list is placed, case and space aside', pl.sylTopic, 'Electrical Systems');
+eq('…with no objective', pl.lo, '');
+eq('…and the list\'s own spelling', pl.topic, 'Electrical Systems');
+/* "Angles" is a topic at P3, P4 and P5 in maths; the worksheet's level
+   decides, and the strand may be left off. */
+pl = S.diagPlace('math', 'P5', 'Angles', '');
+ok('a bare maths topic is placed under the worksheet\'s own level', /^P5\.GEO /.test(pl.sylTopic), pl.sylTopic);
+ok('…where the level has it', /^P3\.GEO /.test(S.diagPlace('math', 'P3', 'Angles', '').sylTopic));
+ok('…and under the first level that does otherwise', /^P3\.GEO /.test(S.diagPlace('math', 'P6', 'Angles', '').sylTopic));
+eq('the strand spelled out matches too', S.diagPlace('math', 'P5', 'Geometry: Angles', '').lo, '');
+ok('…', /^P5\.GEO /.test(S.diagPlace('math', 'P5', 'Geometry: Angles', '').sylTopic));
+/* NEVER SNAPPED: a reply off the list keeps its own wording, unplaced. */
+pl = S.diagPlace('science', 'P5', 'Photosynthesis in the dark', 'not-an-id');
+eq('an unknown topic and id are kept as the model wrote them', pl.topic, 'Photosynthesis in the dark');
+eq('…unplaced', pl.onList, false);
+eq('…with no objective', pl.lo, '');
+eq('…and no topic key', pl.sylTopic, '');
+ok('the model\'s own wording is clipped, not dropped', S.diagPlace('science', 'P5', 'x'.repeat(200), '').topic.length === 70);
+pl = S.diagPlace('english', 'P5', 'Subject-verb agreement', 'anything');
+eq('a subject with no list keeps the raw topic', pl.topic, 'Subject-verb agreement');
+eq('…and is never on a list', pl.onList, false);
+
+section('The diagnostic — the item carries its filing');
+const dctx = { subject: 'science', level: 'P5' };
+let it = S._markNewItem({ question: 'q', answer: 'a', topic: 'Water', lo: 'wat-evap', marks: '2/2',
+                          studentAnswer: 'x', verdict: 'correct' }, [1], dctx);
+eq('a marked item carries its objective', it.lo, 'wat-evap');
+eq('…its topic key', it.sylTopic, 'Water and its 3 States');
+eq('…and the list\'s own topic name', it.topic, 'Water and its 3 States');
+it = S._markNewItem({ question: 'q', answer: 'a', topic: 'Water', lo: 'wat-evap' }, [1]);
+eq('without a context the topic is raw, exactly as before', it.topic, 'Water');
+eq('…and nothing is filed', it.lo + it.sylTopic, '');
+/* A question over a page break is filed by the half that saw all of it. */
+const run = [];
+S._markFoldRows([{ question: 'first half', answer: '', topic: 'Heat', lo: 'heat-flow' }], [1], run, { subject: 'science', level: '' });
+S._markFoldRows([{ continuation: true, question: 'second half', answer: 'a', topic: 'Water', lo: 'wat-evap' }], [2], run, { subject: 'science', level: '' });
+eq('a continuation is one question', run.length, 1);
+eq('…filed by the half that saw the whole of it', run[0].lo, 'wat-evap');
+eq('…topic key and all', run[0].sylTopic, 'Water and its 3 States');
+
+section('The diagnostic — the table');
+S.wsMeta.subject = 'science';
+S.wsMeta.level = 'P5';
+function dk(o) {
+  return mk(Object.assign({ lo: '', sylTopic: '' }, o));
+}
+setItems([
+  dk({ number: '1', topic: 'Electrical Systems', sylTopic: 'Electrical Systems', lo: 'elec-cond', verdict: 'wrong', marks: '0/2' }),
+  dk({ number: '2', topic: 'Water and its 3 States', sylTopic: 'Water and its 3 States', lo: 'wat-evap', verdict: 'correct', marks: '2/2' }),
+  dk({ number: '3', topic: 'Water and its 3 States', sylTopic: 'Water and its 3 States', lo: 'wat-evap', verdict: 'partial', marks: '1/2' }),
+  dk({ number: '4', topic: 'Water and its 3 States', sylTopic: 'Water and its 3 States', lo: '', objective: 'Read a graph of temperature.', verdict: 'correct', marks: '1/1' }),
+  dk({ number: '5', topic: 'Water and its 3 States', sylTopic: 'Water and its 3 States', lo: 'wat-three', marked: false, verdict: '', studentAnswer: '', marks: '0/3' }),
+  dk({ number: '6', topic: 'Kitchen chemistry', verdict: 'wrong', marks: '0/1' }),
+  dk({ number: '7', topic: '', verdict: 'wrong', marks: '0/1' }),
+  dk({ number: '8', topic: 'Electrical Systems', sylTopic: 'Electrical Systems', lo: 'elec-cond', verdict: 'correct', marks: '2/2' })
+]);
+let dg = S.reportDiagnostic();
+eq('the table knows the subject has a list', dg.hasList, true);
+eq('the topics come out in SYLLABUS order — Water before Electrical, the paper\'s order aside',
+   dg.groups.map(g => g.topic), ['Water and its 3 States', 'Electrical Systems', 'Kitchen chemistry', S.REPORT_UNLABELLED]);
+eq('a question off the list keeps its own heading, after every listed topic', dg.groups[2].onList, false);
+eq('a question with no topic at all is last of all', dg.groups[3].labelled, false);
+const water = dg.groups[0];
+eq('the objectives under a topic are in syllabus order, with the topic-only row last',
+   water.rows.map(r => r.lo), ['wat-three', 'wat-evap', '']);
+eq('an objective row names the objective', water.rows[1].objective, 'What affects the rate of evaporation');
+eq('a topic-only row shows what the marking said the question tests', water.rows[2].objective, 'Read a graph of temperature.');
+eq('the objective\'s full marks add up', water.rows[1].total, 4);
+eq('…and the marks obtained', water.rows[1].awarded, 3);
+eq('…and the topic\'s subtotal over all its rows', [water.total, water.awarded, water.n], [8, 4, 4]);
+eq('a blank keeps its full marks and adds nothing obtained', [water.rows[0].total, water.rows[0].awarded, water.rows[0].blankMarks], [3, 0, 3]);
+eq('…and is counted as blank, never wrong', [water.rows[0].blank, water.rows[0].wrong], [1, 0]);
+eq('the rate is over what was ATTEMPTED', S.diagPct(water), 80);
+eq('a row nothing was attempted on has no rate, not nought', S.diagPct(water.rows[0]), null);
+eq('…and reads as untried', S.diagResult(water.rows[0]).text, 'Untried');
+eq('80% is strong', S.diagResult(water).text, 'Strong');
+eq('50% is getting there', S.diagResult(dg.groups[1]).text, 'Getting there');
+eq('under 50% is revise', S.diagResult(dg.groups[2]).text, 'Revise');
+eq('the same objective on two questions is one row', dg.groups[1].rows.length, 1);
+eq('…counting both', dg.groups[1].rows[0].n, 2);
+/* A worksheet marked BEFORE this existed carries no filing; its topics are
+   placed by name at render time, so an old paper is not all "unlisted". */
+setItems([mk({ topic: 'heat', verdict: 'wrong', marks: '0/1' }), mk({ topic: 'Something else', verdict: 'wrong', marks: '0/1' })]);
+dg = S.reportDiagnostic();
+eq('an old marking whose topic is a syllabus name is placed at render time', dg.groups[0].sylTopic, 'Heat');
+eq('…with the list\'s spelling', dg.groups[0].topic, 'Heat');
+eq('…and one that is not stays unlisted', dg.groups[1].onList, false);
+S.wsMeta.subject = 'english';
+dg = S.reportDiagnostic();
+eq('a subject with no list has no list, and every topic is simply a topic', dg.hasList, false);
+eq('…in the order the marking named them', dg.groups.map(g => g.topic), ['heat', 'Something else']);
+S.wsMeta.subject = 'science';
+
+/* The text copy is built from the same groups as the screen. */
+const lines = S.diagAsText(S.reportDiagnostic().groups, { hasList: true });
+ok('the text lists every topic', lines.length >= 2 && /Heat/.test(lines[0]));
+ok('…with its marks and rate', /0\/1 marks/.test(lines[0]) && /0% · Revise/.test(lines[0]));
+ok('…and says when a topic is off the list', /Not on the syllabus list/.test(lines[1]));
+eq('the trend line runs oldest to newest', S.diagTrendText([{ awarded: 1, attempted: 2 }, { awarded: 0, attempted: 0 }, { awarded: 4, attempted: 4 }]), '50% → – → 100%');
+
+section('The diagnostic — what is saved, and the long run');
+setItems([
+  dk({ number: '1', topic: 'Electrical Systems', sylTopic: 'Electrical Systems', lo: 'elec-cond', verdict: 'wrong', marks: '0/2' }),
+  dk({ number: '2', topic: 'Kitchen chemistry', verdict: 'correct', marks: '1/1' })
+]);
+S.marking.runAt = 1700000000000;
+let sum = S.diagSummary();
+eq('the summary names the subject and level', [sum.subject, sum.level], ['science', 'P5']);
+eq('…when it was marked', sum.at, 1700000000000);
+eq('…one small row per topic-and-objective', sum.rows.length, 2);
+eq('…with the topic key and objective id', [sum.rows[0].t, sum.rows[0].lo], ['Electrical Systems', 'elec-cond']);
+eq('…and the numbers', [sum.rows[0].q, sum.rows[0].tot, sum.rows[0].got, sum.rows[0].att, sum.rows[0].no], [1, 2, 0, 2, 1]);
+eq('an unlisted row keeps the model\'s wording so the long run can still name it', [sum.rows[1].t, sum.rows[1].n], ['', 'Kitchen chemistry']);
+ok('a row is a handful of short fields, never the items', !('items' in sum.rows[0]) && JSON.stringify(sum).length < 400);
+setItems([]);
+eq('no marking is no summary, not an empty one', S.diagSummary(), null);
+setItems(Array.from({ length: 200 }, (_, i) => dk({ number: String(i), topic: 'T' + i, verdict: 'wrong', marks: '0/1' })));
+eq('the rows are capped, because the summary rides a document that also holds the body',
+   S.diagSummary().rows.length, S.DIAG_ROWS_MAX);
+
+/* Added up across worksheets, off the list's own fields. */
+const list = [
+  { name: 'Paper A', subject: 'science', diagnostic: { v: 1, subject: 'science', level: 'P5', at: 100, rows: [
+      { t: 'Electrical Systems', n: 'Electrical Systems', lo: 'elec-cond', q: 1, tot: 2, got: 0, att: 2, ok: 0, half: 0, no: 1, blank: 0 },
+      { t: 'Water and its 3 States', n: 'Water and its 3 States', lo: 'wat-evap', q: 2, tot: 4, got: 4, att: 4, ok: 2, half: 0, no: 0, blank: 0 },
+      { t: '', n: 'Kitchen chemistry', lo: '', q: 1, tot: 1, got: 0, att: 1, ok: 0, half: 0, no: 1, blank: 0 } ] } },
+  { name: 'Paper B', subject: 'science', diagnostic: { v: 1, subject: 'science', level: 'P5', at: 300, rows: [
+      { t: 'Electrical Systems', n: 'Electrical Systems', lo: 'elec-cond', q: 2, tot: 4, got: 3, att: 4, ok: 1, half: 1, no: 0, blank: 0 },
+      'junk', null ] } },
+  { name: 'Sums', subject: 'math', diagnostic: { v: 1, subject: 'math', level: 'P5', at: 200, rows: [
+      { t: 'P5.FR Fractions: Four Operations', n: 'Fractions: Four Operations', lo: 'P5.FR.2.6', q: 1, tot: 3, got: 1, att: 3, ok: 0, half: 1, no: 0, blank: 0 } ] } },
+  { name: 'Unmarked', subject: 'science' },
+  { name: 'Old', subject: 'science', diagnostic: { rows: [] } }
+];
+const subs = S.progressRows(list);
+eq('one block per subject, science first', subs.map(s => s.subject), ['science', 'math']);
+eq('a worksheet with no summary is not a paper', subs[0].papers, 2);
+const elec = subs[0].rows.find(r => r.lo === 'elec-cond');
+eq('an objective is added up across papers', [elec.papers, elec.n, elec.total, elec.awarded, elec.attempted], [2, 3, 6, 3, 6]);
+eq('…with every verdict counted', [elec.correct, elec.partial, elec.wrong], [1, 1, 1]);
+eq('…and its history oldest first', elec.history.map(h => h.name), ['Paper A', 'Paper B']);
+eq('the rows come out in syllabus order', subs[0].rows.map(r => r.lo || r.topic), ['wat-evap', 'elec-cond', 'Kitchen chemistry']);
+eq('a row the summary could not place is still there, by name', subs[0].rows[2].onList, false);
+eq('a row that is not a row is skipped, not the paper', subs[0].rows.length, 3);
+eq('the objective reads from the catalogue, never from the summary', elec.objective, 'Electrical conductors and insulators');
+eq('a maths objective is placed the same way', subs[1].rows[0].topic, 'Fractions: Four Operations');
+eq('what to work on is the weakest first', S.progressFocus(subs[0].rows).map(r => r.lo || r.topic), ['Kitchen chemistry', 'elec-cond']);
+ok('…and never a strong one', S.progressFocus(subs[0].rows).every(r => S.diagPct(r) < S.DIAG_FOCUS_PCT));
+eq('nothing at all is nothing', S.progressRows([]).length, 0);
+
+section('The diagnostic — against index.html itself');
+const runSrc = html.slice(html.indexOf('async function runMarking()'), html.indexOf('function markTally()'));
+ok('the marking\'s system prompt carries the syllabus list',
+   /system: MARK_SYS \+ markBlankRule\(\) \+ aiGrounding\('mark'\) \+ keyRuleBlock\(\) \+ tutorMethodRule\(\) \+\s*markSyllabusBlock\(wsMeta\.subject, wsMeta\.level\)/.test(runSrc));
+ok('…and the fold is told the subject and level, or nothing is filed',
+   /_markFoldRows\(\(res && res\.questions\) \|\| \[\], pageNums, marking\.items,\s*\{ subject: wsMeta\.subject, level: wsMeta\.level \}\)/.test(runSrc));
+ok('the reply shape asks for the objective id', /"lo":"the learning objective/.test(html));
+const saveSrc = html.slice(html.indexOf('async function performSave('), html.indexOf('function applyWorksheetBody('));
+ok('the summary rides every save beside the score', /score: scoreOf\(\),[\s\S]{0,300}diagnostic: diagSummary\(\),/.test(saveSrc));
+ok('a filed mistake carries its objective', /lo: it\.lo \|\| '',\s*sylTopic: it\.sylTopic \|\| '',/.test(html));
+ok('the report draws the table', /body\.appendChild\(diagTableNode\(dg\.groups/.test(html));
+ok('…and the copy prints it', /DIAGNOSTIC — BY TOPIC AND LEARNING OBJECTIVE/.test(html));
+ok('📈 My progress is on the home screen and wired', /id="progressBtn"/.test(html) && /\$\('progressBtn'\)\.addEventListener\('click', openProgress\)/.test(html));
+ok('…prints through the ONE door', /printThis\(\$\('progressModal'\)\)/.test(html));
+ok('the print rules key off .printMe, never the report\'s id',
+   !/#reportModal[^\n]*\{/.test(html.slice(html.indexOf('@media print'), html.indexOf('@media print') + 4000)) &&
+   /\.modalBack\.printMe \.modalFoot \{ display: none !important; \}/.test(html));
+ok('there is still no second AI call anywhere in the diagnostic',
+   !/askGemini/.test(html.slice(html.indexOf('THE DIAGNOSTIC — every question filed'), html.indexOf('/* ================= The mistake book'))));
+
+/* =====================================================================
    CHUNG GPT
    ===================================================================== */
 section('Chung GPT');
