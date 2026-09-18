@@ -2,46 +2,83 @@
 
 Guidance for Claude when working in this repo.
 
-## 🔮 THE LIVE ORB — the tutor drawn as the logo, in SAND, and no "let me check" (v1.20.0)
+## 🔮 THE LIVE ORB — the WHOLE logo in sand, inside a glass sphere, and no "let me check" (v1.21.0)
 
 `LIVE_ORB_TEAL` … `LIVE_ORB_MAGENTA_DARK` / `LIVE_ORB_PALETTE` / **`LIVE_ORB_MASK`** /
-`LIVE_ORB_MASK_W` / `LIVE_ORB_MASK_H` / `LIVE_ORB_N` / `LIVE_ORB_N_FLOAT` / `LIVE_ORB_LOGO_W` /
-`LIVE_ORB_TALK_MS` / `LIVE_ORB_TALK_FLOOR` / `LIVE_ORB_RING_R` / `LIVE_ORB_RING_BAND` /
-`LIVE_ORB_SPIN` / `LIVE_ORB_GUST_MS` / `LIVE_ORB_GUST_LEN` / `LIVE_ORB_GRAIN_PX` / `liveOrbRng` /
-`liveOrbMaskCells` / **`liveOrbGrains`** / `liveOrbModel` / **`liveOrbState`** / **`liveOrbTarget`**
-/ `liveOrbEnter` / **`liveOrbStep`** / `liveOrbSettle` / `liveOrbMotionOk` / `liveOrbHosts` /
+`LIVE_ORB_MASK_W` / `LIVE_ORB_MASK_H` / **`LIVE_ORB_STRIDE`** / `LIVE_ORB_STRIDE_FLOAT` /
+**`LIVE_ORB_GRAIN_COVER`** / `LIVE_ORB_LOGO_W` / `LIVE_ORB_TALK_MS` / `LIVE_ORB_TALK_FLOOR` /
+`LIVE_ORB_RING_R` / `LIVE_ORB_RING_BAND` / `LIVE_ORB_SPIN` / `LIVE_ORB_BREATH` / `LIVE_ORB_DRIFT` /
+**`LIVE_ORB_IDLE_GUSTS`** / `LIVE_ORB_GUST_MS` / `LIVE_ORB_GUST_LEN` / `LIVE_ORB_SNAP` /
+`LIVE_ORB_SANDY_RATE` / `liveOrbRng` / `liveOrbMaskCells` / `liveOrbPitch` / **`liveOrbGrains`** /
+`liveOrbModel` / **`liveOrbState`** / **`liveOrbBroken`** / **`liveOrbTarget`** / `liveOrbEnter` /
+**`liveOrbStep`** / `liveOrbSettle` / `liveOrbMotionOk` / `liveOrbHosts` / `liveOrbStrideFor` /
 `liveOrbStage` / `liveOrbVisible` / `liveOrbDraw` / **`liveOrbFrame`** / `liveOrbLoopStart` /
 **`liveOrbPaint`** / `liveOrbListen` / `liveOrbHush` / `liveOrbSpoke`, and `LIVE_FILLER_LEAD` /
 `LIVE_FILLER_VERB` / `LIVE_FILLER_CLAUSE` / `LIVE_FILLER_RE` / `LIVE_FILLER_SENTENCE_RE` /
 **`liveStripFiller`** (search `THE LIVE ORB` and `NO "LET ME CHECK"`), plus `#liveOrb` in the live
-card, `#liveOrbFloat` beside `#liveSubs`, the `.liveOrb` / `.orbStage` / `.orbCap` CSS, the
+card, `#liveOrbFloat` beside `#liveSubs`, the `.liveOrb` / `.orbBody` / `.orbGlass` / `.orbStage` /
+`.orbGloss` / `.orbCap` / `.orbShadow` CSS with the `orbFloat` / `orbShadow` keyframes, the
 `orbAudio` / `level` / `spokeAt` / `orbTalking` fields on `liveTutor`, the repaint in `openBuddy`,
 and the strengthened prompts in `worksheetContextRule`, `runLiveDelegation` and
 `functions/live-service.js`.
 
 The live card was a line of text. It is the centre's own logo now — the teal block and the
-magenta ribbon that make the M — in a thousand grains of sand on a canvas, and what the sand DOES
-is what the session is doing: the M breathing while it listens, a gust blowing the grains off it
-and settling back while it idles, a swirl into a ring of sand that spins under the word
-*Thinking* while a check runs, a row that rises with the voice while it talks. v1.19.0 drew it
-as sixteen DOM spheres moved by CSS transitions; sixteen spheres cannot look like the logo, and a
-transition is not physics. Both went.
+magenta ribbon that make the M — in two and a half thousand grains of sand INSIDE A FLOATING
+GLASS SPHERE, and what the sand DOES is what the session is doing. At rest it is the WHOLE
+logo, solid, with no gap between grains: while it idles and while it listens the M simply stands
+(breathing, drifting a little in the glass). ONLY thinking and talking break it apart — a swirl
+into a ring of sand that spins under the word *Thinking* while a check runs, a row that rises
+with the voice while it talks — and it re-forms, grain for grain, the moment either ends.
+v1.19.0 drew it as sixteen DOM spheres moved by CSS transitions; v1.20.0 as a thousand loose
+grains with an idle gust blowing them about. The spheres could not look like the logo and the
+gust meant the logo was never quite there; both went.
 
 - **THE SHAPE IS THE ARTWORK.** `LIVE_ORB_MASK` is the logo itself, read off the centre's own
   picture cell by cell (66 × 58, one letter per cell naming which of the six colours it is, a
-  dot for paper, run-length encoded) and `liveOrbGrains` samples every grain's HOME from those
-  cells. So the sand settles into the real logo — the block's lit face, its shadowed face and the
+  dot for paper, run-length encoded) and `liveOrbGrains` makes ONE grain per cell (per
+  stride × stride block of cells in the float — `LIVE_ORB_STRIDE_FLOAT`), each with its HOME at
+  the exact centre of that cell. So the sand settles into the real logo — the block's lit face, its shadowed face and the
   fold of the ribbon come out in their own colours without anybody drawing them — and a sketch of
   the logo in polygons is exactly what this replaced. Re-reading the mask means re-running the
   classification against the picture (six nearest colours, strays with fewer than three inked
   neighbours dropped, cropped to the ink), never editing the string by hand.
+- **THE LOGO IS SOLID BY CONSTRUCTION, not by tuning.** The homes are an exact lattice (no
+  jitter inside the cell — `(cell.px + stride / 2) * scale`), and `liveOrbDraw` draws a grain as
+  a disc of `LIVE_ORB_GRAIN_COVER` × the cell pitch (`liveOrbPitch`), which is above √½ and so
+  covers the cell corner to corner and overlaps its neighbours. At rest the jitter force is ZERO
+  and a grain that has arrived is put EXACTLY on its target (`LIVE_ORB_SNAP`), so the settled
+  logo is a tiling and not a tremor — the harness asserts that ten seconds of idle stepping
+  moves nothing by a hair, and that every home has a neighbour exactly one pitch away. The
+  breath and the drift while listening are a uniform scale and a translation, the two motions
+  that cannot open a gap. Lower the cover under 0.7071, jitter the homes, or let the idle
+  jitter back in, and the logo is a scatter of dots again.
+- **ONLY THINKING AND TALKING BREAK THE LOGO APART**, and `liveOrbBroken(state)` is the ONE
+  place that is decided: the renderer reads it to switch between solid tiles and sand of uneven
+  sizes (`sz`, eased through `model.sandy` so a change never pops), `liveOrbStep` reads it to
+  switch the jitter on, and `liveOrbEnter` reads it to add the impulse that makes the break
+  visible (a swirl into the ring, a puff into the row, a scatter on the way back). The idle gust
+  of v1.20.0 is KEPT, switched off by `LIVE_ORB_IDLE_GUSTS` — the harness flips it on to prove
+  the machinery still runs off the frame clock, and it must never be on by default: an idle
+  logo that blows apart is not the logo.
+- **THE GLASS IS THE STYLESHEET'S.** `.orbBody` is the sphere (it bobs on `orbFloat`, slowly),
+  `.orbGlass` its body — a radial gradient lit from the top left, an inner shadow at the foot, a
+  hairline rim, a `backdrop-filter` so the float frosts the page behind it — `.orbStage` the
+  canvas inside it, `.orbGloss` the specular highlight over the sand, and `.orbShadow` the shadow
+  the sphere casts on the surface BENEATH it, shrinking and fading as the sphere rises
+  (`orbShadow`). `--halo` is the glow round the glass: teal while it thinks, magenta while it
+  talks, nothing at rest — one custom property per state, so the halo is a transition on
+  `box-shadow` rather than four copies of the shadow list. Every measurement is in `--u`, so
+  the card's orb and the float are one drawing at two sizes; the host's bottom margin (and the
+  float's `bottom`) reserve the room the shadow needs. `prefers-reduced-motion` stops the bob
+  and the shadow's breath here as well as the sand in the JS.
 - **THE MOTION IS PHYSICS, NOT A KEYFRAME.** Each grain is a particle with a position and a
   velocity. `liveOrbTarget` says where a grain WANTS to be in a state — its home, its spot on a
   ring that turns with time, its place on a row whose height is a travelling wave scaled by the
   voice level — and `liveOrbStep` pulls it there with a spring, damps it, and adds the state's
-  own field: a vortex while thinking, a gust while idling, a whisper of jitter always. A state
-  change never teleports a grain; `liveOrbEnter` only adds the impulse that makes the change
-  read (a kick along the ring's turn on the way in, a scatter on the way back to the M).
+  own field: a vortex while thinking, a whisper of jitter while broken apart, nothing at all
+  at rest. A state change never teleports a grain; `liveOrbEnter` only adds the impulse that
+  makes the change read (a kick along the ring's turn on the way in, a puff into the row, a
+  scatter on the way back to the M).
 - **`liveOrbState()` IS THE ONE PLACE THE PHASE BECOMES A STATE**, and both orbs are painted by
   the one `liveOrbPaint`, so the card and the float can never disagree about what the tutor is
   doing. Talking is READ OFF `liveTutor.spokeAt` — a timestamp, not a flag — so the 1-second
@@ -50,20 +87,23 @@ transition is not physics. Both went.
   `timers.size === 0` after a session ends. The loop is ONE `requestAnimationFrame`
   (`liveOrbFrame`) that runs only while an orb is on screen (`liveOrbVisible`) and stops itself
   when none is — `liveOrbPaint` starts it again, which is why `openBuddy` repaints when the
-  buddy reopens on the live tab. The idle gust is scheduled off the FRAME CLOCK inside that loop
-  (`model.nextGust`), never a `setTimeout`. The analyser's own `requestAnimationFrame` is
+  buddy reopens on the live tab. The (switched-off) idle gust is scheduled off the FRAME CLOCK
+  inside that loop (`model.nextGust`), never a `setTimeout`. The analyser's own `requestAnimationFrame` is
   separate and is cancelled by `liveOrbHush()` in the same `release()` that closes the
   transport.
 - **THE MODEL IS PURE, and that is what makes it testable.** `liveOrbGrains`, `liveOrbTarget`,
   `liveOrbStep` and `liveOrbSettle` touch no DOM, so the harness — which has no canvas and no
   `requestAnimationFrame` — pins the physics by stepping the model by hand: the ring turns, the
-  wave rises with the level, a gust moves the sand off the M and it drifts back. Where there is
+  wave rises with the level, thinking breaks the logo apart and idling re-forms it exactly.
+  Where there is
   no frame loop (the harness) or the student asked for reduced motion (`liveOrbMotionOk`), the
   grains are SETTLED straight onto their targets and drawn once.
 - **THE GRAINS ARE GROUPED BY COLOUR AT BIRTH**, so `liveOrbDraw` is six fills a frame — six
-  paths of a hundred-odd arcs — rather than a thousand DOM nodes. The float carries fewer,
-  smaller grains than the card (`LIVE_ORB_N_FLOAT`, `LIVE_ORB_GRAIN_PX_FLOAT`); `--u` sizes the
-  caption and is the only thing the stylesheet still knows about the grid.
+  paths of a few hundred arcs — rather than two and a half thousand DOM nodes (measured at
+  61 fps in headless Chromium with both orbs running). The float carries a quarter of the
+  grains, each covering a 2 × 2 block (`LIVE_ORB_STRIDE_FLOAT`, through `liveOrbStrideFor`, the
+  ONE place a host's stride is decided); `--u` sizes the glass and the caption and is the only
+  thing the stylesheet knows about the grid.
 - **THE VOICE IS MEASURED, WITH A FALLBACK.** `liveOrbListen` hangs an AnalyserNode on the SAME
   remote track the speaker plays, so the row rises with the voice the student is hearing. Where
   Web Audio is missing (the harness, an iPad in Lockdown Mode) `liveOrbSpoke` counts each
@@ -1814,20 +1854,28 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
-- After touching **🔮 the live orb or the filler scrubber** (`LIVE_ORB_MASK`, `liveOrbGrains`,
-  `liveOrbTarget`, `liveOrbEnter`, `liveOrbStep`, `liveOrbSettle`, `liveOrbState`,
-  `liveOrbPaint`, `liveOrbFrame`, `liveOrbDraw`, `liveOrbVisible`, `liveOrbListen`,
-  `liveOrbHush`, `liveOrbSpoke`, `LIVE_FILLER_RE`, `LIVE_FILLER_SENTENCE_RE`, `liveStripFiller`,
-  the `.liveOrb` CSS, or the prompts in `worksheetContextRule` / `runLiveDelegation` /
+- After touching **🔮 the live orb or the filler scrubber** (`LIVE_ORB_MASK`, `LIVE_ORB_STRIDE`,
+  `LIVE_ORB_GRAIN_COVER`, `LIVE_ORB_IDLE_GUSTS`, `LIVE_ORB_SNAP`, `liveOrbPitch`,
+  `liveOrbGrains`, `liveOrbBroken`, `liveOrbTarget`, `liveOrbEnter`, `liveOrbStep`,
+  `liveOrbSettle`, `liveOrbState`, `liveOrbPaint`, `liveOrbFrame`, `liveOrbStrideFor`,
+  `liveOrbDraw`, `liveOrbVisible`, `liveOrbListen`, `liveOrbHush`, `liveOrbSpoke`,
+  `LIVE_FILLER_RE`, `LIVE_FILLER_SENTENCE_RE`, `liveStripFiller`, the `.liveOrb` / `.orbBody` /
+  `.orbGlass` / `.orbShadow` CSS, or the prompts in `worksheetContextRule` / `runLiveDelegation` /
   `functions/live-service.js`), run `node --test tools/live-tutor-tests.mjs`,
   `node tools/tutor-tests.mjs` and `cd functions && node --test test/*.test.js` **and watch
   one live session** — a drawing is the one thing reading the source cannot check. Every
-  failure is silent. Schedule the idle gust or the talking state with a timer and End leaves
-  it running, on a session that says it has ended. Let the loop run while no orb is on screen
-  and a phone burns its battery drawing a thousand grains nobody can see; stop it and never
+  failure is silent. Schedule the talking state or a gust with a timer and End leaves it
+  running, on a session that says it has ended. Let the loop run while no orb is on screen
+  and a phone burns its battery drawing thousands of grains nobody can see; stop it and never
   restart it from a paint and the orb freezes the next time the buddy is opened. Sample the
   homes from anything but the mask and the sand settles into a sketch of the logo rather than
-  the logo. Let the card and the float read the phase separately and one spins while the other
+  the logo. Jitter the homes inside their cells, let the cover fall under √½, or let the idle
+  jitter back in, and the logo is a scatter of dots with paper showing between them — which is
+  exactly what was asked to go. Switch `LIVE_ORB_IDLE_GUSTS` on and the idle logo blows apart
+  every eight seconds, so it is never quite the logo. Let the renderer size a grain from
+  anything but the pitch and the float is either sprinkles or a blob. Draw the shadow inside
+  the host's box and the card clips it; put the caption outside `.orbBody` and it stops bobbing
+  with the glass it is written on. Let the card and the float read the phase separately and one spins while the other
   listens. Attach the analyser to a stream other than the one the speaker plays and the row
   rises with nothing the student can hear; drop the transcript fallback and an iPad in Lockdown
   Mode has a tutor that talks with a still face. Loosen `LIVE_FILLER_VERB` and "let me know when

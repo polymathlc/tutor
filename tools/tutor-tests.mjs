@@ -1905,7 +1905,19 @@ ok('the live orb has a state for idle, thinking, talking, listening, connecting,
    /\.liveOrb\[data-state="thinking"\] \.orbCap \{ opacity: 1; \}/.test(html));
 ok('…its sand wears the logo’s teal and magenta, and its shape is the logo’s own mask',
    /LIVE_ORB_TEAL = '#5090a0'/.test(html) && /LIVE_ORB_MAGENTA = '#c00080'/.test(html) &&
-   /LIVE_ORB_MASK = '[0-9a-f.|]{500,}'/.test(html) && /LIVE_ORB_N = (?:[5-9]\d\d|\d{4});/.test(html));
+   /LIVE_ORB_MASK = '[0-9a-f.|]{500,}'/.test(html) && /LIVE_ORB_STRIDE = 1;/.test(html) && /LIVE_ORB_STRIDE_FLOAT = 2;/.test(html));
+ok('…the settled logo is SOLID: one grain per cell at the cell\'s centre, drawn wide enough to cover it, no jitter at rest, snapped exactly home, and no idle gust',
+   /LIVE_ORB_GRAIN_COVER = 0\.7[1-9]\d*;/.test(html) && /LIVE_ORB_IDLE_GUSTS = false;/.test(html) && /LIVE_ORB_SNAP = 0\.0\d+;/.test(html) &&
+   /if \(cell\.px % stride \|\| cell\.py % stride\) continue;/.test(orbBlock) && /\(cell\.px \+ stride \/ 2\) \* scale/.test(orbBlock) &&
+   /var jitter = ring \? 60 : state === 'talking' \? 40 : 0;/.test(orbBlock) && /if \(state === 'logo' && LIVE_ORB_IDLE_GUSTS\)/.test(orbBlock) &&
+   /function liveOrbBroken\(state\)/.test(orbBlock) && /radius \* \(1 \+ \(g\.sz - 1\) \* sandy\)/.test(orbBlock) &&
+   /LIVE_ORB_GRAIN_COVER \* unit/.test(orbBlock));
+ok('…and the sand sits inside a floating GLASS SPHERE with a shadow beneath it, both still under reduced motion',
+   ['.liveOrb .orbBody {', '.liveOrb .orbGlass {', '.liveOrb .orbGloss {', '.liveOrb .orbShadow {', '@keyframes orbFloat {', '@keyframes orbShadow {'].every(rule => html.includes(rule)) &&
+   /\.liveOrb \.orbGlass \{[^}]*radial-gradient/.test(html) && /\.liveOrb \.orbGlass \{[^}]*backdrop-filter: blur/.test(html) &&
+   /\.liveOrb \.orbShadow \{[^}]*top: calc\(98 \* var\(--u\)\)/.test(html) && /\.liveOrb\[data-state="thinking"\] \{ --halo: /.test(html) &&
+   /\.liveOrb\[data-state="talking"\] \{ --halo: /.test(html) && /\.liveOrb \.orbBody, \.liveOrb \.orbShadow \{ animation: none; \}/.test(html) &&
+   (html.match(/<span class="orbShadow"><\/span><span class="orbBody"><span class="orbGlass"><\/span><canvas class="orbStage"(?: id="liveOrbStage")?><\/canvas><span class="orbGloss"><\/span><span class="orbCap">Thinking<\/span><\/span>/g) || []).length === 2);
 ok('…it is drawn on a canvas by ONE requestAnimationFrame loop, never a timer',
    /<canvas class="orbStage" id="liveOrbStage"><\/canvas>/.test(html) && /<canvas class="orbStage"><\/canvas>/.test(html) &&
    /function liveOrbFrame\(/.test(orbBlock) && !/setTimeout|setInterval/.test(orbBlock) &&

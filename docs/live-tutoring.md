@@ -130,10 +130,12 @@ Use a saved worksheet while signed into Study Buddy with a Google account:
 5. Check Cloud Functions logs for sanitized failure codes if startup fails. Verify the key's
    OpenAI project has access to the Live model and sufficient quota.
 
-6. Watch the orb in the live card (and the small one over the worksheet): the logo, in grains of
-   sand, should breathe while listening, be blown apart by an occasional gust and drift back while
-   idle, swirl into a **spinning ring of sand under “Thinking”** during a check, and rise and fall
-   as a wave while the tutor speaks. Listen for the tutor **never** saying
+6. Watch the orb in the live card (and the small one over the worksheet): a glass sphere with a
+   shadow beneath it, holding the **whole logo, solid** — no gap between the grains — standing
+   still while idle and breathing gently while listening. Only a check should break it apart,
+   into a **spinning ring of sand under “Thinking”** with the glass glowing teal, and only the
+   tutor speaking, into a wave that rises and falls with the voice with the glass glowing
+   magenta; after either it should re-form exactly. Listen for the tutor **never** saying
    “let me check”, “let me think”, “one moment” or “hmm” — the server prompt forbids it and the
    client scrubs the spoken reply (`liveStripFiller`) before it reaches the speaker.
 
