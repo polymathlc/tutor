@@ -1892,6 +1892,22 @@ ok('it blinks, and the lid is scaled from its OWN top rather than the canvas’s
    /@keyframes cgBlink/.test(html));
 ok('…and everything that moves stops for prefers-reduced-motion',
    /@media \(prefers-reduced-motion: reduce\)[\s\S]{0,400}\.cgFace/.test(html));
+/* THE LIVE ORB (v1.19.0): the tutor drawn as the centre's logo in tiny
+   spheres. The layouts are JS and the motion is CSS, so what is pinned here
+   is the CSS half — the states the JS paints exist in the stylesheet, the
+   colours are the logo's own, the float never takes a pointer, and every
+   perpetual motion stops for reduced motion. */
+ok('the live orb has a state for idle, thinking, talking, listening and connecting',
+   ['logo', 'thinking', 'talking', 'listening', 'connecting'].every(st => new RegExp('\\.liveOrb\\[data-state="' + st + '"\\]').test(html)));
+ok('…its spheres wear the logo’s teal and magenta',
+   /LIVE_ORB_TEAL = '#5090a0'/.test(html) && /LIVE_ORB_MAGENTA = '#c00080'/.test(html));
+ok('…thinking spins the ring and idling shuffles the spheres, both in CSS, never a timer',
+   /data-state="thinking"\] \.orbStage \{ animation: orbSpin/.test(html) && /@keyframes orbIdle/.test(html) &&
+   !/function liveOrb[A-Za-z]*\([^)]*\) \{[^}]*setTimeout/.test(html));
+ok('…the floating orb never takes a pointer, and never prints',
+   /#liveOrbFloat \{[^}]*pointer-events: none/.test(html) && /@media print \{ #liveOrbFloat \{ display: none !important; \} \}/.test(html));
+ok('…and everything in it that moves stops for prefers-reduced-motion',
+   /@media \(prefers-reduced-motion: reduce\)[\s\S]{0,200}\.liveOrb \.orbStage, \.liveOrb \.orbDot \{ animation: none !important; \}/.test(html));
 ok('a speech bubble has a tail, drawn as two triangles so it keeps its outline',
    /\.speech::before[\s\S]{0,200}border-right-color/.test(html) &&
    /\.speech::after[\s\S]{0,200}border-right-color/.test(html));
