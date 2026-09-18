@@ -12,6 +12,24 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.22.0 — the paper is read when it is uploaded
+
+Upload a PDF and Chung GPT reads its **first three and last four pages** once, as pictures, and
+says what the paper is: the **subject**, the **level** printed on its heading, what it **calls
+itself**, and **which pages are its answer key**. Whatever you left blank in the upload dialog is
+filled in and named back in a toast; the key pages are **put away** — hidden from the worksheet and
+never marked — and handed to the buddy, exactly as a key found by the old text scan was.
+
+- The level and subject pickers both open on **✨ Let Chung GPT read it off the paper**; pick one
+  yourself and the paper never changes it. A student's own level is never overridden, and a subject
+  they do not take is never filed.
+- A scanned or photographed paper has no text layer, so its marking scheme at the back used to be
+  served as ordinary pages. It is found now.
+- A long marking scheme is followed **backwards** from the last pages until it ends.
+- The AI being off, or the read failing, is an upload exactly as before.
+
+---
+
 ## v1.21.0 — the live tutor is the WHOLE logo, in a glass sphere
 
 Chung GPT's orb is now the centre's logo **complete and solid** — one grain of sand per cell of
