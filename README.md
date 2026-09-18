@@ -12,6 +12,24 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.13.0 — All the apps under one roof, and a worksheet sent from the Science portal
+
+- **🧭 Apps** in the header lists every Polymath app — the four subject portals
+  and the two tools (Ans Key and this one) — from ONE table (`POLYMATH_APPS`)
+  that every app carries byte for byte. Relative sibling-folder links, the repo
+  name as the folder, you stay signed in. Inside the Science portal this app is
+  embedded on a page of its own; a link followed from in there moves the whole
+  portal (`target="_top"`), never a portal inside a portal.
+- **`?ws=<id>` opens a worksheet** the moment the account's list has loaded: one
+  of your own, or one the teacher has set (your copy is started, exactly as
+  “Start it” would). The Science portal's **📖 Send to Study Buddy** photographs
+  a worksheet's printed pages into a PDF, files it here in this app's own
+  shape — the PDF under `tutor-worksheets/`, the `tutorWorksheets` document, and
+  a `tutorAssignments` document when the teacher sets it for the class — with
+  the answer key already read (`key.scanned`) and its pages hidden, then opens
+  this page on it. It is read once and taken off the address bar.
+- A worksheet that came across wears a **🔬 From the Science portal** chip.
+
 ## v1.12.1 — the text box stays open while you are typing in it
 
 Three fixes on top of v1.12.0, all found by re-reading the work rather than by anyone hitting them.
