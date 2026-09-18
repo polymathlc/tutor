@@ -12,6 +12,26 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.14.0 — The teacher's corrections reach the buddy
+
+- **Every hint, every chat reply and every mark is now written against the WHOLE of what Mr Chung
+  has taught the apps**, not the flat summary it used to read. Ans Key keeps one voice per level
+  and subject, the corpus of the teacher's own answers, and every correction he has made to an
+  answer an app wrote — with the lesson each one taught. The Science portal keeps its own
+  corrections beside them. The buddy reads both, live, and a correction made in either app is
+  obeyed by the very next hint here.
+- **The voice is the worksheet's own.** A P5 Science worksheet is hinted in the P5 Science voice
+  once there are 30 answers behind it, then the Science-at-any-level one, then the overall one —
+  and the hints tab says which (*the teacher's learned style (P5 Science) · 4 corrections*).
+- **The example answers are chosen for the question in hand**: the chat retrieves them for the
+  student's own message, a hint for the question an earlier hint on the same spot already read.
+- **Marking is held to the teacher's TYPED standard and never to a guess.** The profile's inferred
+  marking standard, the example answers and the corrections never reach a mark — a marker handed
+  the answer stops marking against the paper.
+- **Two long standing notes both reach the buddy now.** The note budget used to be cut at a fixed
+  length, so a second house rule could fall off the end; every note is guaranteed its share and a
+  long one is trimmed (and says so) rather than the next one vanishing.
+
 ## v1.13.0 — All the apps under one roof, and a worksheet sent from the Science portal
 
 - **🧭 Apps** in the header lists every Polymath app — the four subject portals
