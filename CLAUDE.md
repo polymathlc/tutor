@@ -612,6 +612,21 @@ THE TEACHER SETS`), plus 📌 **Set for my students** on a worksheet card and th
   `checkAssignmentPdfs` flags a set worksheet whose file has gone on the
   TEACHER's home screen only — a student's device may not be allowed to
   read metadata, and a refused read would flag a worksheet that opens.
+- **THE SET LIST GOES THROUGH `canSeeWorksheet` TOO** (v1.14.2,
+  `assignmentsForMe` / `assignmentNotMineText` / `blankStarterCopy` /
+  `duplicateBlankCopies`). It never did: `renderAssignments` painted every
+  active assignment for every student, so a P5 Maths paper sat on a P6
+  account — and Start wrote a P5 copy that `loadWorksheets` filtered straight
+  back out, `openWorksheet` found nothing and RETURNED IN SILENCE, and every
+  press wrote one more hidden copy. The list is drawn from
+  `assignmentsForMe()`, `startAssignment` asks the rule AGAIN in the handler
+  (a hidden card is never the lock) and refuses in words, `openWorksheet`
+  says when an id is not in the list, and `loadWorksheets` drops the blank
+  DUPLICATE copies the bug wrote — the document only, never the sole copy,
+  never a copy with ink on it, never the class's PDF. Drop the filter and a
+  child is shown another class's paper; drop the handler check and a link
+  starts a copy that can never open; let `blankStarterCopy` pass a copy with
+  work on it and a tidy-up deletes a child's work.
 
 ## 📏 How big the mark is (v1.2.0)
 

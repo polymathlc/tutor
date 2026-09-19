@@ -1544,6 +1544,74 @@ S.currentUser = { email: 'chungzhikai@gmail.com' };
 ok('the teacher sees everything', S.canSeeWorksheet({ level: 'P3', subject: 'math' }));
 S.currentUser = null;
 
+/* THE SET LIST GOES THROUGH THE SAME RULE (v1.14.2). It never did: every
+   active assignment was painted for every student, and pressing Start on
+   one set for another level wrote a copy the list then filtered out — a
+   worksheet that "got ready" and never opened, one more hidden copy per
+   press. */
+section('The set list is this student\'s too');
+S.currentUser = { email: 'kid@example.com' };
+S.myStudents = [{ name: 'Ana', level: 'P6', subject: 'science' }];
+S.setActiveIdx(0);
+S.assignments = [
+  { id: 'a5', name: 'P5 paper', level: 'P5', subject: 'math' },
+  { id: 'a6', name: 'P6 paper', level: 'P6', subject: 'science' },
+  { id: 'a0', name: 'old one' }
+];
+eq('a P6 Science student sees the P6 one and the untagged one, never the P5 Maths one',
+   S.assignmentsForMe().map(a => a.id), ['a6', 'a0']);
+S.currentUser = { email: 'chungzhikai@gmail.com' };
+eq('the teacher sees every set worksheet, which is how one is taken off',
+   S.assignmentsForMe().map(a => a.id), ['a5', 'a6', 'a0']);
+S.currentUser = { email: 'kid@example.com' };
+const notMine = S.assignmentNotMineText({ id: 'a5', name: 'P5 paper', level: 'P5', subject: 'math' });
+ok('the refusal names the level it was set for and the student it is not',
+   /set for P5 Mathematics/.test(notMine) && /Ana is P6 Science/.test(notMine) && /Mr Chung/.test(notMine),
+   notMine);
+ok('the set list is drawn from the filtered list',
+   /var list = assignmentsForMe\(\);[\s\S]{0,700}list\.forEach\(function \(a\) \{/.test(html));
+const startGate = html.slice(html.indexOf('async function startAssignment'),
+                             html.indexOf('async function startAssignment') + 900);
+ok('Start it asks the rule again in the handler, before anything is written',
+   /if \(!canSeeWorksheet\(a\)\) \{ toast\(assignmentNotMineText\(a\), 8000\); return; \}/.test(startGate) &&
+   startGate.indexOf('canSeeWorksheet(a)') < startGate.indexOf('myCopyOf(a)'),
+   'a hidden card is never the lock');
+ok('openWorksheet says so when the id is not in the list, instead of returning in silence',
+   /var w = worksheets\.find\(function \(x\) \{ return x\.id === id; \}\);[\s\S]{0,300}if \(!w\) \{ toast\('That worksheet is not in your list\.'/.test(html));
+
+/* The copies the bug wrote: blank, hidden, one per press. Only a DUPLICATE
+   of a blank starter copy is dropped — never the sole copy, never one with
+   work on it, never the file. */
+const blankBody = JSON.stringify({ annotations: [], hints: [], marking: { items: [] }, chat: [],
+  key: { pages: [], rows: [], path: '', name: '', scanned: true, shared: true } });
+const inkedBody = JSON.stringify({ annotations: [{ type: 'pen' }], hints: [], marking: { items: [] }, chat: [] });
+const c = (id, extra) => Object.assign({ id, assignmentId: 'a5', sharedPdf: true, body: blankBody,
+  score: { correct: 0, attempted: 0 } }, extra || {});
+ok('a starter copy is blank', S.blankStarterCopy(c('x')));
+ok('a copy with ink on it is not', !S.blankStarterCopy(c('x', { body: inkedBody })));
+ok('…nor one that was marked', !S.blankStarterCopy(c('x', { score: { correct: 1, attempted: 2 } })));
+ok('…nor a second attempt', !S.blankStarterCopy(c('x', { attempts: 2 })));
+ok('…nor one whose body overflowed to Storage', !S.blankStarterCopy(c('x', { bodyPath: 'p' })));
+ok('…nor a worksheet of the student\'s own', !S.blankStarterCopy(c('x', { assignmentId: '' })));
+/* newest first, as loadWorksheets sorts them */
+eq('of three blank copies of one assignment the two newer ones go and the oldest stays',
+   S.duplicateBlankCopies([c('n3'), c('n2'), c('n1')]).map(w => w.id), ['n2', 'n3']);
+eq('a sole blank copy is never dropped', S.duplicateBlankCopies([c('n1')]), []);
+eq('a newer copy WITH work on it stays, whatever came before it',
+   S.duplicateBlankCopies([c('n2', { body: inkedBody }), c('n1')]), []);
+eq('copies of different assignments are not each other\'s duplicates',
+   S.duplicateBlankCopies([c('n2', { assignmentId: 'a6' }), c('n1')]), []);
+const loadWs = html.slice(html.indexOf('async function loadWorksheets'),
+                          html.indexOf('async function loadWorksheets') + 2200);
+ok('loadWorksheets drops only what duplicateBlankCopies names, the document alone, and never the PDF',
+   /var dupes = duplicateBlankCopies\(out\);/.test(loadWs) &&
+   /db\.collection\(COLLECTION\)\.doc\(w\.id\)\.delete\(\)/.test(loadWs) &&
+   !/storage\.ref/.test(loadWs));
+ok('…before the list is filtered, so a duplicate the student can see is gone from the screen at once',
+   loadWs.indexOf('duplicateBlankCopies(out)') < loadWs.indexOf('worksheets = out.filter(canSeeWorksheet)'));
+S.assignments = [];
+S.currentUser = null;
+
 section('Who is working right now');
 S.myStudents = [{ name: 'Ana', level: 'P5', subject: 'science' },
                 { name: 'Ben', level: 'P3', subject: 'science' }];

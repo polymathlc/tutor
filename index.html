@@ -1633,7 +1633,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.14.1';
+var APP_VERSION = 'v1.14.2';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -8577,6 +8577,11 @@ function myCopyOf(a) {
 async function startAssignment(id) {
   var a = assignments.find(function (x) { return x.id === id; });
   if (!a || !currentUser) return;
+  // THE RULE IS ASKED HERE, NOT ONLY WHEN THE CARD IS DRAWN. A copy written
+  // for a level this student is not is one `loadWorksheets` filters out and
+  // `openWorksheet` cannot find — a worksheet that "starts" and never opens,
+  // plus one more hidden copy per press. Said in words instead.
+  if (!canSeeWorksheet(a)) { toast(assignmentNotMineText(a), 8000); return; }
   var mine = myCopyOf(a);
   if (mine) { openWorksheet(mine.id); return; }
   toast('Getting “' + (a.name || 'the worksheet') + '” ready…', 15000);
@@ -8794,15 +8799,18 @@ function renderAssignments() {
   var box = $('assignList');
   var sec = $('assignSection');
   if (!box || !sec) return;
+  // Only the worksheets set for THIS student's level and subject — the same
+  // rule their own list obeys. The teacher sees every one.
+  var list = assignmentsForMe();
   // A student with none of these should not be looking at an empty heading
   // for a feature they may never see used.
-  var show = assignments.length > 0;
+  var show = list.length > 0;
   sec.classList.toggle('hidden', !show);
   box.innerHTML = '';
   if (!show) return;
   var grid = document.createElement('div');
   grid.className = 'wsGrid';
-  assignments.forEach(function (a) {
+  list.forEach(function (a) {
     var mine = myCopyOf(a);
     var card = document.createElement('div');
     card.className = 'wsCard setCard';
@@ -9175,6 +9183,20 @@ async function loadWorksheets() {
       var bv = b.updatedAt && b.updatedAt.toMillis ? b.updatedAt.toMillis() : 0;
       return bv - av;
     });
+    // The blank duplicate copies v1.14.1's Start button wrote (one per press
+    // on a worksheet the list should never have shown) are dropped — the
+    // document only, never the class's PDF, and never a copy with work on
+    // it. Fire and forget: a delete that fails is a duplicate that shows
+    // again next time, which is where it was.
+    var dupes = duplicateBlankCopies(out);
+    if (dupes.length) {
+      out = out.filter(function (w) { return dupes.indexOf(w) === -1; });
+      dupes.forEach(function (w) {
+        db.collection(COLLECTION).doc(w.id).delete().catch(function (e) {
+          console.warn('duplicate blank copy could not be dropped', w.id, e);
+        });
+      });
+    }
     worksheets = out.filter(canSeeWorksheet);
   } catch (e) {
     console.warn('Worksheets could not be read', e);
@@ -9217,7 +9239,9 @@ function applyWorksheetBody(body, w) {
 
 async function openWorksheet(id) {
   var w = worksheets.find(function (x) { return x.id === id; });
-  if (!w) return;
+  // Silence here was the whole of "nothing happens": a copy filtered out of
+  // the list by its level came through this door and left without a word.
+  if (!w) { toast('That worksheet is not in your list.', 5000); return; }
   toast('Opening “' + (w.name || 'Untitled') + '”…');
   try {
     // Whatever the list is holding can be old news — always open from the
@@ -10090,6 +10114,68 @@ function canSeeWorksheet(w) {
   if (w.level !== st.level) return false;
   if (!w.subject) return true;
   return studentSubjectList(st).indexOf(w.subject) !== -1;
+}
+
+/* THE SET LIST GOES THROUGH THE SAME RULE (v1.14.2). A set worksheet
+   carries the level and the subject the teacher gave it, so the ONE
+   predicate that decides a student's own list decides the class list too.
+   Until this the "📌 Set for you" section painted every active assignment
+   for every student — a P5 Maths paper on a P6 account — and pressing Start
+   on it wrote a P5 copy that `loadWorksheets` then filtered straight back
+   out, so `openWorksheet` found nothing and returned without a word: the
+   toast said "Getting it ready…" and nothing happened, and every press
+   after that wrote another invisible copy. The teacher still sees all of
+   them (`canSeeWorksheet` says so), which is how they take one off. */
+function assignmentsForMe() {
+  return assignments.filter(canSeeWorksheet);
+}
+/* Why a set worksheet is not this student's, in words. A hidden card is
+   never the lock — a link, a stale screen or the console can still name it —
+   so `startAssignment` asks the rule again and says this instead of writing a
+   copy nobody can open. */
+function assignmentNotMineText(a) {
+  var st = activeStudent() || {};
+  var its = [a.level ? levelLabel(a.level) : '', a.subject ? subjectLabel(a.subject) : '']
+    .filter(Boolean).join(' ') || 'another class';
+  var mine = [st.level ? levelLabel(st.level) : '', st.subject ? subjectLabel(studentSubject(st)) : '']
+    .filter(Boolean).join(' ');
+  return '“' + (a.name || 'That worksheet') + '” was set for ' + its +
+    (mine ? ', and ' + (st.name ? st.name : 'this student') + ' is ' + mine : '') +
+    '. Switch to the student it is for, or ask ' + setterName() + ' to set one for ' +
+    (st.name || 'this student') + '.';
+}
+
+/* A COPY THE BUG LEFT BEHIND (v1.14.2). Every press of Start on a worksheet
+   the list should never have shown wrote one more copy — blank, hidden, and
+   another blank copy of the same assignment on top of the last. A starter
+   copy is byte-for-byte the shape `startAssignment` writes: no ink, no hints,
+   no marking, no chat, nothing attempted, a shared PDF and one attempt. Only
+   a DUPLICATE of one of those is ever dropped, never the sole copy, and never
+   the file — `sharedPdf` is the class's. A copy with one stroke on it is a
+   child's work and is not touched. */
+function blankStarterCopy(w) {
+  if (!w || !w.assignmentId || !w.sharedPdf || w.bodyPath) return false;
+  if ((w.score && w.score.attempted) || (parseInt(w.attempts, 10) || 1) > 1) return false;
+  var b;
+  try { b = JSON.parse(w.body || '{}'); } catch (e) { return false; }
+  if (!b || typeof b !== 'object') return false;
+  var none = function (v) { return !Array.isArray(v) || v.length === 0; };
+  return none(b.annotations) && none(b.hints) && none(b.chat) &&
+    none(b.marking && b.marking.items);
+}
+/* Which of a student's copies are blank duplicates of one assignment. The
+   list arrives newest first; the OLDEST blank copy is kept, so what a
+   student is shown is the copy they first pressed Start on. */
+function duplicateBlankCopies(list) {
+  var seen = {};
+  var drop = [];
+  var byOldest = list.slice().reverse();
+  byOldest.forEach(function (w) {
+    if (!w.assignmentId) return;
+    if (!seen[w.assignmentId]) { seen[w.assignmentId] = w; return; }
+    if (blankStarterCopy(w)) drop.push(w);
+  });
+  return drop;
 }
 
 /* Every sign-in is recorded, so the teacher's list is who has actually been
