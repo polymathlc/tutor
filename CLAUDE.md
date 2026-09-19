@@ -172,6 +172,25 @@ model**.
   what it has instead — rather than the level note, which would be true of a
   different worksheet and wrong here.
 
+### The symbol strip is ONE row, and a key has to earn its place (v1.29.1)
+
+- **IT WAS FOUR ROWS AND THIRTY KEYS** — Working, Compare, Number, Shape —
+  and a wall of symbols is a wall nobody reads: a child stuck on question 7
+  needs × and ÷ to write the next line, and ⊥, ⅔ and ≈ were in the way of
+  the four keys they came for. `MTH_SYMBOLS` is one row now.
+- **THE TEST A KEY HAS TO PASS IS BOTH HALVES: hard to type on a school
+  keyboard, AND part of a line of working.** `<`, `>`, `%` and `:` fail the
+  first; a comparison, a shape and a number form fail the second. **The
+  degree sign is the one exception and is KEPT**, moved into the working
+  row: unreachable on a school keyboard, and it ends an ordinary P5 answer.
+  **Adding a row back is adding the wall back**, and the harness pins the
+  whole row against that rule rather than only its length.
+- **THE KEYS ARE SMALL, WITH THE PHONE AS THE FLOOR.** `.mthKey` shrank with
+  the rows, and the `max-width: 900px` block puts the old size back: the pad
+  is a SHEET a child taps with a finger there, while a desktop and an iPad
+  are a mouse or a pencil. Shrink the touch sheet too and a learning aid
+  becomes one they keep mis-hitting.
+
 ### The working line is offered at EVERY help level, and that is deliberate
 
 - **ASKING A CHILD TO TRY THE NEXT STEP TELLS THEM NOTHING**, so there is no
@@ -2742,7 +2761,8 @@ the two in step; a fix to either belongs in both.
   Hand an all-filler reply to the speaker and the tutor says "Let me check." and stops. And
   let the frame loop ignore `liveOrbMotionOk` and the sand swirls for a child who asked it not
   to.
-- After touching **✏️ the maths pad** (`mathWorksheet`, `mthAllowed`,
+- After touching **✏️ the maths pad** (`MTH_SYMBOLS` or the `.mthKey` size,
+  `mathWorksheet`, `mthAllowed`,
   `mthModelAllowed`, `mthAnswerAllowed`, `mthArith`, `mthShow`, `mthRender`,
   `mthWorkCheck`, `mthWorkClean`, `mthTellTutor`, `MTH_MODEL_SYS`,
   `mthModelCeilingRule`, `mthModelBuild`, `mthModelClean`, `mthModelBlanks`,
@@ -2768,7 +2788,13 @@ the two in step; a fix to either belongs in both.
   missed being silent; drop the single `pushUndo` and a model dropped in the
   wrong place takes forty taps to remove. Leave the place tool armed and the
   next tap on the page drops a second model. And let `floatBoxLayout` read one
-  box and a spoken answer is captioned underneath the box it just set.
+  box and a spoken answer is captioned underneath the box it just set. Put a
+  Compare, Number or Shape row back into `MTH_SYMBOLS` and the strip is a
+  wall of thirty symbols again, with the four keys a child came for buried in
+  it; drop the degree sign and the one symbol that is both unreachable and
+  part of a real P5 answer goes with them. And shrink `.mthKey` without
+  leaving the phone override alone and a child tapping a sheet with a finger
+  mis-hits the key beside the one they wanted.
 - After touching **🧩 the keyword check or the syllabus** (`kwQuizAllowed`,
   `kwQuizClean`, `kwQuizGivesAnswer`, `kwQuizKeyAnswers`, `kwQuizMatch`,
   `kwQuizBuild`, `KWQ_SYS`, `kwQuizCeilingRule`, `kwQuizShow`, `kwQuizRender`,

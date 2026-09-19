@@ -12,6 +12,25 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.29.1 — ✏️ The maths pad's symbol strip is one row, not four
+
+The working line offered **thirty symbols over four rows** — Working, Compare, Number and Shape —
+and a wall of symbols is a wall nobody reads. A child stuck on question 7 needs × and ÷ to write
+the next line; they do not need ⊥, ⅔ or ≈, and every one of those was in the way of the four keys
+they came for.
+
+It is **one row now**: `+ − × ÷ = ( ) °`. The degree sign is kept and moved up into it — it is
+genuinely unreachable on a school keyboard and it ends an ordinary P5 answer, which is the test
+every key on that row has to pass: **hard to type, and part of a line of working.** Everything
+dropped failed one half or the other — `<`, `>`, `%` and `:` are already on the keyboard, and a
+comparison or a shape is not a step of arithmetic.
+
+The keys are **smaller** to match, and the strip is tighter. On a phone, where the pad is a sheet
+a child taps with a finger, they stay the size they were: shrinking a key on a touch sheet is how
+a learning aid turns into one they keep mis-hitting.
+
+---
+
 ## v1.29.0 — 📌 You can SEE which papers your class has, and give them the rest in one press
 
 A shelf of P5 papers sat uploaded and set for nobody, and **nothing on any screen said so**. The

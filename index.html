@@ -1481,12 +1481,18 @@
   .mthLine:focus { outline: none; box-shadow: 0 0 0 3px rgba(231, 189, 114, .45); }
   .mthLine.close { border-color: #D9A441; }
   .mthLine.wrong { border-color: #D9534F; }
-  .mthPalette { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
-  .mthPalRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .mthPalette { display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
+  .mthPalRow { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
   .mthPalLabel { font-size: 0.68rem; color: var(--ink-faint); width: 58px; flex: none; letter-spacing: .02em; }
+  /* SMALL (v1.29.1), because there are eight of them now rather than thirty
+     and the row is a quiet strip under the box rather than the furniture in
+     front of it. The floor is the PHONE rule below: shrinking a key the
+     same amount on a sheet a child taps with a finger is how a learning aid
+     becomes one they keep mis-hitting. On a desktop and an iPad it is a
+     pencil or a mouse, and both are precise. */
   .mthKey {
-    min-width: 36px; min-height: 36px; padding: 4px 8px; font: inherit; font-size: 1rem; cursor: pointer;
-    border: 1px solid var(--line); border-radius: 8px; background: var(--bg-soft); color: var(--ink); line-height: 1;
+    min-width: 28px; min-height: 28px; padding: 2px 6px; font: inherit; font-size: 0.88rem; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 7px; background: var(--bg-soft); color: var(--ink); line-height: 1;
   }
   .mthKey:hover { border-color: var(--accent-deep); background: #FFFDF7; }
   .mthKey:disabled { opacity: .5; cursor: default; }
@@ -1524,6 +1530,8 @@
     /* A bottom sheet over the page, clear of the 💬 button. */
     #mthPad { left: 12px; right: 12px; width: auto; bottom: calc(78px + env(safe-area-inset-bottom, 0px)); padding: 14px 16px 12px; }
     .mthPalLabel { width: 100%; }
+    /* A finger, not a pencil: the keys go back to the size they were. */
+    .mthKey { min-width: 36px; min-height: 36px; padding: 4px 8px; font-size: 1rem; }
     .mthBarLabel { width: 56px; }
     .mthTotal { margin-left: 66px; }
   }
@@ -2212,7 +2220,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.29.0';
+var APP_VERSION = 'v1.29.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -7587,11 +7595,20 @@ var MTH_ARITH_TOL = 1e-9;         // 0.1 + 0.2 is 0.3 to a child
    it. U+2212 MINUS SIGN is the one to know about: it is NOT the hyphen a
    keyboard gives, and both reach the check as text, so nothing here ever
    compares them (see `mthArithNorm`, which folds them together). */
+/* ONE ROW, AND THAT IS THE POINT (v1.29.1). It was four — Working, Compare,
+   Number and Shape, thirty keys — and a wall of symbols is a wall nobody
+   reads: the child is stuck on the next LINE OF WORKING, and what they need
+   is × and ÷, not ⊥ and ⅔. Everything on the other three rows was
+   either typeable on the keyboard they already have (`<`, `>`, `%`, `:`) or
+   belonged to a kind of answer this box is not for — a comparison and a
+   shape are not a step of arithmetic. The degree sign is the one exception
+   and is KEPT, moved up here: it is genuinely unreachable on a school
+   keyboard and it ends an ordinary P5 answer.
+
+   So a key earns its place by being BOTH hard to type AND part of a line of
+   working. Adding a row back is adding the wall back. */
 var MTH_SYMBOLS = [
-  { label: 'Working', keys: ['+', '−', '×', '÷', '=', '(', ')'] },
-  { label: 'Compare', keys: ['<', '>', '≤', '≥', '≈', '≠'] },
-  { label: 'Number',  keys: ['½', '⅓', '⅔', '¼', '¾', '²', '³', '√', 'π', '%', ':'] },
-  { label: 'Shape',   keys: ['°', '∠', '△', '∥', '⊥', '→'] }
+  { label: 'Working', keys: ['+', '−', '×', '÷', '=', '(', ')', '°'] }
 ];
 
 /* The pop-up preference. A device that refuses storage still gets the pad:
