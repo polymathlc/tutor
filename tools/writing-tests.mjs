@@ -51,6 +51,17 @@ function setup(savedMode) {
       const id = /data-id="([^"]+)"/.exec(sel)?.[1];
       return this.children.find(n => id && n.attrs['data-id'] === id) || null;
     }
+    /* `renderOverlay` asks for the tutor's temporary marks so the wipe can
+       step OVER them (detaching a node cancels its CSS animation). Nothing
+       here ever makes one, so the honest answer is an empty list — but it has
+       to be a LIST: `undefined` there takes the whole overlay down, which is
+       every stroke in the app. The selector is a comma pair, so it is matched
+       by attribute rather than parsed. */
+    querySelectorAll(sel) {
+      const keys = String(sel).split(',').map(t => /\[([a-z-]+)\]/.exec(t.trim())?.[1]).filter(Boolean);
+      if (!keys.length) return [];
+      return this.children.filter(n => keys.some(k => n.attrs[k] != null));
+    }
     closest(sel) { return sel === 'svg.overlay' ? this : null; }
     addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
     setPointerCapture(id) { this.captures.add(id); }
@@ -77,7 +88,7 @@ function setup(savedMode) {
     tool: 'pen', color: '#000', strokeW: 3, lineHeads: 'single', lineDash: 'solid', scale: 1,
     newAnnId: () => 'test-' + (++annId), round2: x => Math.round(x * 100) / 100,
     highlightWidthFor: x => x * 4,
-    renderPinsOn: () => {}, renderMarksOn: () => {}, renderTutorPointOn: () => {},
+    renderPinsOn: () => {}, renderMarksOn: () => {}, renderTutorPointOn: () => {}, renderTutorWorkOn: () => {},
     commitActiveTextEdit: () => {},
     scheduleRaster: () => {}, applyScale: () => {}, toast: () => {},
     askHintAt: () => S.hints++, startVoice: () => S.voices++, startTextBox: () => S.texts++,

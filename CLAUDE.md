@@ -142,10 +142,11 @@ it is handed to the speaker** (`liveStripFiller` on `spokenReply`).
 `tutorPoint` / `tutorPointShape` / **`tutorPointMake`** / **`tutorPointGeom`** /
 `tutorPointPaths` / **`tutorPointShow`** / **`tutorPointClear`** / `syncTutorPoint` /
 **`renderTutorPointOn`** (search `THE TUTOR POINTS AT THE PAGE`), the live half —
-`LIVE_POINT_RE` / **`livePointSpec`** / **`livePointStrip`** and the `pointPage` / marker arm of
-`liveFlush` (search `THE POINTER MARKER`) — the `point` field of `HINT_SYS` / `hintLadderFor` /
+**`LIVE_MARK_RE`** / **`livePointSpec`** / **`livePointStrip`** and the `pointPage` / marker LOOP
+of `liveFlush` (search `THE POINTER MARKER`) — the `point` field of `HINT_SYS` / `hintLadderFor` /
 `askHintAt` and the 👉 button on `hintCard`, plus `.tutorPoint` / `.tpInk` in the stylesheet and
-`renderTutorPointOn(p)` inside `renderOverlay`.
+`renderTutorPointOn(p)` inside `renderOverlay`. **Since v1.31.0 it comes down through the shared
+`tutorMarksClear()` and is placed with the help of 📐 THE RULER AND THE CROSSHAIR — read both.**
 
 A human tutor does not only talk: they put a FINGER on the page. *"Look at THIS number"* is a
 sentence AND a gesture, and a child handed only the sentence has to find the number first — which
@@ -159,10 +160,11 @@ spot it is talking about, in live mode and on a hint alike.
   student's own work**, agrees with a page the tutor wrote on, and no screen anywhere says why the
   paper marked itself so kindly — the same fault the ticks' own section documents.
 - **IT IS TEMPORARY AND NOTHING HERE SETS A TIMER.** It goes up when the tutor says something
-  about a spot and comes down when the tutor MOVES ON: a new spoken question (`runLiveDelegation`,
-  at `Thinking…` rather than when the reply lands), a new hint (`askHintAt`, BEFORE the pin is
-  pushed), the session ending (beside `liveSubsClear`, where the phase becomes `closing`), a new
-  worksheet (`loadPdf`) and leaving the worksheet (`showView`). That is what a real finger does,
+  about a spot and comes down when the tutor MOVES ON, through the shared `tutorMarksClear()`: a
+  new spoken question (`runLiveDelegation`, at `Thinking…` rather than when the reply lands), a
+  new hint (`askHintAt`, BEFORE the pin is pushed), the session ending (beside `liveSubsClear`,
+  where the phase becomes `closing`), a new worksheet (`loadPdf`), leaving the worksheet
+  (`showView`) and ↻ Practise again. That is what a real finger does,
   it is what the harness's `timers.size === 0` rule requires, and it is why a gesture left
   standing costs nothing: **`pointer-events: none` is load-bearing**, the rule `#liveSubs`
   already carries — this sits over a page a child writes on with a stylus.
@@ -194,7 +196,8 @@ spot it is talking about, in live mode and on a hint alike.
   fade-in and the finger FLASHES each time the child writes a word. Two things stop that and both
   are needed: `want` (the node's own `data-point`, which is the gesture's identity AND the zoom,
   because the stroke width is baked into the path) makes `renderTutorPointOn` leave a node that is
-  still right; and the WIPE STEPS OVER IT (`pointNode`) rather than removing it, because taking a
+  still right; and the WIPE STEPS OVER IT (`tutorNodes`, which since v1.31.0 matches
+  `g[data-point], g[data-work]`) rather than removing it, because taking a
   node out of the document CANCELS its CSS animation — lifting it out and putting it back, the way
   the box being typed in is handled, flashes exactly as a rebuild does. That is why the finger is
   `insertBefore`d as the FIRST child: it sits UNDER the student's own ink, so their work is never
@@ -234,9 +237,153 @@ spot it is talking about, in live mode and on a hint alike.
   `worksheetContextPages` orders by VISIBLE AREA, so that is the page the student is looking at.
   It is assigned before the request starts, which is the only moment `onStream` could fire. With
   no page to fall back on the marker is REFUSED rather than drawn on page one.
+- **THE MARKER IS MEASURED ON A PICTURE CARRYING THE GRID** (`pageJpegForModel`), and the hint's
+  own is measured on the picture the request NAMES BY NUMBER rather than by ordinal — see 📐 THE
+  RULER AND THE CROSSHAIR, which is where both of v1.30.0's placement faults were.
 - Run **`node tools/tutor-tests.mjs`**, **`node --test tools/live-tutor-tests.mjs`** and
   **`node --test tools/writing-tests.mjs`** after touching any of it — **and watch one live
   session**: where a finger lands on a real page is the one thing reading the source cannot check.
+
+## 📐 THE RULER AND THE CROSSHAIR — how a model is told WHERE (v1.31.0)
+
+`GRID_STEP` / `GRID_LINE` / `GRID_TEXT` / `TAP_R` / **`drawPageGrid`** / `gridLabel` /
+**`tapMarkSpot`** / `drawTapMark` / **`pageJpegForModel`**, the `mark` argument on `bandDataUrl` /
+`bandJpeg`, the `role` on every entry of **`hintImagesFor`**, and the two lines
+`hintLadderFor` pushes about the ring and the image number (search `THE RULER AND THE
+CROSSHAIR`).
+
+👉 v1.30.0 shipped the finger and it landed in the wrong place, twice over. **Both faults were in
+what the app TOLD the model about the picture, not in anything it drew.**
+
+- **A CHILD TAPPED QUESTION 12 AND WAS HANDED A HINT ABOUT QUESTION 11**, with the hint pin sitting
+  perfectly correctly on question 12 the whole time. `hintImagesFor` builds the close-up from 220
+  page units ABOVE the tap to 320 BELOW it, so the tap sits about two fifths of the way down —
+  and `hintLadderFor` said *"They tapped near the top of the close-up image."* The model read the
+  question at the top of the band, which is the question BEFORE the one that was tapped. **Saying
+  "two fifths down" instead would be no better**: nobody measures two fifths by eye. So the tap is
+  DRAWN — a magenta ring on the close-up and on the whole page — and the request says that ring is
+  the spot, which question that makes it (*the one the ring sits inside, or the one DIRECTLY ABOVE
+  it when the ring is on a blank answer line*) and, in as many words, **never the question above
+  that one**.
+- **THE UNDERLINE LANDED A LINE OR TWO OUT**, because `[y, x]` from 0 to 1000 was being ESTIMATED
+  on a photograph carrying no reference marks at all. The picture the model measures on now
+  carries **the grid it is being asked to measure in** — a faint teal line every 100 units, the
+  numbers printed down the left margin and across the top — and the estimate becomes a READING.
+  The ends are deliberately NOT labelled: 0 and 1000 are the picture's own edges and both prompts
+  say so, while two "0"s in one corner is either a collision or a calibration mark nudged a few
+  per cent off the line it names.
+- **AND `HINT_SYS` NAMED THE PICTURE BY ORDINAL** — *"the second picture, not the close-up"* —
+  while `hintImagesFor` builds its list CONDITIONALLY. On a page whose close-up could not be made,
+  the second picture is **the page before**: the gesture was then measured against one page's
+  layout and drawn onto another's, in silence. Every image carries a `role` now, and
+  `hintLadderFor` states the number that picture really has.
+
+- **`compositeJpeg` IS DELIBERATELY LEFT ALONE, and `pageJpegForModel` is a function of its own
+  for exactly that reason.** The marking run, the mistake book, the cover and the printer all read
+  that one, and a ruler drawn across a child's printed worksheet is the same leak through a side
+  door the whole 🔑 section exists to shut. The `mark` on `bandDataUrl` is OPTIONAL, so every
+  older caller gets byte-for-byte the band it always got.
+- **NOTHING HERE TOUCHES THE PAGE THE STUDENT SEES.** It is painted onto a canvas copy inside
+  these functions — never into `annotations`, never onto `p.canvas`, never into the SVG — the rule
+  the marking's ticks and the tutor's finger already carry.
+- **BOTH PROMPTS SAY THE GRID IS THE APP'S AND NOT THE PAPER'S.** A model that reads "300" off the
+  margin and into the question it transcribes has invented a number in a maths question — and that
+  question then travels into the hint, the 🧩 keyword check and the mistake book. Hence the teal: a
+  worksheet is black on white, so the one colour on the page no printer put there is the one the
+  labels are written in.
+- **THE PREVIOUS PAGE GETS NEITHER.** Nothing is measured on it, and a ruler drawn there is an
+  invitation to measure.
+- **THE LIVE PAGES GO THROUGH THE RULER TOO** (`pageJpegForModel(p, LIVE_PAGE_PX, …, null)`) —
+  there is no tap in live mode, so no crosshair.
+- **`tapMarkSpot` IS PURE**, and it is the half worth pinning: a crosshair that forgets the BAND's
+  own top is a crosshair on the question above, on a picture that still looks perfectly
+  convincing.
+- Run **`node tools/tutor-tests.mjs`** and **`node --test tools/live-tutor-tests.mjs`** after
+  touching any of it — **and ask for one hint on a real page**: whether the ring lands on the
+  question that was tapped is the one thing reading the source cannot check.
+
+## ✍️ THE TUTOR WRITES WORKING ON THE PAGE (v1.31.0)
+
+`WORK_RUNG` / `WORK_LINES_MAX` / `WORK_CHARS_MAX` / `WORK_SIZE` / `WORK_LEAD` / `WORK_CHAR_W` /
+`WORK_PAD` / `tutorWork` / **`tutorWorkAllowed`** / **`tutorWorkLines`** / **`tutorWorkMake`** /
+**`tutorWorkGeom`** / **`tutorWorkShow`** / `tutorWorkClear` / `syncTutorWork` /
+**`tutorMarksClear`** / **`renderTutorWorkOn`** (search `THE TUTOR WRITES WORKING ON THE PAGE`),
+the live half — **`LIVE_MARK_RE`** / **`liveWorkSpec`** / **`liveMarkApply`** and the marker LOOP
+at the head of `liveFlush` — the `work` field of `HINT_SYS` / `hintLadderFor` / `askHintAt`, the
+button on `hintCard`, `.tutorWork` in the stylesheet, and `renderTutorWorkOn(p)` inside
+`renderOverlay`.
+
+*"Human teachers can do working on the paper to help the students."* They do — two or three lines
+in the margin, *"3 units = 12, so 1 unit = ?"* — and a child can SEE the shape of the method and
+finish it themselves. So the tutor writes it, on a hint and while it is talking in live mode.
+
+- **IT IS NEVER INK**, exactly like 👉 the finger and for exactly the same reason: a
+  `g[data-work]` inside the page's own SVG, never in `annotations`. **Put the tutor's working into
+  `annotations` and the next marking run reads it as the STUDENT'S own work**, agrees with a page
+  the tutor half-solved, and no screen anywhere says why the paper marked itself so kindly.
+  `drawAnnsOnCtx` never draws it, it never saves, it never prints.
+- **IT SITS ON THE METHOD RUNG**, the very rung `MTH_MODEL_RUNG` puts the drawn bar model on —
+  working set out IS the method. `tutorWorkAllowed()` asks the LADDER, and **`tutorWorkShow` asks
+  it AGAIN** in the ONE door every producer goes through: a prompt is not a lock, and a model that
+  writes working nobody asked for must not be able to hand over a rung the parent switched off.
+- **IT ALWAYS STOPS ONE STEP SHORT.** Below the answer rung the last line must carry a `?` or the
+  whole block is **REFUSED** (`tutorWorkLines`). Working that runs to the answer is the answer with
+  a pencil round it — the hole `mthModelBlanks` and `kwQuizGivesAnswer` exist to shut — and
+  refusing is the safe way to be wrong: nothing is drawn and the hint's own words still say
+  everything they said before. **Trimming the last line instead would be worse than either**,
+  because a chain cut short still ends one step further on than it should and nobody wrote what is
+  left. Past `WORK_LINES_MAX` the FIRST lines and the LAST one are kept, never simply the first N:
+  the last line carries the `?`, and dropping it turns an invitation into a lecture.
+- **IT SHARES THE FINGER'S ONE CLEAR.** `tutorMarksClear()` takes both marks down, so the six
+  places the tutor MOVES ON stay six rather than twelve — a new spoken question, a new hint, the
+  session ending, a new worksheet, leaving the worksheet, and ↻ Practise again. **Miss one of
+  twelve and working about a question nobody is on any more sits on the paper**, which is exactly
+  the failure the finger's own section warns about, kept from doubling. Nothing but that one
+  function calls either half, and the harness counts.
+- **THE ANCHOR IS NEVER CLAMPED AND THE BOX ALWAYS IS**, and the difference is the point. The
+  anchor goes through `_markAt` like every other position here, so a block the marking would
+  refuse is refused — working beside the wrong question is worse than no working at all. The BOX
+  is then nudged back onto the paper when it would hang off the right-hand or bottom edge, because
+  a note half off the page is unreadable and a centimetre cannot change which question it is
+  beside.
+- **A NOTE ALREADY ON THE PAGE IS LEFT ALONE, AND IT IS NEVER DETACHED.** Same two halves the
+  finger needs: `want` (`data-work` + the zoom) makes `renderTutorWorkOn` leave a node that is
+  still right, and `renderOverlay`'s wipe STEPS OVER it — `tutorNodes` now matches
+  `g[data-point], g[data-work]` — because taking a node out of the document cancels its CSS
+  animation. It is `insertBefore`d as the FIRST child, so it sits UNDER the student's own ink.
+- **IT FADES IN AND NEVER BREATHES.** A gesture has to be FOUND; a note is read once and referred
+  back to, and a block of text pulsing beside the question a child is working on is the one thing
+  on the page they could not ignore.
+- **MODEL OUTPUT IS PAINTED AS TEXT** (`textContent`), and **`pointer-events: none` is
+  load-bearing** — this sits over a page written on with a stylus.
+- **The maker carries NO epoch**, the split `tutorPointMake` makes: a hint keeps its own on
+  `h.work`, saved into the body, and the card's button puts it back months later. The button is
+  drawn when EITHER mark exists and says which — a hint can carry working and no gesture, and a
+  button drawn only for the finger would leave that working with no way back onto the page.
+- **`tutorWorkMake`'s `answerOk` defaults to STRICT**, so a caller that forgets it gets the answer
+  that cannot hand over the answer. Every call site passes `mthAnswerAllowed()` — the ladder is
+  read in the ONE place that reads it, never tested a second time here.
+
+### The live marker, and why it is a RUN
+
+- **`LIVE_MARK_RE` replaced `LIVE_POINT_RE`**, which knew only the finger, and `liveFlush` consumes
+  a **RUN** of markers off the front rather than one. **A reply from a route with NO STREAM behind
+  it — either backup engine — is spoken through `liveFlush(true)` ONCE**, so a loop that took one
+  marker left the second to be scrubbed away by `livePointStrip` and the note never went up at
+  all, in silence. That is the case the harness tests on its own, because streaming hides it: a
+  second flush takes the second marker.
+- **AN OPEN `[[` WITH NO CLOSE YET STILL WAITS**, before a single character is taken.
+- **`liveWorkSpec` reads the position from the segment BEFORE the first `|`**, so the digits inside
+  *"3 units = 12"* can never be read as a coordinate — and it takes the `p3` out first, the rule
+  `livePointSpec` already carries. A marker with no lines is refused: an empty note is a rectangle
+  drawn on a child's worksheet saying nothing.
+- **`liveMarkApply` is the ONE dispatcher**, so the two kinds are told apart in exactly one place
+  and a third added later is one branch rather than a second copy of the loop.
+- **`livePointStrip` already removes ANY `[[…]]`**, so it covers the working marker too:
+  *"open bracket open bracket work p three"* read to a child is the one thing this must never do.
+- Run **`node tools/tutor-tests.mjs`**, **`node --test tools/live-tutor-tests.mjs`** and
+  **`node --test tools/writing-tests.mjs`** after touching any of it — **and watch one live
+  session**: where a note lands on a real page is the one thing reading the source cannot check.
 
 ## ✏️ THE MATHS PAD — the working line and the drawn model (v1.27.0)
 
@@ -2863,6 +3010,50 @@ the two in step; a fix to either belongs in both.
   Hand an all-filler reply to the speaker and the tutor says "Let me check." and stops. And
   let the frame loop ignore `liveOrbMotionOk` and the sand swirls for a child who asked it not
   to.
+- After touching **📐 the ruler or the crosshair** (`GRID_STEP`, `GRID_LINE`, `GRID_TEXT`,
+  `TAP_R`, `drawPageGrid`, `gridLabel`, `tapMarkSpot`, `drawTapMark`, `pageJpegForModel`, the
+  `mark` on `bandDataUrl` / `bandJpeg`, the `role` on `hintImagesFor`'s entries, or the two lines
+  `hintLadderFor` pushes about the ring and the image number), run
+  `node tools/tutor-tests.mjs` **and** `node --test tools/live-tutor-tests.mjs` **and ask for one
+  hint on a real page**. This is where BOTH of v1.30.0's placement faults lived, and both were
+  silent — the finger was drawn perfectly, on the wrong thing. Tell the model in WORDS where the
+  tap was and it is being told something untrue, because the band puts the tap two fifths down and
+  "near the top" is the question BEFORE it: a child tapping question 12 gets a hint about question
+  11 with the pin sitting correctly on 12. Take the grid off and the position is estimated on a
+  bare photograph again, so the underline lands a line or two from the words it was meant to be
+  under. Name the picture to measure on by ORDINAL and it is the PREVIOUS PAGE on every worksheet
+  whose close-up could not be built, so the gesture is measured on one page's layout and drawn on
+  another's. Let the grid into `compositeJpeg` and it is on the marking run's picture, the mistake
+  book's, the cover and the printer — a ruler across a child's printed worksheet. Drop the
+  not-part-of-the-paper warning and a model reads "300" out of the margin into the question it
+  transcribes, which then travels into the hint, the keyword check and the mistake book. Let
+  `tapMarkSpot` forget the BAND's own top and the crosshair is on the question above. And label
+  the grid's ENDS and there are two "0"s in one corner, or one of them is nudged a few per cent
+  off the line it names.
+- After touching **✍️ the tutor's working** (`WORK_RUNG`, `WORK_LINES_MAX`, `WORK_CHARS_MAX`,
+  `tutorWork`, `tutorWorkAllowed`, `tutorWorkLines`, `tutorWorkMake`, `tutorWorkGeom`,
+  `tutorWorkShow`, `tutorWorkClear`, `syncTutorWork`, `tutorMarksClear`, `renderTutorWorkOn`, the
+  `renderTutorWorkOn(p)` line and `tutorNodes` in `renderOverlay`, `LIVE_MARK_RE`, `liveWorkSpec`,
+  `liveMarkApply`, the marker LOOP in `liveFlush`, the `work` field of `HINT_SYS` /
+  `hintLadderFor` / `askHintAt`, the button on `hintCard`, or the `.tutorWork` CSS), run
+  `node tools/tutor-tests.mjs`, `node --test tools/live-tutor-tests.mjs` and
+  `node --test tools/writing-tests.mjs` **and watch one live session**. **The worst failure here
+  is loud and it is heard by a child**: a marker that stops being consumed is read aloud as "open
+  bracket open bracket work p three", and `liveFlush` taking ONE marker instead of a RUN loses the
+  second one entirely on a reply that never streams — the note simply never goes up, in silence,
+  and streaming hides it because a second flush takes it. The rest are quiet. Let the working into
+  `annotations` and the next marking run reads the tutor's own half-solution as the student's
+  work, on a paper that marks itself kinder. Take the ladder off `tutorWorkShow` — or ask it only
+  in the prompt — and a child on *Nudges only* is handed the method written out on their paper.
+  Drop the `?` rule, or TRIM the last line instead of refusing the block, and the working runs to
+  the answer, which is the answer with a pencil round it; cap the lines with a plain `slice` and
+  the `?` line is what gets dropped, turning an invitation into a lecture. CLAMP the anchor
+  instead of refusing it and the note is beside the wrong question; stop NUDGING the box and it
+  hangs off the edge of the paper. Split the clear into two and the five places the tutor moves on
+  become ten chances to forget one. Detach the node in the wipe, or `appendChild` it, and it
+  flashes on every word the child writes or covers the answer it is helping with. Read
+  `liveWorkSpec`'s position from the whole marker and the digits in "3 units = 12" become a
+  coordinate. And paint a line with `innerHTML` and model output is markup on a child's page.
 - After touching **👉 the tutor's finger** (`POINT_SHAPES`, `POINT_INK`, `tutorPoint`,
   `tutorPointShape`, `tutorPointMake`, `tutorPointGeom`, `tutorPointPaths`, `tutorPointShow`,
   `tutorPointClear`, `syncTutorPoint`, `renderTutorPointOn`, the `renderTutorPointOn(p)` line in

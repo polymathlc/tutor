@@ -12,6 +12,81 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.31.0 — ✍️ The tutor writes working on the page, and the pointing is put right
+
+Three things, and all three came out of watching one hint go wrong on a real P5 paper.
+
+### ① "I tapped question 12 and it gave me a hint about question 11"
+
+The tap was recorded perfectly — the orange pin was sitting exactly on question 12 on screen. What
+was wrong was what the app then **told the model about where the tap was**. The close-up picture a
+hint is built from runs from a little **above** the tap to well **below** it, so the tap sits about
+two fifths of the way down it — and the request said *"they tapped near the top of the close-up"*.
+So the model read the question at the top of the picture, which is the question **before** the one
+that was tapped, and answered that one instead.
+
+The app no longer describes the tap in words at all. It **draws a magenta ring on the spot**, on
+both the close-up and the whole page, and tells the model that ring is where the student tapped —
+and that the question they need is the one the ring sits inside, or the one directly above it when
+the ring is on a blank answer line. A mark is something to look at; a fraction was something to
+take on trust, and it was not even true.
+
+### ② "The underlining is not accurate"
+
+Two causes, both fixed.
+
+The first is that the tutor was being asked to give a position on a **photograph with no reference
+marks on it at all** — *"tell me where this is, from 0 to 1000, down and across"* — which is
+guesswork however carefully it is done, and a guess that is out by two per cent is an underline a
+line or two away from the words it was meant to be under. The picture that goes to the tutor now
+carries **the ruler it is being asked to measure in**: a faint teal grid every 100 units with the
+numbers printed down the left-hand side and across the top. Estimating becomes reading.
+
+The second was quieter. The instruction named the picture to measure on by its **position in the
+list** — "the second picture" — and the app builds that list conditionally, so on any page whose
+close-up could not be made, "the second picture" was **the page before**. The gesture was measured
+against one page's layout and drawn onto another's, silently. Every picture is now named by what it
+actually is, and the request states the number that picture really has.
+
+**The grid never touches the worksheet.** It is drawn onto the copy that goes to the tutor and onto
+nothing else — not the page on screen, not the marking run's picture, not the mistake book's, not
+the printer's. Both prompts also say in as many words that the grid is the app's and is never part
+of the question, so a grid number can never be copied into a question the tutor reads back.
+
+### ③ "Human teachers can do working on the paper"
+
+They do, and now the tutor does too. When a line or two of working would help more than another
+sentence would, it **writes it on the paper** — in the blank space beside or below the question,
+in the tutor's own magenta, on a little dashed note so it can never be mistaken for something the
+worksheet printed:
+
+> 3 units = 12
+> 1 unit = 12 ÷ 3
+> 5 units = ?
+
+It happens on a 💡 **hint** and while the tutor is talking in 🎧 **live mode**, exactly as the
+finger does — and the 👉 **Show me where to look** button on a hint card puts the working back up
+with the gesture, so an explanation from last week comes back whole.
+
+**It always stops one step short.** The last line always ends in a question mark: the working shows
+the *shape* of the method and leaves the child the step to take. Working that runs all the way to
+the answer is simply the answer with a pencil round it, so the app refuses to draw it rather than
+trimming it back — refusing is the safe way to be wrong, because the hint's own words still say
+everything they said before.
+
+**It sits on the "How to do it" rung.** Working set out *is* the method, so it is offered at exactly
+the help levels the drawn bar model is, and at *Nudges only* or *Concept & keywords* the tutor does
+not write on the paper at all. That is checked where the working is drawn, not only in the prompt.
+
+**And it is never ink.** Like the finger and like the marking's ticks, it lives outside the
+student's own annotations entirely: it cannot be dragged, erased or undone, it is never saved into
+the worksheet, it never prints, and the marking run never sees it. Working the tutor wrote that
+ended up in the annotations would be read by the next marking as the student's own — the paper
+would mark itself kindly and nothing on any screen would say why. It comes down when the tutor
+moves on, through the very same clear the finger uses, so the two can never drift apart.
+
+---
+
 ## v1.30.0 — 👉 The tutor points at the page
 
 A human tutor does not only talk. They put a **finger on the page**: *"look at THIS number"* is a

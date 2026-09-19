@@ -83,7 +83,7 @@ function node(tagName = 'div') {
 
 function harness(options = {}) {
   const nodes = new Map();
-  const calls = { media: [], fetch: [], ai: [], toast: [], timers: new Map(), peers: [], audio: [], usage: [], undo: [], tools: [], points: [] };
+  const calls = { media: [], fetch: [], ai: [], toast: [], timers: new Map(), peers: [], audio: [], usage: [], undo: [], tools: [], points: [], works: [] };
   let nextTimer = 0;
   let annSeq = 0;
   const store = Object.assign({}, options.storage || {});
@@ -210,7 +210,22 @@ function harness(options = {}) {
        marking's own \`_markAt\` beside it. */
     tutorPointMake: (spec, page) => (spec && spec.at ? { page, shape: spec.shape || 'circle', at: spec.at, to: spec.to || null } : null),
     tutorPointShow(pt) { if (pt) calls.points.push(pt); return !!pt; },
-    tutorPointClear() { calls.points.push(null); }
+    tutorPointClear() { calls.points.push(null); },
+    /* ✍️ …and the working beside it, on the same footing: recorded rather
+       than swallowed, because what these checks are about is whether a
+       `[[work …]]` marker really raises a note and is really never spoken.
+       `tutorWorkMake`'s own refusals — a last line with no "?" below the
+       answer rung, a position the marking would not accept — are pinned for
+       real in `tools/tutor-tests.mjs`. */
+    tutorWorkMake: (spec, page, answerOk) => (spec && spec.at && spec.lines && spec.lines.length
+      ? { page, at: spec.at, lines: spec.lines.slice(), answerOk: !!answerOk } : null),
+    tutorWorkShow(w) { if (w) calls.works.push(w); return !!w; },
+    tutorWorkClear() { calls.works.push(null); },
+    tutorMarksClear() { c.tutorPointClear(); c.tutorWorkClear(); },
+    /* The RULER on the picture. It is `compositeJpeg` plus a grid, so the
+       stub answers the same way the composite one does and the checks that
+       count what was sent go on reading the same strings. */
+    pageJpegForModel: (page, px, quality) => c.compositeJpeg(page, px, quality)
   };
   c.window = {
     isSecureContext: true, RTCPeerConnection: PeerConnection, addEventListener() {},
@@ -1377,6 +1392,132 @@ test('the strip removes a whole marker and an unclosed one, and nothing else', (
   assert.equal(c.livePointStrip('The bracket [ and ] on their own survive.'),
     'The bracket [ and ] on their own survive.',
     'a single bracket is prose — a child reading "[3]" out of a question would lose it');
+});
+
+/* ------------------------------------------------------------------------
+   ✍️ THE WORKING MARKER, beside the pointer one
+   ------------------------------------------------------------------------
+   "Human teachers can do working on the paper." A spoken reply can now open
+   with a line of working as well as a finger, so what is consumed off the
+   front is a RUN of markers rather than one. The failures are the pointer's
+   own, doubled: a marker that stops being consumed is read aloud as "open
+   bracket open bracket work p three", and one that is half-consumed leaves
+   the pipes and the brackets in the middle of a sentence spoken to a child.
+   ------------------------------------------------------------------------ */
+
+test('a working marker raises a note, and not one character of it is spoken', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const job = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('[[work p2 560,120 | 3 units = 12 | 1 unit = ? ]] Look at what three units is worth. What');
+  assert.equal(comments(channel).length, 1);
+  assert.equal(comments(channel)[0].content, 'Look at what three units is worth.',
+    '"open bracket open bracket work p two" read to a child is the one thing this must never do');
+  const notes = h.calls.works.filter(Boolean);
+  assert.equal(notes.length, 1, 'one marker is one note');
+  assert.equal(JSON.stringify({ page: notes[0].page, at: notes[0].at, lines: notes[0].lines }),
+    JSON.stringify({ page: 2, at: [560, 120], lines: ['3 units = 12', '1 unit = ?'] }));
+  await s.end('[[work p2 560,120 | 3 units = 12 | 1 unit = ? ]] Look at what three units is worth. What do you get?');
+  await job;
+  assert.equal(comments(channel).map(e => e.content).join(' '),
+    'Look at what three units is worth. What do you get?',
+    'the marker cannot come back as part of the remainder either');
+  assert.equal(h.calls.works.filter(Boolean).length, 1, 'and it is never raised twice');
+  h.c.stopLiveTutor();
+});
+
+/* A reply from a route with NO STREAM behind it — either backup engine — is
+   spoken through the very same `liveFlush(true)`, ONCE. So both markers have
+   to come off in that one call: consume only the first and the second is
+   scrubbed away by `livePointStrip` and the note never goes up at all, in
+   silence. Streaming hides this, because a second flush takes the second
+   marker — which is exactly why this case has to be tested on its own. */
+test('a finger AND a line of working both survive a reply that never streams', async () => {
+  const reply = '[[point p1 200,100 underline]][[work p1 560,120 | 3 units = 12 | 1 unit = ?]] Look at what three units is worth.';
+  const h = await connected({ ai: () => reply });
+  const channel = h.c.liveTutor.channel;
+  await h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  assert.equal(h.calls.points.filter(Boolean).length, 1, 'the finger goes up');
+  assert.equal(h.calls.works.filter(Boolean).length, 1, '…and the working with it');
+  assert.equal(comments(channel).map(e => e.content).join(' '), 'Look at what three units is worth.',
+    'a RUN of markers is consumed, not just the first — the second one left behind is scrubbed and lost');
+  h.c.stopLiveTutor();
+});
+
+test('a finger AND a line of working can open one streamed reply', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const job = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  await s.end('[[point p1 200,100 underline]][[work p1 560,120 | 3 units = 12 | 1 unit = ?]] Look at what three units is worth.');
+  await job;
+  assert.equal(h.calls.points.filter(Boolean).length, 1, 'the finger goes up');
+  assert.equal(h.calls.works.filter(Boolean).length, 1, '…and the working with it');
+  assert.equal(comments(channel).map(e => e.content).join(' '), 'Look at what three units is worth.',
+    'neither marker reaches the speaker');
+  h.c.stopLiveTutor();
+});
+
+test('an unfinished working marker holds the reply back rather than speaking half of it', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const job = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('[[work p1 560,120 | 3 units = 12. Actually ');
+  assert.equal(comments(channel).length, 0, 'an OPEN marker waits for its close');
+  assert.equal(h.calls.works.filter(Boolean).length, 0);
+  await s.end('[[work p1 560,120 | 3 units = 12. Actually 1 unit = ?]] Try the next line. What do you get?');
+  await job;
+  assert.equal(comments(channel).map(e => e.content).join(' '), 'Try the next line. What do you get?',
+    'a half-written marker holding what reads as a sentence end is consumed, and the rest of it is then spoken');
+  h.c.stopLiveTutor();
+});
+
+test('the working marker names its own page, and the digits in its lines are never a position', () => {
+  const c = harness().c;
+  assert.equal(JSON.stringify(c.liveWorkSpec(' p12 560,120 | 3 units = 12 | 1 unit = ? ', 1)),
+    JSON.stringify({ page: 12, at: [560, 120], lines: ['3 units = 12', '1 unit = ?'] }),
+    'everything before the first pipe is the position, so "3 units = 12" can never be read as one');
+  assert.equal(c.liveWorkSpec(' 560,120 | 1 unit = ? ', 4).page, 4,
+    'a marker that names no page means the page the student is looking at');
+  assert.equal(c.liveWorkSpec(' 560,120 | 1 unit = ? ', 0), null,
+    'and with no page to fall back on it is refused rather than drawn on page one');
+  assert.equal(c.liveWorkSpec(' 560 | 1 unit = ? ', 1), null, 'one number is not a position');
+  assert.equal(c.liveWorkSpec(' 560,120 ', 1), null,
+    'a note with no lines is a rectangle drawn on a child\'s worksheet saying nothing');
+  assert.equal(c.liveWorkSpec(' 560,120 |  |  ', 1), null);
+});
+
+test('the strip removes a working marker too, before the speaker ever sees it', () => {
+  const c = harness().c;
+  assert.equal(c.livePointStrip('[[work p1 560,120 | 1 unit = ?]] Say this.'), 'Say this.');
+  assert.equal(c.livePointStrip('Say this. [[work p1 560'), 'Say this.');
+});
+
+test('asking a NEW question takes the working off the page with the finger', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const job = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  assert.deepEqual(h.calls.works, [null],
+    'ONE clear takes both marks down — two clear functions with five call sites each is ten chances to forget one');
+  await s.end('Look at the arrow on the diagram.');
+  await job;
+  h.c.stopLiveTutor();
+});
+
+test('the pages a live reply measures on carry the ruler', async () => {
+  const shots = [];
+  const h = await connected({ globals: { pageJpegForModel: (page, px, quality) => { shots.push({ page: page.num, px, quality }); return 'RULED_' + page.num; } } });
+  await h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  assert.ok(shots.length >= 1, 'the live pages go through the ruler, not the plain composite');
+  assert.equal(h.calls.ai.at(-1).config.images[0].data, 'RULED_1',
+    'a marker measured in 0–1000 on a picture with no grid on it is an estimate');
+  h.c.stopLiveTutor();
 });
 
 test('a streamed reply that is nothing but filler falls back to asking the question again', async () => {
