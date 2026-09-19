@@ -12,6 +12,36 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.26.0 — The live tutor answers sooner
+
+Asking the tutor a question out loud took longer than it should have, and the wait was almost all
+plumbing rather than thinking. Four changes, none of which alters a word of what is said.
+
+**The reply is spoken as it is written.** The tutor used to wait for the last word of the last
+sentence before saying the first. Now the first finished sentence goes out while the rest is still
+being written, and the remainder follows as one more piece. Every word is still said exactly once,
+and the "let me check the worksheet" opening is still removed — wherever it sits, so the reply is
+the same whether it streams or not. A reply whose question the student has already moved on from
+stops mid-answer rather than talking over the new one.
+
+**One page goes up, not three, and a smaller picture.** A live question is nearly always about the
+page under the student's eye, and every extra page was another quarter-megabyte uploaded and
+another page of reading before a word was spoken. When the top page is most of what is on screen it
+goes alone; when the student is straddling two, both still go. Nothing else in the app changed —
+Ask and the hints read the same three pages they always did.
+
+**The notes, the answer key and the picture are prepared side by side** rather than one after the
+other. None of them needs anything the others produce, so waiting for them in turn was pure
+waiting.
+
+**The answer key is read while the microphone is still being granted.** Allowing the microphone and
+opening the connection is several seconds the key could be transcribed in for free, instead of the
+first question of every session wearing that whole pass with nothing on screen but "Thinking…". If
+it cannot be read, nothing is shown — the check that actually needs it says so, properly, when it
+is asked.
+
+---
+
 ## v1.25.2 — A P5 account stops seeing the P6 and P4 papers
 
 **The bug.** Signing in fired the worksheet list and the roster read **side by side**, with the

@@ -1389,9 +1389,13 @@ Object.keys(UNGROUNDED_BY_DESIGN).forEach(sys => {
 const kqSrc = between('/* ================= THE KEYWORD QUIZ =================', '/* ================= End the keyword quiz', 'the keyword quiz');
 ok('the keyword check is grounded as a hint, with the key, the syllabus and the ceiling beside it',
    /system: KWQ_SYS \+ aiGrounding\('hint'\) \+ keyRuleBlock\(source\.question\) \+ sylPromptBlock\(matches\) \+ kwQuizCeilingRule\(\)/.test(kqSrc));
+/* The reply is STREAMED now, so "on its way" means both doors it can leave
+   by: the flush that sends whatever is left of a part-spoken answer, and the
+   fallback line for a reply that was all filler. The quiz must follow both. */
+const kqQuiz = html.indexOf('kwQuizForLive(generation, spokenQuestion, spoken)');
 ok('the live quiz is built AFTER the spoken reply is on its way, never before it',
-   html.indexOf('kwQuizForLive(generation, spokenQuestion, spokenReply)') >
-   html.indexOf("content: spokenReply || 'I could not read that clearly."),
+   kqQuiz > html.indexOf('var sent = liveFlush(true);') &&
+   kqQuiz > html.indexOf("content: 'I could not read that clearly."),
    'a box that delayed the tutor\'s answer would be a box that made the tutor slow');
 ok('the hint hook builds the quiz in the background, off the hint that just landed', /kwQuizAfterHint\(h, epoch\);/.test(html));
 ok('a new worksheet closes the box', /wsEpoch\+\+;\n\s*kwQuizClose\(\);/.test(html));
@@ -3533,6 +3537,49 @@ ok('the callable rides the COMPAT app, which holds the signed-in user',
    'the modular app carries App Check but no session, and the function refuses a caller it cannot name');
 ok('…and a blocked CDN leaves the backup unavailable rather than throwing on load',
    /typeof firebase === "undefined" \|\| !firebase\.functions/.test(html));
+
+/* THE REPLY STREAMS, so the tutor speaks the first sentence while the rest is
+   still being written. The live harness drives that from `askGemini` down; the
+   door itself is above the section it can load, so it is pinned here. */
+ok('the streaming route RETURNS the whole reply as well as streaming it',
+   /const result = await model\.generateContentStream\(request\);[\s\S]{0,420}return full\.trim\(\);/.test(html),
+   'the side channel is early delivery, never the answer — a route with no stream behind it must be unaffected');
+ok('…and it streams the reply SO FAR, never a delta',
+   /full \+= delta;[\s\S]{0,60}onStream\(full\)/.test(html),
+   'the caller tracks how much it has already spoken, which it cannot do from deltas alone');
+ok('a reply asked for as JSON is never streamed',
+   /typeof onStream === "function" && !json/.test(html),
+   'half an object parses as nothing, and the tolerant parser is what makes a truncated one survivable');
+ok('a thinking-level retry stands down once text has been handed over',
+   /if \(emitted\) throw e;\s*\n\s*if \(thinkingLevel === AI_THINK_MIN/.test(html),
+   'a retry after the first delta speaks a second answer over the top of the first');
+ok('NO ROUTE FALLS BACK once a route has emitted',
+   /let emitted = false;[\s\S]{0,400}onStream: function \(full\) \{ emitted = true; opts\.onStream\(full\); \}[\s\S]{0,900}if \(emitted\) throw e;/.test(html),
+   'half of one engine’s explanation welded to the whole of another’s, read aloud to a child');
+ok('…and the stream is offered to every route, not just the first',
+   /_aiRun\(engine, prompt, Object\.assign\(\{\}, routeOpts,/.test(html),
+   'passing the raw opts would leave `emitted` unset, and the guard above dead');
+ok('a call with no onStream is handed its opts unchanged',
+   /: opts;/.test(html) && /typeof opts\.onStream === "function"\s*\n?\s*\? Object\.assign/.test(html),
+   'every other call site in the app goes down this path and must be byte-for-byte what it was');
+
+/* ONE PAGE, SMALLER, AND PREPARED SIDE BY SIDE. Each of these is seconds a
+   student spends listening to nothing. */
+ok('the live check narrows the pages it sends',
+   /worksheetContextPages\(\{ max: LIVE_CONTEXT_MAX, dominant: LIVE_CONTEXT_DOMINANT \}\)/.test(html),
+   'every extra page is another quarter-megabyte uploaded before a word is spoken');
+ok('…and `worksheetContextPages()` with no arguments is unchanged for every other caller',
+   /var max = \(opts && opts\.max\) \|\| 3;/.test(html),
+   'the chat, the hints and visiblePage() all read this');
+ok('the notes, the key and the raster are awaited TOGETHER',
+   /await Promise\.all\(\[\s*\n\s*Promise\.all\(\[\s*\n\s*aiWithDeadline\(function \(\) \{ return loadTeachingNotes\(\); \}/.test(html),
+   'neither needs anything the other produces, so serially the shorter one is pure waiting');
+ok('the key and the notes are warmed as the session opens',
+   /liveWarmContext\(\);\s*\n\s*liveStatus\('Allow your microphone/.test(html),
+   'granting the microphone and exchanging SDP is several seconds the key can be read in for free');
+ok('…and a warm-up refusal is swallowed, never shown',
+   /function liveWarmContext\(\) \{[\s\S]{0,320}catch \(e\) \{\}[\s\S]{0,200}catch \(e\) \{\}/.test(html),
+   'an error on screen about a question nobody has asked yet');
 
 /* THE ENGINE IS THE CENTRE'S SETTING, on the document this app already
    reads. A device-local choice is the bug wearing a feature's clothes. */
