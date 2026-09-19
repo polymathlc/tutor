@@ -1000,6 +1000,49 @@ the paper IS.
   under whatever the teaching notes happen to be about.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 👤 THE ROSTER IS SETTLED BEFORE A SINGLE ROW IS FILTERED (v1.25.2)
+
+`ROSTER_WAIT_MS` / **`rosterReset`** / **`rosterSettled`** / **`rosterReady`** (beside
+`activeStudent` — search `THE ROSTER IS SETTLED`), the `await rosterReady()` at the top of
+`loadWorksheets`, the `rosterSettled()` in `adoptStudents` and `onboardSave`, the
+`.then(rosterSettled, rosterSettled)` on the sign-in's `onboardRequire`, and the closed
+`!st || !st.level` branch of `canSeeAssignment`.
+
+A P5 account was shown every P6 and P4 paper the teacher had set, on a home screen that looked
+perfectly ordinary. Nothing about the level rules was wrong; **the list was filtered before anybody
+knew who was looking at it.**
+
+- **THE SIGN-IN FIRED THE LIST AND THE ROSTER SIDE BY SIDE.** `loadWorksheets()` and
+  `onboardRequire()` were started in the same breath with `myStudents` freshly emptied, so
+  `activeStudent()` was null and both filters took their "not answered yet — the gate has them
+  anyway" escape and let EVERYTHING through. That escape is honest only while the gate is up. An
+  account that has ALREADY answered never sees the gate: `onboardRequire` reads the profile, calls
+  `adoptStudents`, and `adoptStudents` repainted the HEADER and nothing else — so the list stayed
+  as it was first painted, and the next reload raced the same way.
+- **`onboardSave` HAD ALREADY LEARNED THIS AND THE OTHER PATH HAD NOT.** It ends with a
+  `loadWorksheets()` under a comment saying the list *"was filtered against no student at all"* —
+  which is exactly why a newly onboarded account looked right and every existing one did not. A
+  fix on one of two paths is the shape of bug to look for here.
+- **SO THE ROSTER IS A PROMISE, AND THE LIST IS NEVER PAINTED WITHOUT IT.** `rosterReady()`
+  resolves the moment `myStudents` is settled for this account; `loadWorksheets` awaits it BEFORE
+  it reads or filters a row. Waiting rather than repainting is the point — a list filtered first
+  and corrected afterwards is a flash of another class's papers, and whether anybody sees that
+  flash is a matter of how fast the profile read is.
+- **IT IS SETTLED FROM EVERY PATH, AND FROM A `finally`.** The profile read, the gate being
+  answered (`onboardSave`, BEFORE it asks for the list again), a read that failed, **the teacher —
+  who returns from `onboardRequire` immediately and adopts nobody** — and signing out. A waiter
+  holding a promise nothing will ever resolve is a home screen that stays empty for ever, which is
+  the trap this app documents wherever it awaits anything. `rosterSettled` is idempotent so every
+  path may call it and the `finally` may call it again, and `ROSTER_WAIT_MS` bounds the wait so a
+  path nobody thought of cannot hang the screen.
+- **AN UNKNOWN STUDENT IS SHOWN NO SET WORKSHEET AT ALL**, and that is the belt to the promise's
+  brace. A set worksheet belongs to a CLASS, so "we do not know who this is" must never mean "show
+  every class's paper". **`canSeeWorksheet` stays permissive on purpose and the asymmetry is the
+  design**: a student's own uploads are their own work, and hiding those with no explanation is the
+  worse fault, while a set worksheet briefly missing is one reload away and another class's paper
+  on a child's shelf is something nothing on the screen would ever explain.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 📚 WOODEN SHELVES, EVERY PAPER ON ONE, and a posted PDF files itself (v1.25.0)
 
 `canSeeAssignment` / `assignmentUntaggedNote` (beside `canSeeWorksheet` — search `THE SET LIST GOES
@@ -2188,6 +2231,20 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **👤 the roster promise** (`rosterReset`, `rosterSettled`, `rosterReady`,
+  `ROSTER_WAIT_MS`, the `await rosterReady()` in `loadWorksheets`, the `rosterSettled()` in
+  `adoptStudents` / `onboardSave` / the sign-in's `.then(rosterSettled, rosterSettled)` / the
+  signed-out branch, or `canSeeAssignment`'s `!st` branch), run `node tools/tutor-tests.mjs`.
+  Every failure here is silent and the home screen looks perfectly ordinary. Take the await out of
+  `loadWorksheets` and the list is filtered against nobody again, so a P5 child is reading every P6
+  and P4 paper the teacher has set — which is the bug this fixed, and it shows on accounts that
+  have ALREADY answered while a freshly onboarded one looks right. Filter first and repaint once
+  the roster lands and it is a flash of another class's papers instead, seen or not depending on
+  how fast the network is. Miss `rosterSettled` on ONE path — the teacher, who adopts nobody, or a
+  gate that threw, or signing out — and that account's home screen never fills in at all. Drop
+  `ROSTER_WAIT_MS` and a path nobody thought of hangs it for ever. And let `canSeeAssignment` go
+  back to `return true` for an unknown student and the promise is the only thing standing between a
+  child and another class's papers, where it was meant to be the second of two.
 - After touching **📚 the wooden shelves, the set rule or the auto-set** (`canSeeAssignment`,
   `assignmentUntaggedNote`, `shelfEntries`, `setCardNode`, `renderAssignments`' admin gate, the
   `topic` / `school` on `pushWorksheet`'s record, `upPush`'s default, the `got.level && got.subject`

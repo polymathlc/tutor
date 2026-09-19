@@ -2109,7 +2109,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.25.1';
+var APP_VERSION = 'v1.25.2';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -14670,6 +14670,13 @@ window.addEventListener('pagehide', flushSave);
 
 async function loadWorksheets() {
   if (!currentUser) { worksheets = []; assignments = []; renderWorksheets(); return; }
+  // WHO IS WORKING DECIDES WHAT MAY BE SHOWN, so the roster is waited for
+  // before a single row is filtered — see THE ROSTER IS SETTLED. Every later
+  // caller (the back button, switching student, a save) finds it already
+  // settled and waits a microtask.
+  await rosterReady();
+  // Signed out while we waited: the next sign-in paints its own list.
+  if (!currentUser) { worksheets = []; assignments = []; renderWorksheets(); return; }
   try {
     // Filtered but not ordered in the query on purpose: `where` + `orderBy`
     // on different fields needs a composite index in the console, and a
@@ -15734,6 +15741,61 @@ function activeStudent() {
   return myStudents[i];
 }
 
+/* ---- THE ROSTER IS SETTLED BEFORE A SINGLE ROW IS FILTERED (v1.25.2) ----
+   Both filters below treat "no active student" as "show everything", because
+   on a FIRST sign-in the onboarding gate is covering the screen and the
+   answer is seconds away. That escape is only honest while the roster has
+   not arrived YET — and the sign-in fired `loadWorksheets()` and
+   `onboardRequire()` SIDE BY SIDE, with `myStudents` freshly emptied. So for
+   an account that had ALREADY answered — no gate, nothing on screen to wait
+   for — the whole list was filtered against nobody and never filtered again:
+   `adoptStudents` set the roster and repainted the HEADER alone. A P5 child
+   was shown every P6 and P4 paper the teacher had set, on a home screen that
+   looked perfectly ordinary, until the next reload raced the same way.
+
+   `onboardSave` had already learned this — *"the list was filtered against no
+   student at all, so it is re-filtered now"* — which is exactly why a newly
+   onboarded account looked right and every existing one did not.
+
+   So the roster is a PROMISE. `rosterReady()` resolves the moment
+   `myStudents` is settled for this account, whichever way it was settled: the
+   profile was read, the gate was answered, the read failed, or the teacher
+   signed in and is not asked at all. `loadWorksheets` awaits it, so the list
+   is never PAINTED against a roster that has not arrived rather than being
+   repainted afterwards — there is no flash of another class's papers to fix.
+
+   IT IS SETTLED FROM A `finally`, ALWAYS, and bounded by `ROSTER_WAIT_MS`.
+   A waiter holding a promise nothing will ever resolve is a home screen that
+   stays empty for ever, which is the failure this app documents everywhere
+   it awaits anything. The bounded wait fails the SAFE way: with no roster the
+   student keeps their own uploads and is shown no set worksheet at all. */
+var ROSTER_WAIT_MS = 8000;
+var _rosterWait = null, _rosterDone = null;
+/* A fresh account is a fresh wait. Called on every account change, before
+   anything reads the list. */
+function rosterReset() {
+  myStudents = [];
+  _rosterWait = new Promise(function (res) { _rosterDone = res; });
+}
+/* Who is working is now known — or is never going to be. Idempotent, so
+   every path may call it and the `finally` can call it again. */
+function rosterSettled() {
+  var done = _rosterDone;
+  _rosterDone = null;
+  if (done) done();
+}
+function rosterReady() {
+  if (!_rosterWait) return Promise.resolve();
+  var wait = _rosterWait;
+  return new Promise(function (res) {
+    var t = setTimeout(function () {
+      console.warn('roster: nobody answered in time — showing only this account\u2019s own worksheets');
+      res();
+    }, ROSTER_WAIT_MS);
+    wait.then(function () { clearTimeout(t); res(); });
+  });
+}
+
 /* ---- Which worksheets are this student's ----
    Only the ones tagged with their own level AND a subject they take. The
    teacher sees everything. A worksheet with NO level was uploaded before the
@@ -15773,7 +15835,16 @@ function canSeeAssignment(a) {
   if (!a) return false;
   if (isAdmin(currentUser)) return true;
   var st = activeStudent();
-  if (!st || !st.level) return true;   // not answered yet — the gate has them anyway
+  // AN UNKNOWN STUDENT IS SHOWN NO SET WORKSHEET AT ALL (v1.25.2), and this
+  // is the belt to `rosterReady()`'s brace. A set worksheet belongs to a
+  // CLASS, so "we do not know who this is" must never mean "show every
+  // class's paper" — which is exactly what it did mean, and is why a P5
+  // account was reading P6 and P4 papers. It fails the safe way round: a
+  // student's own uploads are still theirs (`canSeeWorksheet`, above, which
+  // stays permissive on purpose), and a set worksheet that is briefly
+  // missing is one tap of reload away, while another class's paper on a
+  // child's shelf is something nothing on the screen would ever explain.
+  if (!st || !st.level) return false;
   if (!a.level || !a.subject) return false;   // set for nobody's shelf yet
   if (a.level !== st.level) return false;
   return studentSubjectList(st).indexOf(a.subject) !== -1;
@@ -15910,6 +15981,8 @@ function adoptStudents(profile) {
   myStudents = normStudents(((profile || {}).tutorOnboard || {}).students);
   loadActiveIdx();
   renderAuth();
+  // WHO IS WORKING IS NOW KNOWN, so the list waiting on it may be filtered.
+  rosterSettled();
 }
 
 function onboardFinish() {
@@ -15951,6 +16024,7 @@ async function onboardSave(user) {
   // next reload.
   myStudents = normStudents(clean.students);
   setActiveIdx(0);
+  rosterSettled();
   onboardFinish();
   renderAuth();
   loadWorksheets();
@@ -16742,8 +16816,9 @@ if (auth) auth.onAuthStateChanged(function (user) {
   worksheets = [];
   mistakes = [];
   // One account's students must never decide what the next person to sign in
-  // on the same device is shown.
-  myStudents = [];
+  // on the same device is shown — and the list must WAIT for whoever this
+  // account turns out to be rather than painting itself against nobody.
+  rosterReset();
   currentDocId = null;
   showView('home');
   renderAuth();
@@ -16765,11 +16840,17 @@ if (auth) auth.onAuthStateChanged(function (user) {
       // A gate that throws must not be a gate nobody can get past.
       console.warn('first sign-in: could not be asked', e);
       onboardFinish();
-    });
+    }).then(rosterSettled, rosterSettled);
+    // ^ settled whichever way it went, and on the ONE path that adopts
+    //   nobody: the teacher, who is not asked and has no row. A list left
+    //   waiting on a promise nothing resolves is a home screen that never
+    //   fills in.
   } else {
     usageStop();
     _peopleRows = null;
     onboardFinish();
+    // Signed out: nothing is coming, so nothing may be left waiting.
+    rosterSettled();
   }
 });
 
