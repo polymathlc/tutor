@@ -136,13 +136,149 @@ it is handed to the speaker** (`liveStripFiller` on `spokenReply`).
 - Run **`node --test tools/live-tutor-tests.mjs`**, **`node tools/tutor-tests.mjs`** and
   **`cd functions && node --test test/*.test.js`** after touching any of it.
 
+## ✏️ THE MATHS PAD — the working line and the drawn model (v1.27.0)
+
+`mathWorksheet` / `MTH_KEY` / `MTH_MODEL_RUNG` / `MTH_SYMBOLS` / `MTH_WORK_MAX` /
+`MTH_STEPS_MAX` / `MTH_LIVE_GAP_MS` / `MTH_BARS_MAX` / `MTH_SEGS_MAX` /
+`mthPref` / `toggleMthPref` / `mthPad` / **`mthAllowed`** / **`mthModelAllowed`** /
+`mthModelLockedNote` / `mthAnswerAllowed` / **`mthArith`** / `mthInsert` /
+`mthShow` / `mthClose` / `mthRender` / `mthRenderWork` / `MTH_WORK_SYS` /
+`mthWorkPrompt` / **`mthWorkCheck`** / **`mthWorkClean`** / `mthTellTutor` /
+`MTH_MODEL_SYS` / `mthModelCeilingRule` / **`mthModelBuild`** /
+**`mthModelClean`** / `mthModelBlanks` / `mthRenderModel` / `mthLabelNorm` /
+`mthModelCheck` / **`mthModelLayout`** / **`mthModelPlace`** / `mthArmPlace` /
+`mthAfterHint` / `mthAfterLive` / `mthOpenForHint` (search `THE MATHS PAD`),
+plus `kwQuizOffReason`, **`floatBoxLayout`**, the one-shot `model` tool in the
+pointer handler, `#mthPad`, the `.mth*` / `.hintMathLine` CSS, and the
+`mathpad` / `mathstep` / `mathmodel` / `mathmodelput` rows of `USAGE_EVENTS`.
+
+A 🧩 keyword check asks for the WORDS an answer needs. On a maths worksheet
+that is the wrong question — a child stuck on question 7 does not need the word
+*fraction*, they need to know what to write on the next line — so on a maths
+worksheet the keyword check stands down and this takes its place: a **working
+line** with the symbols a school keyboard cannot reach, and a **drawn bar
+model**.
+
+- **`mathWorksheet()` IS THE ONE PLACE "is this maths" IS DECIDED**, and every
+  door asks it: `mthAllowed`, `kwQuizOffReason`, the hint card's buttons, the
+  hints tab's helper line, the Live card's switch and the 🧩 button's handler.
+  A second test is how the pad appears on a science worksheet or the keyword
+  check on a maths one, with nothing on any screen saying which. **`'both'` is
+  NOT maths**: it is Ans Key's legacy maths-and-science pairing, so a worksheet
+  wearing it is as much science as maths and keeps the keyword check.
+- **THE TWO ARE NEVER BOTH OFFERED.** `kwQuizOffReason()` returns `'maths'`
+  before it asks the ladder at all, and it is what the locked note reads, so a
+  maths worksheet says the keyword check is off *because it is maths* and names
+  what it has instead — rather than the level note, which would be true of a
+  different worksheet and wrong here.
+
+### The working line is offered at EVERY help level, and that is deliberate
+
+- **ASKING A CHILD TO TRY THE NEXT STEP TELLS THEM NOTHING**, so there is no
+  rung for the ceiling to protect: `mthAllowed()` is `mathWorksheet()` and
+  nothing else, and `mthShow` / `mthAfterHint` / `mthAfterLive` ask only that.
+  A ladder test here would switch the pad off for the children on *Nudges
+  only*, who are exactly the ones who need somewhere to attempt a step.
+- **IT COSTS NOTHING TO OPEN**, because the ask is already in hand: on a hint
+  it is the LAST RUNG THE STUDENT HAS BEEN SHOWN, and in live mode it is what
+  the tutor has just said. Only ✅ Check and 📐 the model spend a call.
+- **`mthWorkCheck` IS GROUNDED AS `'hint'`**, carries `keyRuleBlock` (so the
+  key says what the answer is and never lifts the ceiling), carries
+  `tutorMethodRule()` (arithmetic and the unitary method, no algebra, one step
+  at a time) and is **NEVER `'mark'`** — a marker handed the answer stops
+  marking against the paper, and this is teaching rather than marking. The
+  harness pins all four against the file.
+- **THE APP'S OWN ARITHMETIC OVERRULES A "right", AND ONLY IN THAT DIRECTION**
+  (`mthArith`). `12 × 4 = 46` is not right whatever a model says, and that
+  check is free, instant and always the same answer. It is deliberately NARROW
+  — `number op number = number`, nothing else — because a parser that tries to
+  read real working would fail on the working that is correct, and it may
+  never turn a *close* or a *not yet* into something better: a model that read
+  the question is a better judge of a step than a regular expression that did
+  not.
+- **A RIGHT STEP IS KEPT AND THE PAD ASKS FOR THE NEXT ONE**, up to
+  `MTH_STEPS_MAX` — a chain longer than that is not a step, it is the whole
+  answer being typed in one box.
+- **THE TUTOR IS TOLD, AS CONTEXT AND NEVER AS SPEECH** (`mthTellTutor` → the
+  general `session.thinking.append` with `delegation_id: null`), so a live
+  lesson carries on from the step rather than repeating the sentence before it.
+
+### The model sits on the method rung, and the unknown is never filled in
+
+- **A MODEL OF THE QUESTION *IS* THE METHOD SET OUT**, so `mthModelAllowed()`
+  asks the LADDER for `MTH_MODEL_RUNG` (`'method'`) and nowhere decides it a
+  second time — and `mthModelBuild` **REFUSES IN THE HANDLER** as well, because
+  a hidden button has never been the lock in this app.
+- **THE UNKNOWN COMES OUT AS `?` BELOW THE ANSWER RUNG**, on the drawing and on
+  the page alike (`mthModelBlanks`, `mthRenderModel`, `mthModelPlace`). A model
+  with the answer written in one of its bars is the answer with a rectangle
+  round it, which is the same hole `kwQuizGivesAnswer` exists to shut.
+- **THE SPECIFICATION NEVER CARRIES THE FINAL ANSWER AT ALL.** `MTH_MODEL_SYS`
+  does not ask for it and `mthModelClean` would drop it, so below the top rung
+  there is nothing sitting in the page for anybody curious enough to open the
+  developer tools — the rule `hintLadderFor` already follows for the rungs.
+- **`mthModelCeilingRule()` goes LAST in the system prompt**, where the bars
+  are decided, beside the grounding and the key. A hard constraint carried in
+  the user message is one the next sentence can talk over.
+
+### What lands on the page is ORDINARY INK
+
+- **IT IS `rect` / `line` / `text` AND NOTHING NEW** (`mthModelPlace`). A new
+  annotation type would have to be taught to both renderers, `annBounds`, the
+  hit test, the eraser, the resize handles and the print path — six places, and
+  the one that gets missed is silent. As ordinary shapes it moves, it is
+  erased, it undoes, it saves, it is composited onto the page for the marking
+  run and it prints, with nothing told about it.
+- **ONE `pushUndo` BEFORE THE GROUP**, so one Ctrl+Z takes the whole model off
+  again. The pieces move individually afterwards, which is the accepted trade
+  for not adding a type.
+- **THE PLACE TOOL IS ONE-SHOT.** It arms, the next tap on a page drops the
+  model, and the tool goes straight back to what it was (`mthPad.prevTool`) — a
+  mode left armed is a mode that drops a second model the next time a child
+  taps the page.
+- **`mthModelLayout` IS THE ONE LAYOUT AND BOTH RENDERERS READ IT**, so the
+  drawing in the pad and the ink on the page cannot disagree about a model the
+  student is copying. **The LAST segment takes whatever is left** rather than
+  its own rounded width, or three equal parts of 268 leave a hairline gap at
+  the end of the bar that reads as a fourth part.
+- **A LABEL IS CHECKED LOCALLY** (`mthLabelNorm`): *"3 units"*, *"3units"* and
+  *"3 UNITS"* are one answer to a child who has understood it, a different
+  number is not, and nothing is sent anywhere to decide it.
+
+### The box
+
+- **IT IS A FLOATING BOX, NOT A MODAL**, the rule 🧩 already carries: the page
+  can still be written on and the tutor still heard while it is open. It closes
+  on Escape, on ✕, on a new worksheet (`loadPdf`) and on leaving the worksheet
+  (`showView`), and `mthRender` refuses to paint a pad whose `epoch` is not the
+  open worksheet's.
+- **ONE FLOATING BOX AT A TIME**: `mthShow` closes the quiz and `kwQuizShow`
+  closes the pad. They can never both be offered on one worksheet, but a
+  worksheet's subject can change under an open box.
+- **`floatBoxLayout` READS BOTH BOXES** (it was `kwQuizLayout`), so the
+  subtitle bar is lifted clear of whichever one is up. Reading one is a spoken
+  answer captioned underneath the box it just set.
+- **MODEL OUTPUT IS PAINTED AS TEXT, never as markup** — the ask, the verdict,
+  the note, every label — exactly like the quiz, the transcript rows and the
+  hint cards.
+- **In live mode the pad is raised AFTER the spoken reply is on its way**,
+  at most one per reply, never while one is being done, and never more often
+  than `MTH_LIVE_GAP_MS`. A box that popped on every "yes" is a box that gets
+  closed unread.
+- **`mthBusyHints` is kept OFF the hint object**, the reason `kwQuizBusyHints`
+  is: a busy flag saved mid-flight comes back true for ever on the next open.
+- **The switch is a PREFERENCE, per device**, and a device that refuses storage
+  still gets the pad: it is the default.
+- Run **`node --test tools/live-tutor-tests.mjs`** and
+  **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 🧩 KEYWORD CHECKS — the concepts rung asked as a question (v1.17.0)
 
 `KWQ_KEY` / `KWQ_RUNG` / `KWQ_MAX_BLANKS` / `KWQ_LIVE_GAP_MS` / `kwQuizPref` /
 `kwQuiz` / `kwQuizBusyHints` / **`kwQuizAllowed`** / `kwQuizLockedNote` /
 `KWQ_SYS` / `kwQuizCeilingRule` / `kwQuizNorm` / `kwQuizKeyAnswers` /
 **`kwQuizGivesAnswer`** / **`kwQuizClean`** / `kwQuizMatch` / **`kwQuizBuild`**
-/ `kwQuizShow` / `kwQuizClose` / `kwQuizLayout` / `kwQuizRender` /
+/ `kwQuizShow` / `kwQuizClose` / **`floatBoxLayout`** / `kwQuizRender` /
 `kwQuizCheck` / `kwQuizSolved` / `kwQuizReveal` / `kwQuizTellTutor` /
 `kwQuizAfterHint` / `kwQuizForHint` / `kwQuizForLive` (search `THE KEYWORD
 QUIZ`), the syllabus it reads — `SYLLABUS_TOPICS` / `sylLevelNum` / `sylNorm` /
@@ -160,7 +296,11 @@ ladder asked as a question rather than read out.
 - **IT SITS ON A RUNG, SO THE CEILING GATES IT.** A quiz hands over exactly
   what the concepts rung hands over, so `kwQuizAllowed` asks the LADDER
   (`rungsAllowed`) whether that rung is allowed and nowhere decides it a second
-  time. Below that level it is shown 🔒 locked on the card and on the hints
+  time. **`kwQuizOffReason` is what it reads** (v1.27.0): the ladder, and
+  before it `mathWorksheet()` — on a maths worksheet the keyword check stands
+  down entirely and the ✏️ maths pad takes its place, and the locked note says
+  which of the two reasons it is, because the level note would be true of a
+  different worksheet and wrong here. Below that level it is shown 🔒 locked on the card and on the hints
   tab, like any other locked rung — and `kwQuizClean` refuses a reply outright
   when the level has changed under it, which is the belt to that brace.
 - **THE KEY NEVER LIFTS THE CEILING**, and this is the one that matters:
@@ -222,8 +362,9 @@ ladder asked as a question rather than read out.
   carries the forms a suffix rule cannot reach.
 - **IT IS A FLOATING BOX, NOT A MODAL.** No backdrop, so the rest of the page
   can still be written on — and in live mode the tutor still heard — while it
-  is open. It lifts `#liveSubs` clear of itself (`kwQuizLayout`), so a spoken
-  answer is never captioned underneath the quiz it just set. Escape and ✕
+  is open. It lifts `#liveSubs` clear of itself (`floatBoxLayout`, which since
+  v1.27.0 reads the ✏️ maths pad too), so a spoken answer is never captioned
+  underneath the box it just set. Escape and ✕
   close it; a new worksheet (`loadPdf`) and leaving the worksheet (`showView`)
   close it too, and `kwQuizRender` refuses to paint a quiz whose `epoch` is
   not the open worksheet's.
@@ -2433,6 +2574,33 @@ the two in step; a fix to either belongs in both.
   Hand an all-filler reply to the speaker and the tutor says "Let me check." and stops. And
   let the frame loop ignore `liveOrbMotionOk` and the sand swirls for a child who asked it not
   to.
+- After touching **✏️ the maths pad** (`mathWorksheet`, `mthAllowed`,
+  `mthModelAllowed`, `mthAnswerAllowed`, `mthArith`, `mthShow`, `mthRender`,
+  `mthWorkCheck`, `mthWorkClean`, `mthTellTutor`, `MTH_MODEL_SYS`,
+  `mthModelCeilingRule`, `mthModelBuild`, `mthModelClean`, `mthModelBlanks`,
+  `mthModelLayout`, `mthModelPlace`, `mthArmPlace`, `mthLabelNorm`,
+  `mthModelCheck`, `mthAfterHint`, `mthAfterLive`, `kwQuizOffReason`,
+  `floatBoxLayout`, the one-shot `model` tool, or the hooks in `askHintAt` /
+  `runLiveDelegation` / `loadPdf` / `showView`), run
+  `node --test tools/live-tutor-tests.mjs` **and** `node tools/tutor-tests.mjs`.
+  Every failure here is silent and the pad still opens looking helpful. Test
+  the subject a second time anywhere and the pad appears on a science worksheet
+  — or the keyword check on a maths one — with nothing on any screen saying
+  which. Put a LADDER test on the working line and the children on *Nudges
+  only* lose the one box in the app that asks them to try something, which is
+  exactly backwards. Take the ladder OFF the model, or refuse it only on the
+  button and not in the handler, and a child on *Nudges only* is handed the
+  method drawn out. Let the unknown be filled in below the top rung — on the
+  drawing or on the page — and the model is the answer with a rectangle round
+  it. Let `mthArith` overrule a *close* as well as a *right* and a regular
+  expression that cannot read working is overruling a model that read the
+  question. Drop the last segment's remainder and three equal parts leave a
+  hairline gap that reads as a fourth. Let the placed model become a new
+  annotation type and it has to be taught to six places, the one that is
+  missed being silent; drop the single `pushUndo` and a model dropped in the
+  wrong place takes forty taps to remove. Leave the place tool armed and the
+  next tap on the page drops a second model. And let `floatBoxLayout` read one
+  box and a spoken answer is captioned underneath the box it just set.
 - After touching **🧩 the keyword check or the syllabus** (`kwQuizAllowed`,
   `kwQuizClean`, `kwQuizGivesAnswer`, `kwQuizKeyAnswers`, `kwQuizMatch`,
   `kwQuizBuild`, `KWQ_SYS`, `kwQuizCeilingRule`, `kwQuizShow`, `kwQuizRender`,

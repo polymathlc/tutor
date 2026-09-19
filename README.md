@@ -12,6 +12,58 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.27.0 — ✏️ The working line and 📐 the model, on a maths worksheet
+
+A keyword check asks a student to fill in the words a science answer needs. On a **maths**
+worksheet that is the wrong question: what a child is stuck on is not the word *evaporation*, it
+is what to write on the next line. So on a maths worksheet the keyword check stands down and two
+things take its place.
+
+**✏️ Try the next step.** A line to write the next step of the working on, with the symbols a
+school keyboard cannot easily reach printed above it — **× ÷ + − = ( )**, then **< > ≤ ≥ ≈ ≠**,
+then **½ ⅓ ⅔ ¼ ¾ ² ³ √ π % :**, then **° ∠ △ ∥ ⊥ →**. Tap one and it goes in where the caret is.
+Press Check and the step is marked as a STEP — *right*, *close*, or *not yet* — with a sentence
+saying what to look at, never the answer. Get it right and the line is kept and the pad asks for
+the one after it, so the working builds up a line at a time the way it is written on paper.
+
+- **It costs nothing to open**, because the ask is already in hand: on a hint it is the rung the
+  student has just been shown, and in live mode it is what the tutor has just said.
+- **It is offered at EVERY help level.** Asking a child to attempt the next step tells them
+  nothing they did not already have, so there is nothing for the ceiling to protect. Only the
+  marking spends a call.
+- **The app checks the sum itself where it can.** `12 × 4 = 46` is not marked right whatever the
+  model says — a number that does not add up is a number that does not add up, and that check is
+  free, instant and always the same. It can only ever overrule a *right*.
+- **The tutor is told what the student wrote and how it went**, as context rather than speech, so
+  the live lesson carries on from the step rather than repeating itself.
+
+**📐 Draw the model.** On a worksheet where a bar model is the way in, the pad draws one — the
+bars, the parts, the labels and the bracket showing what is being asked for — and then offers two
+things: **Show me the model**, which puts it on the page as ordinary ink to copy and work from,
+and **Label it yourself**, which prints the model with the numbers taken out and asks the student
+to type what goes in each part.
+
+- **It sits on the "how to do it" rung**, because a model of the question IS the method set out.
+  Below that level it is shown 🔒 locked and says so — and the handler refuses as well as the
+  button, because a hidden button has never been the lock in this app.
+- **The unknown is never filled in below the top rung.** The part the question is asking for comes
+  out as **?**, on the drawing and on the page, so the model shows the shape of the question and
+  never its answer. The specification the model returns does not carry the final answer at all, so
+  there is nothing sitting in the page for anybody curious enough to open the developer tools.
+- **What lands on the page is ordinary ink** — rectangles, lines and text boxes, exactly the
+  shapes the rest of the app already draws — so it moves, it is erased, it undoes, it saves, it is
+  composited onto the page for the marking run, and it prints. It goes down as ONE undo step, so a
+  model dropped in the wrong place is one Ctrl+Z away from gone.
+- **Labelling is checked locally.** *"3 units"*, *"3units"* and *"3 UNITS"* are the same answer to
+  a child who has understood it; a different number is not, and nothing is sent anywhere to decide
+  that.
+
+**The switch is a preference, per device**, on the Live card and the Hints tab, exactly where the
+keyword check's was — and on a maths worksheet it is that switch. A subtitle bar is lifted clear of
+whichever box is open, and only one of the two is ever on screen at a time.
+
+---
+
 ## v1.26.0 — The live tutor answers sooner
 
 Asking the tutor a question out loud took longer than it should have, and the wait was almost all

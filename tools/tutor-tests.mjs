@@ -1399,12 +1399,101 @@ ok('the live quiz is built AFTER the spoken reply is on its way, never before it
    'a box that delayed the tutor\'s answer would be a box that made the tutor slow');
 ok('the hint hook builds the quiz in the background, off the hint that just landed', /kwQuizAfterHint\(h, epoch\);/.test(html));
 ok('a new worksheet closes the box', /wsEpoch\+\+;\n\s*kwQuizClose\(\);/.test(html));
-ok('leaving the worksheet closes the box', /if \(v !== 'ws'\) \{ stopLiveTutor\(\); liveTutor\.transcript = \[\]; kwQuizClose\(\); \}/.test(html));
+ok('leaving the worksheet closes BOTH floating boxes',
+   /if \(v !== 'ws'\) \{ stopLiveTutor\(\); liveTutor\.transcript = \[\]; kwQuizClose\(\); mthClose\(\); \}/.test(html),
+   'a quiz — or a working line — about a worksheet nobody has open is a box over the wrong page');
 ok('Escape closes the box', /if \(e\.key === 'Escape'\) \{\n\s*kwQuizClose\(\);/.test(html));
 ok('the box paints model output as TEXT, never as markup', !/\.innerHTML\s*=/.test(kqSrc) && /textContent = q\.concept/.test(kqSrc));
 ok('the box is a floating card with no backdrop, and it never prints',
    /#kwQuiz \{\s*\n\s*position: fixed;/.test(html) && /@media print \{ #kwQuiz \{ display: none !important; \} \}/.test(html));
 ok('a busy hint is tracked OFF the hint object, which is saved into the body', /var kwQuizBusyHints = \{\};/.test(kqSrc) && !/h\.quizBusy/.test(html));
+
+section('✏️ The maths pad — what the source has to keep saying');
+
+const mthSrc = between(BAR + '\n   ✏️ THE MATHS PAD', '/* ================= End the maths pad', 'the maths pad');
+
+/* THE ONE PREDICATE. A second `subject === 'math'` test anywhere is a second
+   place for the two helpers to disagree about which worksheet this is — and
+   the failure is a student offered both boxes, or neither. */
+const mathTests = html.match(/subject === 'math'/g) || [];
+ok('“is this maths” is decided in exactly ONE place',
+   mathTests.length === 1 && /function mathWorksheet\(\) \{ return wsMeta\.subject === 'math'; \}/.test(html),
+   'found ' + mathTests.length + ' subject tests');
+ok('…and every door asks THAT function',
+   /if \(mathWorksheet\(\)\) return 'maths';/.test(html) &&      // the keyword check standing down
+   /function mthAllowed\(\) \{ return mathWorksheet\(\); \}/.test(mthSrc) &&
+   /qline\.className = mathWorksheet\(\) \? 'hintMathLine'/.test(html) &&   // the hints line
+   /var mathsHere = mathWorksheet\(\);/.test(html) &&                        // the live card's switch
+   /if \(mathWorksheet\(\)\) toggleMthPref\(\); else toggleKwQuizPref\(\);/.test(html));
+
+/* THE WIRING. Both hooks are one line each and neither is reachable from
+   the harness that runs the pad, so a hook quietly deleted is a feature
+   that simply never appears — with nothing anywhere to say so. */
+ok('the hint hook raises the working line off the hint that just landed', /mthAfterHint\(h, epoch\);/.test(html),
+   'a hint on a maths worksheet with no working line under it is the keyword check removed and nothing put in its place');
+const mthLive = html.indexOf('mthAfterLive(generation, spokenQuestion, spoken)');
+ok('the live hook raises it AFTER the spoken reply is on its way, never before it',
+   mthLive > html.indexOf('var sent = liveFlush(true);') &&
+   mthLive > html.indexOf("content: 'I could not read that clearly."),
+   'a box that delayed the tutor\'s answer would be a box that made the tutor slow');
+
+/* THE CEILING, in all three places it has to hold. */
+ok('a drawn model sits on the "How to do it" rung and nowhere else',
+   /var MTH_MODEL_RUNG = 'method';/.test(mthSrc) &&
+   /rungsAllowed\(wsMeta\.guidance\)\.some\(function \(r\) \{ return r\.key === MTH_MODEL_RUNG; \}\)/.test(mthSrc));
+ok('…and the refusal is in the HANDLER, not only on the button',
+   /if \(!mthModelAllowed\(\)\) \{ toast\(mthModelLockedNote\(\), 7000\); return null; \}/.test(mthSrc),
+   'a hidden button is never the lock');
+ok('the model prompt carries the ceiling into the DRAWING',
+   /mthModelCeilingRule\(\)/.test(mthSrc) && /Every segment the question asks for must read "\?"/.test(mthSrc));
+ok('the step check is grounded as a hint, with the key, the method rule and the ceiling beside it',
+   /system: MTH_WORK_SYS \+ aiGrounding\('hint', \{ q: mthPad\.question \|\| text \}\) \+\s*\n\s*keyRuleBlock\(mthPad\.question\) \+ tutorMethodRule\(\) \+ buddyCeilingRule\(\)/.test(mthSrc),
+   'the marking standards are for a mark; this is the next step');
+/* The working line is gated on the SUBJECT and on nothing else. Every door
+   into it asks `mthAllowed()`, which is `mathWorksheet()` — so no rung of
+   the ladder can take away the one tool a maths student has. */
+const mthWorkDoors = ['mthShow', 'mthAfterHint', 'mthAfterLive'].map(name => {
+  const at = mthSrc.indexOf('function ' + name + '(');
+  return at === -1 ? '' : mthSrc.slice(at, mthSrc.indexOf('\n}', at));
+});
+ok('the working line is offered at EVERY help level',
+   mthWorkDoors.every(body => body && /mthAllowed\(\)/.test(body) && !/rungsAllowed|mthModelAllowed|mthAnswerAllowed/.test(body)),
+   'asking a student to attempt the next step tells them nothing at all, so no rung may forbid it');
+
+/* THE BOX. Same rules as the keyword check it stands in for. */
+ok('the pad paints model output as TEXT, never as markup',
+   !/\.innerHTML\s*=/.test(mthSrc) && /ask\.textContent = mthPad\.ask;/.test(mthSrc));
+ok('it is a floating card with no backdrop, and it never prints',
+   /#mthPad \{\s*\n\s*position: fixed;/.test(html) && /@media print \{ #mthPad \{ display: none !important; \} \}/.test(html));
+ok('a new worksheet closes it, and so does Escape',
+   /wsEpoch\+\+;\n\s*kwQuizClose\(\);[^\n]*\n\s*mthClose\(\);/.test(html) &&
+   /if \(e\.key === 'Escape'\) \{\n\s*kwQuizClose\(\);\n\s*mthClose\(\);/.test(html));
+ok('a busy hint is tracked OFF the hint object, which is saved into the body',
+   /var mthBusyHints = \{\};/.test(mthSrc) && !/h\.modelBusy/.test(html));
+ok('the subtitle bar is lifted clear of WHICHEVER box is open',
+   /function floatBoxLayout\(\)/.test(html) && /kwQuiz\.open && kq[\s\S]{0,120}mthPad\.open && mp/.test(html) &&
+   !/kwQuizLayout/.test(html),
+   'a maths student reading their subtitles under their own working line is the layout knowing about one box');
+
+/* A PLACED MODEL IS ORDINARY INK. A new annotation type has to be taught to
+   both renderers, the bounds, the hit test, the eraser, the resize handles
+   and the print path, and the one that gets missed is silent. */
+const mthTypes = (mthSrc.match(/type: '([a-z]+)'/g) || []).map(t => t.slice(7, -1));
+ok('a placed model is built from types both renderers already know',
+   mthTypes.length > 0 && mthTypes.every(t => ['rect', 'text', 'line'].indexOf(t) !== -1),
+   'found ' + JSON.stringify([...new Set(mthTypes)]));
+ok('…in ONE undo step, so one Ctrl+Z takes the whole model back off',
+   /pushUndo\(\);\n\s*var made = \[\];/.test(mthSrc));
+ok('placing is a one-shot mode that hands the tool back',
+   /setTool\(mthPad\.prevTool && mthPad\.prevTool !== 'model' \? mthPad\.prevTool : 'pen'\);/.test(html),
+   'a student left in a mode they never chose is a student whose pen has stopped working');
+
+/* ONE LAYOUT. The pad grows its segments with flexbox on `units` and the
+   page places them from the same number, so the two drawings are the same
+   drawing — and a model a student is shown is the model they are given. */
+ok('the pad and the page both grow a segment on its own `units`',
+   /seg\.style\.flexGrow = String\(s\.units\);/.test(mthSrc) &&
+   /round2\(barW \* s\.units \/ total\)/.test(mthSrc));
 
 /* Both ceiling rules go into the SYSTEM prompt, beside the grounding. A
    hard constraint carried in the user message is one the next question can
