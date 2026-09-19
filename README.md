@@ -12,6 +12,38 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.28.0 — 📚 A whole pile of worksheets at once
+
+A teacher does not have one worksheet, they have a term's worth — and uploading them was one PDF,
+wait for it to be read and filed, open the dialog again, one more PDF. **The picker now takes as
+many as you like.** Hold Ctrl (⌘ on a Mac) in the file dialog, pick the lot, and they go up one
+after another: each one read, its answer-key pages found and put away, its cover made, and — for
+the teacher — set on the shelf of the level and subject it is for.
+
+The bar at the bottom counts them off as it goes (**📚 3 of 12 · Uploading “P5 Heat revision”…**),
+and when the last one lands you are back on the shelf with all of them on it, with a line saying
+what went up and what was set for the class.
+
+**Choosing several changes three small things, and each says so on the dialog.**
+
+* **The name box is for a single paper.** With several PDFs chosen, each one takes its own file
+  name — and Chung GPT still reads the cover and renames it properly. Ten worksheets sharing one
+  typed name is a shelf nobody can search.
+* **An answer key belongs to one paper**, so it goes on the first of them and the finishing line
+  says which one got it. Attach the others from the 🔑 button on each worksheet.
+* Everything else on the dialog — the level, the subject, how much help, and **📌 Put it on my
+  students' shelves** — applies to the whole pile.
+
+**Nothing in a pile is lost quietly.** A paper that could not be read is named at the end so it
+can be tried again on its own, and the ones after it still go up. Anything that is not a PDF is
+skipped and named rather than stopping the upload. Forty papers is the most in one go; past that
+the rest are counted and left, never dropped in silence.
+
+**A single upload is exactly what it always was** — it opens the worksheet, opens the buddy and
+says *Ready — write your answers on it*.
+
+---
+
 ## v1.27.0 — ✏️ The working line and 📐 the model, on a maths worksheet
 
 A keyword check asks a student to fill in the words a science answer needs. On a **maths**

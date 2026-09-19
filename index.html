@@ -1766,11 +1766,14 @@
   <div class="modalCard">
     <div class="modalHead"><h2>Upload a worksheet</h2></div>
     <div class="modalBody">
-      <p class="sub">Pick the PDF, then say how much help you would like. You can change the help level any time.</p>
+      <p class="sub">Pick the PDF — or <b>hold Ctrl (⌘ on a Mac) and pick as many as you like</b> — then say how much
+        help you would like. You can change the help level any time.</p>
       <div class="fields">
         <div class="field">
           <label for="upName">What is this worksheet called?</label>
           <input type="text" id="upName" placeholder="e.g. P5 Science — Heat revision">
+          <span class="hint">Leave it blank and Chung GPT names it off the paper. Picking several PDFs at once
+            gives each one its own name, so this box is only used for a single paper.</span>
         </div>
       </div>
       <div class="fields">
@@ -1801,7 +1804,8 @@
         the subject and the name if you left them blank, and if the answers are printed at the back it finds
         those pages and <b>puts them away</b> — you will not see them, and they are not marked. Attach a
         separate marking scheme here if you have one; it is never shown on screen, only used to mark you and
-        to aim the hints.
+        to aim the hints. A key belongs to <b>one</b> paper, so with several PDFs chosen it goes on the first of
+        them — attach the others from the 🔑 button on each worksheet.
       </p>
       <div class="rowBtns" style="margin-top:12px">
         <button class="btn" id="upKeyBtn">📎 Attach an answer key (optional)</button>
@@ -1821,7 +1825,7 @@
     </div>
     <div class="modalFoot">
       <button class="btn" id="upCancel">Cancel</button>
-      <button class="btn btnPrimary" id="upGo">Choose the PDF and upload</button>
+      <button class="btn btnPrimary" id="upGo">Choose the PDFs and upload</button>
     </div>
   </div>
 </div>
@@ -2097,7 +2101,7 @@
 <div id="printSheet" class="hidden"></div>
 
 <div id="toast"></div>
-<input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+<input type="file" id="fileInput" accept="application/pdf,.pdf" multiple hidden>
 <input type="file" id="keyFileInput" accept="application/pdf,.pdf" hidden>
 <input type="file" id="upKeyInput" accept="application/pdf,.pdf" hidden>
 
@@ -2194,7 +2198,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.27.0';
+var APP_VERSION = 'v1.28.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -16388,129 +16392,248 @@ function openUploadModal() {
   $('uploadModal').classList.add('open');
 }
 
-async function handleUpload(file) {
-  if (!file || (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name))) {
-    toast('Please choose a PDF file.');
-    return;
-  }
-  var nameTyped = !!$('upName').value.trim();
-  var name = $('upName').value.trim() || file.name.replace(/\.pdf$/i, '');
+/* =====================================================================
+   📚 UPLOADING — ONE PAPER, OR A WHOLE PILE OF THEM
+   ---------------------------------------------------------------------
+   A teacher does not have one worksheet, they have a term's worth. So the
+   picker takes as many PDFs as they like at once, and `handleUpload(files)`
+   is THE ONE DOOR every route hands them to — a route with a pipeline of
+   its own is a route that drifts, and the drift reads as "it works when I
+   drop them and not when I pick them".
+
+   THE PAPERS GO UP ONE AT A TIME, NEVER IN PARALLEL, and that is the rule
+   everything else here rests on. The whole pipeline is module globals —
+   `pdfBytes`, `pdfDoc`, `pages`, `wsMeta`, `currentDocId`, `annotations`,
+   `wsKey` — so two in flight interleave and each quietly corrupts the
+   other: paper 3's key pages hidden on paper 7, paper 5's bytes inside
+   paper 2's Storage object, and nothing on any screen saying so.
+
+   THE DIALOG IS READ ONCE, BEFORE THE LOOP (`uploadSettings`). Its fields
+   are cleared the next time it opens and the loop below has dozens of
+   awaits in it, so a setting read per file hands paper 2 a blank level.
+
+   A FAILURE NEVER SINKS THE BATCH, and it is NAMED. Each paper's failure
+   is caught and counted; "upload failed" over a pile of ten leaves the
+   teacher with no idea which one to do again.
+
+   A SINGLE UPLOAD IS BYTE-FOR-BYTE WHAT IT ALWAYS WAS — it opens the
+   worksheet, opens the buddy and says "Ready". A BATCH ends on the SHELF
+   with all of them on it, because the teacher was filing rather than
+   starting work.
+   ===================================================================== */
+
+var UPLOAD_MAX_FILES = 40;   // a pile bigger than this is a folder, not a batch
+
+function isPdfFile(f) {
+  return !!f && (f.type === 'application/pdf' || /\.pdf$/i.test(f.name || ''));
+}
+function pdfBaseName(f) {
+  return String((f && f.name) || 'worksheet').replace(/\.pdf$/i, '');
+}
+
+/* A NAME BELONGS TO ONE PAPER, and this is the ONE place that is decided.
+   With several files each takes its own file name and the read at upload
+   may improve it — ten worksheets sharing one typed name is a shelf nobody
+   can search. `typed` has to come back from the same call as `name`: it is
+   what tells `paperApplyRead` whether it may replace the name, so the two
+   disagreeing means either a typed name silently overwritten or a file
+   name left on a paper the read could have named properly. */
+function uploadName(file, s, solo) {
+  var typed = (solo && s && s.typedName) ? s.typedName : '';
+  return { name: typed || pdfBaseName(file), typed: !!typed };
+}
+
+/* Every choice on the dialog, read while it is still on screen. */
+function uploadSettings() {
   // The active student's OWN level, never a picker they could get wrong —
   // and never the paper's own heading either: `levelFixed` is what keeps
   // the read at upload from overriding it (see paperApplyRead).
-  var upSt = activeStudent();
-  var levelFixed = !!(!isAdmin(currentUser) && upSt && upSt.level);
-  var level = levelFixed ? upSt.level : $('upLevel').value;
-  var subject = $('upSubject').value;
-  // The subjects this upload may be filed under: any for the teacher, only
-  // the student's own for a student.
-  var upSubjects = (isAdmin(currentUser) || !upSt) ? null : studentSubjectList(upSt);
-  // Read while the dialog is still on screen: the fields are cleared the
-  // next time it opens, and the upload below has several awaits in it.
-  var keyFile = upKeyFile;
-  var pushIt = isAdmin(currentUser) && $('upPush') && $('upPush').checked;
-  upKeyFile = null;
-  $('uploadModal').classList.remove('open');
-  toast('Uploading “' + name + '”…', 20000);
-  try {
-    var buf = await file.arrayBuffer();
-    await loadPdf(new Uint8Array(buf), name);
-    wsMeta.level = level;
-    wsMeta.subject = subject;
-    wsMeta.guidance = upGrade;
-    usageNote('upload', name);
-    var id = db.collection(COLLECTION).doc().id;
-    await storage.ref(STORAGE_DIR + '/' + id + '.pdf')
-      .put(new Blob([pdfBytes], { type: 'application/pdf' }));
-    await db.collection(COLLECTION).doc(id).set({
-      name: name,
-      level: level,
-      subject: subject,
-      guidance: upGrade,
-      ownerUid: currentUser.uid,
-      ownerEmail: currentUser.email || '',
-      ownerName: currentUser.displayName || '',
-      storagePath: STORAGE_DIR + '/' + id + '.pdf',
-      pageCount: pdfDoc.numPages,
-      body: '[]',
-      bodyPath: '',
-      score: { correct: 0, attempted: 0 },
-      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    currentDocId = id;
-    bodyOverflow = false;
-    $('wsTitle').textContent = docName;
-    setDirty(false);
-    renderHints();
-    renderMarking();
-    renderChat();
-    showView('ws');
+  var st = activeStudent();
+  var levelFixed = !!(!isAdmin(currentUser) && st && st.level);
+  return {
+    typedName: $('upName').value.trim(),
+    levelFixed: levelFixed,
+    level: levelFixed ? st.level : $('upLevel').value,
+    subject: $('upSubject').value,
+    // The subjects this upload may be filed under: any for the teacher,
+    // only the student's own for a student.
+    subjects: (isAdmin(currentUser) || !st) ? null : studentSubjectList(st),
+    grade: upGrade,
+    push: !!(isAdmin(currentUser) && $('upPush') && $('upPush').checked),
+    keyFile: upKeyFile,
+    step: ''
+  };
+}
+
+/* ONE paper, the whole way in: into the viewer, into Storage, into the
+   bank, read, key-scanned, covered and — for the teacher — set for the
+   class. `s` is the batch's settings, `keyFile` is THIS paper's own key
+   (a batch gives it to the first paper only) and `solo` is true when this
+   is the only paper. It returns what the paper ended up as, so the door
+   can count what was set for the class. */
+async function uploadOne(file, s, keyFile, solo) {
+  var nm = uploadName(file, s, solo);
+  var name = nm.name, nameTyped = nm.typed;
+  var level = s.level;
+  var subject = s.subject;
+  toast(s.step + 'Uploading “' + name + '”…', solo ? 20000 : 90000);
+  var buf = await file.arrayBuffer();
+  await loadPdf(new Uint8Array(buf), name);
+  wsMeta.level = level;
+  wsMeta.subject = subject;
+  wsMeta.guidance = s.grade;
+  usageNote('upload', name);
+  var id = db.collection(COLLECTION).doc().id;
+  await storage.ref(STORAGE_DIR + '/' + id + '.pdf')
+    .put(new Blob([pdfBytes], { type: 'application/pdf' }));
+  await db.collection(COLLECTION).doc(id).set({
+    name: name,
+    level: level,
+    subject: subject,
+    guidance: s.grade,
+    ownerUid: currentUser.uid,
+    ownerEmail: currentUser.email || '',
+    ownerName: currentUser.displayName || '',
+    storagePath: STORAGE_DIR + '/' + id + '.pdf',
+    pageCount: pdfDoc.numPages,
+    body: '[]',
+    bodyPath: '',
+    score: { correct: 0, attempted: 0 },
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  currentDocId = id;
+  bodyOverflow = false;
+  $('wsTitle').textContent = docName;
+  setDirty(false);
+  renderHints();
+  renderMarking();
+  renderChat();
+  // EVERY paper is opened, batch or not: the read below rasterises its
+  // pages, and `loadPdf` fits them to a width the hidden view reports as
+  // nothing. The batch goes back to the shelf when the last one is done.
+  showView('ws');
+  if (solo) {
     if (window.innerWidth > 900) openBuddy('hints'); else closeBuddy();
     loadWorksheets();
     toast('Ready — write your answers on it, and tap 💡 when you get stuck.', 5000);
-    // The paper is READ now, after the worksheet is on screen: the first
-    // and last pages go to the model once, and what comes back fills in the
-    // subject, the level and the name that were left blank, and names the
-    // answer-key pages the scan below then puts away. A read that fails is
-    // an upload exactly as it always was.
-    var read = null;
-    try { read = await paperReadEnds(); }
-    catch (e) { console.warn('Reading the paper at upload failed', e); }
-    var got = paperApplyRead(read, {
-      level: level, levelFree: !levelFixed,
-      subject: subject, subjects: upSubjects,
-      name: name, nameTyped: nameTyped
-    });
-    if (currentDocId === id) {
-      wsMeta.level = got.level;
-      wsMeta.subject = got.subject;
-      wsMeta.school = got.school;
-      wsMeta.topic = got.topic;
-      if (got.name && got.name !== docName) {
-        docName = got.name;
-        $('wsTitle').textContent = docName;
-      }
-      if (got.filled.length) {
-        setDirty(true);
-        toast('✨ Chung GPT read the paper: ' + got.filled.join(' · '), 6000);
-      }
-    }
-    // The key is dealt with AFTER the worksheet is on screen and saved: it
-    // takes AI calls and tens of seconds, and a student watching a spinner
-    // before they can write on their own paper is the wrong trade. Every
-    // step of it swallows its own failure.
-    // Attach, then find the key pages, then read the lot ONCE: reading after
-    // each step would transcribe the marking scheme twice.
-    if (keyFile) { try { await attachKeyPdf(keyFile, true); } catch (e) { console.warn('key attach failed', e); } }
-    await keyAutoScan(true, read);
-    if (keyHasAnything()) await keyRefreshRows();
-    await performSave(true);
-    // AFTER the key scan: `studentPages()` is what the cover reads, and
-    // before it has run a marking scheme on page 1 is still an ordinary page.
-    await ensureCover(id, '');
-    if (got.filled.length) await loadWorksheets();
-    // AUTO-SET (v1.25.0). The teacher's PDF is set for the class the moment
-    // it is uploaded, and it lands on the shelf its level and subject file
-    // it under — the ones chosen in the dialog, or the ones Chung GPT read
-    // off the cover. It is set AFTER the read and the key scan, so the
-    // level, the subject and the hidden key pages all travel with it; a
-    // paper whose level or subject is still unknown is NOT set, because a
-    // paper set for no level is on nobody's shelf and looks, to the
-    // teacher, exactly like one that went out.
-    if (pushIt) {
-      await loadWorksheets();
-      if (got.level && got.subject) await pushWorksheet(id);
-      else toast('Uploaded, but not set for the class: Chung GPT could not tell its ' +
-                 (!got.level && !got.subject ? 'level or subject' : !got.level ? 'level' : 'subject') +
-                 ' from the paper. Upload it again with them chosen, and it will go on that shelf.', 10000);
-    }
-  } catch (e) {
-    console.error(e);
-    toast('Upload failed: ' + ((e && e.message) || e), 6000);
   }
+  // The paper is READ now, after the worksheet is on screen: the first
+  // and last pages go to the model once, and what comes back fills in the
+  // subject, the level and the name that were left blank, and names the
+  // answer-key pages the scan below then puts away. A read that fails is
+  // an upload exactly as it always was.
+  var read = null;
+  try { read = await paperReadEnds(); }
+  catch (e) { console.warn('Reading the paper at upload failed', e); }
+  var got = paperApplyRead(read, {
+    level: level, levelFree: !s.levelFixed,
+    subject: subject, subjects: s.subjects,
+    name: name, nameTyped: nameTyped
+  });
+  if (currentDocId === id) {
+    wsMeta.level = got.level;
+    wsMeta.subject = got.subject;
+    wsMeta.school = got.school;
+    wsMeta.topic = got.topic;
+    if (got.name && got.name !== docName) {
+      docName = got.name;
+      $('wsTitle').textContent = docName;
+    }
+    if (got.filled.length) {
+      setDirty(true);
+      if (solo) toast('✨ Chung GPT read the paper: ' + got.filled.join(' · '), 6000);
+    }
+  }
+  // The key is dealt with AFTER the worksheet is on screen and saved: it
+  // takes AI calls and tens of seconds, and a student watching a spinner
+  // before they can write on their own paper is the wrong trade. Every
+  // step of it swallows its own failure.
+  // Attach, then find the key pages, then read the lot ONCE: reading after
+  // each step would transcribe the marking scheme twice.
+  if (keyFile) { try { await attachKeyPdf(keyFile, true); } catch (e) { console.warn('key attach failed', e); } }
+  await keyAutoScan(true, read);
+  if (keyHasAnything()) await keyRefreshRows();
+  await performSave(true);
+  // AFTER the key scan: `studentPages()` is what the cover reads, and
+  // before it has run a marking scheme on page 1 is still an ordinary page.
+  await ensureCover(id, '');
+  if (got.filled.length) await loadWorksheets();
+  // AUTO-SET (v1.25.0). The teacher's PDF is set for the class the moment
+  // it is uploaded, and it lands on the shelf its level and subject file
+  // it under — the ones chosen in the dialog, or the ones Chung GPT read
+  // off the cover. It is set AFTER the read and the key scan, so the
+  // level, the subject and the hidden key pages all travel with it; a
+  // paper whose level or subject is still unknown is NOT set, because a
+  // paper set for no level is on nobody's shelf and looks, to the
+  // teacher, exactly like one that went out.
+  var pushed = false;
+  if (s.push) {
+    await loadWorksheets();
+    if (got.level && got.subject) { await pushWorksheet(id); pushed = true; }
+    else if (solo) toast('Uploaded, but not set for the class: Chung GPT could not tell its ' +
+               (!got.level && !got.subject ? 'level or subject' : !got.level ? 'level' : 'subject') +
+               ' from the paper. Upload it again with them chosen, and it will go on that shelf.', 10000);
+  }
+  return { id: id, name: docName || name, pushed: pushed, level: got.level, subject: got.subject };
 }
 
+/* THE ONE DOOR. Every route — the picker, and anything added later —
+   hands its files here. */
+async function handleUpload(files) {
+  var all = [];
+  if (files) for (var i = 0; i < files.length; i++) if (files[i]) all.push(files[i]);
+  var skipped = all.filter(function (f) { return !isPdfFile(f); })
+                   .map(function (f) { return f.name || 'a file'; });
+  var pdfs = all.filter(isPdfFile);
+  if (!pdfs.length) {
+    toast(skipped.length
+      ? (skipped.length === 1 ? 'That is not a PDF — please choose a PDF file.'
+                              : 'None of those are PDFs — please choose PDF files.')
+      : 'Please choose a PDF file.', 5000);
+    return;
+  }
+  var over = [];
+  if (pdfs.length > UPLOAD_MAX_FILES) {
+    over = pdfs.slice(UPLOAD_MAX_FILES);
+    pdfs = pdfs.slice(0, UPLOAD_MAX_FILES);
+  }
+  // READ THE DIALOG, THEN CLOSE IT. Both before the first await, or the
+  // loop reads fields that have already been cleared.
+  var s = uploadSettings();
+  upKeyFile = null;
+  $('uploadModal').classList.remove('open');
+  var solo = pdfs.length === 1;
+  var done = [], failed = [], pushed = 0;
+  for (var n = 0; n < pdfs.length; n++) {
+    s.step = solo ? '' : '📚 ' + (n + 1) + ' of ' + pdfs.length + ' · ';
+    try {
+      // THE ATTACHED KEY BELONGS TO ONE PAPER, so in a batch it goes on
+      // the first and the summary says which. Spreading one marking
+      // scheme over ten papers would key nine of them wrongly.
+      var out = await uploadOne(pdfs[n], s, n === 0 ? s.keyFile : null, solo);
+      done.push(out);
+      if (out.pushed) pushed++;
+    } catch (e) {
+      console.error(e);
+      failed.push(pdfBaseName(pdfs[n]));
+      if (solo) toast('Upload failed: ' + ((e && e.message) || e), 6000);
+    }
+  }
+  if (solo) return;
+  // A BATCH ENDS ON THE SHELF, with everything it just filed on it.
+  await loadWorksheets();
+  showView('home');
+  var parts = [];
+  if (done.length) parts.push('📚 ' + done.length + ' worksheet' + (done.length === 1 ? '' : 's') + ' uploaded');
+  if (pushed) parts.push(pushed + ' set for the class');
+  var msg = parts.length ? parts.join(' · ') + '.' : '';
+  if (s.keyFile && done.length) msg += ' The answer key went on “' + done[0].name + '”.';
+  if (failed.length) msg += ' Could not be read: ' + failed.join(', ') + ' — try those again on their own.';
+  if (skipped.length) msg += ' Not PDFs, so skipped: ' + skipped.join(', ') + '.';
+  if (over.length) msg += ' ' + over.length + ' more were left out — ' + UPLOAD_MAX_FILES + ' papers is the most in one go.';
+  toast(msg.trim() || 'Nothing was uploaded.', 14000);
+}
 /* ---- Changing the help level ---- */
 var gradeTarget = null;   // a worksheet id, or null for the open one
 var gradePick = HINT_DEFAULT;
@@ -18359,12 +18482,14 @@ $('upKeyInput').addEventListener('change', function (e) {
   $('upKeyName').textContent = '🔑 ' + f.name;
 });
 $('fileInput').addEventListener('change', function (e) {
-  var f = e.target.files && e.target.files[0];
-  // The picker's value is cleared BEFORE the file is used: an <input
+  var fs = e.target.files;
+  var list = [];
+  if (fs) for (var i = 0; i < fs.length; i++) list.push(fs[i]);
+  // The picker's value is cleared BEFORE the files are used: an <input
   // type=file> still holding last time's file fires no `change` for the same
   // PDF picked twice, so the second try does nothing at all.
   e.target.value = '';
-  if (f) handleUpload(f);
+  if (list.length) handleUpload(list);
 });
 
 $('gradeCancel').addEventListener('click', function () { $('gradeModal').classList.remove('open'); });
