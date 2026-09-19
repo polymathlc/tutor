@@ -732,6 +732,11 @@ still came back, it simply went on making the mistake the teacher had already co
 - **The child's work stays here.** Nothing from this app is written into any question bank.
 
 ## The annotation engine is Ans Key's
+**The SHAPES are, and for a long time only the shapes were** — the input
+pipeline was this app's own until v1.12.0, and that is the half a child
+feels. See **✍️ WRITING ON THE PAGE WITH A STYLUS** below for the pipeline;
+this section is the data.
+
 The annotation SHAPES are that app's exactly, so ink written here means the same thing there:
 `pen` / `highlight` / `rect` / `ellipse` / `line` / `arrow` / `text`.
 
