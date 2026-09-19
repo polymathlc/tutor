@@ -1000,6 +1000,53 @@ the paper IS.
   under whatever the teaching notes happen to be about.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 📚 WOODEN SHELVES, EVERY PAPER ON ONE, and a posted PDF files itself (v1.25.0)
+
+`canSeeAssignment` / `assignmentUntaggedNote` (beside `canSeeWorksheet` — search `THE SET LIST GOES
+THROUGH A RULE OF ITS OWN`), **`shelfEntries`** (just above `/* ---- The worksheet list ---- */`, so
+`SRC_COVER` in the harness loads it), **`setCardNode`** (the set card factored out of
+`renderAssignments`), the `topic` / `school` on the record `pushWorksheet` writes, the `upPush`
+default in `openUploadModal` and the `got.level && got.subject` gate in `handleUpload`, plus the
+`.shelf` / `.shelfHead` / `.shelfPlank` wood and the `.wsCard.booklet` / `.chipNew` CSS.
+
+- **A SET WORKSHEET HAS A RULE OF ITS OWN, AND IT IS STRICT.** `canSeeWorksheet` lets a student's OWN
+  untagged upload through (hiding somebody's own work with no explanation is worse than showing it).
+  `canSeeAssignment` does not: a set worksheet is the teacher's, meant for a class, and one with no
+  level or no subject is on NOBODY's shelf — it used to be on every shelf in the school, which is the
+  fault the shelves exist to stop. `assignmentsForMe` and `startAssignment`'s handler both ask it;
+  the TEACHER's card says in words which tag is missing (`assignmentUntaggedNote`), because to a
+  student the paper simply is not there and only the teacher can put it right. Do not merge the two
+  predicates: they are different on purpose.
+- **`shelfEntries(own, sets)` IS THE ONE PLACE A STUDENT'S OWN PAPERS AND THE SET ONES BECOME ONE
+  SHELF LIST**, and it is pure. A set worksheet counts as started when an own worksheet is its copy
+  (`assignmentId`) or IS it (the teacher's own upload carries the assignment's id), so the same paper
+  is never on a shelf twice; a set entry wears `level` / `subject` / `topic` / `school` / `pageCount`
+  and is stamped by its set date, so `shelfGroups` files it exactly as it files an opened paper. It
+  FILTERS NOTHING — `sets` arrives narrowed by `assignmentsForMe`. `shelfNode` draws an entry with
+  `set` through `setCardNode` and everything else through `wsCardNode`, and adds `booklet` to both.
+- **THE "📌 SET FOR THE CLASS" SECTION IS THE TEACHER'S ALONE.** A student's set papers stand on their
+  shelves, opened or not, so a second list of the same papers above the shelves is the same paper
+  twice. `renderAssignments` paints an empty list for anyone but the admin; the teacher's list is
+  every active assignment at every level, which is where one is taken off.
+- **THE WOOD IS DRAWN, NEVER DOWNLOADED.** Layered gradients on `.shelf` and `.shelfPlank`, the timber's
+  colours in `--wood*` custom properties on the shelf so the board, the plank and the uprights are one
+  piece of wood. A picture of grain is one more request on a school wifi that blocks half of them, and
+  a broken-image tile behind every shelf is worse than a plain one. The booklet is the SAME `.wsCard`
+  wearing a class: the spine and staples are `::before`, the fold shadow `::after`, the fanned sheets
+  a stacked `box-shadow` — no new node, no new handler, so the booklet changes how a paper LOOKS and
+  never what it does. `.wsCard.booklet.setCard` has the class's blue spine.
+- **`.shelfHead .shelfBtn`, NOT `.shelfBtn`, in the phone media query.** The generic `.iconBtn` rule is
+  declared later in the sheet and sets `display`, so a single-class `display: none` loses to it and the
+  ‹ › buttons the row was meant to lose on a phone stay — which is how v1.23.0 shipped.
+- **A POSTED PDF FILES ITSELF.** `upPush` is ticked by default for the admin; `handleUpload` sets the
+  worksheet AFTER the paper read and the key scan (so the level, the subject and the hidden key pages
+  travel with it) and ONLY when `got.level && got.subject` are both known. A paper set for no level is
+  on nobody's shelf and looks, to the teacher, exactly like one that went out — so it is uploaded, not
+  set, and the toast names what could not be read. `pushWorksheet` writes `topic` and `school` onto
+  the record, and its toast names the shelf the paper landed on.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it **and look at the home screen** — the
+  wood and the booklets are the one thing reading the source cannot check.
+
 ## 🏫 THE SCHOOL IS IN THE NAME, and 📚 THE WORKSHEETS ARE ON A BOOKSHELF (v1.23.0)
 
 `PAPER_READ_SCHOOL_MAX` / `PAPER_READ_TOPIC_MAX` / the `school` / `exam` / `topic` fields of
@@ -2141,6 +2188,22 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📚 the wooden shelves, the set rule or the auto-set** (`canSeeAssignment`,
+  `assignmentUntaggedNote`, `shelfEntries`, `setCardNode`, `renderAssignments`' admin gate, the
+  `topic` / `school` on `pushWorksheet`'s record, `upPush`'s default, the `got.level && got.subject`
+  gate in `handleUpload`, the `.shelf*` wood or the `.wsCard.booklet` CSS), run
+  `node tools/tutor-tests.mjs` **and look at the home screen** at a desk and a phone width. Every
+  failure is silent and the shelves still paint. Fold `canSeeAssignment` back into `canSeeWorksheet`
+  and a set paper with no level is on every shelf in the school again; make the OWN rule strict
+  instead and a child's own untagged upload vanishes from their list. Let `shelfEntries` count a set
+  paper as unstarted when the teacher's own upload IS it and the teacher's shelf holds every paper
+  twice; let it filter and a paper is gone from a shelf that looks complete. Paint the set list for a
+  student and every unopened paper is on the screen twice. Set the paper before the read and it goes
+  out untagged, on nobody's shelf, with a toast that says it went; set it when only one tag is known
+  and the same. Draw the wood from a picture and a school wifi leaves a broken tile behind every
+  shelf; make the booklet a new node instead of a class on the card and its buttons stop working on
+  one surface. And put `.shelfBtn` back in the phone rule without `.shelfHead` and the buttons that
+  should give way to swiping are back.
 - After touching **🏫 the school in the name or 📚 the bookshelf** (`paperReadName`, the `school`
   / `exam` / `topic` fields in `PAPER_READ_SYS` / `paperReadClean` / `paperApplyRead`, the two
   `wsMeta` fields and their `performSave` / `openWorksheet` / `handleUpload` lines, `shelfGroups`,

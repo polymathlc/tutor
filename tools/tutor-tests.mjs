@@ -2538,23 +2538,48 @@ S.assignments = [
   { id: 'a6', name: 'P6 paper', level: 'P6', subject: 'science' },
   { id: 'a0', name: 'old one' }
 ];
-eq('a P6 Science student sees the P6 one and the untagged one, never the P5 Maths one',
-   S.assignmentsForMe().map(a => a.id), ['a6', 'a0']);
+/* STRICT (v1.25.0): a SET worksheet is on a shelf only when it names the
+   level and the subject the shelf is for. An untagged one used to reach
+   every student in the school — the very thing the shelves exist to stop —
+   so it now reaches none, and the TEACHER's card says so in words. A
+   student's OWN untagged upload is still theirs (`canSeeWorksheet`, above):
+   the two rules are deliberately different. */
+eq('a P6 Science student sees the P6 Science one only — never the P5 Maths one, never the untagged one',
+   S.assignmentsForMe().map(a => a.id), ['a6']);
+ok('a set worksheet with a level and no subject is on nobody\'s shelf',
+   !S.canSeeAssignment({ id: 'x', level: 'P6' }) && !S.canSeeAssignment({ id: 'y', subject: 'science' }));
+S.myStudents = [{ name: 'Ana', level: 'P6', subject: 'both' }];
+ok('a "both" student is shown the maths one and the science one',
+   S.canSeeAssignment({ id: 'm', level: 'P6', subject: 'math' }) && S.canSeeAssignment({ id: 's', level: 'P6', subject: 'science' }));
+S.myStudents = [{ name: 'Ken', level: 'P3', subject: 'both' }];
+ok('…but a P3 student stored as "both" is never shown a maths one',
+   !S.canSeeAssignment({ id: 'm', level: 'P3', subject: 'math' }));
+S.myStudents = [{ name: 'Ana', level: 'P6', subject: 'science' }];
+ok('junk is nobody\'s', !S.canSeeAssignment(null) && !S.canSeeAssignment(undefined));
 S.currentUser = { email: 'chungzhikai@gmail.com' };
 eq('the teacher sees every set worksheet, which is how one is taken off',
    S.assignmentsForMe().map(a => a.id), ['a5', 'a6', 'a0']);
+ok('the teacher is told, in words, which tag an untagged one is missing',
+   /no a level or a subject/.test(S.assignmentUntaggedNote({ id: 'a0' })) &&
+   /no a subject,/.test(S.assignmentUntaggedNote({ id: 'a1', level: 'P5' })) &&
+   S.assignmentUntaggedNote({ id: 'a2', level: 'P5', subject: 'math' }) === '',
+   S.assignmentUntaggedNote({ id: 'a1', level: 'P5' }));
+ok('…and that note is drawn only for the admin',
+   /var untagged = isAdmin\(currentUser\) \? assignmentUntaggedNote\(a\) : '';/.test(html));
 S.currentUser = { email: 'kid@example.com' };
 const notMine = S.assignmentNotMineText({ id: 'a5', name: 'P5 paper', level: 'P5', subject: 'math' });
 ok('the refusal names the level it was set for and the student it is not',
    /set for P5 Mathematics/.test(notMine) && /Ana is P6 Science/.test(notMine) && /Mr Chung/.test(notMine),
    notMine);
-ok('the set list is drawn from the filtered list',
-   /var list = assignmentsForMe\(\);[\s\S]{0,700}list\.forEach\(function \(a\) \{/.test(html));
+ok('…and an untagged one is refused in its own words',
+   /without a level and subject/.test(S.assignmentNotMineText({ id: 'a0', name: 'old one' })));
+ok('the class list is the TEACHER\'s and is drawn from the filtered list',
+   /var list = isAdmin\(currentUser\) \? assignmentsForMe\(\) : \[\];[\s\S]{0,500}list\.forEach\(function \(a\) \{ grid\.appendChild\(setCardNode\(a\)\); \}\);/.test(html));
 const startGate = html.slice(html.indexOf('async function startAssignment'),
                              html.indexOf('async function startAssignment') + 900);
-ok('Start it asks the rule again in the handler, before anything is written',
-   /if \(!canSeeWorksheet\(a\)\) \{ toast\(assignmentNotMineText\(a\), 8000\); return; \}/.test(startGate) &&
-   startGate.indexOf('canSeeWorksheet(a)') < startGate.indexOf('myCopyOf(a)'),
+ok('Start it asks the strict rule again in the handler, before anything is written',
+   /if \(!canSeeAssignment\(a\)\) \{ toast\(assignmentNotMineText\(a\), 8000\); return; \}/.test(startGate) &&
+   startGate.indexOf('canSeeAssignment(a)') < startGate.indexOf('myCopyOf(a)'),
    'a hidden card is never the lock');
 ok('openWorksheet says so when the id is not in the list, instead of returning in silence',
    /var w = worksheets\.find\(function \(x\) \{ return x\.id === id; \}\);[\s\S]{0,300}if \(!w\) \{ toast\('That worksheet is not in your list\.'/.test(html));
@@ -2877,7 +2902,63 @@ section('The bookshelf');
   ok('junk is the middle pose', S.shelfWheelPose('x').rot === 0 && S.shelfWheelPose(undefined).scale === 1);
   ok('the row is the scroller and snaps to a paper', /\.shelfRow \{[^}]*scroll-snap-type: x mandatory/.test(html) && /\.shelfItem \{[^}]*scroll-snap-align: center/.test(html));
   ok('the wheel is posed off the scroll, one paint a frame', /row\.addEventListener\('scroll', kick, \{ passive: true \}\)/.test(html) && /requestAnimationFrame\(run\)/.test(html));
-  ok('the home screen is built from shelfGroups', /var groups = shelfGroups\(worksheets\);\n\s*groups\.forEach\(function \(g\) \{ box\.appendChild\(shelfNode\(g\)\); \}\);/.test(html));
+  ok('the home screen is built from shelfGroups over EVERY paper the student has',
+     /var entries = shelfEntries\(worksheets, assignmentsForMe\(\)\);[\s\S]{0,700}var groups = shelfGroups\(entries\);\n\s*groups\.forEach\(function \(g\) \{ box\.appendChild\(shelfNode\(g\)\); \}\);/.test(html));
+
+  /* EVERY PAPER IS ON A SHELF, OPENED OR NOT (v1.25.0). A set worksheet the
+     student has not started stands on the shelf beside the ones they have,
+     filed by the same fields; one they HAVE started is on the shelf as
+     their own copy and never twice. */
+  const own = [
+    { id: 'w1', assignmentId: 'a1', level: 'P5', subject: 'science', topic: 'Heat', updatedAt: 50 },
+    { id: 'w2', level: 'P5', subject: 'science', topic: 'Cells', updatedAt: 40 }
+  ];
+  const sets = [
+    { id: 'a1', name: 'Started', level: 'P5', subject: 'science', topic: 'Heat', createdAt: 10 },
+    { id: 'a2', name: 'Fresh', level: 'P5', subject: 'science', topic: 'Heat', createdAt: 60, pageCount: 4, school: 'Nan Hua' },
+    { id: 'w2', name: 'The teacher\'s own upload, already on the shelf as their worksheet', level: 'P5', subject: 'science' },
+    null
+  ];
+  const entries = S.shelfEntries(own, sets);
+  eq('own worksheets come first, then every set worksheet not yet started, and a started one is not doubled',
+     entries.map(e => e.id), ['w1', 'w2', 'set:a2']);
+  const fresh = entries[2];
+  ok('a set entry carries what the shelf files by — level, subject, topic, school, pages — and is stamped by the set date',
+     fresh.set === sets[1] && fresh.level === 'P5' && fresh.subject === 'science' && fresh.topic === 'Heat' &&
+     fresh.school === 'Nan Hua' && fresh.pageCount === 4 && fresh.updatedAt === 60 && fresh.name === 'Fresh');
+  eq('…so it stands ON the same shelf, beside the started papers on its topic',
+     S.shelfGroups(entries).map(g => g.level + '|' + g.subject + ':' + g.items.map(w => w.id).join(',')),
+     ['P5|science:w2,set:a2,w1']);
+  eq('an empty home is empty', S.shelfEntries([], []), []);
+  eq('a set worksheet whose level nobody has answered is still an entry (the filter is the caller\'s)',
+     S.shelfEntries([], [{ id: 'a9', name: 'x' }]).map(e => e.id), ['set:a9']);
+  ok('the shelf draws a set entry with the set card and every card as a booklet',
+     /var card = w\.set \? setCardNode\(w\.set\) : wsCardNode\(w\);\n\s*card\.classList\.add\('booklet'\);/.test(html));
+  ok('a set worksheet not opened yet says so on its cover',
+     /if \(!mine\) meta\.appendChild\(chipNode\('✨ Not opened yet', 'chip chipNew'\)\);/.test(html));
+  ok('the set record carries the topic and the school the shelf files by',
+     /topic: w\.topic \|\| '',\n\s*school: w\.school \|\| '',\n\s*guidance: level,/.test(html));
+  /* THE WOOD AND THE BOOKLETS, against the stylesheet. Drawn, never a
+     picture: a school wifi that blocks the image leaves a broken tile
+     behind every shelf. */
+  ok('the shelf is drawn in wood from gradients, with no picture to fetch',
+     /\.shelf \{[^}]*--wood: #A9743F;[^}]*repeating-linear-gradient\(90deg,/.test(html) &&
+     !/\.shelf \{[^}]*url\(/.test(html));
+  ok('the plank is the same timber, lit on its edge with a shadow under it',
+     /\.shelfPlank \{[^}]*var\(--wood-edge\)[^}]*box-shadow: 0 8px 14px/.test(html));
+  ok('a booklet has a spine with two staples, and its sheets fan out at the right edge',
+     /\.wsCard\.booklet::before \{[^}]*#2F4858/.test(html) &&
+     /\.wsCard\.booklet \{[^}]*1px 0 0 #F2ECDD, 2px 0 0 #E4DCCB/.test(html));
+  ok('a set booklet wears the class\'s blue spine', /\.wsCard\.booklet\.setCard::before \{[^}]*#1565C0/.test(html));
+  /* AUTO-SET: the teacher's PDF goes onto the shelf its level and subject
+     file it under, the moment it is uploaded — and only once both are
+     known, because a paper set for no level is on nobody's shelf and looks
+     to the teacher exactly like one that went out. */
+  ok('the upload dialog ticks "put it on my students\' shelves" for the teacher by default',
+     /if \(push\) push\.checked = isAdmin\(currentUser\);/.test(html));
+  ok('…and the upload sets it only once the level AND the subject are known, after the read and the key scan',
+     /if \(got\.level && got\.subject\) await pushWorksheet\(id\);/.test(html) &&
+     html.indexOf('await keyAutoScan(true, read);') < html.indexOf('if (got.level && got.subject) await pushWorksheet(id);'));
   ok('a card wears its topic and its school', /chipNode\('📖 ' \+ w\.topic, 'chip chipTopic'\)/.test(html) && /chipNode\('🏫 ' \+ w\.school, 'chip chipSchool'\)/.test(html));
   ok('the school and the topic ride every save', /school: wsMeta\.school \|\| '',\n\s*topic: wsMeta\.topic \|\| '',/.test(html));
   ok('…and come back when a worksheet is opened', /wsMeta\.school = w\.school \|\| '';\n\s*wsMeta\.topic = w\.topic \|\| '';/.test(html));
