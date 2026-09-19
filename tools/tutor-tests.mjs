@@ -553,8 +553,16 @@ section('The answer key');
    saw "Set at…", and the chip on the student's copy still said whose key
    it was while showing every page of it.
    ===================================================================== */
-const pushSrc = html.slice(html.indexOf('async function pushWorksheet'),
-                           html.indexOf('async function pushWorksheet') + 4200);
+/* Bounded by the function's OWN closing brace rather than by a character
+   count. A fixed length silently stops covering the tail the moment the
+   function grows — so the catch block's assertions read an empty string and
+   pass or fail for a reason that has nothing to do with the code. */
+const pushSrc = (function () {
+  const a = html.indexOf('async function pushWorksheet');
+  const b = html.indexOf('\n}\n', a);
+  if (a === -1 || b === -1) throw new Error('could not bound pushWorksheet');
+  return html.slice(a, b + 3);
+})();
 ok('a pending save is flushed before the key is read',
    /if \(currentDocId === id && dirty\) await performSave\(true\);/.test(pushSrc),
    'ticking key pages only SCHEDULES a save, and setting it straight afterwards is the obvious thing to do');
@@ -570,7 +578,7 @@ ok('an empty key list never overrides a summary that names pages',
    /\(Array\.isArray\(key\.pages\) && key\.pages\.length\)/.test(pushSrc));
 /* A worksheet whose key we are no longer sure of is not set at all. */
 ok('a read that failed refuses to set the worksheet',
-   /Could not read that worksheet just now[\s\S]{0,120}return;/.test(pushSrc));
+   /Could not read that worksheet just now[\s\S]{0,160}return \{ ok: false/.test(pushSrc));
 
 /* A copy is made with the key pages frozen in, so a page marked afterwards
    would stay readable on every copy already begun — and those are exactly
@@ -1667,8 +1675,21 @@ ok('…and the card says so and disables Start',
 /* Setting work for the class writes to a collection every student reads, so
    hiding the button is not the lock. */
 ok('only the teacher can set a worksheet, checked in the handler',
-   /async function pushWorksheet\([^)]*\) \{[\s\S]{0,120}if \(!isAdmin\(currentUser\)\) return;/.test(html),
+   /async function pushWorksheet\([^)]*\) \{[\s\S]{0,900}if \(!isAdmin\(currentUser\)\) return \{ ok: false/.test(html),
    'pushWorksheet does not re-check isAdmin');
+/* 📌 A QUIET PUSH MUST STILL REPORT. `opts.quiet` is what lets a whole
+   shelf be set in one press without ten toasts, and the one way it could
+   go wrong is by swallowing the refusal as well as the noise — so every
+   exit hands an outcome back, and the batch is what names it. */
+ok('…and a quiet push still hands its refusal back',
+   /var say = function \(msg, ms\) \{ if \(!opts\.quiet\) toast\(msg, ms\); \};/.test(pushSrc) &&
+   /return \{\n?\s*ok: false,\n?\s*denied: denied,/.test(pushSrc),
+   'a quiet pushWorksheet must still return why it refused');
+/* A write that landed on a paper with no level or subject put it on NOBODY's
+   shelf. Counting that as a success is how a teacher is told nine papers
+   went out when no child can see one of them. */
+ok('a paper set onto nobody\'s shelf is reported as a refusal, not a success',
+   /it has no level or subject, so it is on nobody\u2019s shelf/.test(pushSrc));
 ok('…and in the dialog that opens it',
    /function openPushModal\([^)]*\) \{[\s\S]{0,80}if \(!isAdmin\(currentUser\)\) return;/.test(html));
 
@@ -2649,6 +2670,92 @@ ok('…but a P3 student stored as "both" is never shown a maths one',
    !S.canSeeAssignment({ id: 'm', level: 'P3', subject: 'math' }));
 S.myStudents = [{ name: 'Ana', level: 'P6', subject: 'science' }];
 ok('junk is nobody\'s', !S.canSeeAssignment(null) && !S.canSeeAssignment(undefined));
+
+/* 📌 HAS THE CLASS GOT IT? — the fault a whole term's papers sat on.
+   A teacher uploads a shelf of papers believing each one goes to their
+   students, and when one does not, NOTHING said so: the only signal was
+   whether a button read "Set for my students" or "Set — take it off". So
+   a paper no child was ever given looked exactly like one every child
+   has, and a level's worth of work sat on the teacher's own shelf. */
+section('Whether a paper has reached the class');
+/* This section stands between two that share the surrounding state, so it
+   SAVES and RESTORES rather than tearing down to empty — a teardown that
+   guesses at the starting state is how the test after it fails for a
+   reason that has nothing to do with the code it is checking. */
+const _setStateWas = { user: S.currentUser, assigns: S.assignments, loaded: S.assignmentsLoaded, students: S.myStudents };
+S.currentUser = { email: 'chungzhikai@gmail.com' };
+S.assignmentsLoaded = true;
+S.assignments = [
+  { id: 'live', level: 'P5', subject: 'math' },
+  { id: 'bare', level: '', subject: '' }
+];
+eq('a paper with a live assignment is SET', S.worksheetSetState({ id: 'live', level: 'P5', subject: 'math' }), 'set');
+/* The write landed and no child can see it. Reporting that as a success is
+   how a teacher is told nine papers went out when none of them did. */
+eq('…one set with no level or subject is on NOBODY\'s shelf, which is not the same thing',
+   S.worksheetSetState({ id: 'bare', level: '', subject: '' }), 'nobody');
+eq('…and one with no assignment at all is simply not set',
+   S.worksheetSetState({ id: 'never', level: 'P5', subject: 'math' }), 'off');
+/* `w.pushed` is a flag on the teacher's own copy, written SECOND —
+   `unpushWorksheet` clears the assignment first — so a refused second write
+   leaves a paper whose flag says set when it is not. The assignment list is
+   the truth wherever it has arrived. */
+eq('the LIVE list beats a stale flag on the copy',
+   S.worksheetSetState({ id: 'never', level: 'P5', subject: 'math', pushed: true }), 'off');
+/* …but "not arrived yet" and "taken off the list" want opposite answers,
+   which is the distinction `assignmentsLoaded` exists to make. */
+S.assignmentsLoaded = false;
+eq('…and until the list is in, the copy\'s own flag stands',
+   S.worksheetSetState({ id: 'never', level: 'P5', subject: 'math', pushed: true }), 'set');
+S.assignmentsLoaded = true;
+/* A copy of somebody else's assignment is not a paper to set — the 📌
+   button is not drawn on one either. */
+eq('a copy of a set worksheet is not the teacher\'s to set',
+   S.worksheetSetState({ id: 'copy', assignmentId: 'live', level: 'P5', subject: 'math' }), '');
+S.currentUser = { email: 'kid@example.com' };
+eq('and a student is never shown any of it',
+   S.worksheetSetState({ id: 'live', level: 'P5', subject: 'math' }), '');
+S.currentUser = { email: 'chungzhikai@gmail.com' };
+ok('junk is not set', S.worksheetSetState(null) === '' && S.worksheetSetState(undefined) === '');
+
+/* The chip is what puts that state on the card, so the three that mean
+   something each get their own wording and the fourth draws nothing. */
+ok('every state that means something has a chip, and the rest have none',
+   /Set for the class/.test(S.worksheetSetChip('set').text) &&
+   /nobody/.test(S.worksheetSetChip('nobody').text) &&
+   /Not set/.test(S.worksheetSetChip('off').text) &&
+   S.worksheetSetChip('') === null);
+/* `.chipSet` ALREADY means "📌 Set by Mr Chung" on a student's copy, and it
+   is declared at TWO classes (`.chip.chipSet`) — so a class-state chip
+   borrowing that name loses to it and comes out in the setter's blue, on a
+   card that otherwise looks perfectly right. It is the trap `.shelfBtn`
+   documents, one rule further down the same stylesheet. */
+ok('the class-state chips do not borrow the SETTER\'s chip class',
+   ['set', 'nobody', 'off'].every(k => !/\bchipSet\b/.test(S.worksheetSetChip(k).cls)));
+ok('…and each one is declared at two classes, so it outranks the plain .chip',
+   /\.chip\.chipSetOut \{/.test(html) && /\.chip\.chipSetNone \{/.test(html) &&
+   ['set', 'nobody', 'off'].every(k => {
+     const own = S.worksheetSetChip(k).cls.split(' ').filter(c => c !== 'chip')[0];
+     return new RegExp('\\.chip\\.' + own + ' \\{').test(html);
+   }),
+   'a class-state chip whose CSS is written at one class is one the .chip rule beats');
+
+/* WHY a paper cannot go out, in the teacher's words. One wording, read by
+   the "set them all" pass and by the batch upload's summary, so a paper
+   skipped in a pile of ten is named the same way whichever let it through. */
+eq('a paper with no PDF cannot be set', S.worksheetSetBlocker({ level: 'P5', subject: 'math' }), 'it has no PDF');
+eq('…nor one with neither tag',
+   S.worksheetSetBlocker({ storagePath: 'x' }), 'it has no level or subject');
+eq('…nor one missing just the level',
+   S.worksheetSetBlocker({ storagePath: 'x', subject: 'math' }), 'it has no level');
+eq('…nor one missing just the subject',
+   S.worksheetSetBlocker({ storagePath: 'x', level: 'P5' }), 'it has no subject');
+eq('…and a paper that is ready is not blocked at all',
+   S.worksheetSetBlocker({ storagePath: 'x', level: 'P5', subject: 'math' }), '');
+S.currentUser = _setStateWas.user;
+S.assignments = _setStateWas.assigns;
+S.assignmentsLoaded = _setStateWas.loaded;
+S.myStudents = _setStateWas.students;
 S.currentUser = { email: 'chungzhikai@gmail.com' };
 eq('the teacher sees every set worksheet, which is how one is taken off',
    S.assignmentsForMe().map(a => a.id), ['a5', 'a6', 'a0']);
@@ -3136,8 +3243,22 @@ section('The bookshelf');
   ok('the upload dialog ticks "put it on my students\' shelves" for the teacher by default',
      /if \(push\) push\.checked = isAdmin\(currentUser\);/.test(html));
   ok('…and the upload sets it only once the level AND the subject are known, after the read and the key scan',
-     /if \(got\.level && got\.subject\) \{ await pushWorksheet\(id\); pushed = true; \}/.test(html) &&
-     html.indexOf('await keyAutoScan(true, read);') < html.indexOf('if (got.level && got.subject) { await pushWorksheet(id); pushed = true; }'));
+     /if \(got\.level && got\.subject\) \{\n[\s\S]{0,700}var res = await pushWorksheet\(id, undefined, true, \{ quiet: !solo \}\);/.test(html) &&
+     html.indexOf('await keyAutoScan(true, read);') < html.indexOf('if (got.level && got.subject) {'));
+  /* IT COUNTED THE ASK, NOT THE ANSWER. `pushed = true` used to be set the
+     moment pushWorksheet had been CALLED, so a refused write — the rules
+     not allowing it yet, which is the commonest failure there is — was
+     reported as a paper the class had been given, and the summary said
+     "9 set for the class" over nine papers no child could see. */
+  ok('…and a push that FAILED is never counted as one that went out',
+     /pushed = !!\(res && res\.ok\);/.test(html) &&
+     !/await pushWorksheet\(id\); pushed = true;/.test(html));
+  /* A skip that is not NAMED is a paper missing from thirty shelves with
+     nothing anywhere to say which one. It was `solo`-only, so in a pile of
+     ten it was completely silent. */
+  ok('…and every paper the batch could not set is named, with its reason',
+     /else if \(out\.setSkip\) notSet\.push\(\{ name: out\.name, why: out\.setSkip \}\);/.test(html) &&
+     /if \(notSet\.length\) msg \+= ' NOT set for the class: ' \+ blockedList\(notSet\)/.test(html));
   ok('a card wears its topic and its school', /chipNode\('📖 ' \+ w\.topic, 'chip chipTopic'\)/.test(html) && /chipNode\('🏫 ' \+ w\.school, 'chip chipSchool'\)/.test(html));
   ok('the school and the topic ride every save', /school: wsMeta\.school \|\| '',\n\s*topic: wsMeta\.topic \|\| '',/.test(html));
   ok('…and come back when a worksheet is opened', /wsMeta\.school = w\.school \|\| '';\n\s*wsMeta\.topic = w\.topic \|\| '';/.test(html));

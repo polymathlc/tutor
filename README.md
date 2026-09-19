@@ -12,6 +12,38 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.29.0 — 📌 You can SEE which papers your class has, and give them the rest in one press
+
+A shelf of P5 papers sat uploaded and set for nobody, and **nothing on any screen said so**. The
+only signal a paper had reached the class was whether its button read *"📌 Set for my students"* or
+*"📌 Set — take it off"* — two words apart, on a shelf of thirty cards, read as decoration rather
+than as state. So a paper no child was ever given looked exactly like one every child has.
+
+**Every card now says which it is.** 📌 *Set for the class* in green, *Not set for the class* in
+grey, and ⚠ *Set — but on nobody's shelf* for the one case that used to be invisible: a paper that
+really was set, with no level or no subject on it, so it went out to nobody at all. Drawn for the
+teacher only — a student's shelf holds the papers they were given, so the ones they were not given
+are exactly the ones that are not there to be marked.
+
+**📌 Set N papers for my class** appears at the top of the home screen the moment any of them is
+waiting, and says how many. One press, one confirm naming every paper and the shelf it will land
+on, and they go out one at a time. It never touches a paper that is already set — the help level,
+the lock and the answer key it went out with are the teacher's, not something a button labelled
+"set the rest" quietly rewrites — and **every paper it could not set is named with the reason**:
+no PDF, no level, no subject, or a write the Firestore rules refused.
+
+Two quiet faults went with it:
+
+- **A push that FAILED was counted as one that went out.** The upload set `pushed = true` the
+  moment `pushWorksheet` had been *called*, so a refused write — the rules not allowing it yet,
+  which is the commonest failure there is — was reported to the teacher as a paper the class had
+  been given. A pile of ten could say *"9 set for the class"* over nine papers no child could see.
+- **In a batch, a paper that could not be set was completely silent.** The explanation was shown
+  only on a single upload, so in a pile of ten the count was the only clue that anything had been
+  left behind, and it never said which one or why.
+
+---
+
 ## v1.28.0 — 📚 A whole pile of worksheets at once
 
 A teacher does not have one worksheet, they have a term's worth — and uploading them was one PDF,
