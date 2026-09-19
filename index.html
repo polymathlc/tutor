@@ -281,6 +281,7 @@
   .chipLevel { background: #EEF5FF; border-color: #B9D3F2; color: #274B77; }
   .chipGrade { background: #FDF4E3; border-color: #E7BD72; color: #7A5410; }
   .chipScore { background: #EFF8EF; border-color: #CFE7D0; color: #1F5F23; }
+
   .wsCardFoot { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
   .assignWarn { color: #B4531E; background: #FFF4EC; border: 1px solid #F3D2BC; border-radius: 10px; padding: 8px 10px; line-height: 1.45; }
   .emptyPad { text-align: center; padding: 54px 24px; color: var(--ink-faint); }
@@ -532,7 +533,19 @@
     .shelfHead .shelfBtn { display: none; }
   }
   @media (prefers-reduced-motion: reduce) { .shelfItem { transition: none; } }
+  /* WHO SET IT (a student's copy) — deliberately NOT the two below.
+     `.chipSet` is "📌 Set by Mr Chung"; the class-state chips are their own
+     names, because one class carrying two meanings is a rule that drifts —
+     and this one is declared at TWO classes, so a single-class rule beside
+     it would silently lose to it and come out blue. */
   .chip.chipSet { background: rgba(30,136,229,.12); color: var(--accent-deep, #1E88E5); font-weight: 700; }
+  /* 📌 HAS THE CLASS GOT IT? Green for yes, grey for a paper nobody has been
+     given or one that is set and on nobody's shelf. The WORD carries it and
+     the colour only reinforces it, the rule the marking's own verdicts
+     follow — so it still reads on a mono printer and to anyone who cannot
+     tell the two apart. */
+  .chip.chipSetOut { background: #EAF6EC; border-color: #B9DCC0; color: #1B5E20; font-weight: 700; }
+  .chip.chipSetNone { background: #F4F4F2; border-color: #DFDFDA; color: #6B6B63; }
   /* The listening bar sits over the worksheet, above the page and below the
      buddy panel: a student mid-sentence has to be able to see that the app
      is listening without hunting for it, and has to be able to stop. */
@@ -1588,6 +1601,7 @@
           <div class="sectionHead">
             <h2>My worksheets</h2>
             <span class="spacer"></span>
+            <button class="btn hidden" id="setAllBtn" title="Give your students every paper of yours that is not on their shelves yet">📌 Set all for my class</button>
             <button class="btn" id="progressBtn" title="Every topic and learning objective, with your marks on it, added up across every worksheet you have marked">📈 My progress</button>
             <button class="btn btnPrimary" id="uploadBtn">⬆️ Upload a worksheet</button>
           </div>
@@ -2198,7 +2212,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.28.0';
+var APP_VERSION = 'v1.29.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -15210,6 +15224,14 @@ function renderWorksheets() {
   // The set worksheets stand on the shelves too — the ones this student
   // has not opened yet beside the ones they have — so the shelf is every
   // paper they have, not only the ones they have begun.
+  // 📌 PAINTED FROM HERE, because this is the one function every path that
+  // changes the list already goes through — a load, an upload, a push, a
+  // delete, switching student. Hooking each of those is how one of them
+  // gets missed and the button goes stale on exactly one route, which is
+  // the reasoning `syncSizeCtl` carries. It SAYS how many are waiting, so
+  // a teacher never has to press it to find out whether it had anything
+  // to do.
+  syncSetAllBtn();
   var entries = shelfEntries(worksheets, assignmentsForMe());
   if (!entries.length) {
     var pad = document.createElement('div');
@@ -15279,6 +15301,23 @@ function shelfNode(g) {
   return shelf;
 }
 
+/* How many of the teacher's own papers are not on a single student's
+   shelf, and the button that fixes all of them. Drawn for nobody else:
+   setting work for the class is the teacher's, and `setAllWorksheets`
+   refuses in the handler besides — hiding a button has never been the
+   lock in this app. */
+function unsetWorksheetCount() {
+  if (!isAdmin(currentUser)) return 0;
+  return worksheets.filter(function (w) { return worksheetSetState(w) === 'off'; }).length;
+}
+function syncSetAllBtn() {
+  var b = $('setAllBtn');
+  if (!b) return;
+  var n = unsetWorksheetCount();
+  b.classList.toggle('hidden', !n);
+  b.textContent = '📌 Set ' + n + ' paper' + (n === 1 ? '' : 's') + ' for my class';
+}
+
 /* One worksheet card, the same on every shelf. */
 function wsCardNode(w) {
     var card = document.createElement('div');
@@ -15307,6 +15346,14 @@ function wsCardNode(w) {
     // that went missing.
     var tries = Math.max(1, parseInt(w.attempts, 10) || 1);
     if (tries > 1) meta.appendChild(chipNode('↻ Attempt ' + tries, 'chip'));
+    // 📌 WHETHER THE CLASS HAS IT, said on the card. The teacher's own
+    // shelf is the only place this can honestly be shown — a student's
+    // shelf holds the papers they were given, so the ones they were NOT
+    // given are exactly the ones that are not there to be marked. See
+    // `worksheetSetState`: it is drawn for nobody else, and it is read
+    // live off the assignment list rather than off the copy's own flag.
+    var setChip = worksheetSetChip(worksheetSetState(w));
+    if (setChip) meta.appendChild(chipNode(setChip.text, setChip.cls));
     card.appendChild(meta);
 
     var when = document.createElement('div');
@@ -15558,14 +15605,22 @@ function pushConfirm() {
   if (id) pushWorksheet(id, pushGrade, pushLock);
 }
 
-async function pushWorksheet(id, level, locked) {
-  if (!isAdmin(currentUser)) return;
+async function pushWorksheet(id, level, locked, opts) {
+  // `opts.quiet` is for the pass that sets a whole shelf at once: it says
+  // nothing per paper and hands the outcome BACK instead, so ten papers
+  // are one sentence rather than ten toasts stacked on top of each other.
+  // Every refusal is still carried in `reason` and still named by the
+  // caller — quiet must never mean a failure nobody hears about, which is
+  // the whole fault this section exists to answer.
+  opts = opts || {};
+  var say = function (msg, ms) { if (!opts.quiet) toast(msg, ms); };
+  if (!isAdmin(currentUser)) return { ok: false, reason: 'only the teacher can set a worksheet' };
   var w = worksheets.find(function (x) { return x.id === id; });
-  if (!w) return;
-  if (!w.storagePath) { toast('That worksheet has no PDF to share.'); return; }
+  if (!w) return { ok: false, reason: 'it is not there any more' };
+  if (!w.storagePath) { say('That worksheet has no PDF to share.'); return { ok: false, reason: 'it has no PDF' }; }
   level = level || w.guidance || HINT_DEFAULT;
   locked = locked !== false;
-  toast('Setting it…', 12000);
+  say('Setting it…', 12000);
   try {
     /* THE ANSWER KEY THAT TRAVELS MUST BE THE ONE ON SCREEN.
        Two things stood between them, and either one alone sends the marking
@@ -15591,8 +15646,8 @@ async function pushWorksheet(id, level, locked) {
       // Reading it live is what makes the key right. Setting a worksheet
       // whose key we are no longer sure of is the one outcome worth
       // refusing outright.
-      toast('Could not read that worksheet just now — try setting it again in a moment.', 6000);
-      return;
+      say('Could not read that worksheet just now — try setting it again in a moment.', 6000);
+      return { ok: false, reason: 'it could not be read just now' };
     }
     var body = await readBody(w);
     var key = (body && body.key) || {};
@@ -15638,19 +15693,111 @@ async function pushWorksheet(id, level, locked) {
     var shelfOf = (w.level && w.subject)
       ? ' It is on every ' + levelLabel(w.level) + ' ' + subjectLabel(w.subject) + ' student’s shelf.'
       : ' ⚠ It has no level and subject, so it is on nobody’s shelf yet.';
-    toast('📌 Set at “' + guidanceLabel(level) + '”' +
-          (locked ? ', locked' : ' — they can change it') + '.' + shelfOf +
-          (rows.length ? ' The key went with it (' + rows.length + ' answers).' : ''), 8000);
+    say('📌 Set at “' + guidanceLabel(level) + '”' +
+        (locked ? ', locked' : ' — they can change it') + '.' + shelfOf +
+        (rows.length ? ' The key went with it (' + rows.length + ' answers).' : ''), 8000);
+    // A paper that is set and carries no level or subject is on NOBODY's
+    // shelf, so it is reported as a refusal rather than as a success: the
+    // write landed, and no child got it, and those are not the same thing.
+    return (w.level && w.subject)
+      ? { ok: true, reason: '' }
+      : { ok: false, reason: 'it has no level or subject, so it is on nobody’s shelf' };
   } catch (e) {
     console.error(e);
     // NAMED, never "could not save": a denied write here is one missing
     // line in the console, and a teacher told only "failed" has nowhere to
     // start looking.
     var denied = /permission|insufficient|PERMISSION_DENIED/i.test(String((e && e.message) || e));
-    toast(denied
+    say(denied
       ? 'Your students could not be given it — the rules do not allow it yet. ' + assignRulesHint()
       : 'It could not be set: ' + ((e && e.message) || e), 12000);
+    return {
+      ok: false,
+      denied: denied,
+      reason: denied ? 'the rules do not allow it yet' : ((e && e.message) || String(e))
+    };
   }
+}
+
+/* 📌 SET EVERY PAPER THAT IS READY, IN ONE PRESS.
+   A teacher does not have one paper, they have a term's worth — and the
+   only way to give a shelf of them to a class was to press through a
+   modal once per paper, which is why a whole level's worth sat uploaded
+   and unset. This is that, done once.
+
+   Four rules, and each of them is a way this could go quietly wrong:
+
+   ① IT ONLY EVER SETS WHAT IS NOT SET. `worksheetSetState` is the one
+      place that is read, so a paper already on a shelf is left exactly as
+      the teacher left it — its help level, its lock and the answer key it
+      went out with are not quietly rewritten by a button labelled “set
+      the rest”.
+   ② ONE AT A TIME, NEVER IN PARALLEL. `pushWorksheet` reads and writes
+      the module's own globals — `worksheets`, `currentDocId`, and a
+      `performSave` of whatever is open — so two in flight interleave and
+      each corrupts the other, exactly as two uploads do. A `Promise.all`
+      in this loop is the one change that must never be made.
+   ③ IT ASKS FIRST, NAMING THE COUNT. This writes to the collection every
+      student in the centre reads, so it is not something to discover
+      having happened.
+   ④ EVERY PAPER IT COULD NOT SET IS NAMED, WITH THE REASON. “7 of 9 set”
+      over a shelf of nine leaves the teacher with no idea which two, and
+      the two are the ones that matter. A refused write is named as such
+      and the rules hint goes with it, because that failure is one missing
+      line in the Firestore rules and a teacher told only “failed” has
+      nowhere to start looking. */
+async function setAllWorksheets() {
+  if (!isAdmin(currentUser)) return;
+  // The teacher's OWN papers: a copy of an assignment is not theirs to set.
+  var mine = worksheets.filter(function (w) { return w && !w.assignmentId; });
+  var todo = [], blocked = [];
+  mine.forEach(function (w) {
+    if (worksheetSetState(w) !== 'off') return;   // already on a shelf, or not ours
+    var why = worksheetSetBlocker(w);
+    if (why) blocked.push({ name: w.name || 'Untitled', why: why });
+    else todo.push(w);
+  });
+  if (!todo.length) {
+    toast(blocked.length
+      ? 'Nothing could be set: ' + blockedList(blocked) +
+        ' Open each one, set its level and subject, and they will go out.'
+      : 'Every paper of yours is already set for the class.', 10000);
+    return;
+  }
+  var ask = 'Set ' + todo.length + ' paper' + (todo.length === 1 ? '' : 's') +
+            ' for your students now?\n\n' +
+            todo.map(function (w) {
+              return '• ' + (w.name || 'Untitled') + ' — ' + levelLabel(w.level) + ' ' + subjectLabel(w.subject);
+            }).join('\n') +
+            '\n\nEach goes out at the help level it already carries, locked. ' +
+            'Papers already set are left alone.';
+  if (!confirm(ask)) return;
+  toast('📌 Setting ' + todo.length + ' paper' + (todo.length === 1 ? '' : 's') + '…', 60000);
+  var okN = 0, failed = [], denied = false;
+  for (var i = 0; i < todo.length; i++) {
+    var w = todo[i];
+    var res = await pushWorksheet(w.id, w.guidance || HINT_DEFAULT, true, { quiet: true });
+    if (res && res.ok) okN++;
+    else {
+      failed.push({ name: w.name || 'Untitled', why: (res && res.reason) || 'it could not be set' });
+      if (res && res.denied) denied = true;
+    }
+  }
+  await loadWorksheets();
+  var msg = okN
+    ? '📌 ' + okN + ' paper' + (okN === 1 ? ' is' : 's are') + ' now on your students’ shelves.'
+    : 'No paper could be set.';
+  if (failed.length) msg += ' Not set: ' + blockedList(failed);
+  if (blocked.length) msg += ' Left alone: ' + blockedList(blocked);
+  if (denied) msg += ' ' + assignRulesHint();
+  toast(msg.trim(), 16000);
+}
+
+/* “A — because x, and B — because y.” One wording, so the button, its
+   refusal and the batch upload's summary all name a skipped paper the
+   same way. */
+function blockedList(rows) {
+  return (rows || []).map(function (r) { return '“' + r.name + '” (' + r.why + ')'; }).join(', ') + '.';
 }
 
 async function unpushWorksheet(id) {
@@ -16567,15 +16714,34 @@ async function uploadOne(file, s, keyFile, solo) {
   // paper whose level or subject is still unknown is NOT set, because a
   // paper set for no level is on nobody's shelf and looks, to the
   // teacher, exactly like one that went out.
-  var pushed = false;
+  var pushed = false, setSkip = '';
   if (s.push) {
     await loadWorksheets();
-    if (got.level && got.subject) { await pushWorksheet(id); pushed = true; }
-    else if (solo) toast('Uploaded, but not set for the class: Chung GPT could not tell its ' +
-               (!got.level && !got.subject ? 'level or subject' : !got.level ? 'level' : 'subject') +
-               ' from the paper. Upload it again with them chosen, and it will go on that shelf.', 10000);
+    if (got.level && got.subject) {
+      // WHETHER IT REALLY WENT OUT IS THE ANSWER, not whether we asked.
+      // This counted every call as a success, so a refused write — the
+      // rules not allowing it yet, which is the commonest failure there
+      // is — was reported to the teacher as a paper the class had been
+      // given. The summary then said “9 set for the class” over nine
+      // papers no child could see.
+      var res = await pushWorksheet(id, undefined, true, { quiet: !solo });
+      pushed = !!(res && res.ok);
+      if (!pushed) setSkip = (res && res.reason) || 'it could not be set';
+    } else {
+      setSkip = 'Chung GPT could not tell its ' +
+                (!got.level && !got.subject ? 'level or subject' : !got.level ? 'level' : 'subject') +
+                ' from the paper';
+      // NAMED IN A BATCH TOO, by the door — this was `solo` only, so in a
+      // pile of ten the skip was completely silent and the count was the
+      // only clue that anything had been left behind. A failure that is
+      // not named is the one rule this whole upload path is built on.
+      if (solo) toast('Uploaded, but not set for the class: ' + setSkip +
+                 '. Upload it again with them chosen, or set its level and subject and press ' +
+                 '“📌 Set for my students”.', 10000);
+    }
   }
-  return { id: id, name: docName || name, pushed: pushed, level: got.level, subject: got.subject };
+  return { id: id, name: docName || name, pushed: pushed, setSkip: setSkip,
+           level: got.level, subject: got.subject };
 }
 
 /* THE ONE DOOR. Every route — the picker, and anything added later —
@@ -16604,7 +16770,7 @@ async function handleUpload(files) {
   upKeyFile = null;
   $('uploadModal').classList.remove('open');
   var solo = pdfs.length === 1;
-  var done = [], failed = [], pushed = 0, keyOn = '';
+  var done = [], failed = [], notSet = [], pushed = 0, keyOn = '';
   for (var n = 0; n < pdfs.length; n++) {
     s.step = solo ? '' : '📚 ' + (n + 1) + ' of ' + pdfs.length + ' · ';
     try {
@@ -16614,6 +16780,7 @@ async function handleUpload(files) {
       var out = await uploadOne(pdfs[n], s, n === 0 ? s.keyFile : null, solo);
       done.push(out);
       if (out.pushed) pushed++;
+      else if (out.setSkip) notSet.push({ name: out.name, why: out.setSkip });
       // Which paper the key really landed on — `done[0]` is the first paper
       // that SUCCEEDED, so with the first one failed it would name a paper
       // that has no key on it at all.
@@ -16635,6 +16802,11 @@ async function handleUpload(files) {
   if (keyOn) msg += ' The answer key went on “' + keyOn + '”.';
   else if (s.keyFile) msg += ' The answer key went nowhere — the paper it was for could not be read.';
   if (failed.length) msg += ' Could not be read: ' + failed.join(', ') + ' — try those again on their own.';
+  // WHICH ones the class did not get, and why. A count on its own leaves
+  // the teacher to work out which of ten papers is missing from thirty
+  // shelves, and those are exactly the ones worth knowing about.
+  if (notSet.length) msg += ' NOT set for the class: ' + blockedList(notSet) +
+    ' They are on your own shelf — press “📌 Set … for my class” once their level and subject are right.';
   if (skipped.length) msg += ' Not PDFs, so skipped: ' + skipped.join(', ') + '.';
   if (over.length) msg += ' ' + over.length + ' more were left out — ' + UPLOAD_MAX_FILES + ' papers is the most in one go.';
   toast(msg.trim() || 'Nothing was uploaded.', 14000);
@@ -17382,6 +17554,66 @@ function assignmentUntaggedNote(a) {
   return '⚠ It has no ' + missing.join(' or ') + ', so it is on no student’s shelf yet. ' +
          'Take it off the list, then upload it again with the ' + missing.join(' and ') + ' filled in ' +
          '(or let Chung GPT read them off the paper).';
+}
+
+/* 📌 HAS THIS PAPER REACHED THE CLASS? — the ONE place that is decided.
+   A teacher uploads a term's worth of papers and believes each one goes
+   out to their students, because that is what the upload dialog offers to
+   do. When it does not — the level or the subject could not be read off
+   the cover, the tick was cleared, the write was refused — nothing said
+   so afterwards. The only signal a set paper had was whether its button
+   read “📌 Set for my students” or “📌 Set — take it off”: two words
+   apart, on a shelf of thirty cards, and read as decoration rather than
+   as state. So a paper nobody was ever given looked exactly like one
+   every student has, which is how a whole level's worth of work sat on
+   the teacher's own shelf and on no child's.
+
+   It is read LIVE off the assignment list, the way the locked help level
+   already is (`guidanceRule`), and for the same reason: `w.pushed` is a
+   flag on the teacher's OWN copy, written second. `unpushWorksheet`
+   clears the assignment first and the flag afterwards, so a refused
+   second write leaves a paper whose flag says it is set when it is not —
+   and `pushWorksheet` fails the same way round. `assignmentsLoaded` is
+   what tells “not arrived yet” from “taken off the list”, which want
+   opposite answers: until the list is in, the copy's own flag stands.
+
+   Four answers, and the two in the middle are the ones worth having:
+     ''        not the teacher's to set — a student's paper, or a copy
+     'off'     the teacher's own paper, set for nobody
+     'nobody'  SET, and with no level or no subject, so on NO shelf at all
+     'set'     set, and on the shelf its level and subject file it under */
+function worksheetSetState(w) {
+  if (!w || !isAdmin(currentUser)) return '';
+  // A copy of somebody else's assignment is not a paper to set: the 📌
+  // button is not drawn on one either.
+  if (w.assignmentId) return '';
+  var live = assignmentsLoaded
+    ? assignments.find(function (x) { return x && x.id === w.id; })
+    : (w.pushed ? { id: w.id, level: w.level, subject: w.subject } : null);
+  if (!live) return 'off';
+  return (live.level && live.subject) ? 'set' : 'nobody';
+}
+
+/* What the chip on the card says, so the card and the “set them all”
+   summary can never describe the same paper two different ways. */
+function worksheetSetChip(state) {
+  if (state === 'set')    return { text: '📌 Set for the class', cls: 'chip chipSetOut' };
+  if (state === 'nobody') return { text: '⚠ Set — but on nobody’s shelf', cls: 'chip chipSetNone' };
+  if (state === 'off')    return { text: '⬦ Not set for the class', cls: 'chip chipSetNone' };
+  return null;
+}
+
+/* WHY A PAPER CANNOT BE SET, in the teacher's words — '' when it can.
+   Read by the “set them all” pass and by the batch upload's summary, so a
+   paper skipped in a pile of ten is named with the same reason whichever
+   of the two let it through. */
+function worksheetSetBlocker(w) {
+  if (!w) return 'it is not there any more';
+  if (!w.storagePath) return 'it has no PDF';
+  if (!w.level && !w.subject) return 'it has no level or subject';
+  if (!w.level) return 'it has no level';
+  if (!w.subject) return 'it has no subject';
+  return '';
 }
 function assignmentsForMe() {
   return assignments.filter(canSeeAssignment);
@@ -18477,6 +18709,7 @@ $('whoAmI').addEventListener('click', function () {
 });
 
 $('uploadBtn').addEventListener('click', openUploadModal);
+$('setAllBtn').addEventListener('click', setAllWorksheets);
 $('upCancel').addEventListener('click', function () { $('uploadModal').classList.remove('open'); });
 $('upGo').addEventListener('click', function () { $('fileInput').click(); });
 $('upKeyBtn').addEventListener('click', function () { $('upKeyInput').click(); });

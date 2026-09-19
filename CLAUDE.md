@@ -1177,6 +1177,71 @@ written into a text box exactly where they tapped.
   scrolls while a student is speaking, and a ⏹ Done button that scrolls away is
   one they cannot find.
 
+## 📌 WHETHER THE CLASS HAS IT, SAID ON THE CARD (v1.29.0)
+
+**`worksheetSetState`** / `worksheetSetChip` / `worksheetSetBlocker` (beside
+`assignmentUntaggedNote`), **`setAllWorksheets`** / `blockedList` (just above
+`unpushWorksheet`), `unsetWorksheetCount` / `syncSetAllBtn` (just above
+`wsCardNode`), `pushWorksheet`'s `opts.quiet` and its RETURNED outcome, the
+`setSkip` on `uploadOne`'s answer and the `notSet` list in `handleUpload`,
+plus `#setAllBtn` and the `.chip.chipSetOut` / `.chip.chipSetNone` CSS.
+
+A teacher uploaded a term's worth of P5 papers and **not one of them reached a
+student**, because the upload's auto-set had quietly skipped them and nothing
+anywhere said so. The only signal a paper had reached the class was whether its
+button read *"📌 Set for my students"* or *"📌 Set — take it off"* — two words
+apart, on a shelf of thirty cards, and read as decoration rather than as state.
+So a paper nobody was ever given looked EXACTLY like one every student has.
+
+- **`worksheetSetState(w)` IS THE ONE PLACE IT IS DECIDED**, and it is read
+  LIVE off the assignment list the way the locked help level already is
+  (`guidanceRule`). `w.pushed` is a flag on the teacher's OWN copy and it is
+  written SECOND — `unpushWorksheet` clears the assignment first — so a refused
+  second write leaves a paper whose flag says set when it is not.
+  **`assignmentsLoaded` is what tells "not arrived yet" from "taken off the
+  list"**, which want opposite answers: until the list is in, the copy's own
+  flag stands. Four answers, and the two in the middle are the ones worth
+  having: `''` (not the teacher's to set), `'off'`, **`'nobody'`** (SET, and
+  with no level or subject, so on NO shelf) and `'set'`.
+- **`'nobody'` IS NOT A SUCCESS.** The write landed and no child can see it,
+  and those are not the same thing — `pushWorksheet` returns it as a refusal
+  for exactly that reason.
+- **THE CHIP IS THE TEACHER'S ALONE.** A student's shelf holds the papers they
+  were given, so the ones they were NOT given are exactly the ones that are not
+  there to be marked; the word carries it and the colour only reinforces it,
+  the rule the marking's own verdicts follow.
+- **IT IS NOT `.chipSet`, AND IT IS DECLARED AT TWO CLASSES.** `.chipSet`
+  already means *"📌 Set by Mr Chung"* on a student's copy and is written
+  `.chip.chipSet`, so a class-state chip borrowing that name — or written at
+  one class — LOSES to it and comes out in the setter's blue on a card that
+  otherwise looks perfectly right. Same trap as `.shelfHead .shelfBtn`, one
+  rule further down the same stylesheet.
+- **📌 SET THEM ALL, and four rules keep it honest.** It only ever sets what is
+  NOT set (`worksheetSetState`, so a paper already on a shelf keeps the help
+  level, the lock and the key it went out with); **ONE AT A TIME, NEVER IN
+  PARALLEL** — `pushWorksheet` reads and writes the module's own globals and
+  calls `performSave`, so two in flight interleave exactly as two uploads do,
+  and a `Promise.all` in that loop is the one change that must never be made;
+  it ASKS first, naming the count; and **every paper it could not set is NAMED
+  with the reason** (`blockedList`, one wording shared with the batch upload's
+  summary). A refused write says so and carries `assignRulesHint()`.
+- **`opts.quiet` MUST NEVER MEAN A FAILURE NOBODY HEARS ABOUT.** It suppresses
+  the per-paper toast so ten papers are one sentence, and every exit hands the
+  outcome BACK instead; the caller is what names it.
+- **A PUSH THAT FAILED IS NEVER COUNTED AS ONE THAT WENT OUT.** `uploadOne` set
+  `pushed = true` the moment `pushWorksheet` had been CALLED, so a refused
+  write was reported as a paper the class had been given and a batch of ten
+  said *"9 set for the class"* over nine papers no child could see.
+- **AND A SKIP IS NAMED IN A BATCH TOO.** The "could not be set" explanation
+  was `solo`-only, so in a pile of ten it was completely silent and the count
+  was the only clue anything had been left behind — which is the rule
+  📚 UPLOADING is built on, broken in its own section.
+- **`syncSetAllBtn` is painted from `renderWorksheets`**, the one function every
+  path that changes the list already goes through — the reasoning `syncSizeCtl`
+  carries. It SAYS how many are waiting, so the teacher never presses it to
+  find out whether it had anything to do.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 📚 A WHOLE PILE OF PDFs AT ONCE (v1.28.0)
 
 `UPLOAD_MAX_FILES` / `isPdfFile` / `pdfBaseName` / **`uploadName`** /
@@ -2538,6 +2603,30 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📌 whether the class has it** (`worksheetSetState`,
+  `worksheetSetChip`, `worksheetSetBlocker`, `setAllWorksheets`, `blockedList`,
+  `unsetWorksheetCount`, `syncSetAllBtn`, `pushWorksheet`'s `opts.quiet` or its
+  returned outcome, the `setSkip` on `uploadOne`, the `notSet` list in
+  `handleUpload`, `#setAllBtn` or the `.chip.chipSetOut` /
+  `.chip.chipSetNone` CSS), run
+  `node tools/tutor-tests.mjs` **and** `node tools/upload-batch-tests.mjs`.
+  Every failure here is silent and the shelf still paints — which is the whole
+  fault this answers: a term's worth of papers set for nobody, on a home screen
+  that looked perfectly ordinary. Read `w.pushed` instead of the live
+  assignment and a refused take-off leaves a paper claiming to be set; drop
+  `assignmentsLoaded` and every paper reads as unset for the moment before the
+  list arrives, so the button offers to set the whole shelf again. Fold
+  `'nobody'` into `'set'` and the one case that was already invisible — a paper
+  set with no level or subject, on NO shelf — goes back to being invisible.
+  Draw the chip for a student and their shelf is captioned with a state that
+  can only ever say "not set" about papers they were simply not given. Let
+  `setAllWorksheets` touch a paper that is already set and the help level, the
+  lock and the answer key it went out with are quietly rewritten; `Promise.all`
+  that loop and two papers interleave through the module globals exactly as two
+  uploads do. Let `opts.quiet` swallow the refusal as well as the noise, or
+  stop NAMING what was skipped, and this is the original bug wearing its own
+  fix. And put `pushed = true` back after the call rather than after the
+  ANSWER, and a batch of ten reports nine papers set that no child can see.
 - After touching **📚 uploading a pile of PDFs** (`handleUpload`, `uploadSettings`,
   `uploadOne`, `uploadName`, `isPdfFile`, `pdfBaseName`, `UPLOAD_MAX_FILES`, the
   `multiple` on `#fileInput` or its `change` handler), run
