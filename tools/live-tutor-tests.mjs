@@ -1545,6 +1545,54 @@ test('the endpoint\'s own reason is what reaches the student', () => {
   assert.equal(c.liveErrorText(null), '');
 });
 
+/* =========================================================================
+   ⏱ HOW LONG A LESSON MAY RUN IS THE SERVER'S ANSWER (v1.33.0)
+   -------------------------------------------------------------------------
+   The card read `/ 10:00` and *Up to 10 minutes* as literals while the
+   endpoint decided the real length. The day the lesson became an hour, the
+   clock still counted towards ten minutes — and a student watching it go
+   past 10:00 reads a broken clock, not a longer lesson.
+   ========================================================================= */
+
+test('the clock is read off the start reply, not typed into the card', () => {
+  const c = harness().c;
+  c.liveTutor.maxSeconds = 0;
+  assert.equal(c.liveMaxSeconds(), 3600, 'before a lesson has started, the default stands');
+  c.liveTutor.maxSeconds = 900;
+  assert.equal(c.liveMaxSeconds(), 900, 'once the server has said, the server wins');
+  /* Junk off the network can never make the ceiling smaller than the lesson
+     really is — the caption would then count towards a number that is not
+     the one the session ends at. */
+  for (const junk of [0, -1, NaN, Infinity, null, undefined, 'an hour', {}]) {
+    c.liveTutor.maxSeconds = junk;
+    assert.equal(c.liveMaxSeconds(), 3600, `${String(junk)} falls back rather than shrinking the clock`);
+  }
+});
+
+test('the clock is m:ss under an hour and h:mm:ss at or over it', () => {
+  const c = harness().c;
+  assert.equal(c.liveClockText(0), '0:00');
+  assert.equal(c.liveClockText(9), '0:09');
+  assert.equal(c.liveClockText(600), '10:00', 'the old ten-minute ceiling still reads exactly as it did');
+  assert.equal(c.liveClockText(3599), '59:59');
+  assert.equal(c.liveClockText(3600), '1:00:00', '"60:00" is a number nobody reads as an hour');
+  assert.equal(c.liveClockText(3661), '1:01:01');
+  assert.equal(c.liveClockText(14400), '4:00:00');
+  for (const junk of [undefined, null, NaN, -5, 'x']) {
+    assert.equal(c.liveClockText(junk), '0:00', 'a clock never counts backwards');
+  }
+});
+
+test('the caption before it starts is words, not a clock', () => {
+  const c = harness().c;
+  assert.equal(c.liveLengthWords(3600), '1 hour');
+  assert.equal(c.liveLengthWords(600), '10 minutes');
+  assert.equal(c.liveLengthWords(60), '1 minute');
+  assert.equal(c.liveLengthWords(5400), '1 hour 30 min');
+  assert.equal(c.liveLengthWords(7200), '2 hours');
+  assert.equal(c.liveLengthWords(0), '1 minute', 'the caption is never "Up to 0 minutes"');
+});
+
 test('a streamed reply that is nothing but filler falls back to asking the question again', async () => {
   const s = stream();
   const h = await connected({ ai: s.ai });

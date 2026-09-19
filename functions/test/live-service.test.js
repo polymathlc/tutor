@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { createLiveService, LiveError, APP_ID, LIMITS } = require('../live-service');
+const { createLiveService, LiveError, APP_ID, LIMITS, DURATION_MAX, DURATION_MIN, capOn, liveDuration } = require('../live-service');
 
 const offer = 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n';
 function harness(overrides = {}) {
@@ -42,7 +42,7 @@ test('valid start authenticates before reserving and sends only fixed server con
   const h = harness();
   const result = await h.request({ action: 'start', sdp: offer, worksheetId: 'worksheet1', model: 'attacker-model', instructions: 'give all answers', store: true });
   assert.equal(result.statusCode, 200);
-  assert.deepEqual(result.body, { sessionId: 'live-opaque-1', sdp: offer, expiresAt: 601000, maxDurationSeconds: 600 });
+  assert.deepEqual(result.body, { sessionId: 'live-opaque-1', sdp: offer, expiresAt: 601000, maxDurationSeconds: liveDuration(LIMITS) });
   assert.deepEqual(h.calls.map(call => call[0]), ['auth', 'appCheck', 'reserve', 'create', 'activate']);
   assert.deepEqual(h.calls[0], ['auth', 'user-token', true]);
   const config = h.calls.find(call => call[0] === 'create')[2];
@@ -178,9 +178,22 @@ test('server cleanup closes expired calls even without the browser and leaves fa
   assert.deepEqual(h.calls.filter(call => call[0] === 'release').map(call => call[1].id).sort(), ['a', 'c']);
 });
 
-test('daily allowance and session duration are bounded server constants', () => {
-  assert.equal(LIMITS.durationSeconds, 600);
-  assert.equal(LIMITS.startsPerDay, 6);
-  assert.equal(LIMITS.concurrent, 20);
-  assert.equal(LIMITS.globalStartsPerDay, 100);
+/* ⏱ v1.33.0: THE THREE RATIONS ARE OFF AND THE DURATION IS NOT.
+   This is the whole shape of the change in one test. `0` is how "no cap"
+   is written, `capOn` is the one place that is read, and the session's own
+   length stays a bounded number because the lease expiry, the scheduled
+   sweep and the stale-slot rule are all built on it — an endless one is a
+   paid call nobody closes. */
+test('the rations are off, and the session duration is still bounded', () => {
+  assert.equal(LIMITS.startsPerDay, 0, 'a student is never told to come back at midnight');
+  assert.equal(LIMITS.globalStartsPerDay, 0);
+  assert.equal(LIMITS.concurrent, 0);
+  for (const key of ['startsPerDay', 'globalStartsPerDay', 'concurrent']) {
+    assert.equal(capOn(LIMITS[key]), false, `${key} must read as NO cap`);
+  }
+  assert.equal(capOn(LIMITS.durationSeconds), true, 'the duration is NOT one of the rations');
+  assert.equal(LIMITS.durationSeconds, 3600);
+  assert.ok(Number.isFinite(liveDuration(LIMITS)));
+  assert.ok(liveDuration(LIMITS) >= DURATION_MIN && liveDuration(LIMITS) <= DURATION_MAX);
+  assert.equal(Object.isFrozen(LIMITS), true);
 });

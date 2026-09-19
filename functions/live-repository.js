@@ -1,7 +1,7 @@
 'use strict';
 
 const { randomUUID, createHash } = require('node:crypto');
-const { LiveError } = require('./live-service');
+const { LiveError, capOn, liveDuration } = require('./live-service');
 
 // These collections are server-only; do not add client read/write rules for
 // them. Admin SDK bypasses the shared project's default-deny Firestore rules.
@@ -20,9 +20,10 @@ function createRepository(db) {
     const ownerKey = userKey(uid);
     const ownerRef = limits.doc(ownerKey);
     const day = dayKey(now);
+    const seconds = liveDuration(policy);
     const lease = {
       id, uid, ownerKey, worksheetId, sessionId: null,
-      createdAt: now, expiresAt: now + policy.durationSeconds * 1000,
+      createdAt: now, expiresAt: now + seconds * 1000,
       cleanupAt: now + 60000
     };
     await db.runTransaction(async tx => {
@@ -34,9 +35,31 @@ function createRepository(db) {
       }
       const ownerData = owner.data() || {};
       const globalData = global.data() || {};
-      if (ownerData.currentLease) throw new LiveError(409, 'lesson_already_active', 'A live lesson is already open on this account. End it before starting another.');
+      /* ONE STALE RULE FOR BOTH LOCKS. A reservation older than a whole
+         lesson plus a minute cannot be a lesson still running — it is a
+         release that never landed. */
+      const staleBefore = now - (seconds * 1000 + 60000);
+      /* THE ACCOUNT'S OWN LOCK LETS GO OF ITSELF TOO, and until v1.33.0 it
+         did not. `currentLease` is cleared by `release`, so a tab closed
+         mid-lesson, a dropped network or a failed close left it set — and
+         then EVERY later start on that account was refused with "a live
+         lesson is already open", for ever, about a lesson that ended days
+         ago. That is the concurrency slot's own fault (v1.32.0) wearing a
+         per-account hat, and it is the one limit a student could hit that
+         would never come back on its own.
+
+         `leaseAt` is the moment it was taken. A lock with NO `leaseAt` is
+         one written before this shipped and is let go, exactly as a legacy
+         `active[key] = true` is: the alternative strands those accounts
+         permanently, where this costs at most one double-billed lesson,
+         once, for an account that really was live at the deploy. */
+      if (ownerData.currentLease && Number(ownerData.leaseAt) > staleBefore) {
+        throw new LiveError(409, 'lesson_already_active', 'A live lesson is already open on this account. End it before starting another.');
+      }
       const starts = ownerData.day === day ? Number(ownerData.starts || 0) : 0;
-      if (starts >= policy.startsPerDay) {
+      /* The count is KEPT whether or not it is capped — it is what the
+         teacher can look at, and it is what `release` refunds. */
+      if (capOn(policy.startsPerDay) && starts >= policy.startsPerDay) {
         throw new LiveError(429, 'daily_limit', `You have used today's ${policy.startsPerDay} live lessons. They come back at midnight; the text buddy is still there in the meantime.`);
       }
       /* A SLOT LETS GO OF ITSELF. Every entry carries the moment it was
@@ -51,16 +74,25 @@ function createRepository(db) {
          written before this shipped is `true` rather than a number, and is
          let go for exactly the same reason. */
       const active = {};
-      const staleBefore = now - (policy.durationSeconds * 1000 + 60000);
       Object.keys(globalData.active || {}).forEach(key => {
         if (Number(globalData.active[key]) > staleBefore) active[key] = globalData.active[key];
       });
       const globalStarts = globalData.day === day ? Number(globalData.starts || 0) : 0;
-      if (Object.keys(active).length >= policy.concurrent || globalStarts >= policy.globalStartsPerDay) {
-        throw new LiveError(429, 'live_busy', 'Live tutoring is busy or has reached today\'s allowance. Please use the text buddy and try again later.');
+      /* TWO REFUSALS, NEVER ONE SENTENCE FOR BOTH. "Twenty lessons are
+         running right now" comes back in minutes and "the centre has used
+         today's allowance" comes back at midnight — the old wording said
+         "busy or has reached today's allowance" and left the student to
+         guess which, which is the very fault v1.32.0 fixed at the other
+         end of the same wire. Both are off by default; each is worded for
+         the day somebody turns it back on. */
+      if (capOn(policy.concurrent) && Object.keys(active).length >= policy.concurrent) {
+        throw new LiveError(429, 'live_busy', `Live tutoring is full at the moment — ${policy.concurrent} lessons are already running. Please use the text buddy and try again in a few minutes.`);
+      }
+      if (capOn(policy.globalStartsPerDay) && globalStarts >= policy.globalStartsPerDay) {
+        throw new LiveError(429, 'daily_limit', 'Live tutoring has reached the centre\'s allowance for today. It comes back at midnight; the text buddy is still there in the meantime.');
       }
       active[id] = now;
-      tx.set(ownerRef, { day, starts: starts + 1, currentLease: id });
+      tx.set(ownerRef, { day, starts: starts + 1, currentLease: id, leaseAt: now });
       tx.set(globalRef, { day, starts: globalStarts + 1, active });
       tx.set(sessions.doc(id), lease);
     });
@@ -114,6 +146,7 @@ function createRepository(db) {
         tx.set(ownerRef, {
           ...ownerData,
           currentLease: null,
+          leaseAt: null,
           starts: Math.max(0, Number(ownerData.starts || 0) - (refund ? 1 : 0))
         });
       }

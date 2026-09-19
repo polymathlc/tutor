@@ -2821,6 +2821,70 @@ not a question anybody can practise. This is that pipeline on demand.
   the filing quietly lying.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## ⏱ THE LIMITS ARE OFF THE LIVE TUTOR (v1.33.0)
+
+`LIMITS` / `DURATION_MIN` / `DURATION_MAX` / **`capOn`** / **`liveDuration`** in
+`functions/live-service.js`, the three `capOn(policy.…)` guards and the `leaseAt` lock in
+`reserve` (`functions/live-repository.js`), and the card's half —
+`LIVE_MAX_SECONDS_DEFAULT` / **`liveMaxSeconds`** / `liveClockText` / `liveLengthWords`, the
+`liveTutor.maxSeconds` written from the start reply, and the `#liveClock` line in
+`renderLiveCard` (search `HOW LONG A LESSON MAY RUN IS THE SERVER'S ANSWER`).
+
+Four numbers stood between a child and the live tutor. **Three were RATIONS and are off**
+(`startsPerDay`, `globalStartsPerDay`, `concurrent`, all `0`). The fourth is not a ration and is
+deliberately NOT removed.
+
+- **`0` IS HOW "NO CAP" IS WRITTEN, AND `capOn` IS THE ONE PLACE THAT IS READ.** All three
+  refusals ask it, and the harness counts THREE `capOn(policy.` guards in `reserve` — one left
+  unguarded is the whole change quietly not happening, on a screen that still says the limits
+  are off.
+- **THE RATIONS FAIL OPEN AND THE DURATION FAILS SHUT, and that asymmetry is the design.** For a
+  ration, anything that is not a finite number ≥ 1 is off: the worst case is a bill the teacher
+  can SEE, where failing shut is a child told to come back at midnight. `durationSeconds` is the
+  opposite — the lease's `expiresAt`, the scheduled sweep and the stale-slot rule are all built
+  on it, so an endless one is a paid call nothing ever closes and a bill that runs all night with
+  nobody in the room. It is CLAMPED (`liveDuration`, 60s–13600s) rather than trusted, and **`0`
+  does NOT mean "off" there**.
+- **`typeof`, NEVER `Number()`, in `liveDuration`.** `Number(null)` is 0 and `Number('')` is 0, so
+  coercing a MISSING field hands every child a one-minute lesson — quietly, from a deploy nobody
+  would think to check. Something that is not a number at all is the bounded CEILING; a real
+  number out of range is pulled to the nearer end.
+- **THE LEASE CARRIES THE CLAMPED NUMBER, never `policy.durationSeconds`.** The two look identical
+  while the shipped value is in range; on a junk one the raw form is `NaN`, which is an expiry
+  that is never past, on a lease the sweep can therefore never find.
+- **THE COUNTS ARE STILL KEPT.** `starts` is what the teacher can look at and what v1.32.0's
+  refund takes back off — switch the counter off with the cap and that whole path rots into code
+  nothing runs, so the refund's own tests stop meaning anything.
+- **THE ACCOUNT'S OWN LOCK LETS GO OF ITSELF NOW.** `currentLease` is cleared by `release`, so a
+  tab closed mid-lesson, a dropped network or a failed close left it set and **every later start
+  on that account was refused for ever** with *"a live lesson is already open"* — the one limit a
+  student could hit that would never come back, and the per-account twin of the concurrency slot
+  v1.32.0 fixed for the whole school. `leaseAt` is the moment it was taken and ONE `staleBefore`
+  serves both locks. **A lock with no `leaseAt` is one written before this shipped and is let
+  go**, exactly as a legacy `active[key] = true` is: the alternative strands those accounts
+  permanently, where this costs at most one double-billed lesson, once, at the deploy.
+  `release` still clears it outright — the stale rule is the net under that, never the way out.
+- **THE TWO CENTRE-WIDE CEILINGS ANSWER DIFFERENTLY.** *"Twenty are running right now"* comes back
+  in minutes and *"the centre has used today's allowance"* comes back at midnight; the old single
+  sentence said *"busy or has reached today's allowance"* and left the student to guess, which is
+  the very fault v1.32.0 fixed at the other end of the same wire. Both are off; each is worded for
+  the day somebody turns it back on.
+- **HOW LONG A LESSON MAY RUN IS THE SERVER'S ANSWER, NOT A NUMBER TYPED IN THE CARD.**
+  `#liveClock` read `/ 10:00` and *Up to 10 minutes* as literals while the endpoint decided the
+  real length, so the two were one deploy apart from disagreeing — and here they did. A student
+  watching the clock go PAST its own ceiling reads a broken clock rather than a longer lesson.
+  `maxDurationSeconds` has been in the start reply all along and was thrown away; it is read now,
+  so there is no second place to keep in step. **A junk value can never SHRINK the clock**
+  (`liveMaxSeconds` falls back rather than flooring), because a caption counting towards a number
+  the session does not end at is worse than no caption. `liveClockText` is `m:ss` under an hour
+  and `h:mm:ss` at or over it — "60:00" is a number nobody reads as an hour — and
+  `liveLengthWords` is the before-it-starts caption in words.
+- **IT NEEDS A FUNCTIONS DEPLOY** — `firebase deploy --only functions`. Pages carries
+  `index.html` and not `functions/`, so shipping one half leaves the rations in force with the
+  card's clock counting towards an hour on a server still ending lessons at ten minutes.
+- Run **`cd functions && node --test test/*.test.js`**, **`node tools/tutor-tests.mjs`** and
+  **`node --test tools/live-tutor-tests.mjs`** after touching any of it.
+
 ## 🎧 WHY LIVE TUTORING SAID "BUSY" (v1.32.0)
 
 `liveErrorText` and the `throw` in `startLiveTutor` (search `WHY LIVE TUTORING SAID NO`), plus
@@ -3017,6 +3081,37 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **⏱ the live tutor's limits** (`LIMITS`, `capOn`,
+  `liveDuration`, `DURATION_MIN` / `DURATION_MAX`, the `capOn(policy.…)`
+  guards or the `leaseAt` lock in `reserve`, `release`'s `currentLease` /
+  `leaseAt` clear, `liveTutor.maxSeconds`, `liveMaxSeconds`, `liveClockText`,
+  `liveLengthWords`, `LIVE_MAX_SECONDS_DEFAULT`, or the `#liveClock` line),
+  run `cd functions && node --test test/*.test.js`,
+  `node tools/tutor-tests.mjs` **and**
+  `node --test tools/live-tutor-tests.mjs` — **and deploy the functions**
+  (`firebase deploy --only functions`), because Pages carries `index.html`
+  and not `functions/`. Every failure here is silent and lands either on a
+  child or on the bill. Put a ration back — or let one refusal stop asking
+  `capOn` — and a student is told to come back at midnight again while
+  every screen says the limits are off. Let `capOn` coerce, or accept `0`,
+  and the rations switch themselves back on from a typo. Take the clamp off
+  `durationSeconds`, or coerce it with `Number()`, and the two ends fail
+  opposite ways: `Number(null)` is 0, so a missing field hands every child a
+  one-minute lesson, while an unbounded one is a lease that never expires,
+  a sweep that never finds it and a paid call billing all night with nobody
+  in the room. Build the lease from `policy.durationSeconds` rather than the
+  clamped number and a junk value is an expiry of `NaN`, which is never
+  past. Switch the starts counter off with its cap and v1.32.0's refund has
+  nothing left to take back. Stop stamping `leaseAt`, or stop reading it
+  against `staleBefore`, and a tab closed mid-lesson locks that account out
+  of live mode for ever; treat a MISSING `leaseAt` as live instead and every
+  account stranded before the deploy stays stranded. Give the two
+  centre-wide ceilings one sentence again and "try in a few minutes" and
+  "comes back at midnight" are the same message. And type a ceiling into
+  the card again — or throw `maxDurationSeconds` away, or let a junk one
+  SHRINK the clock — and a student watches the timer run past its own
+  limit, which reads as the app being broken rather than as a longer
+  lesson.
 - After touching **📕 the filed mistake book** (`mistPlace`, `mistSubjectKey`,
   `mistTopicKey`, `mistHaystack`, `mistSearchTerms`, `mistSearchHit`,
   `mistMatches`, `mistCompare`, `mistakesShown`, `mistGroups`, `mistFacet`,
