@@ -844,7 +844,44 @@
   .mqOpts { display: flex; flex-direction: column; gap: 4px; margin: 2px 0; }
   .mqOpt { font-size: 0.87rem; line-height: 1.55; color: var(--ink-soft); }
   .mistFoot { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 20px 18px; }
-  .mistFilters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 18px; }
+  /* 📕 The book's own filing. Rows rather than one flex soup, because the
+     status chips, the subject chips and the pickers are three different
+     questions and running them together is a bar nobody reads. */
+  .mistFilters { display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px; }
+  .mistChipRow { display: flex; gap: 8px; flex-wrap: wrap; }
+  .mistPickRow { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .mistPickBox { display: flex; flex-direction: column; gap: 4px; min-width: 190px; }
+  .mistPickBox > span { font-size: 0.72rem; font-weight: 700; color: var(--ink-soft); letter-spacing: .01em; }
+  .mistPickBox select, .mistPickBox input {
+    font-family: var(--font); font-size: 0.85rem; padding: 8px 10px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink);
+    max-width: 100%;
+  }
+  .mistSearch { flex: 1 1 240px; }
+  .mistGroup { margin-bottom: 26px; }
+  .mistGroupHead {
+    font-size: 1.05rem; margin: 0 0 4px; padding-bottom: 8px;
+    border-bottom: 2px solid var(--line);
+  }
+  .mistTopicHead {
+    font-size: 0.82rem; font-weight: 700; color: var(--ink-soft);
+    margin: 16px 0 10px; text-transform: none;
+  }
+  /* The two tags on a card. They are BUTTONS — tapping one asks "what else
+     did I get wrong on this?", which is the fastest question the book can
+     answer and the reason they are not labels. `.chipTopic` already means
+     something on a worksheet card, so these have names of their own. */
+  .mistTags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .mTag {
+    font-family: var(--font); font-size: 0.71rem; font-weight: 600; cursor: pointer;
+    padding: 4px 9px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--bg-soft); color: var(--ink-soft); text-align: left;
+  }
+  .mTag:hover { border-color: var(--accent-strong); color: var(--ink); }
+  .mTag.mTagLo { border-style: dashed; }
+  @media (max-width: 640px) {
+    .mistPickBox { min-width: 0; flex: 1 1 100%; }
+  }
   .filterChip {
     font-family: var(--font); font-size: 0.8rem; font-weight: 600; cursor: pointer;
     padding: 7px 14px; border-radius: 999px; border: 1px solid var(--line);
@@ -2242,7 +2279,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.31.0';
+var APP_VERSION = 'v1.32.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -10790,27 +10827,10 @@ async function _mbBuildBlocks(it, context) {
   }
   if (!shots.length) return null;
   _mbBuildBudget--;              // spent BEFORE the call, so a failure cannot buy another
-  var ask = 'Reproduce question "' + _mkStr(it.number, 16) + '" from the attached ' +
-    (shots.length > 1 ? 'pictures' : 'picture') + '. For reference, the wording read off it was:\n' +
-    _mkStr(it.question, 1200);
-  try {
-    var raw = await window.askGemini(ask, {
-      system: MB_BUILD_SYS,
-      images: shots.map(function (s) {
-        return { mimeType: 'image/jpeg', data: rbJpeg(s.canvas, RB_ASK_MAX_SIDE, 0.86) };
-      }),
-      json: true,
-      maxOutputTokens: 2600, timeoutMs: 45000, routeTimeoutMs: 20000,
-      thinkingLevel: 'low'
-    });
-    if (!mistakeContextOK(context)) return null;
-    var built = _mbCleanBuild(_parseAIJson(raw));
-    built.shots = shots;
-    return built;
-  } catch (e) {
-    console.warn('question rebuild failed', e);
-    return null;
-  }
+  /* The ask itself is `_mbBuildFrom`, shared with 🧩 Set it out again so the
+     marking run and the button can never set the same question out two
+     different ways. */
+  return _mbBuildFrom(it, shots, context);
 }
 
 /* One picture into Storage, and the PATH back — never the download URL.
@@ -10864,6 +10884,184 @@ async function mbRebuild(it, id, context) {
     if (built.blocks.length) out.blocks = await _mbBuildFigures(built.blocks, built.shots, id, context);
     return out;
   } catch (e) { console.warn('question rebuild failed', e); return null; }
+}
+
+/* ---- SETTING A MISTAKE OUT AGAIN, after it has been filed ----
+   The rebuild runs ONCE, inside the marking run, with a ration of
+   `MB_BUILD_MAX` for the whole paper. So a question that missed it — the
+   ration spent on a paper where twelve were wrong, an AI call that failed,
+   a page whose raster was not ready, a mistake filed before any of this
+   existed — lands on tier ③, the whole page, and STAYS there for ever with
+   no way to ask again. A book of photographs of whole pages is exactly
+   what the blocks were built to replace, so there has to be a way back.
+
+   IT IS THE SAME PIPELINE, not a second one. `_mbBuildFrom` is the ask,
+   the parse and the rectangles lifted out of `_mbBuildBlocks` so both
+   callers share them: the same `MB_BUILD_SYS`, the same `_mbCleanBuild`,
+   the same `_mbBoxOk` / `_mbTightenRect` / `_mbCropBox`, the same
+   `_mbBuildFigures`. A second copy of any of it is a card set out one way
+   by the marking run and another way by the button, and nothing on any
+   screen would say which.
+
+   IT CROPS A CLEAN PAGE EITHER WAY, which is the one thing this app can do
+   that Scan & Answer cannot. With the mistake's own worksheet OPEN the
+   page is re-rendered out of the PDF (`rbCleanPage`, sharp, and no ink on
+   it at all); from the book, where the PDF is not to hand, it is cropped
+   out of the mistake's OWN stored whole-page picture — which is already
+   clean, because `mistakeShotFor` renders it out of the PDF rather than
+   compositing the student's answer onto it. That is the same shape ⚡
+   Rapid add works in over there: it is handed a picture and gives back
+   rectangles.
+
+   THE OLD PICTURE IS DELETED ONLY AFTER THE NEW ONE IS WRITTEN. The other
+   order leaves a mistake with no picture at all when the upload fails,
+   which is a card the student can no longer read the question off. */
+var MB_REDO_MAX = 8;            // set out again in one press — a bound, not a budget to spend
+
+/* The ask, the parse and the rectangles — shared, and deliberately NOT
+   spending `_mbBuildBudget`: that ration governs the marking RUN, and a
+   student asking for one question is not that run. */
+async function _mbBuildFrom(it, shots, context) {
+  if (!shots.length) return null;
+  var ask = 'Reproduce question "' + _mkStr(it.number, 16) + '" from the attached ' +
+    (shots.length > 1 ? 'pictures' : 'picture') + '. For reference, the wording read off it was:\n' +
+    _mkStr(it.question, 1200);
+  try {
+    var raw = await window.askGemini(ask, {
+      system: MB_BUILD_SYS,
+      images: shots.map(function (s) {
+        return { mimeType: 'image/jpeg', data: rbJpeg(s.canvas, RB_ASK_MAX_SIDE, 0.86) };
+      }),
+      json: true,
+      maxOutputTokens: 2600, timeoutMs: 45000, routeTimeoutMs: 20000,
+      thinkingLevel: 'low'
+    });
+    if (!mistakeContextOK(context)) return null;
+    var built = _mbCleanBuild(_parseAIJson(raw));
+    built.shots = shots;
+    return built;
+  } catch (e) {
+    console.warn('question rebuild failed', e);
+    return null;
+  }
+}
+
+/* The mistake's own stored page, as a canvas. `crossOrigin` BEFORE `src`,
+   always — set afterwards it does nothing, the picture loads tainted, and
+   the crop then dies on a SecurityError when it is CUT rather than when it
+   is loaded, which reads as "setting it out again is broken" rather than
+   as "that bucket has no CORS rule". */
+function mbStoredPage(url) {
+  return new Promise(function (resolve) {
+    if (!url) { resolve(null); return; }
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function () {
+      try {
+        var c = document.createElement('canvas');
+        c.width = img.naturalWidth || img.width;
+        c.height = img.naturalHeight || img.height;
+        if (!c.width || !c.height) { resolve(null); return; }
+        var ctx = c.getContext('2d');
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0);
+        resolve(c);
+      } catch (e) { resolve(null); }
+    };
+    img.onerror = function () { resolve(null); };
+    img.src = url;
+  });
+}
+
+/* WHERE THE PICTURES COME FROM, and the ONE place that is decided. The
+   open worksheet's own PDF first, because it re-renders at
+   `RB_PAGE_MAX_SIDE` and the crop is then as sharp as the marking run's
+   own; the stored page second, which is the only source the book has. */
+async function mbRedoShots(m) {
+  if (m.docId && m.docId === currentDocId && pages.length) {
+    var nums = _mbPageNums({ page: m.page, endPage: m.endPage });
+    var shots = [];
+    for (var i = 0; i < nums.length; i++) {
+      var c = await rbCleanPage(nums[i]);
+      if (c) shots.push({ num: nums[i], canvas: c });
+    }
+    if (shots.length) return shots;
+  }
+  var page = await mbStoredPage(await mistakeImageUrl(m));
+  return page ? [{ num: m.page || 1, canvas: page }] : [];
+}
+
+/* Set ONE mistake out again. Returns a word rather than a boolean, because
+   "there was nothing to read it off" and "the model could not set it out"
+   are different things to tell somebody and the caller is what says them. */
+async function mbRedoOne(m) {
+  if (!m || !currentUser) return 'no';
+  if (!window.askGemini || !window.aiReady || !window.aiReady()) return 'ai';
+  var shots = await mbRedoShots(m);
+  if (!shots.length) return 'source';
+  var built = await _mbBuildFrom({ number: m.number, question: m.question }, shots, null);
+  if (!built) return 'failed';
+  var patch = {}, oldPath = m.imagePath || '';
+  if (built.blocks.length) {
+    var blocks = await _mbBuildFigures(built.blocks, built.shots, m.id, null);
+    if (blocks.length) patch.blocks = blocks;
+  }
+  if (built.qbox) {
+    var s = built.shots[(built.qpage || 1) - 1] || built.shots[0];
+    var crop = s ? _mbCropBox(s.canvas, built.qbox, true) : '';
+    if (crop) {
+      var path = await _mbUpload(crop, m.id + '-q' + Date.now().toString(36));
+      if (path) { patch.imagePath = path; patch.shot = 'question'; }
+    }
+  }
+  if (!patch.blocks && !patch.imagePath) return 'failed';
+  await mistakesCollRef().doc(m.id).set(patch, { merge: true });
+  Object.keys(patch).forEach(function (k) { m[k] = patch[k]; });
+  m._url = '';
+  m._hay = null;
+  /* The old page goes only now, and a refusal is swallowed: a file left in
+     the bucket is untidy, a card with no picture is unreadable. */
+  if (patch.imagePath && oldPath && oldPath !== patch.imagePath) {
+    try { await storage.ref(oldPath).delete(); } catch (e) { /* a tidy-up is never worth the card */ }
+  }
+  return 'done';
+}
+
+/* Which of the cards ON SCREEN still want it. A question already set out
+   in blocks is not one of them — spending a call to redo work that is done
+   is the one way this button can cost something and change nothing. */
+function mbRedoWanted(list) {
+  return (list || []).filter(function (m) { return mistakeTier(m) !== 'blocks'; });
+}
+var _mbRedoBusy = false;
+async function mbRedo(ids) {
+  if (_mbRedoBusy) { toast(aiEngineName() + ' is still setting the last one out…'); return; }
+  var want = mbRedoWanted((ids || []).map(mistakeById).filter(Boolean));
+  if (!want.length) { toast('These are already set out as questions.'); return; }
+  if (want.length > 1 && !confirm('Set ' + want.length + ' question' + (want.length === 1 ? '' : 's') +
+      ' out again?\n\nChung GPT reads each one off its own page and cuts the figures out where they were ' +
+      'printed, the way a question is added in the Science portal. It costs one read each.')) return;
+  _mbRedoBusy = true;
+  renderMistakes();
+  var done = 0, tally = {};
+  try {
+    for (var i = 0; i < want.length && i < MB_REDO_MAX; i++) {
+      var r = await mbRedoOne(want[i]);
+      tally[r] = (tally[r] || 0) + 1;
+      if (r === 'done') done++;
+      if (r === 'ai') break;          // the engine is off; the rest would each say the same
+      renderMistakes();
+    }
+  } finally {
+    _mbRedoBusy = false;
+    renderMistakes();
+  }
+  if (done) usageNote('redo', String(done));
+  toast(done
+    ? done + ' question' + (done === 1 ? '' : 's') + ' set out again.'
+    : tally.ai ? 'Chung GPT is not available just now.'
+    : tally.source ? 'There was no picture to read this off. Open the worksheet it came from and try again.'
+    : 'Chung GPT could not set ' + (want.length === 1 ? 'this one' : 'those') + ' out. The picture is still there.');
 }
 
 /* =====================================================================
@@ -11740,7 +11938,6 @@ function diagGroupsOf(rows) {
    mistake book. What is never filed is a blank — a question nobody attempted
    is not a mistake, it is a question nobody attempted. */
 var mistakes = [];
-var mistFilter = 'open';
 
 function mistakeKey(docId, it) {
   // Marking the same worksheet twice must not file the same question twice.
@@ -13395,10 +13592,31 @@ async function liveRequest(body, headers, keepalive) {
       429: 'Live tutoring is busy. Please try again in a little while.',
       503: 'Live tutoring is not available yet. Please let Mr Chung know.'
     };
-    throw new Error(messages[response.status] || 'Live tutoring could not connect. Please try again.');
+    /* THE SERVER'S OWN MESSAGE WINS, and this is a fix rather than a
+       nicety. Three quite different refusals share the 429 — the day's
+       lessons are used up, twenty are open at once, or the provider is
+       rate-limiting — and the status map read them all as "Live tutoring
+       is busy. Please try again in a little while." So a student who had
+       used their six was told to wait for something that was not going to
+       happen until midnight, with nothing on any screen saying which of
+       the three it was. The endpoint had the answer all along and the app
+       threw it away. The map is the FALLBACK, for a refusal with no body
+       of ours at all: a proxy page, a 502, a blocked response. */
+    throw new Error(liveErrorText(data) || messages[response.status] ||
+                    'Live tutoring could not connect. Please try again.');
   }
   return data;
 }
+/* What the endpoint said, when it said anything. It is a SENTENCE written
+   for the student by `functions/live-service.js`, so it is shown as it
+   stands — but it is still text off the network, so it is bounded and
+   folded to one line before it can become the message on the card. */
+function liveErrorText(data) {
+  var msg = data && data.error && data.error.message;
+  if (typeof msg !== 'string') return '';
+  return msg.replace(/\s+/g, ' ').trim().slice(0, 240);
+}
+
 function closeLiveRemote(sessionId, headers) {
   if (!sessionId || !headers) return;
   return liveRequest({ action: 'stop', sessionId: sessionId }, headers, true).then(function (result) {
@@ -15059,18 +15277,144 @@ function renderChat() {
 }
 
 /* ---- The mistake book ---- */
-function renderMistakes() {
-  var filters = $('mistFilters');
-  filters.innerHTML = '';
-  [['open', 'Still to redo'], ['done', 'Sorted'], ['all', 'Everything']].forEach(function (f) {
-    var b = document.createElement('button');
-    b.className = 'filterChip' + (mistFilter === f[0] ? ' on' : '');
-    b.textContent = f[1];
-    b.addEventListener('click', function () { mistFilter = f[0]; renderMistakes(); });
-    filters.appendChild(b);
+/* THE BOOK, drawn. The chips and the pickers are painted from the FACETS
+   rather than from a fixed list, so a picker can only ever offer something
+   that is really in the book — and every one of them carries its count,
+   because a filter that turns out to hold nothing is one nobody presses
+   twice. */
+function mistChip(parent, label, on, onPick, cls) {
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'filterChip' + (on ? ' on' : '') + (cls ? ' ' + cls : '');
+  b.textContent = label;
+  b.addEventListener('click', onPick);
+  parent.appendChild(b);
+  return b;
+}
+function mistSelect(parent, label, value, options, onPick) {
+  var wrap = document.createElement('label');
+  wrap.className = 'mistPickBox';
+  var cap = document.createElement('span');
+  cap.textContent = label;
+  wrap.appendChild(cap);
+  var sel = document.createElement('select');
+  options.forEach(function (o) {
+    var op = document.createElement('option');
+    op.value = o.key;
+    /* `textContent`, so a topic that came back from a model — an unplaced
+       one keeps the marking's OWN wording — is painted as text and never
+       as markup, the rule every surface in this app carries. */
+    op.textContent = o.label + (o.n == null ? '' : ' (' + o.n + ')');
+    if (o.key === value) op.selected = true;
+    sel.appendChild(op);
   });
+  sel.addEventListener('change', function () { onPick(sel.value); });
+  wrap.appendChild(sel);
+  parent.appendChild(wrap);
+  return sel;
+}
 
+function renderMistakes() {
+  if (!$('mistFilters')) return;
+  mistPruneFilters();
+  renderMistFilters();
+  renderMistList();
+}
+
+/* THE BAR AND THE LIST ARE PAINTED APART, and that split is what makes the
+   search box usable. Typing re-runs the LIST and nothing else: the input is
+   never destroyed, so the caret stays where the student left it, and forty
+   cards' worth of pictures are not torn down and rebuilt on every letter.
+   It is honest as well as cheap — NO count in the bar reads the query.
+   `mistFacet` stops at its own axis, and the search is applied after all
+   three, so a chip saying "Science (12)" means twelve in the book and not
+   twelve matching whatever is half-typed. */
+function renderMistFilters() {
+  var filters = $('mistFilters');
+  if (!filters) return;
+  filters.innerHTML = '';
+  var statusRow = document.createElement('div');
+  statusRow.className = 'mistChipRow';
+  [['open', 'Still to redo'], ['done', 'Sorted'], ['all', 'Everything']].forEach(function (f) {
+    mistChip(statusRow, f[1], mistFilter === f[0], function () { mistFilter = f[0]; renderMistakes(); });
+  });
+  filters.appendChild(statusRow);
+
+  /* THE SUBJECT IS CHIPS AND THE REST ARE PICKERS, and that split is the
+     phone. Two or three subjects fit on a row a thumb can reach; a term's
+     worth of topics is a wall of chips nobody can read, and a wall is
+     exactly what the maths pad's own symbol strip had to lose. */
+  var subs = mistSubjectFacet();
+  if (subs.length > 1) {
+    var subRow = document.createElement('div');
+    subRow.className = 'mistChipRow';
+    mistChip(subRow, 'All subjects', mistSubject === 'all', function () { mistSubject = 'all'; mistTopic = 'all'; mistLo = 'all'; renderMistakes(); });
+    subs.forEach(function (f) {
+      mistChip(subRow, f.label + ' (' + f.n + ')', mistSubject === f.key, function () {
+        mistSubject = f.key; mistTopic = 'all'; mistLo = 'all'; renderMistakes();
+      });
+    });
+    filters.appendChild(subRow);
+  }
+
+  var pickRow = document.createElement('div');
+  pickRow.className = 'mistPickRow';
+  var topics = mistTopicFacet();
+  if (topics.length > 1) {
+    mistSelect(pickRow, '📗 Topic', mistTopic,
+      [{ key: 'all', label: 'Every topic', n: null }].concat(topics),
+      function (v) { mistTopic = v; mistLo = 'all'; renderMistakes(); });
+  }
+  var los = mistLoFacet();
+  if (los.length > 1) {
+    mistSelect(pickRow, '🎯 Learning objective', mistLo,
+      [{ key: 'all', label: 'Every objective', n: null }].concat(los),
+      function (v) { mistLo = v; renderMistakes(); });
+  }
+
+  var sw = document.createElement('label');
+  sw.className = 'mistPickBox mistSearch';
+  var scap = document.createElement('span');
+  scap.textContent = '🔎 Search';
+  sw.appendChild(scap);
+  var input = document.createElement('input');
+  input.type = 'search';
+  input.placeholder = 'a word in the question, your answer, the topic…';
+  input.maxLength = MIST_SEARCH_MAX;
+  input.value = mistQuery;
+  /* Re-rendered on every keystroke, so the caret is put back where it was
+     — the box is destroyed and rebuilt with the rest of the row, and a
+     search box that jumped to the end on every letter would be unusable on
+     a phone. */
+  input.addEventListener('input', function () {
+    mistQuery = input.value.slice(0, MIST_SEARCH_MAX);
+    renderMistList();
+    syncMistClear();
+  });
+  sw.appendChild(input);
+  pickRow.appendChild(sw);
+
+  /* ✕ Clear is the one thing in the bar the query DOES change, so it is
+     shown and hidden in place rather than by repainting the row the search
+     box lives in. */
+  var clear = document.createElement('button');
+  clear.type = 'button';
+  clear.id = 'mistClearBtn';
+  clear.className = 'btn btnSm';
+  clear.textContent = '✕ Clear';
+  clear.addEventListener('click', mistClearFilters);
+  pickRow.appendChild(clear);
+  filters.appendChild(pickRow);
+  syncMistClear();
+}
+function syncMistClear() {
+  var b = $('mistClearBtn');
+  if (b) b.hidden = !mistFiltered();
+}
+
+function renderMistList() {
   var list = $('mistList');
+  if (!list) return;
   list.innerHTML = '';
   var show = mistakesShown();
   pracPruneSel();
@@ -15078,19 +15422,46 @@ function renderMistakes() {
   if (!show.length) {
     var pad = document.createElement('div');
     pad.className = 'emptyPad';
+    var narrowed = mistakes.length && (mistFiltered() || mistFilter !== 'all');
     pad.innerHTML = '<div class="padIcon">📕</div>' +
       '<div class="padTitle">' + (mistakes.length ? 'Nothing here' : 'No mistakes yet') + '</div>' +
       '<div class="padSub">' + (mistakes.length
-        ? 'Try another filter.'
+        ? (narrowed ? 'Nothing matches what you are looking for. Clear the filters to see the whole book.' : 'Try another filter.')
         : 'Mark a worksheet and anything you did not get right lands here, with a picture of the question.') +
       '</div>';
     list.appendChild(pad);
     return;
   }
-  var grid = document.createElement('div');
-  grid.className = 'mistGrid';
-  show.forEach(function (m) { grid.appendChild(mistakeCard(m)); });
-  list.appendChild(grid);
+
+  /* SECTIONS, cut out of the very list the buttons above read. A single
+     subject and a single topic draw no heading at all — a heading over
+     the whole book says nothing and costs a screenful on a phone. */
+  var groups = mistGroups(show);
+  var manySubjects = groups.length > 1;
+  groups.forEach(function (g) {
+    var sec = document.createElement('section');
+    sec.className = 'mistGroup';
+    if (manySubjects) {
+      var h = document.createElement('h3');
+      h.className = 'mistGroupHead';
+      h.textContent = g.label + ' · ' + g.n + (g.n === 1 ? ' mistake' : ' mistakes');
+      sec.appendChild(h);
+    }
+    var manyTopics = g.topics.length > 1;
+    g.topics.forEach(function (t) {
+      if (manyTopics || manySubjects) {
+        var th = document.createElement('h4');
+        th.className = 'mistTopicHead';
+        th.textContent = t.label + ' · ' + t.items.length;
+        sec.appendChild(th);
+      }
+      var grid = document.createElement('div');
+      grid.className = 'mistGrid';
+      t.items.forEach(function (m) { grid.appendChild(mistakeCard(m)); });
+      sec.appendChild(grid);
+    });
+    list.appendChild(sec);
+  });
 }
 
 /* The bar above the book: practise them, or put them on paper. Every count
@@ -15116,6 +15487,21 @@ function renderMistTools(show) {
   some.disabled = !n;
   some.addEventListener('click', function () { pracStart(picked); });
   bar.appendChild(some);
+
+  /* 🧩 Set them out again — the cards ON SCREEN that are still
+     photographs, and the count SAYS how many, so it is never pressed to
+     find out whether it had anything to do. */
+  var wants = mbRedoWanted(picked.length ? picked.map(mistakeById).filter(Boolean) : show);
+  if (wants.length) {
+    var redoAll = document.createElement('button');
+    redoAll.className = 'btn';
+    redoAll.disabled = _mbRedoBusy;
+    redoAll.textContent = _mbRedoBusy ? '🧩 Setting them out…'
+      : '🧩 Set out ' + Math.min(wants.length, MB_REDO_MAX) + ' as question' + (Math.min(wants.length, MB_REDO_MAX) === 1 ? '' : 's');
+    redoAll.title = 'Read each question off its own page and cut the figures out where they were printed';
+    redoAll.addEventListener('click', function () { mbRedo(wants.map(function (m) { return m.id; })); });
+    bar.appendChild(redoAll);
+  }
 
   var sheet = document.createElement('button');
   sheet.className = 'btn';
@@ -15302,6 +15688,38 @@ function mistakeCard(m) {
   meta.appendChild(v);
   body.appendChild(meta);
 
+  /* WHERE IT FILES, on the card. The topic and the objective are what the
+     book is now sorted by, so a card that did not say which would leave a
+     student unable to tell why it is under the heading it is under — and
+     both are BUTTONS, because "what else did I get wrong on this?" is the
+     question the book exists to answer. The objective's whole sentence is
+     the tooltip: a card is dense enough without a line of syllabus across
+     it, and a chip reading only its id says nothing. */
+  var place = mistPlace(m);
+  if (place.topic || place.lo) {
+    var tags = document.createElement('div');
+    tags.className = 'mistTags';
+    if (place.topic) {
+      var tb = document.createElement('button');
+      tb.type = 'button';
+      tb.className = 'mTag';
+      tb.textContent = '📗 ' + place.topic;
+      tb.title = 'Show every mistake on this topic';
+      tb.addEventListener('click', function () { mistFilterTopic(mistTopicKey(m)); });
+      tags.appendChild(tb);
+    }
+    if (place.lo) {
+      var lb = document.createElement('button');
+      lb.type = 'button';
+      lb.className = 'mTag mTagLo';
+      lb.textContent = '🎯 ' + (place.loTitle || place.lo);
+      lb.title = place.loText || 'Show every mistake on this learning objective';
+      lb.addEventListener('click', function () { mistFilterLo(place.lo); });
+      tags.appendChild(lb);
+    }
+    body.appendChild(tags);
+  }
+
   /* The QUESTION, whichever tier it is — but never the picture the card
      already carries above, which `questionNodes` knows not to repeat. */
   questionNodes(m, 'card', { noPic: true }).forEach(function (n) { body.appendChild(n); });
@@ -15322,6 +15740,17 @@ function mistakeCard(m) {
     crop.title = 'Crop the picture down to just this question';
     crop.addEventListener('click', function () { openCrop(m.id); });
     foot.appendChild(crop);
+    /* 🧩 …and the whole thing read off the page instead. Offered ONLY on a
+       card that is still a photograph: on one already set out in blocks it
+       would spend a read to redo work that is done, which is the single
+       way this button can cost something and change nothing. */
+    var redo = document.createElement('button');
+    redo.className = 'btn btnSm';
+    redo.textContent = _mbRedoBusy ? '🧩 …' : '🧩 Set it out';
+    redo.disabled = _mbRedoBusy;
+    redo.title = 'Read the question off the page and cut its figures out, the way a question is added in the Science portal';
+    redo.addEventListener('click', function () { mbRedo([m.id]); });
+    foot.appendChild(redo);
   }
   var done = document.createElement('button');
   done.className = 'btn btnSm';
@@ -15353,14 +15782,280 @@ function mistakeCard(m) {
 var pracSel = {};          // id -> 1, the ticked mistakes
 var prac = null;           // the session in flight
 
-/* WHICH MISTAKES ARE ON SCREEN. The filter chips decide it, and every
-   button that says "all" means every card the student can SEE — practising
-   or printing questions hidden behind a filter is the one outcome nobody
-   could have predicted from the button they pressed. */
+/* =====================================================================
+   📕 THE MISTAKE BOOK, FILED UNDER THE SYLLABUS
+   =====================================================================
+   The book was one grid of cards, newest first, behind three chips. On a
+   paper or two that is a list; after a term it is forty cards in no order
+   at all, and a list nobody can find anything in is a list nobody opens
+   twice — which is the same fault the book itself exists to answer.
+
+   So it is FILED. Every mistake already carries the subject and the level
+   of the worksheet it came off, and — since 🧭 THE DIAGNOSTIC — the topic
+   and the syllabus OBJECTIVE the marking placed it under. The book reads
+   those: sections for Science and for Maths, a heading per topic inside
+   them in the syllabus's own order, the objective named on the card, and
+   chips, pickers and a search box over the lot.
+
+   `mistPlace` IS THE ONE PLACE A MISTAKE'S PLACEMENT IS DECIDED, and it
+   reuses the diagnostic's `diagItemPlace` rather than reading the fields a
+   second time. That is what quietly tags the whole book: a mistake filed
+   before any of this carries a topic the marking NAMED and no objective,
+   and `diagItemPlace` places it BY NAME at read time — so a term's worth of
+   cards files itself the first time the book is opened and no migration
+   runs anywhere.
+
+   THE WORDING COMES FROM THE CATALOGUE, never from the stored row — the
+   rule `progressRows` already follows. An objective renamed in the
+   syllabus is renamed on every card that was ever filed under it, and a
+   row naming an id this build has never heard of is shown UNPLACED rather
+   than under a heading somebody else's question is in.
+
+   `mistakesShown()` IS STILL THE ONE PLACE THE VISIBLE SET IS WORKED OUT,
+   and that is load-bearing: ✏️ Practise all and 🖨 the printed sheet both
+   read it, and every button that says "all" means every card the student
+   can SEE. Adding a filter anywhere else is a button that silently reaches
+   past the search box somebody is looking through.
+
+   IT IS ALSO THE ORDER. The flat list comes back in the order the book
+   shows it, so working through the practice session is working down the
+   book — Heat, then Light — rather than hopping about it. `mistGroups` is
+   PURE and only cuts that ordered list into sections; it never filters and
+   never re-sorts, or the sheet and the screen would disagree.
+
+   THE FILTERS ARE NOT REMEMBERED. A topic filter that survived a reload is
+   the one somebody set last Tuesday and never noticed again, and a book
+   that silently shows a fifth of itself is worse than no filter at all.
+   `mistPruneFilters` is the belt to that: a topic that has gone — the last
+   card on it cleared, deleted or filtered away by the subject above it —
+   falls back to "all" on the very next render, rather than leaving a book
+   that shows nothing and says only "try another filter".
+   ===================================================================== */
+
+/* Filed under NO subject, and under no topic. Written once, because the
+   two headings and the two pickers all have to agree about what "not
+   filed" is called. */
+var MIST_NO_SUBJECT = '~none';
+var MIST_NO_TOPIC = '~none';
+var MIST_SEARCH_MAX = 80;
+
+/* Every filter in ONE object, so `mistMatches` is one function and adding
+   a sixth axis is one line rather than a sixth global nobody wires into
+   `mistakesShown`. */
+var mistFilter = 'open';          // the status chips — the name the rest of the file already uses
+var mistSubject = 'all';
+var mistTopic = 'all';
+var mistLo = 'all';
+var mistQuery = '';
+
+/* WHERE A MISTAKE FILES. Memoised on the row, which is safe because
+   `loadMistakes` replaces every object wholesale — a stale placement can
+   only ever outlive the read that made it. */
+function mistPlace(m) {
+  if (!m) return { topic: '', lo: '', sylTopic: '', onList: false };
+  if (m._place) return m._place;
+  var p = diagItemPlace(m, m.subject, m.level);
+  /* THE CATALOGUE HAS THE LAST WORD. `diagItemPlace` trusts a placement
+     the marking already made — right for a report about one paper, and
+     not enough for a book that is FILED under headings: an id the
+     syllabus no longer has would give a card a chip reading its own bare
+     id and a section nothing else is ever in. So an id that does not
+     resolve is DROPPED, and what is left is the topic if that resolves
+     and the model's own wording if it does not — which is `diagPlace`'s
+     own rule, applied one step later. */
+  var lo = p.lo ? syllabusLo(m.subject, p.lo) : null;
+  var entry = lo || (p.sylTopic ? syllabusTopic(m.subject, p.sylTopic) : null);
+  m._place = {
+    topic: (entry && entry.topic) || p.topic || '',
+    lo: lo ? lo.id : '',
+    sylTopic: entry ? entry.tkey : '',
+    onList: !!entry,
+    /* The objective's SHORT name for the chip and its whole sentence for
+       the tooltip. A card is dense enough without a syllabus sentence
+       across it, and a chip reading only "div-living" says nothing. */
+    loTitle: lo ? (lo.title || '') : '',
+    loText: lo ? (lo.obj || '') : '',
+    order: entry ? entry.order : Infinity
+  };
+  return m._place;
+}
+function mistSubjectKey(m) {
+  var s = String((m && m.subject) || '');
+  return SUBJECT_OK[s] ? s : (s === 'both' ? 'both' : MIST_NO_SUBJECT);
+}
+function mistSubjectLabel(key) {
+  return key === MIST_NO_SUBJECT ? 'No subject' : (subjectLabel(key) || 'No subject');
+}
+function mistTopicKey(m) {
+  var p = mistPlace(m);
+  return p.sylTopic || (p.topic ? '~' + reportTopicKey(p.topic) : MIST_NO_TOPIC);
+}
+function mistTopicLabel(m) {
+  var p = mistPlace(m);
+  return p.topic || 'Not on the syllabus list';
+}
+
+/* WHAT THE SEARCH READS. Everything the card can SHOW, so a student
+   typing a word they remember seeing finds the card that shows it — the
+   question, what they wrote, what the buddy said, the paper's own name,
+   the topic and the objective. A question set out in BLOCKS keeps its
+   wording there rather than in `question`, so the blocks are read too or
+   every rebuilt question is unsearchable. */
+function mistHaystack(m) {
+  if (!m) return '';
+  if (m._hay != null) return m._hay;
+  var p = mistPlace(m);
+  var bits = [
+    m.number ? 'q' + m.number : '', m.docName, levelLabel(m.level), subjectLabel(m.subject),
+    p.topic, p.lo, p.loTitle, p.loText,
+    m.question, m.studentAnswer, m.answer, m.feedback, m.explanation, m.topic
+  ];
+  mistakeBlocks(m).forEach(function (b) { if (b.type === 'text') bits.push(b.text); });
+  mistakeOptions(m).forEach(function (o) { bits.push(o.label); bits.push(o.text); });
+  m._hay = bits.filter(Boolean).join(' \n ').toLowerCase();
+  return m._hay;
+}
+/* EVERY term has to appear, so a second word NARROWS rather than widening:
+   typing "heat metal" and getting every card about heat is a search box
+   that stops being used after the first time. */
+function mistSearchTerms() {
+  return String(mistQuery || '').toLowerCase().split(/\s+/).filter(Boolean);
+}
+function mistSearchHit(m, terms) {
+  if (!terms.length) return true;
+  var hay = mistHaystack(m);
+  for (var i = 0; i < terms.length; i++) if (hay.indexOf(terms[i]) === -1) return false;
+  return true;
+}
+
+/* THE ONE PREDICATE. `upTo` stops at an axis so the pickers can count what
+   they would offer without the picker's own choice narrowing its own
+   options away — a topic list that hid every topic but the chosen one is a
+   list nobody can change their mind in. */
+function mistMatches(m, terms, upTo) {
+  var stage = upTo || 'all';
+  var statusOk = mistFilter === 'all' ? true : mistFilter === 'done' ? !!m.cleared : !m.cleared;
+  if (!statusOk) return false;
+  if (stage === 'subject') return true;
+  if (mistSubject !== 'all' && mistSubjectKey(m) !== mistSubject) return false;
+  if (stage === 'topic') return true;
+  if (mistTopic !== 'all' && mistTopicKey(m) !== mistTopic) return false;
+  if (stage === 'lo') return true;
+  if (mistLo !== 'all' && (mistPlace(m).lo || MIST_NO_TOPIC) !== mistLo) return false;
+  return mistSearchHit(m, terms || mistSearchTerms());
+}
+
+/* THE ORDER THE BOOK READS IN: subject in the app's own order, then the
+   topic in the SYLLABUS's own order, then the objective, then newest
+   first — which is the order `loadMistakes` already returns, so the index
+   is the tiebreaker and nothing is re-read. */
+function mistSubjectRank(key) {
+  for (var i = 0; i < SUBJECTS.length; i++) if (SUBJECTS[i].value === key) return i;
+  return SUBJECTS.length + (key === MIST_NO_SUBJECT ? 1 : 0);
+}
+function mistCompare(a, b) {
+  var ra = mistSubjectRank(mistSubjectKey(a)), rb = mistSubjectRank(mistSubjectKey(b));
+  if (ra !== rb) return ra - rb;
+  var pa = mistPlace(a), pb = mistPlace(b);
+  if (pa.order !== pb.order) return (pa.order === Infinity ? 1e12 : pa.order) - (pb.order === Infinity ? 1e12 : pb.order);
+  var ta = mistTopicLabel(a).toLowerCase(), tb = mistTopicLabel(b).toLowerCase();
+  if (ta !== tb) return ta < tb ? -1 : 1;
+  return a._i - b._i;
+}
+
+/* WHICH MISTAKES ARE ON SCREEN — the ONE place, still. Every button that
+   says "all" means every card the student can SEE, so practising or
+   printing what a filter or a search box is hiding is the one outcome
+   nobody could have predicted from the button they pressed. */
 function mistakesShown() {
-  return mistakes.filter(function (m) {
-    return mistFilter === 'all' ? true : mistFilter === 'done' ? !!m.cleared : !m.cleared;
+  var terms = mistSearchTerms();
+  mistakes.forEach(function (m, i) { if (m._i == null) m._i = i; });
+  return mistakes.filter(function (m) { return mistMatches(m, terms); }).sort(mistCompare);
+}
+
+/* The sections, cut out of that SAME ordered list. PURE, and it neither
+   filters nor re-sorts: a group that quietly dropped a card would be a
+   book that prints more questions than it shows. */
+function mistGroups(list) {
+  var out = [], bySub = {};
+  (list || []).forEach(function (m) {
+    var sk = mistSubjectKey(m);
+    var sub = bySub['#' + sk];
+    if (!sub) {
+      sub = bySub['#' + sk] = { key: sk, label: mistSubjectLabel(sk), n: 0, topics: [], byTopic: {} };
+      out.push(sub);
+    }
+    var tk = mistTopicKey(m);
+    var top = sub.byTopic['#' + tk];
+    if (!top) {
+      top = sub.byTopic['#' + tk] = { key: tk, label: mistTopicLabel(m), items: [] };
+      sub.topics.push(top);
+    }
+    top.items.push(m);
+    sub.n++;
   });
+  return out;
+}
+
+/* WHAT THE PICKERS MAY OFFER, counted. Each axis is counted against the
+   filters ABOVE it and never against its own, so choosing a topic cannot
+   make every other topic vanish out of the list it was chosen from. */
+function mistFacet(upTo, keyOf, labelOf) {
+  var terms = mistSearchTerms(), seen = {}, out = [];
+  mistakes.forEach(function (m) {
+    if (!mistMatches(m, terms, upTo)) return;
+    var k = keyOf(m);
+    if (!seen[k]) { seen[k] = { key: k, label: labelOf(m), n: 0 }; out.push(seen[k]); }
+    seen[k].n++;
+  });
+  return out;
+}
+function mistSubjectFacet() {
+  return mistFacet('subject', mistSubjectKey, function (m) { return mistSubjectLabel(mistSubjectKey(m)); })
+    .sort(function (a, b) { return mistSubjectRank(a.key) - mistSubjectRank(b.key); });
+}
+function mistTopicFacet() {
+  return mistFacet('topic', mistTopicKey, mistTopicLabel)
+    .sort(function (a, b) { return a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1; });
+}
+function mistLoFacet() {
+  return mistFacet('lo', function (m) { return mistPlace(m).lo || MIST_NO_TOPIC; },
+    function (m) {
+      var p = mistPlace(m);
+      return p.lo ? (p.loTitle || p.lo) : 'No objective recorded';
+    }).sort(function (a, b) {
+      if (a.key === MIST_NO_TOPIC) return 1;
+      if (b.key === MIST_NO_TOPIC) return -1;
+      return a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1;
+    });
+}
+
+/* A choice that is no longer on offer falls back to "all" rather than
+   leaving a book that shows nothing and says only "try another filter".
+   Done on every render, for the reason `pracPruneSel` is: a path added
+   later is covered without being told. */
+function mistPruneFilters() {
+  if (mistSubject !== 'all' && !mistSubjectFacet().some(function (f) { return f.key === mistSubject; })) mistSubject = 'all';
+  if (mistTopic !== 'all' && !mistTopicFacet().some(function (f) { return f.key === mistTopic; })) mistTopic = 'all';
+  if (mistLo !== 'all' && !mistLoFacet().some(function (f) { return f.key === mistLo; })) mistLo = 'all';
+}
+function mistFiltered() {
+  return mistSubject !== 'all' || mistTopic !== 'all' || mistLo !== 'all' || !!mistSearchTerms().length;
+}
+function mistClearFilters() {
+  mistSubject = 'all'; mistTopic = 'all'; mistLo = 'all'; mistQuery = '';
+  renderMistakes();
+}
+/* Tapping a topic or an objective ON a card filters to it — the fastest
+   way to ask "what else did I get wrong on this?", and the reason the
+   chips are buttons rather than labels. */
+function mistFilterTopic(key) {
+  mistSubject = 'all'; mistTopic = key; mistLo = 'all';
+  renderMistakes();
+}
+function mistFilterLo(key) {
+  mistSubject = 'all'; mistTopic = 'all'; mistLo = key;
+  renderMistakes();
 }
 /* Ticks are pruned on every render rather than in each of the paths that
    can remove a card — a card cleared, deleted or filtered away is not a
@@ -18954,7 +19649,8 @@ var USAGE_EVENTS = {
   mathpad:  { label: 'Opened the maths pad', count: 'mathpads' },
   mathstep: { label: 'Checked a step of working', count: 'steps' },
   mathmodel: { label: 'Labelled a model', count: 'models' },
-  mathmodelput: { label: 'Put a model on the page', count: 'modelsput' }
+  mathmodelput: { label: 'Put a model on the page', count: 'modelsput' },
+  redo:     { label: 'Set a mistake out again', count: 'redone' }
 };
 function usageLabel(key) {
   var e = USAGE_EVENTS[key];

@@ -1520,6 +1520,31 @@ test('the pages a live reply measures on carry the ruler', async () => {
   h.c.stopLiveTutor();
 });
 
+/* ------------------------------------------------------------------------
+   WHY LIVE TUTORING SAID NO
+   ------------------------------------------------------------------------
+   Three quite different refusals share the 429 — the day's lessons are used
+   up, twenty are open at once, or the provider is rate-limiting — and the
+   status map read all three as "Live tutoring is busy. Please try again in
+   a little while." So a student who had used their six was told to wait for
+   something that was not coming back until midnight, with nothing on any
+   screen saying which of the three it was. The endpoint had the answer all
+   along and the app threw it away.
+   ------------------------------------------------------------------------ */
+
+test('the endpoint\'s own reason is what reaches the student', () => {
+  const c = harness().c;
+  assert.equal(c.liveErrorText({ error: { message: "You have used today's 6 live lessons." } }),
+    "You have used today's 6 live lessons.");
+  assert.equal(c.liveErrorText({ error: { message: '  A live lesson\n is already open.  ' } }),
+    'A live lesson is already open.', 'folded to one line, because it becomes the line on the card');
+  assert.equal(c.liveErrorText({ error: { message: 'x'.repeat(400) } }).length, 240,
+    'it is still text off the network');
+  assert.equal(c.liveErrorText({}), '', 'a refusal with no body of ours falls back to the status map');
+  assert.equal(c.liveErrorText({ error: { message: 42 } }), '');
+  assert.equal(c.liveErrorText(null), '');
+});
+
 test('a streamed reply that is nothing but filler falls back to asking the question again', async () => {
   const s = stream();
   const h = await connected({ ai: s.ai });

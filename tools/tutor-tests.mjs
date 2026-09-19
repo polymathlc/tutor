@@ -1115,7 +1115,20 @@ ok('a figure it cannot place is omitted rather than guessed at',
    cannot buy another try. Left unbounded, a paper where every question is
    wrong quietly spends a vision call on every one of them. */
 const RBCALL = between('async function _mbBuildBlocks(it, context) {', 'async function _mbUpload', 'the rebuild call');
-ok('the budget is spent BEFORE the call', RBCALL.indexOf('_mbBuildBudget--') < RBCALL.indexOf('askGemini('));
+ok('the budget is spent BEFORE the call',
+   RBCALL.indexOf('_mbBuildBudget--') >= 0 &&
+   RBCALL.indexOf('_mbBuildBudget--') < RBCALL.indexOf('_mbBuildFrom(it, shots, context)'),
+   'the ask itself is _mbBuildFrom, shared with the button that sets a filed mistake out again');
+/* …and the SHARED ask never touches the ration. `_mbBuildBudget` governs the
+   marking RUN, and a student asking for one question is not that run — but
+   a ration decremented inside the shared ask would be spent by the button
+   too, so a press in the book would quietly take a rebuild away from the
+   next paper marked. */
+const RBASK = between('async function _mbBuildFrom(it, shots, context) {', 'function mbStoredPage(', 'the shared rebuild ask');
+ok('…and the shared ask spends none of it', !/_mbBuildBudget/.test(RBASK));
+ok('…and it is the ONE ask: the marking run and the button share it',
+   (html.match(/system: MB_BUILD_SYS,/g) || []).length === 1,
+   'two asks is a question set out one way by the marking and another by the button');
 ok('…and refused outright once it is gone', /if \(_mbBuildBudget <= 0\) return null;/.test(RBCALL));
 ok('the budget is refilled in fileMistakes and NOWHERE else',
    (html.match(/_mbBuildBudget = MB_BUILD_MAX/g) || []).length === 2,
@@ -2554,6 +2567,222 @@ ok('\u2026and both offer the same four shapes',
 ok('the hint is told to point at the QUESTION, never the answer',
    /Point at the QUESTION, never at the answer/.test(html));
 
+
+/* =====================================================================
+   WHY LIVE TUTORING SAID NO
+   ===================================================================== */
+section('Why live tutoring said no');
+
+ok('the endpoint\u2019s own reason wins over the status map',
+   /throw new Error\(liveErrorText\(data\) \|\| messages\[response\.status\]/.test(html),
+   'three different 429s all read "busy, try again in a little while" and after the sixth lesson that was never going to come true');
+ok('\u2026and the map is still there for a refusal with no body of ours',
+   /429: 'Live tutoring is busy\. Please try again in a little while\.'/.test(html),
+   'a proxy page, a 502, a blocked response');
+ok('what comes back off the network is bounded before it is shown',
+   /\.replace\(\/\\s\+\/g, ' '\)\.trim\(\)\.slice\(0, 240\)/.test(
+     between('function liveErrorText(data) {', 'function closeLiveRemote(', 'the live error reader')));
+
+/* =====================================================================
+   📕 THE MISTAKE BOOK, FILED UNDER THE SYLLABUS
+   =====================================================================
+   The book was one grid, newest first, behind three chips. After a term
+   that is forty cards in no order at all — a list nobody can find anything
+   in, which is the same fault the book itself exists to answer.
+   ===================================================================== */
+section('The mistake book, filed');
+
+const BOOK_SRC = between('\u{1F4D5} THE MISTAKE BOOK, FILED UNDER THE SYLLABUS',
+                         'function pracPruneSel()', 'the filed mistake book');
+
+/* A mistake filed by THIS version carries the objective the marking placed
+   it under; one filed before carries a topic the marking NAMED and nothing
+   else, and `diagItemPlace` places that BY NAME at read time. That is what
+   files a whole term's book with no migration running anywhere. */
+const heatLo = S.syllabusEntries('science').find(e => e.id === 'heat-flow') ||
+               S.syllabusEntries('science').find(e => e.level === 'P5');
+const book = (over) => Object.assign({
+  id: 'm1', subject: 'science', level: 'P5', docName: 'Term 1 Paper 2',
+  number: '12', question: 'Why did the metal spoon feel cold?',
+  studentAnswer: 'because metal is cold', feedback: 'Think about where the heat went.',
+  verdict: 'wrong', cleared: false, blocks: [], options: []
+}, over || {});
+
+S.mistakes = [book({ id: 'a', lo: heatLo.id, sylTopic: heatLo.tkey })];
+ok('a mistake filed with its objective keeps it',
+   S.mistPlace(S.mistakes[0]).lo === heatLo.id && S.mistPlace(S.mistakes[0]).onList === true);
+ok('…and the wording comes from the CATALOGUE, never from the stored row',
+   S.mistPlace(S.mistakes[0]).topic === heatLo.topic &&
+   S.mistPlace(S.mistakes[0]).loTitle === heatLo.title,
+   'an objective renamed in the syllabus is renamed on every card ever filed under it');
+
+S.mistakes = [book({ id: 'b', lo: '', sylTopic: '', topic: heatLo.topic })];
+ok('a mistake filed BEFORE any of this is placed by name at read time',
+   S.mistPlace(S.mistakes[0]).sylTopic === heatLo.tkey,
+   'a term’s book files itself the first time it is opened, with no migration');
+
+S.mistakes = [book({ id: 'c', lo: 'not-a-real-objective', sylTopic: '', topic: 'Something nobody taught' })];
+ok('an objective this build has never heard of is shown UNPLACED',
+   S.mistPlace(S.mistakes[0]).onList === false && S.mistPlace(S.mistakes[0]).topic === 'Something nobody taught',
+   'a row filed under a heading somebody else’s question is in is a lesson filed wrongly for good');
+
+S.mistakes = [book({ id: 'd', subject: '' })];
+ok('a mistake with no subject files under one heading of its own',
+   S.mistSubjectKey(S.mistakes[0]) === S.MIST_NO_SUBJECT &&
+   S.mistSubjectLabel(S.MIST_NO_SUBJECT) === 'No subject');
+
+/* THE SEARCH reads everything the card can SHOW. A question set out in
+   BLOCKS keeps its wording there rather than in `question`, so a haystack
+   that stopped at `question` would make every rebuilt question — the good
+   ones — the only ones nobody can find. */
+S.mistakes = [book({ id: 'e', question: '', blocks: [{ type: 'text', text: 'The beaker was heated gently.' }] })];
+ok('the search reads a question set out in blocks',
+   S.mistHaystack(S.mistakes[0]).indexOf('beaker') >= 0);
+S.mistakes = [book({ id: 'f' })];
+const hay = S.mistHaystack(S.mistakes[0]);
+ok('…and what they wrote, what the buddy said, the paper and the topic',
+   ['metal is cold', 'where the heat went', 'term 1 paper 2', heatLo.topic.toLowerCase()]
+     .every(t => hay.indexOf(t) >= 0));
+
+S.mistakes = [book({ id: 'g', question: 'heat travels through metal' })];
+S.mistQuery = 'heat metal';
+ok('every term has to appear, so a second word NARROWS',
+   S.mistakesShown().length === 1);
+S.mistQuery = 'heat rabbit';
+ok('…and a term that appears nowhere leaves nothing',
+   S.mistakesShown().length === 0,
+   'a second word that WIDENED is a search box nobody uses twice');
+S.mistQuery = '';
+
+/* THE ORDER THE BOOK READS IN, and the flat list is that same order: the
+   practice session then works DOWN the book rather than hopping about it. */
+const maths = S.syllabusEntries('math')[0];
+S.mistakes = [
+  book({ id: 'm-new', subject: 'math', level: maths.level, lo: maths.id, sylTopic: maths.tkey, cleared: false }),
+  book({ id: 's-late', subject: 'science', lo: '', sylTopic: '', topic: 'Not on any list' }),
+  book({ id: 's-first', subject: 'science', lo: heatLo.id, sylTopic: heatLo.tkey })
+];
+eq('subjects come in the app’s own order, and an unplaced topic is LAST',
+   S.mistakesShown().map(m => m.id), ['s-first', 's-late', 'm-new']);
+ok('the sections are cut out of that SAME ordered list',
+   JSON.stringify(S.mistGroups(S.mistakesShown()).map(g => [g.key, g.n])) ===
+   JSON.stringify([['science', 2], ['math', 1]]));
+ok('…and `mistGroups` filters nothing at all',
+   S.mistGroups(S.mistakesShown()).reduce((n, g) => n + g.n, 0) === 3,
+   'a group that quietly dropped a card is a book that prints more questions than it shows');
+ok('…and it is PURE — no DOM, no filtering, no re-reading the filters',
+   !/document\.|mistFilter|mistQuery|mistakes\b/.test(
+     between('function mistGroups(list) {', 'function mistFacet(', 'mistGroups')));
+
+/* THE FILTERS all go through `mistakesShown`, which is still the ONE place
+   the visible set is worked out — ✏️ Practise all and 🖨 the sheet both read
+   it, and every button that says "all" means every card the student can
+   SEE. */
+S.mistSubject = 'math';
+eq('the subject filter narrows the ONE visible set', S.mistakesShown().map(m => m.id), ['m-new']);
+S.mistSubject = 'all';
+S.mistTopic = heatLo.tkey;
+eq('…and so does the topic', S.mistakesShown().map(m => m.id), ['s-first']);
+S.mistTopic = 'all';
+S.mistLo = heatLo.id;
+eq('…and the objective', S.mistakesShown().map(m => m.id), ['s-first']);
+S.mistLo = 'all';
+
+/* A PICKER IS COUNTED AGAINST THE FILTERS ABOVE IT AND NEVER ITS OWN, or
+   choosing a topic hides every other topic out of the very list it was
+   chosen from. */
+S.mistTopic = heatLo.tkey;
+ok('the topic picker still offers every topic once one is chosen',
+   S.mistTopicFacet().length === 3, JSON.stringify(S.mistTopicFacet().map(f => f.key)));
+S.mistTopic = 'all';
+S.mistSubject = 'math';
+ok('…but it is narrowed by the SUBJECT above it',
+   S.mistTopicFacet().length === 1);
+S.mistSubject = 'all';
+
+/* A CHOICE THAT IS NO LONGER ON OFFER FALLS BACK, rather than leaving a
+   book that shows nothing and says only "try another filter". */
+S.mistTopic = 'a topic no card carries any more';
+S.mistPruneFilters();
+ok('a topic that has gone falls back to "all"', S.mistTopic === 'all');
+S.mistSubject = 'english';
+S.mistPruneFilters();
+ok('…and so does a subject', S.mistSubject === 'all');
+/* AND IT IS DONE ON EVERY PAINT, BEFORE THE BAR IS DRAWN. Deleting the
+   last card of a topic is the ordinary way a filter goes stale, and it
+   goes stale in the one place nobody is looking — so a prune that is only
+   ever called by hand is one that never runs, and the book shows nothing
+   under a heading no card is filed under any more. */
+ok('the prune runs on every paint, before the bar is drawn',
+   /function renderMistakes\(\)[\s\S]{0,240}?mistPruneFilters\(\);\s*\n\s*renderMistFilters\(\);\s*\n\s*renderMistList\(\);/.test(html),
+   'a filter left standing over a topic that has gone is a book that shows nothing and says only "try another filter"');
+
+ok('the filters are NOT remembered anywhere',
+   !/localStorage|sessionStorage/.test(BOOK_SRC),
+   'a topic filter that survived a reload is one somebody set last Tuesday and never noticed again');
+ok('…and clearing them clears every one',
+   /mistSubject = 'all'; mistTopic = 'all'; mistLo = 'all'; mistQuery = '';/.test(BOOK_SRC));
+ok('the search is bounded before it is read',
+   /MIST_SEARCH_MAX/.test(BOOK_SRC) && /input\.value\.slice\(0, MIST_SEARCH_MAX\)/.test(html));
+/* Typing re-runs the LIST and nothing else: the input is never destroyed,
+   so the caret stays put and forty cards' worth of pictures are not torn
+   down and rebuilt on every letter. It is honest as well as cheap, because
+   no count in the bar reads the query — `mistFacet` stops at its own axis
+   and the search is applied after all three. */
+ok('typing repaints the list and not the bar',
+   /renderMistList\(\);\n\s*syncMistClear\(\);/.test(html) &&
+   !/mistQuery = input\.value[\s\S]{0,120}renderMistakes\(\)/.test(html),
+   'a search box destroyed on every keystroke takes the caret with it');
+ok('…and no facet count reads the query',
+   /if \(stage === 'lo'\) return true;/.test(BOOK_SRC),
+   'a chip reading "Science (12)" must mean twelve in the book, not twelve matching what is half-typed');
+ok('a topic a MODEL named is painted as text, never as markup',
+   /op\.textContent = o\.label/.test(html) && !/\.innerHTML = o\.label/.test(html));
+S.mistakes = [];
+S.mistQuery = ''; S.mistSubject = 'all'; S.mistTopic = 'all'; S.mistLo = 'all';
+
+/* =====================================================================
+   🧩 SETTING A MISTAKE OUT AGAIN
+   =====================================================================
+   The rebuild runs once, inside the marking run, with a ration for the
+   whole paper — so a question that missed it lands on the whole-page tier
+   and stays there for ever. A book of photographs of whole pages is what
+   the blocks were built to replace.
+   ===================================================================== */
+section('Setting a mistake out again');
+
+const REDO_SRC = between('/* ---- SETTING A MISTAKE OUT AGAIN, after it has been filed ----',
+                         '   THE DIAGNOSTIC \u2014 every question filed under the SYLLABUS',
+                         'setting a mistake out again');
+
+ok('it is offered only on a card that is still a photograph',
+   /function mbRedoWanted\(list\) \{[\s\S]{0,220}mistakeTier\(m\) !== 'blocks'/.test(REDO_SRC),
+   'a read spent redoing work that is done is the one way this button costs something and changes nothing');
+ok('the OPEN worksheet’s own PDF is preferred, and the stored page is the fallback',
+   /m\.docId === currentDocId && pages\.length/.test(REDO_SRC) &&
+   /await rbCleanPage\(nums\[i\]\)/.test(REDO_SRC) &&
+   /mbStoredPage\(await mistakeImageUrl\(m\)\)/.test(REDO_SRC),
+   'the book is opened from Home, where no PDF is to hand — and the stored page is clean, because mistakeShotFor renders it out of the PDF');
+ok('crossOrigin is set BEFORE src',
+   REDO_SRC.indexOf("img.crossOrigin = 'anonymous';") >= 0 &&
+   REDO_SRC.indexOf("img.crossOrigin = 'anonymous';") < REDO_SRC.indexOf('img.src = url;'),
+   'set afterwards it does nothing, the picture loads tainted, and the crop dies when it is CUT rather than when it is loaded');
+ok('the OLD picture is deleted only after the new one is written',
+   REDO_SRC.indexOf('await mistakesCollRef().doc(m.id).set(patch') < REDO_SRC.indexOf('storage.ref(oldPath).delete()'),
+   'the other order leaves a card with no picture at all when the upload fails');
+ok('…and a refused tidy-up is swallowed',
+   /catch \(e\) \{ \/\* a tidy-up is never worth the card \*\/ \}/.test(REDO_SRC));
+ok('nothing is written when the read gave neither blocks nor a crop',
+   /if \(!patch\.blocks && !patch\.imagePath\) return 'failed';/.test(REDO_SRC));
+ok('a run that finds the engine off STOPS rather than saying so once per card',
+   /if \(r === 'ai'\) break;/.test(REDO_SRC));
+ok('one press is bounded', /MB_REDO_MAX/.test(REDO_SRC) && /i < MB_REDO_MAX/.test(REDO_SRC));
+ok('two presses cannot overlap', /if \(_mbRedoBusy\)/.test(REDO_SRC));
+ok('more than one asks first, naming the count',
+   /confirm\('Set ' \+ want\.length \+ ' question'/.test(REDO_SRC));
+ok('the button says how many are waiting',
+   /'\u{1F9E9} Set out ' \+ Math\.min\(wants\.length, MB_REDO_MAX\)/u.test(html),
+   'a button pressed to find out whether it had anything to do is one nobody presses');
 
 /* =====================================================================
    THE RULER AND THE CROSSHAIR — how a model is told WHERE
