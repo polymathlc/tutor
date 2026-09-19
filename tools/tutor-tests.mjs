@@ -1380,6 +1380,65 @@ const del = html.slice(html.indexOf('async function deleteWorksheet'),
 ok('deleting a copy never deletes the class\'s shared PDF',
    /w\.storagePath && !w\.sharedPdf/.test(del), del.replace(/\s+/g, ' ').slice(0, 300));
 
+/* …AND NEITHER DOES DELETING THE TEACHER'S OWN COPY (v1.23.1). The
+   teacher's original is the one the file BELONGS to and it never carries
+   `sharedPdf`, so before this the teacher tidying up after setting a
+   worksheet deleted the one PDF every student's copy read — the assignment
+   stayed on every home screen and every Start / Carry on came back
+   "Object 'tutor-worksheets/…pdf' does not exist". */
+const delFull = html.slice(html.indexOf('async function deleteWorksheet'),
+                           html.indexOf('/* ---- Uploading ---- */'));
+ok('deleting the TEACHER\'s copy asks whether the class reads it first',
+   /var classReads = await worksheetReadByClass\(w\);/.test(delFull) &&
+   delFull.indexOf('worksheetReadByClass') < delFull.indexOf('storage.ref(w.storagePath).delete()'),
+   'the class check has to come before the file goes');
+ok('…and keeps the PDF and the key file when it does',
+   /w\.storagePath && !w\.sharedPdf && !classReads/.test(delFull) &&
+   /w\.keyPath && !w\.sharedPdf && !classReads/.test(delFull));
+const readByClass = html.slice(html.indexOf('async function worksheetReadByClass'),
+                               html.indexOf('async function deleteWorksheet'));
+ok('the answer is read LIVE off the assignment, not only off `pushed`',
+   /db\.collection\(ASSIGN_COLLECTION\)\.doc\(w\.id\)\.get\(\)/.test(readByClass) &&
+   /return a\.exists;/.test(readByClass),
+   '`pushed` is cleared by Take off the list, and the copies started before that still read the file');
+ok('…and a read that FAILS keeps the file',
+   /catch \(e\) \{[\s\S]{0,200}return true;[\s\S]{0,20}\}/.test(readByClass));
+ok('a student\'s copy never asks — it is never theirs to delete',
+   /if \(w\.sharedPdf\) return true;/.test(readByClass));
+
+/* A set worksheet whose file has gone must not leave a copy behind that can
+   never be opened: the file is checked BEFORE the copy is written. */
+const startA = html.slice(html.indexOf('async function startAssignment'),
+                          html.indexOf('async function startAssignment') + 2600);
+ok('Start it checks the PDF exists before a copy is written',
+   /getDownloadURL\(\)/.test(startA) &&
+   startA.indexOf('getDownloadURL()') < startA.indexOf('db.collection(COLLECTION).doc(docId).set('),
+   'the check has to come before the write');
+ok('…and a missing file is said in words, naming the teacher',
+   /pdfMissingError\(e\)[\s\S]{0,400}setterName\(\)[\s\S]{0,200}return;/.test(startA));
+
+/* "Object … does not exist" is true and no use to a child. */
+const openFail = html.slice(html.indexOf('function openFailureText'), html.indexOf('function openFailureText') + 900);
+ok('a missing PDF on a set worksheet is explained, and the work is said to be kept',
+   /pdfMissingError\(e\)/.test(openFail) && /sharedPdf \|\| w\.assignmentId/.test(openFail) &&
+   /Your work on this copy is kept/.test(openFail));
+ok('…and any other failure still reads as it always did',
+   /return 'Could not open it: ' \+ msg;/.test(openFail));
+ok('openWorksheet reports through it', /toast\(openFailureText\(e, w\)/.test(html));
+
+/* The teacher is told which set worksheets have lost their file — and only
+   the teacher, because a student's device may not be allowed to read
+   metadata at all. */
+const chk = html.slice(html.indexOf('function checkAssignmentPdfs'), html.indexOf('function chipNode'));
+ok('the set-worksheet file check is the teacher\'s only',
+   /if \(!isAdmin\(currentUser\) \|\| !assignments\.length\) return;/.test(chk));
+ok('…asks Storage once per assignment per sitting',
+   /a\.pdfChecked = true/.test(chk) && /getMetadata\(\)/.test(chk));
+ok('…flags only a file that is GONE, never a refused read',
+   /if \(pdfMissingError\(e\)\) \{ a\.pdfMissing = true;/.test(chk));
+ok('…and the card says so and disables Start',
+   /a\.pdfMissing[\s\S]{0,200}assignWarn/.test(html) && /go\.disabled = !!a\.pdfMissing;/.test(html));
+
 /* Setting work for the class writes to a collection every student reads, so
    hiding the button is not the lock. */
 ok('only the teacher can set a worksheet, checked in the handler',
@@ -2331,6 +2390,74 @@ ok('a worksheet uploaded before the rule is still shown to its owner',
    S.canSeeWorksheet({ name: 'old one' }));
 S.currentUser = { email: 'chungzhikai@gmail.com' };
 ok('the teacher sees everything', S.canSeeWorksheet({ level: 'P3', subject: 'math' }));
+S.currentUser = null;
+
+/* THE SET LIST GOES THROUGH THE SAME RULE (v1.23.1). It never did: every
+   active assignment was painted for every student, and pressing Start on
+   one set for another level wrote a copy the list then filtered out — a
+   worksheet that "got ready" and never opened, one more hidden copy per
+   press. */
+section('The set list is this student\'s too');
+S.currentUser = { email: 'kid@example.com' };
+S.myStudents = [{ name: 'Ana', level: 'P6', subject: 'science' }];
+S.setActiveIdx(0);
+S.assignments = [
+  { id: 'a5', name: 'P5 paper', level: 'P5', subject: 'math' },
+  { id: 'a6', name: 'P6 paper', level: 'P6', subject: 'science' },
+  { id: 'a0', name: 'old one' }
+];
+eq('a P6 Science student sees the P6 one and the untagged one, never the P5 Maths one',
+   S.assignmentsForMe().map(a => a.id), ['a6', 'a0']);
+S.currentUser = { email: 'chungzhikai@gmail.com' };
+eq('the teacher sees every set worksheet, which is how one is taken off',
+   S.assignmentsForMe().map(a => a.id), ['a5', 'a6', 'a0']);
+S.currentUser = { email: 'kid@example.com' };
+const notMine = S.assignmentNotMineText({ id: 'a5', name: 'P5 paper', level: 'P5', subject: 'math' });
+ok('the refusal names the level it was set for and the student it is not',
+   /set for P5 Mathematics/.test(notMine) && /Ana is P6 Science/.test(notMine) && /Mr Chung/.test(notMine),
+   notMine);
+ok('the set list is drawn from the filtered list',
+   /var list = assignmentsForMe\(\);[\s\S]{0,700}list\.forEach\(function \(a\) \{/.test(html));
+const startGate = html.slice(html.indexOf('async function startAssignment'),
+                             html.indexOf('async function startAssignment') + 900);
+ok('Start it asks the rule again in the handler, before anything is written',
+   /if \(!canSeeWorksheet\(a\)\) \{ toast\(assignmentNotMineText\(a\), 8000\); return; \}/.test(startGate) &&
+   startGate.indexOf('canSeeWorksheet(a)') < startGate.indexOf('myCopyOf(a)'),
+   'a hidden card is never the lock');
+ok('openWorksheet says so when the id is not in the list, instead of returning in silence',
+   /var w = worksheets\.find\(function \(x\) \{ return x\.id === id; \}\);[\s\S]{0,300}if \(!w\) \{ toast\('That worksheet is not in your list\.'/.test(html));
+
+/* The copies the bug wrote: blank, hidden, one per press. Only a DUPLICATE
+   of a blank starter copy is dropped — never the sole copy, never one with
+   work on it, never the file. */
+const blankBody = JSON.stringify({ annotations: [], hints: [], marking: { items: [] }, chat: [],
+  key: { pages: [], rows: [], path: '', name: '', scanned: true, shared: true } });
+const inkedBody = JSON.stringify({ annotations: [{ type: 'pen' }], hints: [], marking: { items: [] }, chat: [] });
+const c = (id, extra) => Object.assign({ id, assignmentId: 'a5', sharedPdf: true, body: blankBody,
+  score: { correct: 0, attempted: 0 } }, extra || {});
+ok('a starter copy is blank', S.blankStarterCopy(c('x')));
+ok('a copy with ink on it is not', !S.blankStarterCopy(c('x', { body: inkedBody })));
+ok('…nor one that was marked', !S.blankStarterCopy(c('x', { score: { correct: 1, attempted: 2 } })));
+ok('…nor a second attempt', !S.blankStarterCopy(c('x', { attempts: 2 })));
+ok('…nor one whose body overflowed to Storage', !S.blankStarterCopy(c('x', { bodyPath: 'p' })));
+ok('…nor a worksheet of the student\'s own', !S.blankStarterCopy(c('x', { assignmentId: '' })));
+/* newest first, as loadWorksheets sorts them */
+eq('of three blank copies of one assignment the two newer ones go and the oldest stays',
+   S.duplicateBlankCopies([c('n3'), c('n2'), c('n1')]).map(w => w.id), ['n2', 'n3']);
+eq('a sole blank copy is never dropped', S.duplicateBlankCopies([c('n1')]), []);
+eq('a newer copy WITH work on it stays, whatever came before it',
+   S.duplicateBlankCopies([c('n2', { body: inkedBody }), c('n1')]), []);
+eq('copies of different assignments are not each other\'s duplicates',
+   S.duplicateBlankCopies([c('n2', { assignmentId: 'a6' }), c('n1')]), []);
+const loadWs = html.slice(html.indexOf('async function loadWorksheets'),
+                          html.indexOf('async function loadWorksheets') + 2200);
+ok('loadWorksheets drops only what duplicateBlankCopies names, the document alone, and never the PDF',
+   /var dupes = duplicateBlankCopies\(out\);/.test(loadWs) &&
+   /db\.collection\(COLLECTION\)\.doc\(w\.id\)\.delete\(\)/.test(loadWs) &&
+   !/storage\.ref/.test(loadWs));
+ok('…before the list is filtered, so a duplicate the student can see is gone from the screen at once',
+   loadWs.indexOf('duplicateBlankCopies(out)') < loadWs.indexOf('worksheets = out.filter(canSeeWorksheet)'));
+S.assignments = [];
 S.currentUser = null;
 
 section('Who is working right now');
