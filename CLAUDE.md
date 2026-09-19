@@ -2879,11 +2879,56 @@ deliberately NOT removed.
   the session does not end at is worse than no caption. `liveClockText` is `m:ss` under an hour
   and `h:mm:ss` at or over it — "60:00" is a number nobody reads as an hour — and
   `liveLengthWords` is the before-it-starts caption in words.
-- **IT NEEDS A FUNCTIONS DEPLOY** — `firebase deploy --only functions`. Pages carries
+- **IT NEEDS A FUNCTIONS DEPLOY, AND SINCE v1.33.1 MERGING IS ONE** (🚀 below). Pages carries
   `index.html` and not `functions/`, so shipping one half leaves the rations in force with the
-  card's clock counting towards an hour on a server still ending lessons at ten minutes.
+  card's clock counting towards an hour on a server still ending lessons at ten minutes — which
+  is exactly what happened between v1.32.0 and v1.33.1.
 - Run **`cd functions && node --test test/*.test.js`**, **`node tools/tutor-tests.mjs`** and
   **`node --test tools/live-tutor-tests.mjs`** after touching any of it.
+
+## 🚀 MERGING IS WHAT DEPLOYS THE SERVER HALF (v1.33.1)
+
+`.github/workflows/deploy-functions.yml`, and the `node --test functions/test/*.test.js` step in
+`.github/workflows/checks.yml`. The harness pins both (search `AND MERGING IS WHAT DEPLOYS THE
+OTHER HALF` in `tools/tutor-tests.mjs`).
+
+**The live card said *"Up to 1 hour"* and the tutor still refused a lesson.** Both were true about
+a different half of the app: the page was v1.33.0 and the endpoint it was talking to predated
+v1.32.0. Pages ships `index.html` on merge; **nothing shipped `functions/`** — it moved only when
+somebody remembered `firebase deploy`. So ⏱ and 🎧 above were both live on the screen and neither
+was live on the server, for two versions, with nothing anywhere able to say so.
+
+- **THE DRIFT IS THE FAULT, NOT THE FORGETTING.** Two halves of one app on two deploy paths, one
+  of them automatic and one of them a person's memory, will come apart — and come apart SILENTLY,
+  because each half is internally consistent and only their conversation is wrong. Merging is now
+  the deploy for both.
+- **THE SCOPE IS THE ONE THING THAT COULD DO REAL DAMAGE.** `mathgen--app` is SHARED: the Maths
+  repo's `askOpenAi` / `askKimi` run on the same project, so `--only 'functions:study-buddy-live'`
+  is what keeps a deploy from this repository to the two functions it owns. **And never
+  `--force`** — a run that wants to DELETE something stops and says so rather than quietly taking
+  another app's function off the project, which no screen in either app would ever report.
+- **A MISSING KEY WARNS AND SKIPS; IT NEVER FAILS THE RUN.** `FIREBASE_SERVICE_ACCOUNT` is one
+  secret set once, and until it is there the job runs the tests and says in words what is missing.
+  A red tick on every merge is a red tick people learn to scroll past, and the next REAL failure
+  would go past with it.
+- **THE KEY IS SHREDDED ON `if: always()`.** A service-account JSON left on a runner is a key left
+  on a runner, and a failed deploy is exactly when a step gets skipped.
+- **THE TESTS RUN TWICE, ON PURPOSE.** In the workflow before the deploy machinery is started, and
+  again through `firebase.json`'s own `predeploy`. The second is what protects a deploy run by
+  hand from a laptop.
+- **THE HARNESS READS THE DEPLOY STEP, NEVER THE WHOLE FILE**, the rule `LIVE_THROWS` and
+  `CLOCK_SRC` already carry — this section names the flag it forbids, so a check matching its own
+  documentation would go green on the fault and red on the fix. **It is the WHOLE step and not
+  `npx …--non-interactive`**: a slice that stops at whichever flag happens to be last is a slice
+  the next flag falls outside of, and the `--force` mutant went straight through exactly that.
+- **`functions/test/*.test.js` HAD NEVER RUN IN CI AT ALL** — forty-eight tests over the limits,
+  the refund, the lease and the two locks, and every one of them only ever ran when somebody ran
+  it by hand. It needs **no `npm ci`**: the three suites touch only `live-service` /
+  `live-repository` / `live-provider`, which are pure, so the check has no lockfile to rot and no
+  registry to be unavailable. **The DEPLOY does need it** — firebase-tools loads `index.js` to
+  discover the exports, and that line requires `firebase-admin`.
+- Run **`node tools/tutor-tests.mjs`** and **`node --test functions/test/*.test.js`** after
+  touching any of it.
 
 ## 🎧 WHY LIVE TUTORING SAID "BUSY" (v1.32.0)
 
@@ -2917,9 +2962,10 @@ busy, and it was not going to come back in a little while. Three faults, and eac
   deploy over live data — and also why the slot must be written as a NUMBER: written as a flag,
   the very next start sweeps a lesson that is really running and the shared ceiling stops holding
   at all, which looks exactly like live mode working.
-- **IT NEEDS A FUNCTIONS DEPLOY** — `firebase deploy --only functions`. The `index.html` half
-  ships with GitHub Pages and `functions/live-repository.js` does not, so shipping one without the
-  other leaves the reported fault in place with the release notes saying it is fixed.
+- **IT NEEDS A FUNCTIONS DEPLOY, AND SINCE v1.33.1 MERGING IS ONE** (🚀 below). The
+  `index.html` half ships with GitHub Pages and `functions/live-repository.js` does not, so
+  shipping one without the other leaves the reported fault in place with the release notes saying
+  it is fixed — **and that is not hypothetical: this very fix sat undeployed for two versions.**
 - Run **`cd functions && node --test test/*.test.js`** and **`node tools/tutor-tests.mjs`** after
   touching any of it.
 
@@ -3081,6 +3127,25 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **🚀 the deploy workflow or the CI checks**
+  (`.github/workflows/deploy-functions.yml`, the `node --test
+  functions/test/*.test.js` step in `.github/workflows/checks.yml`, or the
+  pins that read them), run `node tools/tutor-tests.mjs`. **This is the one
+  file in the repository that can damage another app**: `mathgen--app` is
+  shared, so a deploy that stops naming `functions:study-buddy-live` — or
+  that gains `--force` — takes the Maths repo's `askOpenAi` / `askKimi` off
+  the project, from a workflow in a repository that has never heard of them,
+  with nothing in either app to say why. Read the whole deploy STEP when you
+  check for a flag, never the file (this section names the flag it forbids)
+  and never a slice ending at whichever flag is last today — that is how the
+  `--force` mutant got through the first time. Make a missing
+  `FIREBASE_SERVICE_ACCOUNT` FAIL the run rather than warn and every merge
+  goes red until somebody sets a secret, which trains the whole team to
+  ignore a red tick. Drop the `if: always()` shred and a service-account JSON
+  is left on the runner precisely when the deploy failed. And take the
+  functions' tests back out of CI and the half of the app that decides
+  whether a child gets a lesson is unchecked again — which is how ⏱ and 🎧
+  both shipped green and neither reached a student.
 - After touching **⏱ the live tutor's limits** (`LIMITS`, `capOn`,
   `liveDuration`, `DURATION_MIN` / `DURATION_MAX`, the `capOn(policy.…)`
   guards or the `leaseAt` lock in `reserve`, `release`'s `currentLease` /

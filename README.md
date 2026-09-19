@@ -12,6 +12,51 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.33.1 — 🚀 Merging is what deploys the server half
+
+**The live card said *"Up to 1 hour"* and the tutor still answered *"You have used today's live
+lessons."*** Both were telling the truth about a different half of the app.
+
+`index.html` ships with GitHub Pages the instant a pull request merges. **`functions/` has never
+shipped with anything** — it only ever reached students when somebody remembered to run
+`firebase deploy`. So the page was v1.33.0, with the rations removed and the lesson an hour long,
+while the endpoint it was talking to predated v1.32.0: still six lessons a day, still no refund for
+a microphone the student refused, still no stale-slot sweep. Nothing threw, nothing was logged and
+no screen anywhere could have said so.
+
+**Merging now deploys both halves.** `.github/workflows/deploy-functions.yml` runs on a push to
+`main` that touches `functions/`, `firebase.json` or `.firebaserc`, runs the functions' own tests,
+and deploys.
+
+### One secret, once — and until then it says so rather than failing
+
+It needs **`FIREBASE_SERVICE_ACCOUNT`**: the whole JSON key of a service account on `mathgen--app`
+with the *Firebase Admin* and *Cloud Functions Developer* roles, pasted into
+**Settings → Secrets and variables → Actions**.
+
+Until that exists the job **runs the tests, warns, and skips the deploy** — it does not fail. A red
+tick on every single merge is a red tick people learn to scroll past, and the next real failure
+would go with it.
+
+### Scoped to this codebase, and never `--force`
+
+`mathgen--app` is **shared**: the Maths repo's `askOpenAi` and `askKimi` functions live on the same
+project. So the deploy names `functions:study-buddy-live` and nothing else, and it carries no
+`--force` — a run that wants to DELETE something stops and says so instead of quietly taking
+another app's function off the project. The harness pins both, reading the deploy STEP rather than
+the file, because this section's own words name the flag it forbids.
+
+### …and the functions' tests now run on every pull request
+
+`node --test functions/test/*.test.js` had **never run in CI**. Forty-eight tests, covering the
+limits, the refund, the lease and the locks — the half of the app that decides whether a child gets
+a lesson — and every one of them only ever ran when somebody ran it by hand.
+
+**The immediate fix for a live tutor still refusing lessons is one command:**
+`firebase deploy --only functions`. After that, merging is enough.
+
+---
+
 ## v1.33.0 — ⏱ The limits are off the live tutor
 
 Four numbers stood between a child and the live tutor. **Three of them were rations and all three

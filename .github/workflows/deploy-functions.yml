@@ -1,0 +1,91 @@
+# ⏱ THE LIMITS LIVE IN A CLOUD FUNCTION, AND PAGES DOES NOT CARRY IT.
+# ---------------------------------------------------------------------------
+# `index.html` ships with GitHub Pages the moment a pull request merges. The
+# live tutor's limits, its refund and its session length do NOT: they are in
+# `functions/`, which only reaches students through `firebase deploy`. So the
+# two halves drift, silently, and the app ends up running a page from today
+# against a server from months ago — which is exactly what happened: the card
+# said "Up to 1 hour" (v1.33.0) while the endpoint still refused a seventh
+# lesson with wording that was replaced in v1.32.0.
+#
+# This closes that: merging is the deploy, for both halves.
+#
+# IT NEEDS ONE SECRET, ONCE — `FIREBASE_SERVICE_ACCOUNT`, the whole JSON key
+# of a service account on `mathgen--app` with the Firebase Admin and Cloud
+# Functions Developer roles. Until it is set this job RUNS THE TESTS AND
+# SKIPS THE DEPLOY with a warning, rather than failing: a red tick on every
+# merge is a red tick people learn to ignore.
+name: Deploy live tutoring functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'functions/**'
+      - 'firebase.json'
+      - '.firebaserc'
+      - '.github/workflows/deploy-functions.yml'
+  workflow_dispatch:        # …and a deploy can be asked for by hand, for the first one
+
+permissions:
+  contents: read
+
+# Two deploys of one codebase at once is a race for the same functions.
+concurrency:
+  group: deploy-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install
+        run: npm ci --prefix functions
+
+      # The tests run HERE as well as in `firebase.json`'s `predeploy`, so a
+      # broken build is caught before the deploy machinery is even started.
+      - name: The functions' own tests
+        run: npm test --prefix functions
+
+      - name: Is the deploy key set?
+        id: key
+        env:
+          KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -n "$KEY" ]; then echo 'ready=yes' >> "$GITHUB_OUTPUT"; else echo 'ready=no' >> "$GITHUB_OUTPUT"; fi
+
+      - name: Say what is missing
+        if: steps.key.outputs.ready != 'yes'
+        run: |
+          echo '::warning title=Functions not deployed::Set the FIREBASE_SERVICE_ACCOUNT secret (Settings → Secrets and variables → Actions) to a mathgen--app service-account JSON, then re-run this workflow. Until then the live tutor runs whatever was last deployed by hand.'
+
+      - name: Deploy the study-buddy-live codebase
+        if: steps.key.outputs.ready == 'yes'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          # SCOPED TO THIS CODEBASE, AND NEVER `--force`. `mathgen--app` is
+          # SHARED: the Maths repo's askOpenAi / askKimi live on the same
+          # project. `functions:study-buddy-live` is what keeps this deploy to
+          # the two functions this repo owns, and leaving `--force` off means
+          # a run that wants to DELETE anything stops and says so rather than
+          # quietly taking another app's function off the project.
+          npx --yes firebase-tools@14 deploy \
+            --only 'functions:study-buddy-live' \
+            --project mathgen--app \
+            --non-interactive
+
+      - name: Shred the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa.json"
