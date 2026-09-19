@@ -12,6 +12,29 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.25.2 — A P5 account stops seeing the P6 and P4 papers
+
+**The bug.** Signing in fired the worksheet list and the roster read **side by side**, with the
+account's students freshly emptied. Both filters read "no active student" as "show everything", on
+the reasoning that the onboarding gate is covering the screen and the answer is a second away — but
+an account that has **already answered** never sees that gate, so the list was filtered against
+nobody and then never filtered again: adopting the roster repainted the header alone. Every
+worksheet the teacher had set, at every level, stood on a P5 child's shelves. Reloading raced the
+same way, so it never came right.
+
+**The fix.** The roster is now a promise the list waits on. The worksheets are not *repainted* once
+who is working is known — they are not painted until then, so there is no flash of another class's
+papers either. It is settled from every path that decides who is working (the profile read, the
+gate being answered, a read that failed, the teacher who is never asked, and signing out), always
+from a `finally`, and the wait is bounded so the home screen can never hang on it.
+
+**And a set worksheet now fails closed.** An unknown student is shown **no** set worksheet at all.
+A set worksheet belongs to a class, so "we do not know who this is" must never mean "show every
+class's paper". A student's own uploads stay visible, which is the deliberate difference: your own
+work is yours, and hiding it with no explanation is the worse fault.
+
+---
+
 ## v1.25.1 — The stylus harness runs green again
 
 No change to the app. The CI check `node --test tools/*-tests.mjs` had been red on five stylus
