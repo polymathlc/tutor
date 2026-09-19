@@ -21,3 +21,11 @@ jobs:
         run: node tools/check-syntax.mjs
       - name: Check tutoring, key readiness and live behaviour
         run: node --test tools/*-tests.mjs
+      # The live tutor's LIMITS, its refund and its session length are in
+      # `functions/`, and these tests had never run here at all — so the half
+      # of the app that decides whether a child gets a lesson was the half
+      # nothing checked. No `npm ci`: the three suites touch only
+      # `live-service` / `live-repository` / `live-provider`, which are pure,
+      # so the check needs no lockfile and cannot rot on a registry blip.
+      - name: Check the live tutoring functions
+        run: node --test functions/test/*.test.js

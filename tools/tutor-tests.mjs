@@ -2635,6 +2635,57 @@ ok('a junk length can never SHRINK the clock',
    /Number\.isFinite\(n\) && n >= 1 \? Math\.floor\(n\) : LIVE_MAX_SECONDS_DEFAULT/.test(html),
    'a caption counting towards a number the session does not end at is worse than no caption');
 
+/* ---------------------------------------------------------------------
+   …AND MERGING IS WHAT DEPLOYS THE OTHER HALF (v1.33.1)
+   ---------------------------------------------------------------------
+   Pages ships `index.html` the moment a pull request merges. `functions/`
+   only ever reached students through somebody remembering to run
+   `firebase deploy`, so the two halves drifted — and drifted silently: the
+   card said "Up to 1 hour" while the endpoint was still refusing a seventh
+   lesson with wording v1.32.0 had replaced. The whole of the block above
+   was live on the page and none of it was live on the server.
+
+   The one change here that could do real damage is the SCOPE.
+   `mathgen--app` is shared: the Maths repo's askOpenAi / askKimi run on
+   the same project, so a deploy that stopped naming this codebase — or
+   that gained `--force` — would take another app's functions off it with
+   nothing in this repository to say why.
+   --------------------------------------------------------------------- */
+const WF_DEPLOY = readFileSync(new URL('../.github/workflows/deploy-functions.yml', import.meta.url), 'utf8');
+const WF_CHECKS = readFileSync(new URL('../.github/workflows/checks.yml', import.meta.url), 'utf8');
+
+/* Read the deploy STEP, never the whole file — this block's own comments
+   name the flag they forbid, and a check that matched its documentation
+   would go green on the fault and red on the fix. Twice now this harness
+   has had to learn that (LIVE_THROWS, CLOCK_SRC), and once out loud.
+   It is the WHOLE step and not `npx …--non-interactive`: a slice that
+   stops at whichever flag happens to be last is a slice a new flag falls
+   outside of, and the --force mutant went straight through it. */
+const DEPLOY_RUN = ((WF_DEPLOY.match(/name: Deploy the study-buddy-live codebase[\s\S]*?(?=\n      - name:|$)/) || [''])[0])
+  .split('\n').filter(l => !l.trim().startsWith('#')).join('\n');
+
+ok('merging main deploys the functions too',
+   /branches:\s*\[main\]/.test(WF_DEPLOY) && /'functions\/\*\*'/.test(WF_DEPLOY) &&
+   /firebase-tools@\d+\s+deploy/.test(DEPLOY_RUN),
+   'the card was a version ahead of the server it was talking to, and nothing said so');
+ok('…scoped to this codebase, on a SHARED project',
+   /--only\s+'functions:study-buddy-live'/.test(DEPLOY_RUN) &&
+   /--project mathgen--app/.test(DEPLOY_RUN),
+   'an unscoped deploy reaches the Maths repo’s askOpenAi / askKimi on the same project');
+ok('…and never --force',
+   !/--force/.test(DEPLOY_RUN),
+   '--force deletes whatever the run did not name, which here is another app’s functions');
+ok('a missing deploy key WARNS and skips, and never fails the run',
+   /::warning title=Functions not deployed/.test(WF_DEPLOY) &&
+   /steps\.key\.outputs\.ready == 'yes'/.test(WF_DEPLOY),
+   'a red tick on every merge is a red tick people learn to ignore');
+ok('the key is shredded whatever happened',
+   /if: always\(\)[\s\S]*?rm -f "\$RUNNER_TEMP\/sa\.json"/.test(WF_DEPLOY),
+   'a service-account JSON left on a runner is a key left on a runner');
+ok('and the functions’ own tests run on every pull request',
+   /node --test functions\/test\/\*\.test\.js/.test(WF_CHECKS),
+   'they had never run in CI at all, so the half that decides whether a child gets a lesson was unchecked');
+
 /* =====================================================================
    📕 THE MISTAKE BOOK, FILED UNDER THE SYLLABUS
    =====================================================================
