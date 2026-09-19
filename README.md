@@ -12,6 +12,29 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.14.2 — A set worksheet shows only on the accounts it was set for
+
+**The bug.** The "📌 Set for you" section painted **every** active set worksheet for **every**
+student, so a P5 Maths paper sat on a P6 Science account. A student's own list has always been
+filtered by their level and subject; the class list never was.
+
+**Why pressing Start did nothing.** Start it wrote the student a copy tagged P5, the list then
+filtered that copy straight back out (P5 is not P6), and opening it found nothing and gave up in
+silence: the toast said *Getting it ready…* and nothing happened. Every press after that wrote one
+more copy nobody could see.
+
+**The fix.**
+- The set list goes through the **same rule** as the student's own list: only worksheets set for
+  this student's level and a subject they take. The teacher still sees every one, which is how one
+  is taken off the list.
+- Start it asks the rule **again in the handler** — a link or a stale screen can still name a
+  worksheet the list would not draw — and says, in words, which class it was set for and which
+  student this is, instead of writing a copy.
+- Opening a worksheet that is not in the list now **says so** instead of returning in silence.
+- The blank duplicate copies the bug wrote are tidied on the next sign-in: only a **duplicate** of a
+  blank starter copy is dropped — never the only copy, never one with a single stroke on it, and
+  never the class's PDF.
+
 ## v1.14.1 — Deleting your copy of a set worksheet no longer deletes the class's PDF
 
 - **The bug**: a worksheet set for the class shares ONE PDF in Storage — every student's copy
