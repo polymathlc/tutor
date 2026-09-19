@@ -2742,9 +2742,9 @@ ok('the list is filtered by the rule', /worksheets = out\.filter\(canSeeWorkshee
 /* A worksheet tagged with a level the student is not is one that vanishes
    from their own list the moment it is saved. */
 ok('an upload takes the level off the active student, never a picker',
-   /var levelFixed = !!\(!isAdmin\(currentUser\) && upSt && upSt\.level\);\n\s*var level = levelFixed \? upSt\.level : \$\('upLevel'\)\.value;/.test(html));
+   /var levelFixed = !!\(!isAdmin\(currentUser\) && st && st\.level\);\n\s*return \{[\s\S]{0,200}level: levelFixed \? st\.level : \$\('upLevel'\)\.value,/.test(html));
 ok('…and the paper read at upload is TOLD that level is not free',
-   /paperApplyRead\(read, \{\n\s*level: level, levelFree: !levelFixed,/.test(html));
+   /paperApplyRead\(read, \{\n\s*level: level, levelFree: !s\.levelFixed,/.test(html));
 ok('the students are dropped on every account change, and the list is made to WAIT for the next ones',
    /rosterReset\(\);[\s\S]{0,120}currentDocId = null;/.test(html) &&
    /function rosterReset\(\) \{\n\s*myStudents = \[\];/.test(html));
@@ -3136,8 +3136,8 @@ section('The bookshelf');
   ok('the upload dialog ticks "put it on my students\' shelves" for the teacher by default',
      /if \(push\) push\.checked = isAdmin\(currentUser\);/.test(html));
   ok('…and the upload sets it only once the level AND the subject are known, after the read and the key scan',
-     /if \(got\.level && got\.subject\) await pushWorksheet\(id\);/.test(html) &&
-     html.indexOf('await keyAutoScan(true, read);') < html.indexOf('if (got.level && got.subject) await pushWorksheet(id);'));
+     /if \(got\.level && got\.subject\) \{ await pushWorksheet\(id\); pushed = true; \}/.test(html) &&
+     html.indexOf('await keyAutoScan(true, read);') < html.indexOf('if (got.level && got.subject) { await pushWorksheet(id); pushed = true; }'));
   ok('a card wears its topic and its school', /chipNode\('📖 ' \+ w\.topic, 'chip chipTopic'\)/.test(html) && /chipNode\('🏫 ' \+ w\.school, 'chip chipSchool'\)/.test(html));
   ok('the school and the topic ride every save', /school: wsMeta\.school \|\| '',\n\s*topic: wsMeta\.topic \|\| '',/.test(html));
   ok('…and come back when a worksheet is opened', /wsMeta\.school = w\.school \|\| '';\n\s*wsMeta\.topic = w\.topic \|\| '';/.test(html));

@@ -1177,6 +1177,65 @@ written into a text box exactly where they tapped.
   scrolls while a student is speaking, and a ⏹ Done button that scrolls away is
   one they cannot find.
 
+## 📚 A WHOLE PILE OF PDFs AT ONCE (v1.28.0)
+
+`UPLOAD_MAX_FILES` / `isPdfFile` / `pdfBaseName` / **`uploadName`** /
+**`uploadSettings`** / **`uploadOne`** / **`handleUpload`** (in `index.html`,
+search `📚 UPLOADING — ONE PAPER, OR A WHOLE PILE OF THEM`), plus `multiple` on
+`#fileInput`, its `change` handler, and the three lines of dialog copy that say
+what choosing several changes.
+
+A teacher does not have one worksheet, they have a term's worth, and the picker
+took exactly one. Now it takes as many as they like.
+
+- **`handleUpload(files)` IS THE ONE DOOR and it takes a LIST.** Every route
+  hands its files here — the picker, and anything added later. A route with a
+  pipeline of its own is a route that drifts, and the drift reads as "it works
+  when I drop them and not when I pick them".
+- **THE PAPERS GO UP ONE AT A TIME, NEVER IN PARALLEL, and everything else here
+  rests on that.** The whole pipeline is module globals — `pdfBytes`, `pdfDoc`,
+  `pages`, `wsMeta`, `currentDocId`, `annotations`, `wsKey` — so two in flight
+  interleave and each corrupts the other: paper 3's key pages hidden on paper 7,
+  paper 5's bytes inside paper 2's Storage object. **And the upload still
+  reports success**, which is what makes it the worst failure here. `Promise.all`
+  in that loop is the one change that must never be made.
+- **THE DIALOG IS READ ONCE, BEFORE THE LOOP** (`uploadSettings`), and shut in
+  the same breath — both before the first `await`. Its fields are cleared the
+  next time it opens and the loop has dozens of awaits in it, so a setting read
+  per file hands paper 2 a blank level, on two worksheets that look perfectly
+  right on the shelf.
+- **A NAME BELONGS TO ONE PAPER, and `uploadName` is the ONE place that is
+  decided.** With several files each takes its own file name and the read at
+  upload may improve it; ten worksheets sharing one typed name is a shelf nobody
+  can search. **`typed` comes back from the same call as `name`** because it is
+  what tells `paperApplyRead` whether it may replace the name — computed
+  separately, the two disagree and either a typed name is silently overwritten
+  or a file name is left on a paper the read could have named properly.
+- **THE ATTACHED KEY BELONGS TO ONE PAPER TOO**, so in a batch it goes on the
+  FIRST and the summary names which paper got it. One marking scheme spread over
+  ten papers keys nine of them wrongly, and every one of those nine looks
+  finished.
+- **A FAILURE NEVER SINKS THE BATCH, AND IT IS NAMED.** Each paper is caught on
+  its own and the ones after it still go up; "upload failed" over a pile of ten
+  leaves the teacher with no idea which one to do again. A file that is not a
+  PDF is skipped and named rather than stopping the upload, and past
+  `UPLOAD_MAX_FILES` the rest are COUNTED and left, never dropped in silence.
+- **EVERY PAPER IS OPENED, batch or not** (`showView('ws')` outside the `solo`
+  branch). `paperReadEnds` rasterises the pages and `loadPdf` fits them to a
+  width a hidden view reports as nothing — so the flicker through the pile is
+  the price of the read working at all.
+- **A SINGLE UPLOAD IS BYTE-FOR-BYTE WHAT IT ALWAYS WAS**: it opens the buddy,
+  says *Ready*, names what the read filled in, and explains a paper that could
+  not be set for the class. `if (solo) return;` is what keeps the batch summary
+  off it. **A BATCH ENDS ON THE SHELF** with everything it just filed on it,
+  because the teacher was filing rather than starting work.
+- **PROGRESS IS VISIBLE** (`s.step`). Ten papers behind one toast at the start
+  is an app that looks hung.
+- Run **`node tools/upload-batch-tests.mjs`** after touching any of it. It
+  replaces `uploadOne` with a recorder and runs the REAL door, so what it pins
+  is the door's own rules — including a concurrency counter that goes red the
+  moment two papers are in flight at once.
+
 ## 📖 THE PAPER, READ AT UPLOAD — subject, level, name and key pages off its first and last pages (v1.22.0)
 
 `PAPER_READ_HEAD` / `PAPER_READ_TAIL` / `KEY_WALK_MAX` / `PAPER_READ_PX` /
@@ -2479,6 +2538,26 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📚 uploading a pile of PDFs** (`handleUpload`, `uploadSettings`,
+  `uploadOne`, `uploadName`, `isPdfFile`, `pdfBaseName`, `UPLOAD_MAX_FILES`, the
+  `multiple` on `#fileInput` or its `change` handler), run
+  `node tools/upload-batch-tests.mjs` **and** `node tools/tutor-tests.mjs`. Every
+  failure here is silent and the upload still reports success. **A `Promise.all`
+  in that loop is the worst of them**: the whole pipeline is module globals, so
+  two papers in flight interleave and each corrupts the other — paper 3's key
+  pages hidden on paper 7, paper 5's bytes inside paper 2's Storage object — and
+  nothing on any screen says so. Read the dialog inside the loop and paper 2
+  takes a blank level; close the dialog or clear `upKeyFile` after the loop and
+  the second paper is uploaded against a form the teacher may already have
+  reopened. Use the typed name for every paper and the shelf is ten worksheets
+  with one name; compute `nameTyped` apart from the name and a file name is
+  flagged as one somebody typed, so the read never improves it. Give the
+  attached key to every paper and nine of ten are keyed against a scheme that
+  is not theirs. Let one paper's failure escape the loop and the nine after it
+  are lost; stop NAMING it and the teacher has no idea which one to do again.
+  Move `showView('ws')` inside the `solo` branch and the read fits a hidden
+  page to a width of nothing. And drop `if (solo) return;` and a single upload
+  is buried under a batch summary it was never part of.
 - After touching **👤 the roster promise** (`rosterReset`, `rosterSettled`, `rosterReady`,
   `ROSTER_WAIT_MS`, the `await rosterReady()` in `loadWorksheets`, the `rosterSettled()` in
   `adoptStudents` / `onboardSave` / the sign-in's `.then(rosterSettled, rosterSettled)` / the
