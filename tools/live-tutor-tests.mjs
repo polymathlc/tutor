@@ -1741,6 +1741,50 @@ test('which segments a student is asked to label, and a model that marked none a
   assert.deepEqual(Array.from(h.c.mthModelBlanks(flat)), [], 'nothing to ask for is not the same as asking for everything');
 });
 
+test('the palette is ONE row of working symbols, and the degree sign', () => {
+  const h = maths();
+  const rows = h.c.MTH_SYMBOLS;
+  /* IT WAS FOUR ROWS AND THIRTY KEYS (v1.29.1). A child stuck on the next
+     line of working needs × and ÷; a wall of ⊥, ⅔ and ≈ is a wall
+     they read past. A row added back is the wall added back. */
+  assert.equal(rows.length, 1, 'a second row is the wall coming back');
+  assert.equal(rows[0].label, 'Working');
+  assert.equal(rows[0].keys.join(' '), '+ − × ÷ = ( ) °');
+  /* The two rules a key has to pass, stated as the test rather than left to
+     the comment: it is HARD TO TYPE on a school keyboard, and it belongs in
+     a line of WORKING. */
+  const flat = rows.reduce((a, r) => a.concat(r.keys), []);
+  ['<', '>', '%', ':'].forEach(k =>
+    assert.ok(flat.indexOf(k) === -1, k + ' is on the keyboard they already have'));
+  ['≤', '≥', '≈', '≠'].forEach(k =>
+    assert.ok(flat.indexOf(k) === -1, 'a comparison is not a step of arithmetic'));
+  ['∠', '△', '∥', '⊥', '→'].forEach(k =>
+    assert.ok(flat.indexOf(k) === -1, 'a shape is not a step of arithmetic'));
+  ['½', '⅓', '²', '√', 'π'].forEach(k =>
+    assert.ok(flat.indexOf(k) === -1, 'a number form is not a step of arithmetic'));
+  /* THE DEGREE SIGN IS THE ONE THAT STAYS, and it is the one the teacher
+     asked for by name: unreachable on a school keyboard, and it ends an
+     ordinary P5 answer. */
+  assert.ok(flat.indexOf('°') !== -1, 'the degree sign is the exception, and it is kept');
+  /* Every key still reaches the check as ordinary text through the same one
+     inserter, so nothing here can become a second way of typing a step. */
+  assert.ok(flat.every(k => typeof k === 'string' && k.length >= 1));
+});
+
+test('the palette keys are small, and a finger still gets a big one', () => {
+  /* The keys were shrunk with the rows (v1.29.1). The floor is the phone
+     rule: the same shrink on a sheet a child taps with a FINGER is how a
+     learning aid turns into one they keep mis-hitting — on a desktop and an
+     iPad it is a mouse or a pencil, and both are precise. */
+  const key = /\.mthKey \{\s*min-width: (\d+)px; min-height: (\d+)px;[^}]*font-size: ([\d.]+)rem;/.exec(html);
+  assert.ok(key, '.mthKey must still declare its own size');
+  assert.ok(Number(key[1]) <= 30 && Number(key[2]) <= 30, 'the keys are meant to be small now');
+  assert.ok(Number(key[3]) < 1, 'and the symbol on them with it');
+  const phone = /\.mthPalLabel \{ width: 100%; \}[\s\S]{0,400}?\.mthKey \{[^}]*min-width: (\d+)px/.exec(html);
+  assert.ok(phone, 'the phone sheet must put a finger-sized key back');
+  assert.ok(Number(phone[1]) >= 36, 'a finger needs the key it always had');
+});
+
 test('the app checks the arithmetic itself, and only ever overrules a "right"', () => {
   const h = maths();
   // The palette's own − × ÷ are folded into real operators: a student who
