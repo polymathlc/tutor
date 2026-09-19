@@ -338,6 +338,12 @@ ok('marking gets the marking standards', gMark.includes('A missing keyword'));
 ok('marking never gets the key facts', !gMark.includes('surface of a liquid'));
 ok('marking never gets the exemplar answers', !gMark.includes('evaporated into water vapour'),
    'a marker handed the answer stops marking against the paper');
+/* The profile's `markingStandards` is a GUESS a model drew from the teacher's
+   answers, and an inference must never decide a mark: the standard a student
+   is held to is the typed notes and guidance. It used to reach marking. */
+ok("marking never gets the profile's INFERRED marking standard", !gMark.includes('Be strict about units'));
+ok("'How this teacher marks' is never in a marking digest", !gMark.includes('How this teacher marks'));
+ok('marking still gets the rules and the keywords', gMark.includes('Short full sentences') && gMark.includes('evaporation'));
 
 ok('a hint gets the key facts it is built from', gHint.includes('surface of a liquid'));
 ok('a hint gets the keywords to steer towards', gHint.includes('evaporation'));
@@ -352,6 +358,125 @@ ok('the hint authority order puts the worksheet first', /worksheet itself prints
 S.teachingNotes = [];
 S.aiStyle = null;
 eq('no notes and no style is an EMPTY digest, not an empty heading', S.aiGrounding('hint'), '');
+
+/* =====================================================================
+   The teacher's corrections reach this app (v1.14.0)
+   Document A is read WHOLE (per-bucket profiles, the corpus, the edits and
+   their lessons) and document C — the Science portal's corrections — beside
+   it. Every failure here is silent: the hint still comes back, it simply
+   goes on making the mistake the teacher corrected yesterday.
+   ===================================================================== */
+section("The teacher's corrections reach this app");
+S.wsMeta = { level: 'P5', subject: 'science', guidance: 'method' };
+S.teachingNotes = [];
+S.cerStyle = null;
+S.aiStyle = {
+  samples: [{ k: 's1', q: 'Why did the water level in the beaker fall?', a: 'The water evaporated into water vapour and escaped.', lvl: 'p5', sub: 'science' }],
+  edits: [{ k: 'e1', q: 'Why did the ice melt?', wrote: 'It got hot.', a: 'The ice gained heat from the surroundings and melted.',
+            lvl: 'p5', sub: 'science', note: 'Always name the direction of heat flow.' }]
+};
+const nulBlk = S.styleBlock('hint', 'Why did the water level fall?');
+ok('with NO profile the exemplars still reach a hint (no early return)', nulBlk.includes('evaporated into water vapour'));
+ok('…and the lessons', nulBlk.includes('direction of heat flow'));
+ok('…and the raw pairs', nulBlk.includes('the teacher rewrote it as: The ice gained heat'));
+ok('…and the heading counts the corrections being followed', /following 1 correction\b/.test(nulBlk));
+ok('the pairs go LAST, nearest the question', nulBlk.indexOf('rewrote it as') > nulBlk.indexOf('direction of heat flow'));
+ok('the summary says the loop is in force with no profile at all',
+   S.groundingSummary().some(b => /learned style/.test(b)) && S.groundingSummary().some(b => /^1 correction$/.test(b)));
+const mkBlk = S.styleBlock('mark', 'Why did the water level fall?');
+ok("'mark' gets no exemplars", !mkBlk.includes('evaporated'));
+ok("'mark' gets no lessons and no pairs", !mkBlk.includes('direction of heat flow') && !mkBlk.includes('rewrote it as'));
+ok("'mark' with nothing but corrections is an EMPTY block", mkBlk === '');
+S.aiStyle = { samples: [], edits: [], profiles: { _global: {
+  styleRules: 'Full sentences.', markingStandards: 'Inferred: no mark without the keyword.',
+  fixes: ['Name the process.'], keywords: ['evaporation'] } } };
+const mkBlk2 = S.styleBlock('mark', '');
+ok("'mark' never contains 'How this teacher marks'", !mkBlk2.includes('How this teacher marks') && !mkBlk2.includes('no mark without the keyword'));
+ok("'mark' gets no fixes", !mkBlk2.includes('Name the process'));
+ok("'mark' still gets the rules and the keywords", mkBlk2.includes('Full sentences') && mkBlk2.includes('evaporation'));
+ok("a hint gets the fixes", S.styleBlock('hint', '').includes('Name the process'));
+ok('…but never the inferred marking standard', !S.styleBlock('hint', '').includes('no mark without the keyword'));
+ok('the practice retry is marked, so it is grounded as mark', S.aiGrounding('mark').indexOf('Name the process') === -1);
+
+/* The bucket fallback chain: lvl:sub (≥30 answers) → any:sub → _global. */
+const mkSamples = n => Array.from({ length: n }, (_, i) => ({ k: 'p' + i, q: 'q' + i, a: 'a' + i, lvl: 'p5', sub: 'science' }));
+let stDoc = { samples: mkSamples(30), profiles: {
+  'p5:science': { styleRules: 'P5 SCIENCE VOICE' }, 'any:science': { styleRules: 'ANY SCIENCE VOICE' }, _global: { styleRules: 'GLOBAL VOICE' } } };
+S.aiStyle = stDoc;
+ok('the exact bucket wins with 30 answers behind it', S.styleBlock('hint', '').includes('P5 SCIENCE VOICE'));
+ok('…and the heading says which', /learned from 30 of their own P5 Science answers/.test(S.styleBlock('hint', '')));
+eq('the pick is reported', S.styleProfilePick('P5', 'science').bucket, 'p5:science');
+ok('the summary names the bucket', S.groundingSummary().some(b => /learned style \(P5 Science\)/.test(b)));
+stDoc.samples = mkSamples(29);
+ok('a thin bucket (29) falls to the subject at any level', S.styleBlock('hint', '').includes('ANY SCIENCE VOICE'));
+ok('…and says it fell', S.styleProfilePick('P5', 'science').fell === true);
+delete stDoc.profiles['any:science'];
+ok('…and then to the global profile', S.styleBlock('hint', '').includes('GLOBAL VOICE'));
+S.aiStyle = { samples: [], profiles: { 'p5:science': { styleRules: 'P5 SCIENCE VOICE', n: 40 }, _global: { styleRules: 'GLOBAL VOICE' } } };
+ok('with no samples in hand the bucket counts itself (profile.n)', S.styleBlock('hint', '').includes('P5 SCIENCE VOICE'));
+S.aiStyle = { samples: [], profiles: { 'p5:science': { styleRules: 'P5 SCIENCE VOICE', n: 12 }, _global: { styleRules: 'GLOBAL VOICE' } } };
+ok('…and a thin one still falls through', S.styleBlock('hint', '').includes('GLOBAL VOICE'));
+S.aiStyle = { samples: [], profile: { styleRules: 'FLAT MIRROR' } };
+ok('a document holding only the flat mirror still grounds', S.styleBlock('hint', '').includes('FLAT MIRROR'));
+S.wsMeta = { level: 'P6', subject: 'math', guidance: 'method' };
+S.aiStyle = { samples: mkSamples(30), profiles: { 'p5:science': { styleRules: 'P5 SCIENCE VOICE' }, _global: { styleRules: 'GLOBAL VOICE' } } };
+ok('another worksheet is never served a bucket that is not its own', !S.styleBlock('hint', '').includes('P5 SCIENCE VOICE'));
+eq('an untagged worksheet is the global profile', S.styleProfilePick('', '').bucket, '_global');
+
+/* Document C — the Science portal's own corrections. */
+S.wsMeta = { level: 'P5', subject: 'science', guidance: 'method' };
+S.aiStyle = { samples: [], edits: [{ k: 'a1', q: 'Why did the ice melt?', wrote: 'It got hot.', a: 'The ice gained heat.', lvl: 'p5', sub: 'science', at: '2026-08-01T00:00:00Z' }] };
+S.cerStyle = { v: 2, edits: [{ slot: 'q1', q: 'Why does the puddle disappear?', wrote: 'It dries.', a: 'The water evaporates into water vapour.',
+                               sub: 'science', lvl: 'p5', src: 'cer', note: 'Name evaporation, never "dries up".', at: '2026-09-01T00:00:00Z' }] };
+const cbBlk = S.styleBlock('hint', 'Why does a puddle disappear on a hot day?');
+ok("the Science portal's corrections reach the block", cbBlk.includes('evaporates into water vapour'));
+ok('…and their lessons', cbBlk.includes('never "dries up"'));
+ok('…and the union is keyed apart', S.styleEditsAll().some(e => e.k === 'cer:q1' && e.src === 'cer') && S.styleEditsAll().some(e => e.k === 'a1' && e.src === 'anskey'));
+ok('…and the summary counts both', S.groundingSummary().some(b => /^2 corrections$/.test(b)));
+eq('…and the newest is newest whichever document holds it', S.styleRecentEdits('', 'P5', 'science')[0].k, 'cer:q1');
+ok('…but none of it reaches marking', !S.styleBlock('mark', '').includes('evaporates') && !S.styleBlock('mark', '').includes('dries up'));
+S.cerStyle = { v: 2, edits: [{ slot: 'q2', q: 'Q', wrote: 'W', a: 'A', sub: 'science', note: 'Same lesson twice.' }, { slot: 'q3', q: 'Q', wrote: 'W', a: 'A', sub: 'science', note: 'SAME LESSON TWICE.' }] };
+eq('the same lesson twice is one lesson', S.styleLessons('P5', 'science').length, 1);
+
+/* Retrieval by the question, this bucket first. */
+S.cerStyle = null;
+S.aiStyle = { samples: [
+  { k: 'a', q: 'Why does a metal spoon feel colder than a wooden one?', a: 'METAL CONDUCTS heat away from the hand faster.', lvl: 'p5', sub: 'science' },
+  { k: 'b', q: 'How many quarters make a whole?', a: 'FOUR quarters make one whole.', lvl: 'p4', sub: 'math' },
+  { k: 'c', q: 'Why does a metal spoon feel colder than a wooden one in the morning?', a: 'MATHS METAL red herring.', lvl: 'p6', sub: 'math' }
+], edits: [] };
+const rqBlk = S.styleBlock('hint', 'Why does a metal spoon feel colder than a plastic one?');
+ok('the exemplars are retrieved for the question', rqBlk.includes('METAL CONDUCTS') && !rqBlk.includes('FOUR quarters'));
+ok("this worksheet's bucket comes before another subject's stronger match", rqBlk.indexOf('METAL CONDUCTS') < rqBlk.indexOf('MATHS METAL'));
+ok('omitting the question is the old behaviour, byte for byte', S.styleBlock('hint') === S.styleBlock('hint', ''));
+ok('aiGrounding hands the question through', S.aiGrounding('hint', { q: 'metal spoon colder' }).includes('METAL CONDUCTS'));
+
+/* What a HINT retrieves for: an earlier hint on the same spot, else the
+   level/subject line (which matches nothing and so hands back the newest). */
+S.hints = [
+  { id: 'h1', page: 2, x: 100, y: 400, question: 'Why does the metal spoon feel colder?' },
+  { id: 'h2', page: 2, x: 100, y: 900, question: 'How many legs does an insect have?' },
+  { id: 'h3', page: 3, x: 100, y: 410, question: 'A hint on another page' },
+  { id: 'h4', page: 2, x: 110, y: 405, question: '' }
+];
+eq('a hint retrieves on the earlier hint at the same spot', S.hintRetrievalQuery({ num: 2 }, { x: 105, y: 410 }), 'Why does the metal spoon feel colder?');
+eq('…never one further down the page', S.hintRetrievalQuery({ num: 2 }, { x: 100, y: 700 }), 'P5 Science');
+eq('…never one on another page', S.hintRetrievalQuery({ num: 3 }, { x: 100, y: 900 }), 'P5 Science');
+S.hints = [];
+
+/* Fair-share pots: the second standing rule REACHES the prompt. */
+S.aiStyle = null; S.cerStyle = null;
+const longRuleA = 'A'.repeat(1500), longRuleB = 'B'.repeat(1500);
+S.teachingNotes = [{ id: 'g1', guidance: longRuleA, subjects: [], levels: [] }, { id: 'g2', guidance: longRuleB, subjects: [], levels: [] }];
+const fsBlk = S.aiGrounding('hint');
+ok('the second standing rule reaches the prompt', fsBlk.includes('BBBBBBBB'));
+ok('a long one is trimmed and SAYS so', fsBlk.includes(S.NOTES_TRIM_MARK));
+S.teachingNotes = [{ id: 'g1', guidance: 'Short rule.', subjects: [], levels: [] }, { id: 'g2', guidance: longRuleB, subjects: [], levels: [] }];
+ok('a short note is never trimmed', S.aiGrounding('hint').includes('Short rule.'));
+S.teachingNotes = [{ id: 'g1', guidance: 'Name the process.', subjects: [], levels: [] }, { id: 'g2', guidance: 'name the process', subjects: [], levels: [] }];
+ok('the same rule typed in two apps is one rule', (S.aiGrounding('hint').match(/ame the process/g) || []).length === 1);
+ok('notesTrimTo cuts on a word and marks the cut', S.notesTrimTo('one two three four five six', 20).endsWith(S.NOTES_TRIM_MARK));
+S.teachingNotes = [];
 
 /* Which notes apply here. 'both' is Ans Key's old maths-and-science pairing
    and must not quietly grow to cover subjects that did not exist when it
@@ -1284,7 +1409,7 @@ ok('a busy hint is tracked OFF the hint object, which is saved into the body', /
 const markCall = html.slice(html.indexOf('var raw = await window.askGemini(markPrompt'), html.indexOf('var raw = await window.askGemini(markPrompt') + 900);
 ok('the marking sends its blank rule in the SYSTEM prompt', /system:\s*MARK_SYS \+ markBlankRule\(\)/.test(markCall),
    markCall.replace(/\s+/g, ' ').slice(0, 240));
-const chatCall = html.slice(html.indexOf('var out = await window.askGemini('), html.indexOf('var out = await window.askGemini(') + 400);
+const chatCall = html.slice(html.indexOf('var out = await window.askGemini('), html.indexOf('var out = await window.askGemini(') + 700);
 ok('the chat sends its ceiling rule in the SYSTEM prompt', /system:\s*CHAT_SYS \+ buddyCeilingRule\(\)/.test(chatCall),
    chatCall.replace(/\s+/g, ' ').slice(0, 240));
 
@@ -1345,12 +1470,19 @@ ok('…and says which app it came from', /source:\s*'tutor'/.test(note));
    paper and hints against a guess — with nothing on screen to say which. */
 const hintCall = html.slice(html.indexOf('var raw = await window.askGemini(lines.join'),
                             html.indexOf('var raw = await window.askGemini(lines.join') + 700);
-ok('the hint prompt carries the answer key', /aiGrounding\('hint'\)\s*\+\s*keyRuleBlock\(\)/.test(hintCall),
+ok('the hint prompt carries the answer key', /aiGrounding\('hint', \{ q: q \}\)\s*\+\s*keyRuleBlock\(\)/.test(hintCall),
    hintCall.replace(/\s+/g, ' ').slice(0, 240));
 ok('the marking prompt carries the answer key', /aiGrounding\('mark'\)\s*\+\s*keyRuleBlock\(\)/.test(markCall),
    markCall.replace(/\s+/g, ' ').slice(0, 260));
 ok('the chat carries it too, behind the ceiling rule',
-   /buddyCeilingRule\(\)\s*\+\s*aiGrounding\('teach'\)\s*\+\s*keyRuleBlock\(text\)/.test(chatCall),
+   /buddyCeilingRule\(\)\s*\+\s*aiGrounding\('teach', \{ q: text \}\)\s*\+\s*keyRuleBlock\(text\)/.test(chatCall),
+   chatCall.replace(/\s+/g, ' ').slice(0, 260));
+ok('the corrections document is watched beside the profile, and comes down with it',
+   /_cerStyleUnsub = cerStyleDocRef\(owner\)\.onSnapshot\(/.test(html) &&
+   /\[_notesUnsub, _styleUnsub, _cerStyleUnsub\]\.forEach/.test(html) &&
+   /cerStyle = null;\n\}/.test(html.slice(html.indexOf('function stopTeachingNotes'), html.indexOf('function stopTeachingNotes') + 400)));
+ok('the note budgets are pots, not a slice',
+   !/function notesJoinField\(rel, field, cap\) \{\n  var s = rel\.map/.test(html) && /function notesFairShare\(/.test(html),
    chatCall.replace(/\s+/g, ' ').slice(0, 260));
 
 /* THE KEY IS NOT THE STUDENT'S WORK. Marking the pages at the back of the
