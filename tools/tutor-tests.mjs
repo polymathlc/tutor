@@ -92,6 +92,13 @@ const SRC_TIERS   = between('/* ---- WHICH TIER THIS ONE IS',
 const SRC_QNODES  = between('/* =====================================================================\n   THE ONE PLACE A MISTAKE\'S QUESTION IS DRAWN',
                             'function mistakeCard(m) {', 'the question renderer');
 
+/* The ruler drawn on the copy of a page that goes to the model, and the
+   crosshair on the spot the student tapped. Cut short of `pageJpegForModel`,
+   which needs a real canvas — what is testable here is the ARITHMETIC that
+   decides where the crosshair lands. */
+const SRC_RULER  = between('/* ================= THE RULER AND THE CROSSHAIR',
+                           '/* The whole page as the MODEL reads it', 'the ruler and the crosshair');
+
 const SRC_PALM   = between('var stylusOnly = (function () {',
                            'function attachOverlayHandlers(p) {', 'palm rejection and touch navigation');
 
@@ -154,7 +161,8 @@ vm.createContext(sandbox);
 vm.runInContext(SRC_DEADLINES + '\n' + SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
                 '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
                 '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER + '\n' + SRC_GUIDE +
-                '\n' + SRC_REBUILD + '\n' + SRC_TIERS + '\n' + SRC_QNODES + '\n' + SRC_PALM,
+                '\n' + SRC_REBUILD + '\n' + SRC_TIERS + '\n' + SRC_QNODES + '\n' + SRC_PALM +
+                '\n' + SRC_RULER,
                 sandbox, { filename: 'index.html' });
 const S = sandbox;
 
@@ -1407,8 +1415,8 @@ ok('the live quiz is built AFTER the spoken reply is on its way, never before it
    'a box that delayed the tutor\'s answer would be a box that made the tutor slow');
 ok('the hint hook builds the quiz in the background, off the hint that just landed', /kwQuizAfterHint\(h, epoch\);/.test(html));
 ok('a new worksheet closes the box', /wsEpoch\+\+;\n\s*kwQuizClose\(\);/.test(html));
-ok('leaving the worksheet closes BOTH floating boxes — and takes the tutor\'s finger with them',
-   /if \(v !== 'ws'\) \{ stopLiveTutor\(\); liveTutor\.transcript = \[\]; kwQuizClose\(\); mthClose\(\); tutorPointClear\(\); \}/.test(html),
+ok('leaving the worksheet closes BOTH floating boxes — and takes the tutor\'s marks with them',
+   /if \(v !== 'ws'\) \{ stopLiveTutor\(\); liveTutor\.transcript = \[\]; kwQuizClose\(\); mthClose\(\); tutorMarksClear\(\); \}/.test(html),
    'a quiz — or a working line, or a gesture — about a worksheet nobody has open is drawn over the wrong page');
 ok('Escape closes the box', /if \(e\.key === 'Escape'\) \{\n\s*kwQuizClose\(\);/.test(html));
 ok('the box paints model output as TEXT, never as markup', !/\.innerHTML\s*=/.test(kqSrc) && /textContent = q\.concept/.test(kqSrc));
@@ -2456,8 +2464,8 @@ ok('a gesture already on the page is left alone when the overlay rebuilds',
    DETACHED: taking one out of the document cancels its CSS animation, so
    lifting it out and putting it back flashes exactly as a rebuild does. */
 ok('…and the overlay\'s wipe steps over it rather than detaching it',
-   /var pointNode = svg\.querySelector\('g\[data-point\]'\);/.test(html) &&
-   /if \(n !== pointNode\) svg\.removeChild\(n\);/.test(html) &&
+   /var tutorNodes = Array\.prototype\.slice\.call\(svg\.querySelectorAll\('g\[data-point\], g\[data-work\]'\)\);/.test(html) &&
+   /if \(tutorNodes\.indexOf\(n\) === -1\) svg\.removeChild\(n\);/.test(html) &&
    !/while \(svg\.firstChild\) svg\.removeChild\(svg\.firstChild\);/.test(html),
    'a detached node flashes its way back in every time the child commits a stroke');
 ok('…and it is drawn UNDER the student\'s own ink',
@@ -2487,16 +2495,26 @@ ok('it is painted from renderOverlay, the one function every rebuild goes throug
 
 /* IT COMES DOWN WHEN THE TUTOR MOVES ON, and every one of these is a moment
    it has. Miss one and a finger points at a question nobody is on. */
-ok('a new worksheet takes it off', /wsEpoch\+\+;[\s\S]{0,400}?tutorPointClear\(\);/.test(html));
-ok('leaving the worksheet takes it off', /if \(v !== 'ws'\)[^\n]*tutorPointClear\(\);/.test(html));
+ok('a new worksheet takes it off', /wsEpoch\+\+;[\s\S]{0,400}?tutorMarksClear\(\);/.test(html));
+ok('leaving the worksheet takes it off', /if \(v !== 'ws'\)[^\n]*tutorMarksClear\(\);/.test(html));
 ok('the session ending takes it off',
-   /liveTutor\.phase = 'closing';\n\s*liveSubsClear\(\);\n\s*tutorPointClear\(\);/.test(html));
+   /liveTutor\.phase = 'closing';\n\s*liveSubsClear\(\);\n\s*tutorMarksClear\(\);/.test(html));
 ok('asking for a new hint takes it off BEFORE the new one is built',
-   html.indexOf('tutorPointClear();', html.indexOf('async function askHintAt')) <
+   html.indexOf('tutorMarksClear();', html.indexOf('async function askHintAt')) <
    html.indexOf('hints.push(h);', html.indexOf('async function askHintAt')),
    'a finger on the last question while "Thinking…" is up points at the wrong thing');
 ok('and a new spoken question takes it off too',
-   /liveStatus\('Thinking…'\);[\s\S]{0,400}?tutorPointClear\(\);/.test(html));
+   /liveStatus\('Thinking…'\);[\s\S]{0,400}?tutorMarksClear\(\);/.test(html));
+/* ONE clear for BOTH marks, and every one of those five call sites reaches it.
+   Two clear functions with five call sites each is ten chances to forget one,
+   and what is forgotten is silent. */
+ok('…and that ONE clear takes BOTH the finger and the working down',
+   /function tutorMarksClear\(\) \{\n\s*tutorPointClear\(\);\n\s*tutorWorkClear\(\);\n\}/.test(html),
+   'a note about a step, left standing beside a question nobody is on any more');
+ok('…and nothing but that one function calls either half',
+   (html.match(/tutorPointClear\(\)/g) || []).length === 2 &&
+   (html.match(/tutorWorkClear\(\)/g) || []).length === 2,
+   'one declaration and exactly one caller each — the shared clear');
 
 /* THE TWO PRODUCERS. A hint carries its gesture in the JSON it already asks
    for; the live tutor opens its spoken reply with a marker. Both are told
@@ -2515,9 +2533,12 @@ ok('…and the hints are saved WHOLE, so the gesture travels with them',
    already looking at, and a worksheet that scrolled itself while a child was
    writing on it would be the app taking the page away from them. */
 ok('only an explicit "show me where" brings the page into view',
-   /if \(tutorPointShow\(h\.point\)\) tutorPointReveal\(\);/.test(html) &&
+   /var shown = tutorPointShow\(h\.point\);[\s\S]{0,160}?if \(shown\) tutorPointReveal\(\);/.test(html) &&
    (html.match(/tutorPointReveal\(\)/g) || []).length === 2,
    'tutorPointReveal is its own declaration plus exactly one caller');
+ok('…and the button puts the WORKING back with the finger',
+   /if \(h\.work\) tutorWorkShow\(h\.work\);/.test(html),
+   'half an explanation put back is a note about a step with nothing pointing at the question');
 const HINT_SYS_SRC = between('var HINT_SYS =', 'function hintPromptFor(', 'the hint system prompt');
 const LIVE_SYS_SRC = between('You support a live voice tutor.', 'onProgress: function ()', 'the live system prompt');
 ok('BOTH prompts refuse to guess',
@@ -2532,6 +2553,251 @@ ok('\u2026and both offer the same four shapes',
    /circle, underline, arrow or box/.test(LIVE_SYS_SRC));
 ok('the hint is told to point at the QUESTION, never the answer',
    /Point at the QUESTION, never at the answer/.test(html));
+
+
+/* =====================================================================
+   THE RULER AND THE CROSSHAIR — how a model is told WHERE
+   =====================================================================
+   Two bugs the tutor's first finger shipped with, and both were silent.
+
+   (1) A child tapped question 12 and was handed a hint about question 11.
+       The close-up band runs 220 page units ABOVE the tap and 320 below, so
+       the tap sits about two fifths of the way down — and the request said
+       "they tapped near the top". The model dutifully read the question at
+       the top of the band, which is the question BEFORE the one that was
+       tapped, while the pin on screen sat perfectly correctly on 12.
+
+   (2) The underline landed on the wrong line, because the position was being
+       ESTIMATED on a photograph carrying no reference marks at all — and
+       because HINT_SYS named the picture to measure on by ORDINAL ("the
+       second picture") while `hintImagesFor` builds its list conditionally.
+       A page whose close-up could not be made puts the PREVIOUS PAGE second.
+   ===================================================================== */
+section('The ruler and the crosshair');
+
+/* THE CROSSHAIR IS ARITHMETIC, and getting it wrong puts it on a different
+   question on a picture that still looks perfectly convincing. */
+const tapAt = (pt, kx, ky, off) => S.tapMarkSpot(pt, kx, ky, off);
+ok('the tap is converted into the picture’s own pixels',
+   JSON.stringify(tapAt({ x: 100, y: 200 }, 2, 2, 0)) === JSON.stringify({ x: 200, y: 400 }));
+ok('…and the BAND’s own top is subtracted',
+   JSON.stringify(tapAt({ x: 100, y: 200 }, 2, 2, 150)) === JSON.stringify({ x: 200, y: 250 }),
+   'a crosshair measured from the page rather than from the band lands off the bottom of the close-up');
+ok('a tap that is not a tap is refused rather than drawn at the origin',
+   S.tapMarkSpot(null, 2, 2, 0) === null && S.tapMarkSpot({ x: 'x', y: 1 }, 2, 2, 0) === null);
+
+/* THE RULER GOES ON THE COPY AND NOWHERE ELSE. `compositeJpeg` is what the
+   marking run, the mistake book, the cover and the printer all read, and a
+   grid drawn across a child's printed worksheet would be the same leak
+   through a side door the whole answer-key section exists to shut. */
+const COMPOSITE_SRC = between('function compositeJpeg(p, maxDim, quality)', 'function bandDataUrl(', 'compositeJpeg');
+ok('compositeJpeg is left ALONE — no grid and no crosshair on the picture everything else reads',
+   !/drawPageGrid|drawTapMark/.test(COMPOSITE_SRC),
+   'a ruler on the marking run’s picture is a ruler on the mistake book’s and on the printer’s');
+ok('…so the ruler has a function of its OWN',
+   /function pageJpegForModel\(p, maxDim, quality, tap\)/.test(html) &&
+   /drawPageGrid\(ctx, out\.width, out\.height\);/.test(html));
+ok('the band takes its mark as an OPTIONAL argument, so every older caller is unchanged',
+   /function bandDataUrl\(p, yTop, yBottom, quality, mark\)/.test(html) &&
+   /mark \? tapMarkSpot\(mark, kx, ky, y0\) : null/.test(html));
+
+/* THE PICTURES A HINT IS ASKED ABOUT. */
+const HIMG_SRC = between('function hintImagesFor(p, pt)', '/* WHAT THE TEACHER\'S EXEMPLARS', 'hintImagesFor');
+ok('the close-up carries the crosshair',
+   /bandJpeg\(p, Math\.max\(0, pt\.y - 220\), Math\.min\(p\.baseH, pt\.y \+ 320\), pt\)/.test(HIMG_SRC),
+   'a band with no mark on it leaves the model guessing which of the two questions in it was tapped');
+ok('the whole page carries the grid AND the crosshair',
+   /pageJpegForModel\(p, 1400, null, pt\)/.test(HIMG_SRC));
+ok('…and the page BEFORE carries neither',
+   /var pv = compositeJpeg\(prev, 1100\);/.test(HIMG_SRC),
+   'nothing is measured on the previous page, and a ruler drawn there is an invitation to measure');
+ok('every picture is tagged with its ROLE',
+   /role: 'band'/.test(HIMG_SRC) && /role: 'page'/.test(HIMG_SRC) && /role: 'prev'/.test(HIMG_SRC));
+
+/* …and the role is what the request reads, so the number it states is the
+   number the picture really has. */
+const LADDER_SRC = between('async function hintLadderFor(p, pt)', 'var raw = await window.askGemini', 'the hint ladder request');
+ok('the whole-page picture is named by the index it REALLY has',
+   /indexOf\('page'\)/.test(LADDER_SRC) && /'Measure "point" and "work" on image ' \+ \(pageIdx \+ 1\)/.test(LADDER_SRC),
+   'an ordinal is the PREVIOUS PAGE on any worksheet whose close-up could not be built');
+ok('…and the prompt itself no longer names a picture by ordinal at all',
+   !/the second picture/.test(HINT_SYS_SRC),
+   'the gesture was measured against one page’s layout and drawn on another’s, in silence');
+ok('THE FALSE LINE IS GONE',
+   !/lines\.push\('They tapped near the top/.test(html),
+   'the band puts the tap two fifths down, so "near the top" pointed the model at the question BEFORE it');
+ok('…and the ring is described as the exact spot instead',
+   /The magenta RING drawn on the pictures is the exact spot the student tapped/.test(LADDER_SRC));
+ok('…and the request says which question that makes it, both ways round',
+   /the question whose number and wording the ring sits inside/.test(LADDER_SRC) &&
+   /the question DIRECTLY ABOVE the ring/.test(LADDER_SRC) &&
+   /Never the question above that one/.test(LADDER_SRC),
+   'a tap on a blank answer line belongs to the question above it, and to nothing further up');
+
+/* THE GRID IS THE APP'S AND NOT THE PAPER'S, and both prompts have to say so:
+   a model that reads "300" off the margin into the question it transcribes
+   has invented a number in a maths question — and that question then travels
+   into the hint, the keyword check and the mistake book. */
+ok('the hint prompt says the grid is not part of the worksheet',
+   /ARE DRAWN BY THIS APP AND ARE NOT PART OF THE WORKSHEET/.test(HINT_SYS_SRC) &&
+   /Never copy a grid number/.test(HINT_SYS_SRC));
+ok('…and so does the live one',
+   /it is NOT part of the worksheet, so never read a grid number out/.test(html));
+ok('both prompts send the model to the grid rather than to an estimate',
+   /READ IT OFF THE TEAL GRID/.test(HINT_SYS_SRC) && /READ IT OFF THE GRID LINES rather than estimating/.test(LIVE_SYS_SRC));
+ok('the live pages go through the ruler, not the plain composite',
+   /var data = pageJpegForModel\(p, LIVE_PAGE_PX, LIVE_PAGE_QUALITY, null\);/.test(html),
+   'a live reply’s marker is measured in 0–1000 on whatever picture was sent');
+ok('the labels are drawn in a colour no worksheet prints, on their own plate',
+   /var GRID_TEXT = '#0091aa';/.test(SRC_RULER) && /rgba\(255,255,255,0\.9\)/.test(SRC_RULER),
+   'black-on-white numbers in the margin read as something the paper printed');
+ok('\u2026and a label always sits ON the line it names',
+   /for \(var j = GRID_STEP; j <= 1000 - GRID_STEP; j \+= GRID_STEP\)/.test(SRC_RULER) &&
+   /gridLabel\(ctx, String\(j\), w \* j \/ 1000, fs \* 1\.1, fs, 'center'\)/.test(SRC_RULER),
+   'a "0" nudged clear of the other "0" in the corner is a calibration mark a few per cent from the line it names');
+
+/* =====================================================================
+   THE TUTOR WRITES WORKING ON THE PAGE
+   =====================================================================
+   "Human teachers can do working on the paper to help the students." So the
+   tutor does — two or three lines in the blank space beside the question,
+   stopping one step short of the answer.
+   ===================================================================== */
+section('The tutor\'s working, against index.html itself');
+
+const WORK_SRC = between('\n   ✍️ THE TUTOR WRITES WORKING ON THE PAGE',
+                         '/* ================= End the tutor\'s working', 'the tutor\'s working');
+
+/* THE ONE THAT MATTERS, and it is the finger's own rule: working in
+   `annotations` is read by the NEXT marking run as the student's own work. */
+ok('the working is NEVER an annotation',
+   !/annotations\.push|annotations\.splice|annotations\s*=[^=]/.test(WORK_SRC) &&
+   /'data-work': want/.test(WORK_SRC),
+   'the tutor half-solves the question, the marking agrees with it, and no screen says why');
+ok('…and the flattened picture never draws it',
+   !/data-work/.test(between('function drawAnnsOnCtx(ctx, kx, ky, anns, pageNum)', '/* The whole page, with every annotation', 'the canvas flatten')),
+   'it would be composited into the very picture the marking run reads');
+ok('it can never swallow a stroke',
+   /'pointer-events': 'none'/.test(WORK_SRC) && /\.tutorWork \{ pointer-events: none;/.test(html));
+ok('NOTHING here sets a timer',
+   !/setTimeout|setInterval/.test(WORK_SRC),
+   'it comes down when the tutor MOVES ON, which is what a pencil does');
+ok('the epoch is checked before it is painted',
+   /w\.epoch === wsEpoch && w\.page === p\.num/.test(WORK_SRC));
+ok('it is drawn UNDER the student’s own ink',
+   /svg\.insertBefore\(g, svg\.firstChild\);/.test(WORK_SRC) && !/svg\.appendChild\(g\);/.test(WORK_SRC));
+ok('a note already on the page is left alone when the overlay rebuilds',
+   /had\[0\]\.getAttribute\('data-work'\) === want\) return;/.test(WORK_SRC),
+   'a node rebuilt with the overlay restarts its fade-in, so the note flashes on every word written');
+ok('it is painted from renderOverlay, the one function every rebuild goes through',
+   /renderMarksOn\(p\);\n\s*renderTutorPointOn\(p\);\n\s*renderTutorWorkOn\(p\);/.test(html));
+ok('model output is painted as TEXT, never as markup',
+   /t\.textContent = line;/.test(WORK_SRC) && !/innerHTML/.test(WORK_SRC));
+
+/* IT SITS ON THE METHOD RUNG — the very rung the drawn bar model sits on. */
+ok('the rung is the method rung, and it is the maths pad’s own',
+   S.WORK_RUNG === 'method' && S.WORK_RUNG === S.MTH_MODEL_RUNG,
+   'working set out IS the method');
+const wkAtLevel = level => { S.wsMeta.guidance = level; return S.tutorWorkAllowed(); };
+ok('"Nudges only" gets no working', wkAtLevel('nudge') === false);
+ok('"Concept & keywords" gets no working', wkAtLevel('concepts') === false);
+ok('"How to do it" gets working', wkAtLevel('method') === true);
+ok('"The answer" gets working', wkAtLevel('answer') === true);
+/* …and the DOOR asks again, because a prompt is not a lock. */
+S.wsMeta.guidance = 'nudge';
+ok('the ONE door refuses below the method rung, whatever a model returned',
+   S.tutorWorkShow({ page: 1, at: { x: 100, y: 100 }, lines: ['1 unit = ?'] }) === false,
+   'a hidden field has never been the lock in this app');
+S.wsMeta.guidance = 'method';
+ok('…and accepts at it',
+   S.tutorWorkShow({ page: 1, at: { x: 100, y: 100 }, lines: ['1 unit = ?'] }) === true);
+S.tutorWorkClear();
+
+/* IT ALWAYS STOPS ONE STEP SHORT. */
+const wkJoin = (v, answerOk) => S.tutorWorkLines(v, answerOk).join(' | ');
+ok('below the answer rung the last line must carry a "?"',
+   wkJoin(['3 units = 12', '1 unit = ?'], false) === '3 units = 12 | 1 unit = ?');
+ok('…and working that ran to the answer is REFUSED, not trimmed',
+   wkJoin(['3 units = 12', '1 unit = 4', '5 units = 20'], false) === '',
+   'a chain cut short still ends one step further on than it should, and nobody wrote what is left');
+ok('…while the top rung may finish the sum',
+   wkJoin(['3 units = 12', '1 unit = 4'], true) === '3 units = 12 | 1 unit = 4');
+ok('an empty block is nothing at all', wkJoin([], true) === '' && wkJoin(null, true) === '');
+ok('blank rows are dropped rather than drawn',
+   wkJoin(['3 units = 12', '   ', '1 unit = ?'], false) === '3 units = 12 | 1 unit = ?');
+ok('a line longer than the cap is cut to it',
+   S.tutorWorkLines(['x'.repeat(200) + ' ?'], true)[0].length === S.WORK_CHARS_MAX);
+const wkMany = S.tutorWorkLines(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h ?'], false);
+ok('past the line cap the FIRST rows and the LAST one are kept',
+   wkMany.length === S.WORK_LINES_MAX && wkMany[wkMany.length - 1] === 'h ?' && wkMany[0] === 'a',
+   'dropping the last row takes away the "?" the student was meant to finish, turning an invitation into a lecture');
+
+/* THE ANCHOR IS NEVER CLAMPED and goes through the marking's own reader. */
+const wkMake = (at, ls, answerOk) => S.tutorWorkMake({ at: at, lines: ls }, 1, answerOk);
+ok('a position outside the page is REFUSED, never pulled in',
+   wkMake([1400, 300], ['1 unit = ?'], false) === null && wkMake([-5, 300], ['1 unit = ?'], false) === null,
+   'working beside the wrong question is worse than no working at all');
+ok('…and it is the marking’s own reader that says so',
+   /var at = _markAt\(spec\.at\);/.test(WORK_SRC));
+ok('a page number that is not a page is refused',
+   wkMake([100, 100], ['1 unit = ?'], false) !== null &&
+   S.tutorWorkMake({ at: [100, 100], lines: ['1 unit = ?'] }, 0, false) === null);
+ok('the maker carries NO epoch, so a hint can put its own back months later',
+   !/epoch/.test(between('function tutorWorkMake(spec, page, answerOk)', 'function tutorWorkGeom(', 'the working maker')) &&
+   /epoch: wsEpoch/.test(WORK_SRC));
+ok('a caller that forgets the answer rung gets the STRICT answer',
+   S.tutorWorkMake({ at: [100, 100], lines: ['1 unit = 4'] }, 1) === null,
+   'the safe default is the one that cannot hand over the answer');
+
+/* THE BOX, on the other hand, IS nudged — a note half off the page is simply
+   unreadable, and a centimetre cannot change which question it is beside. */
+const wkGeom = (at, ls) => S.tutorWorkGeom(S.tutorWorkMake({ at: at, lines: ls }, 1, true), 1000, 1400);
+const wkFar = wkGeom([990, 990], ['3 units = 12', '1 unit = 12 ÷ 3']);
+ok('a note asked for in the bottom-right corner still lands ON the page',
+   wkFar.x >= 0 && wkFar.y >= 0 && wkFar.x + wkFar.w <= 1000.001 && wkFar.y + wkFar.h <= 1400.001,
+   JSON.stringify(wkFar));
+const wkNear = wkGeom([100, 100], ['3 units = 12']);
+ok('…and one with room is left where it was asked for',
+   Math.abs(wkNear.x - 100) < 0.001 && Math.abs(wkNear.y - 140) < 0.001, JSON.stringify(wkNear));
+ok('the box is as wide as its longest row',
+   wkGeom([100, 100], ['xxxxxxxxxxxxxxxxxxxxxxxxxxxx ?']).w > wkGeom([100, 100], ['x ?']).w);
+ok('…and as tall as it has rows',
+   wkGeom([100, 100], ['a', 'b', 'c ?']).h > wkGeom([100, 100], ['a ?']).h);
+ok('a geometry with no page is refused rather than drawn at nothing',
+   S.tutorWorkGeom({ at: { x: 1, y: 1 }, lines: ['?'] }, 0, 100) === null);
+
+/* THE TWO PRODUCERS. */
+ok('the hint ladder asks for working only where the ladder allows it',
+   /if \(tutorWorkAllowed\(\)\) \{/.test(LADDER_SRC) &&
+   /Do NOT include "work": the student/.test(LADDER_SRC));
+ok('…and states the "?" rule when the answer rung is shut',
+   /mthAnswerAllowed\(\) \? '' : 'Its LAST line must contain/.test(LADDER_SRC));
+ok('…and reads it back through the ONE maker',
+   /work: tutorWorkMake\(res\.work, p\.num, mthAnswerAllowed\(\)\)/.test(html),
+   'the ladder is read in the ONE place that reads it, never tested a second time here');
+/* ↻ PRACTISE AGAIN is the tutor moving on too: it clears the hints, and a
+   finger or a note from one of them left on the page belongs to a hint that
+   no longer exists. */
+ok('starting the worksheet again takes both marks off with the hints',
+   /tutorMarksClear\(\);\s*\/\/ the hints have gone/.test(html));
+ok('a hint that carries working and NO gesture still gets its button',
+   /if \(h\.point \|\| h\.work\) \{/.test(html) &&
+   /h\.point \? '\u{1F449} Show me where to look' : '\u270D\uFE0F Show the working again'/u.test(html),
+   'a button drawn only for the finger leaves that working with no way back onto the page');
+ok('the hint saves its working only when the door really drew it',
+   /if \(out\.work && tutorWorkShow\(out\.work\)\) h\.work = out\.work;/.test(html),
+   'a block saved on a hint the ceiling refused comes back the next time the worksheet opens');
+ok('HINT_SYS asks for the field, with the white-space and the "?" rules',
+   /"work":\{"at":\[560,120\]/.test(HINT_SYS_SRC) &&
+   /EMPTY WHITE SPACE/.test(HINT_SYS_SRC) &&
+   /IT MUST STOP/.test(HINT_SYS_SRC) &&
+   /LAST line always contains a "\\u003f"|LAST line always contains a "\?"/.test(HINT_SYS_SRC));
+ok('the live tutor is given a working marker of its own',
+   /\[\[work p3 560,120 \| 3 units = 12/.test(LIVE_SYS_SRC) &&
+   /LAST line always contains a "\?"/.test(LIVE_SYS_SRC));
+ok('…and both prompts put the working in WHITE SPACE, never over the question',
+   /EMPTY WHITE SPACE/.test(HINT_SYS_SRC) && /EMPTY WHITE SPACE/.test(LIVE_SYS_SRC),
+   'a note printed over the question is the question taken away');
 
 /* =====================================================================
    CHUNG GPT
