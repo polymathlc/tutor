@@ -2,20 +2,371 @@
 
 Guidance for Claude when working in this repo.
 
+## 🔮 THE LIVE ORB — the WHOLE logo in sand, inside a glass sphere, and no "let me check" (v1.21.0)
+
+`LIVE_ORB_TEAL` … `LIVE_ORB_MAGENTA_DARK` / `LIVE_ORB_PALETTE` / **`LIVE_ORB_MASK`** /
+`LIVE_ORB_MASK_W` / `LIVE_ORB_MASK_H` / **`LIVE_ORB_STRIDE`** / `LIVE_ORB_STRIDE_FLOAT` /
+**`LIVE_ORB_GRAIN_COVER`** / `LIVE_ORB_LOGO_W` / `LIVE_ORB_TALK_MS` / `LIVE_ORB_TALK_FLOOR` /
+`LIVE_ORB_RING_R` / `LIVE_ORB_RING_BAND` / `LIVE_ORB_SPIN` / `LIVE_ORB_BREATH` / `LIVE_ORB_DRIFT` /
+**`LIVE_ORB_IDLE_GUSTS`** / `LIVE_ORB_GUST_MS` / `LIVE_ORB_GUST_LEN` / `LIVE_ORB_SNAP` /
+`LIVE_ORB_SANDY_RATE` / `liveOrbRng` / `liveOrbMaskCells` / `liveOrbPitch` / **`liveOrbGrains`** /
+`liveOrbModel` / **`liveOrbState`** / **`liveOrbBroken`** / **`liveOrbTarget`** / `liveOrbEnter` /
+**`liveOrbStep`** / `liveOrbSettle` / `liveOrbMotionOk` / `liveOrbHosts` / `liveOrbStrideFor` /
+`liveOrbStage` / `liveOrbVisible` / `liveOrbDraw` / **`liveOrbFrame`** / `liveOrbLoopStart` /
+**`liveOrbPaint`** / `liveOrbListen` / `liveOrbHush` / `liveOrbSpoke`, and `LIVE_FILLER_LEAD` /
+`LIVE_FILLER_VERB` / `LIVE_FILLER_CLAUSE` / `LIVE_FILLER_RE` / `LIVE_FILLER_SENTENCE_RE` /
+**`liveStripFiller`** (search `THE LIVE ORB` and `NO "LET ME CHECK"`), plus `#liveOrb` in the live
+card, `#liveOrbFloat` beside `#liveSubs`, the `.liveOrb` / `.orbBody` / `.orbGlass` / `.orbStage` /
+`.orbGloss` / `.orbCap` / `.orbShadow` CSS with the `orbFloat` / `orbShadow` keyframes, the
+`orbAudio` / `level` / `spokeAt` / `orbTalking` fields on `liveTutor`, the repaint in `openBuddy`,
+and the strengthened prompts in `worksheetContextRule`, `runLiveDelegation` and
+`functions/live-service.js`.
+
+The live card was a line of text. It is the centre's own logo now — the teal block and the
+magenta ribbon that make the M — in two and a half thousand grains of sand INSIDE A FLOATING
+GLASS SPHERE, and what the sand DOES is what the session is doing. At rest it is the WHOLE
+logo, solid, with no gap between grains: while it idles and while it listens the M simply stands
+(breathing, drifting a little in the glass). ONLY thinking and talking break it apart — a swirl
+into a ring of sand that spins under the word *Thinking* while a check runs, a row that rises
+with the voice while it talks — and it re-forms, grain for grain, the moment either ends.
+v1.19.0 drew it as sixteen DOM spheres moved by CSS transitions; v1.20.0 as a thousand loose
+grains with an idle gust blowing them about. The spheres could not look like the logo and the
+gust meant the logo was never quite there; both went.
+
+- **THE SHAPE IS THE ARTWORK.** `LIVE_ORB_MASK` is the logo itself, read off the centre's own
+  picture cell by cell (66 × 58, one letter per cell naming which of the six colours it is, a
+  dot for paper, run-length encoded) and `liveOrbGrains` makes ONE grain per cell (per
+  stride × stride block of cells in the float — `LIVE_ORB_STRIDE_FLOAT`), each with its HOME at
+  the exact centre of that cell. So the sand settles into the real logo — the block's lit face, its shadowed face and the
+  fold of the ribbon come out in their own colours without anybody drawing them — and a sketch of
+  the logo in polygons is exactly what this replaced. Re-reading the mask means re-running the
+  classification against the picture (six nearest colours, strays with fewer than three inked
+  neighbours dropped, cropped to the ink), never editing the string by hand.
+- **THE LOGO IS SOLID BY CONSTRUCTION, not by tuning.** The homes are an exact lattice (no
+  jitter inside the cell — `(cell.px + stride / 2) * scale`), and `liveOrbDraw` draws a grain as
+  a disc of `LIVE_ORB_GRAIN_COVER` × the cell pitch (`liveOrbPitch`), which is above √½ and so
+  covers the cell corner to corner and overlaps its neighbours. At rest the jitter force is ZERO
+  and a grain that has arrived is put EXACTLY on its target (`LIVE_ORB_SNAP`), so the settled
+  logo is a tiling and not a tremor — the harness asserts that ten seconds of idle stepping
+  moves nothing by a hair, and that every home has a neighbour exactly one pitch away. The
+  breath and the drift while listening are a uniform scale and a translation, the two motions
+  that cannot open a gap. Lower the cover under 0.7071, jitter the homes, or let the idle
+  jitter back in, and the logo is a scatter of dots again.
+- **ONLY THINKING AND TALKING BREAK THE LOGO APART**, and `liveOrbBroken(state)` is the ONE
+  place that is decided: the renderer reads it to switch between solid tiles and sand of uneven
+  sizes (`sz`, eased through `model.sandy` so a change never pops), `liveOrbStep` reads it to
+  switch the jitter on, and `liveOrbEnter` reads it to add the impulse that makes the break
+  visible (a swirl into the ring, a puff into the row, a scatter on the way back). The idle gust
+  of v1.20.0 is KEPT, switched off by `LIVE_ORB_IDLE_GUSTS` — the harness flips it on to prove
+  the machinery still runs off the frame clock, and it must never be on by default: an idle
+  logo that blows apart is not the logo.
+- **THE GLASS IS THE STYLESHEET'S.** `.orbBody` is the sphere (it bobs on `orbFloat`, slowly),
+  `.orbGlass` its body — a radial gradient lit from the top left, an inner shadow at the foot, a
+  hairline rim, a `backdrop-filter` so the float frosts the page behind it — `.orbStage` the
+  canvas inside it, `.orbGloss` the specular highlight over the sand, and `.orbShadow` the shadow
+  the sphere casts on the surface BENEATH it, shrinking and fading as the sphere rises
+  (`orbShadow`). `--halo` is the glow round the glass: teal while it thinks, magenta while it
+  talks, nothing at rest — one custom property per state, so the halo is a transition on
+  `box-shadow` rather than four copies of the shadow list. Every measurement is in `--u`, so
+  the card's orb and the float are one drawing at two sizes; the host's bottom margin (and the
+  float's `bottom`) reserve the room the shadow needs. `prefers-reduced-motion` stops the bob
+  and the shadow's breath here as well as the sand in the JS.
+- **THE MOTION IS PHYSICS, NOT A KEYFRAME.** Each grain is a particle with a position and a
+  velocity. `liveOrbTarget` says where a grain WANTS to be in a state — its home, its spot on a
+  ring that turns with time, its place on a row whose height is a travelling wave scaled by the
+  voice level — and `liveOrbStep` pulls it there with a spring, damps it, and adds the state's
+  own field: a vortex while thinking, a whisper of jitter while broken apart, nothing at all
+  at rest. A state change never teleports a grain; `liveOrbEnter` only adds the impulse that
+  makes the change read (a kick along the ring's turn on the way in, a puff into the row, a
+  scatter on the way back to the M).
+- **`liveOrbState()` IS THE ONE PLACE THE PHASE BECOMES A STATE**, and both orbs are painted by
+  the one `liveOrbPaint`, so the card and the float can never disagree about what the tutor is
+  doing. Talking is READ OFF `liveTutor.spokeAt` — a timestamp, not a flag — so the 1-second
+  tick's ordinary render lets the row settle back into the M.
+- **NOTHING HERE SETS A TIMER, and the harness counts.** Half a dozen cases assert
+  `timers.size === 0` after a session ends. The loop is ONE `requestAnimationFrame`
+  (`liveOrbFrame`) that runs only while an orb is on screen (`liveOrbVisible`) and stops itself
+  when none is — `liveOrbPaint` starts it again, which is why `openBuddy` repaints when the
+  buddy reopens on the live tab. The (switched-off) idle gust is scheduled off the FRAME CLOCK
+  inside that loop (`model.nextGust`), never a `setTimeout`. The analyser's own `requestAnimationFrame` is
+  separate and is cancelled by `liveOrbHush()` in the same `release()` that closes the
+  transport.
+- **THE MODEL IS PURE, and that is what makes it testable.** `liveOrbGrains`, `liveOrbTarget`,
+  `liveOrbStep` and `liveOrbSettle` touch no DOM, so the harness — which has no canvas and no
+  `requestAnimationFrame` — pins the physics by stepping the model by hand: the ring turns, the
+  wave rises with the level, thinking breaks the logo apart and idling re-forms it exactly.
+  Where there is
+  no frame loop (the harness) or the student asked for reduced motion (`liveOrbMotionOk`), the
+  grains are SETTLED straight onto their targets and drawn once.
+- **THE GRAINS ARE GROUPED BY COLOUR AT BIRTH**, so `liveOrbDraw` is six fills a frame — six
+  paths of a few hundred arcs — rather than two and a half thousand DOM nodes (measured at
+  61 fps in headless Chromium with both orbs running). The float carries a quarter of the
+  grains, each covering a 2 × 2 block (`LIVE_ORB_STRIDE_FLOAT`, through `liveOrbStrideFor`, the
+  ONE place a host's stride is decided); `--u` sizes the glass and the caption and is the only
+  thing the stylesheet knows about the grid.
+- **THE VOICE IS MEASURED, WITH A FALLBACK.** `liveOrbListen` hangs an AnalyserNode on the SAME
+  remote track the speaker plays, so the row rises with the voice the student is hearing. Where
+  Web Audio is missing (the harness, an iPad in Lockdown Mode) `liveOrbSpoke` counts each
+  output-transcript delta as a heard syllable, so the row talks either way; the analyser's
+  level wins when both exist, because it is measured and the pulse is not. The loop reads
+  `liveTutor.level` every frame, so the analyser only paints on a talking transition.
+- **EVERY DOM CALL IS DEFENSIVE.** The harness runs the live block in a vm with a mock document:
+  a host with no stage grows a canvas, a stage with no 2D context draws nothing, and a missing
+  host is simply not painted.
+- **THE FLOAT NEVER TAKES A POINTER** — it sits over a page a child writes on with a stylus, the
+  rule `#liveSubs` already carries — and it is up only while `liveActive()` on an open worksheet.
+
+### No "let me check" — the scrubber
+
+The voice model is told, in `functions/live-service.js`, to stay silent while a delegation is
+pending and to begin with the first teaching sentence when the result arrives; the delegation's
+own system prompt says the reply is READ ALOUD and must never open with filler. A text model
+still opens with "Let me check the worksheet…" often enough that the reply is **scrubbed before
+it is handed to the speaker** (`liveStripFiller` on `spokenReply`).
+
+- **IT IS A SCRUBBER, NOT A REWRITER.** Only a leading run of filler clauses is cut, then any
+  whole sentence that is nothing but filler, then a thinking sound opening a sentence ("Hmm,
+  what is the unit?"). The teaching itself is never touched.
+- **"LET ME KNOW" IS DELIBERATELY NOT FILLER.** `LIVE_FILLER_VERB` names the verbs that mean
+  waiting — think, check, see, look, read, go over, figure out — so "Let me know when you have
+  tried it" survives, as does a bare "Wait, that is not right" and "Look at the diagram first".
+- **A REPLY THAT WAS ALL FILLER COMES BACK EMPTY**, so the caller's existing fallback line
+  speaks — better than reading "Let me check." to a child and stopping.
+- **Only the FIRST letter is recapitalised** after a cut: an "e.g." mid-reply is an abbreviation.
+- Run **`node --test tools/live-tutor-tests.mjs`**, **`node tools/tutor-tests.mjs`** and
+  **`cd functions && node --test test/*.test.js`** after touching any of it.
+
+## 🧩 KEYWORD CHECKS — the concepts rung asked as a question (v1.17.0)
+
+`KWQ_KEY` / `KWQ_RUNG` / `KWQ_MAX_BLANKS` / `KWQ_LIVE_GAP_MS` / `kwQuizPref` /
+`kwQuiz` / `kwQuizBusyHints` / **`kwQuizAllowed`** / `kwQuizLockedNote` /
+`KWQ_SYS` / `kwQuizCeilingRule` / `kwQuizNorm` / `kwQuizKeyAnswers` /
+**`kwQuizGivesAnswer`** / **`kwQuizClean`** / `kwQuizMatch` / **`kwQuizBuild`**
+/ `kwQuizShow` / `kwQuizClose` / `kwQuizLayout` / `kwQuizRender` /
+`kwQuizCheck` / `kwQuizSolved` / `kwQuizReveal` / `kwQuizTellTutor` /
+`kwQuizAfterHint` / `kwQuizForHint` / `kwQuizForLive` (search `THE KEYWORD
+QUIZ`), the syllabus it reads — `SYLLABUS_TOPICS` / `sylLevelNum` / `sylNorm` /
+`sylRows` / **`sylObjectivesFor`** / `sylPromptBlock` (search `THE SCIENCE
+SYLLABUS`) — plus `#kwQuiz`, `#liveQuizBtn`, the `.kwq*` CSS, the hooks in
+`askHintAt` / `runLiveDelegation` / `loadPdf` / `showView` / the Escape
+handler, the 🧩 button on `hintCard`, and the `quiz` / `solved` rows of
+`USAGE_EVENTS`.
+
+A box pops up over the page and asks the student to FILL IN the words a
+question needs instead of telling them — *"Water turns into [1] by [2]."* — in
+hint mode and in live mode alike. It is the "Concept & keywords" rung of the
+ladder asked as a question rather than read out.
+
+- **IT SITS ON A RUNG, SO THE CEILING GATES IT.** A quiz hands over exactly
+  what the concepts rung hands over, so `kwQuizAllowed` asks the LADDER
+  (`rungsAllowed`) whether that rung is allowed and nowhere decides it a second
+  time. Below that level it is shown 🔒 locked on the card and on the hints
+  tab, like any other locked rung — and `kwQuizClean` refuses a reply outright
+  when the level has changed under it, which is the belt to that brace.
+- **THE KEY NEVER LIFTS THE CEILING**, and this is the one that matters:
+  `kwQuizGivesAnswer` refuses the WHOLE quiz below full help when any blank's
+  word (or an accepted form of it) is exactly what the paper's key gives as
+  the answer. Filling that hole in would state the answer; leaving it empty
+  would be a hole the student cannot fill; and "the puddle dried up because
+  of [evaporation]" beside a key that says *Evaporation* is the answer with a
+  box round it. With no question number every row on the paper counts, because
+  a word that is ANY answer on the paper is an answer on the paper.
+- **ONE BUILDER, ONE CLEANER, ONE BOX.** The 💡 card and the 🎧 tutor both
+  reach the quiz through `kwQuizBuild` → `kwQuizClean` → `kwQuizShow`, so the
+  two modes can never disagree about what a quiz may hold. A second cleaner is
+  a second place to forget the key guard.
+- **IT IS GROUNDED AS `'hint'`**, because the keywords and the key facts are
+  what a quiz is built from and the marking standards are not; the key rides
+  beside it through `keyRuleBlock`; **the syllabus comes AFTER the notes and
+  says the notes win** (`sylPromptBlock`) — the syllabus is the floor under
+  how this teacher teaches a topic, never a second authority beside it; and
+  `kwQuizCeilingRule` restates the ceiling last, where the blanks are decided.
+  The harness pins that order against the file.
+- **THE SYLLABUS IS MATCHED, NEVER SENT WHOLE.** `sylObjectivesFor` scores the
+  79 objectives by the keywords the text actually uses (a two-word phrase
+  counts double) and hands over the best three past a floor — so a maths
+  question, which mentions "water" and nothing else on the list, gets no
+  syllabus block at all, and a subject that is not science gets none whatever
+  the words. The student's level CAPS it: a P4 worksheet is never told it tests
+  a P6 objective, while a P6 child is still reminded of P3 science. It is a
+  COPY of Ans Key's `SYLLABUS_TOPICS` (itself a copy of the Portal's
+  `SYLLABUS_LO_TOPICS`) and drifts only when MOE changes the syllabus — edit
+  all three then.
+- **IN LIVE MODE IT IS BUILT AFTER THE SPOKEN REPLY IS ON ITS WAY**, never
+  before it, so the student hears the tutor at the moment they always did and
+  the box arrives while it is talking. At most one per reply, never while one
+  is still being done, never more often than `KWQ_LIVE_GAP_MS` — a box that
+  popped on every "yes" is a box that gets closed unread. The tutor is TOLD
+  it is on the screen through a general `session.thinking.append`
+  (`delegation_id: null` — context, never speech) and is never handed the
+  missing words; when the student solves it, it is told that too.
+- **IN HINT MODE IT IS BUILT IN THE BACKGROUND off the hint that just landed**
+  (`kwQuizAfterHint`): the hint never waits for it and never loses anything if
+  it fails. It goes along with the question the hint read, the keywords the
+  ladder found, and **only the rungs the student has been SHOWN** — a rung
+  still folded away is one the ladder has not handed over yet. The quiz is
+  remembered ON the hint (`h.quiz`), so it is saved into the body with the
+  hints and comes back done; a second press reopens it with no second call.
+  `kwQuizBusyHints` is kept OFF the hint object on purpose — a busy flag
+  saved mid-flight would come back true for ever on the next open.
+- **`kwQuizClean` decides what a quiz may hold, once**: every hole in the
+  sentence needs its blank and every blank its hole (or the box asks for a
+  word it cannot check — refused); an answer word printed beside its own hole
+  is filled in and dropped from the check; more than `KWQ_MAX_BLANKS` is a
+  test, not a reminder, so the later holes are filled in as given; and what is
+  left is renumbered 1..k in order of appearance, so the sentence and the
+  blanks can never disagree about which is which.
+- **A plural or a tense ending is the same keyword** (`kwQuizMatch`): "water
+  vapours" is "water vapour" and "condenses" is "condense" to a child who has
+  the science right. A different word is not, and the model's `alt` list
+  carries the forms a suffix rule cannot reach.
+- **IT IS A FLOATING BOX, NOT A MODAL.** No backdrop, so the rest of the page
+  can still be written on — and in live mode the tutor still heard — while it
+  is open. It lifts `#liveSubs` clear of itself (`kwQuizLayout`), so a spoken
+  answer is never captioned underneath the quiz it just set. Escape and ✕
+  close it; a new worksheet (`loadPdf`) and leaving the worksheet (`showView`)
+  close it too, and `kwQuizRender` refuses to paint a quiz whose `epoch` is
+  not the open worksheet's.
+- **MODEL OUTPUT IS PAINTED AS TEXT, never as markup** — the sentence, the
+  concept, the clues and the praise are all `textContent` or text nodes,
+  exactly like the transcript rows and the hint cards.
+- **"Show me" appears only after one honest go.** A box that offers the words
+  before anything has been typed is a box nobody fills in.
+- **The switch is a PREFERENCE, per device**, offered on the Live card and the
+  Hints tab whether or not a session is running, and a device that refuses
+  storage still gets quizzes: they are the default. Off, a hint still offers
+  the quiz on its card; it just stops popping up by itself.
+- Run **`node tools/tutor-tests.mjs`** and **`node --test
+  tools/live-tutor-tests.mjs`** after touching any of it.
+
+## 💬 SUBTITLES — what the tutor just said, over the page (v1.16.0)
+
+`SUBS_KEY` / `SUBS_HOLD_MS` / `SUBS_MAX_CHARS` / `liveSubs` / **`liveSubsNote`**
+/ `liveSubsClear` / `renderLiveSubs` / `setLiveSubs` / `toggleLiveSubs` (search
+`SUBTITLES — what the tutor just SAID`), plus `#liveSubs`, `#liveSubsBtn` and
+the `#liveSubs` CSS.
+
+A spoken sentence is gone the moment it is said, and a student working on the
+question is looking at the PAGE, not at the transcript panel beside it. The
+tutor's own words are repeated across the bottom of the screen while they are
+being spoken — translucent grey, black text, centred over the worksheet.
+
+- **`pointer-events: none` IS LOAD-BEARING.** This sits over a page a child
+  writes on with a stylus. A box that swallowed a stroke — or a tap on a text
+  box under it — would be far worse than no subtitles at all, and it would look
+  like the pen had stopped working rather than like a caption in the way.
+- **ONLY THE TUTOR'S REPLIES.** A student knows what they themselves just said,
+  and captioning it back is noise printed over the very question they are
+  reading. `liveSubsNote` takes the `who` the one transcript handler already
+  decides, so the two can never disagree about who spoke. The panel still holds
+  both sides for anyone who wants them.
+- **IT IS A CUE, NOT A LOG, and two rules keep it one.** `fresh` is set the
+  moment the STUDENT speaks, so the next reply starts a new cue instead of
+  growing the last one for ever; and `SUBS_HOLD_MS` takes a finished reply off
+  the page. Drop either and the worksheet ends a ten-minute session under a
+  wall of transcript. The last reply is deliberately left up WHILE the student
+  answers — that is exactly when they are re-reading what they were asked.
+- **`SUBS_MAX_CHARS` keeps the TAIL**, so a long answer scrolls itself the way a
+  subtitle does rather than growing a paragraph over the page.
+- **THE CUE IS CLEARED WHERE THE PHASE BECOMES `closing`, not in `release()`.**
+  `stopLiveTutor` holds the transport open for up to three seconds waiting for
+  `session.closed`, and the screen is done with the caption the instant ending
+  begins. (The bar is hidden by the phase either way — `renderLiveSubs` asks
+  for `'live'` — but leaving the text in state is a caption waiting to come
+  back on the next render.)
+- **`textContent`, NEVER `innerHTML`.** This is model output painted onto the
+  page, exactly like the transcript rows beside it.
+- **The switch is a PREFERENCE, so it is offered whether or not a session is
+  running** — a student who turned subtitles off wants them back before they
+  press Start, not once the tutor is already talking. It is remembered per
+  device, and **an unreadable or unwritable `localStorage` still gets
+  subtitles**: they are the default, and a device that refuses storage is not a
+  reason to turn an accessibility aid off.
+- The bar clears the 💬 button on a phone. It can never collide with
+  `#voiceBar`, because dictation and live mode can never both hold the
+  microphone.
+- Run **`node --test tools/live-tutor-tests.mjs`** after touching any of it.
+
+## Visible answers and quiet Live checks (v1.15.4)
+
+`syncActiveTextEditValue` reads the current contenteditable without committing it,
+rebuilding the SVG or changing focus. Call it before image/text capture: an answer
+still being typed is otherwise only in the DOM, not `annotations`. Both composite
+images and cropped bands use it. `worksheetTypedContext` additionally sends bounded,
+exact typed text with page/position and active/selected markers, as untrusted data.
+
+`worksheetContextPages` uses screen-rectangle intersections, orders by visible
+area and includes at most three student-visible pages. Do not fall back to hidden
+key pages or choose a previous-page sliver by offset coordinates. Live and Ask use
+the same context. Keep the answer-key readiness gate and the help ceiling.
+
+`liveShareWorksheetContext` sends initial and changed view summaries through
+`session.thinking.append`, with `delegation_id: null` for general context and the
+delegation ID for a check. Appends allow 500 tokens: the silent summary carries
+only page/count metadata and a 60-codepoint text preview; full typed answers stay
+in the delegated check. It does not speak. Progress stays **Thinking…**; only
+the completed teaching result or a useful terminal failure is sent through
+`session.commentary.append`. Do not add spoken acknowledgements or check narration.
+
+Run `node --test tools/live-tutor-tests.mjs tools/check-latency-tests.mjs
+tools/writing-tests.mjs` and `node tools/tutor-tests.mjs` after changing these paths.
+
+## Check deadlines and teaching method (v1.15.3)
+
+`aiWithDeadline` bounds the entire operation as well as individual provider
+attempts. Preserve cancellation checks before fallback and after every Live
+preparation step. A late answer must not speak or launch another request.
+Firebase 11.10.0 request timeouts are supplied to `getGenerativeModel` through
+its third argument. Keep the longer budgets for full-paper marking.
+
+Teaching uses `tutorMethodRule`: arithmetic and the unitary method first,
+units and parts only for clearly suitable questions, no algebraic unknowns,
+and one step at a time in Live. `keyEnsureReady` must precede hints, marking,
+chat and Live. Share `keyReadJob`, reuse saved rows, and do not answer while
+an attached key is unreadable. Read the matching key entry and its working
+before planning the explanation. Keep the existing help ceiling.
+
+Run `node --test tools/check-latency-tests.mjs tools/live-tutor-tests.mjs`
+and `node tools/tutor-tests.mjs` after changes to these paths.
+
+## Writing responsiveness and palm ownership (v1.15.3)
+
+`appendDrawingSamples` records coalesced pen positions with one geometry read
+per batch; `scheduleInkPreview` paints only the current annotation once per
+frame. Preserve the other SVG nodes. Reacquire the active node if an asynchronous
+hint/mark refresh replaced it, flush the final `pointerup` position, and never
+append cancellation or capture-loss coordinates. Cancel queued frames when
+the gesture or worksheet ends. Keep each completed stroke as one undo entry.
+
+`navBind` sees input before overlay tools. Pen contact must stop existing pan,
+pinch and momentum and take ownership before any touch handler changes the page.
+`penBlocksTouch` covers pen-down and the 350 ms gap after it; `rejectedTouches`
+keeps an already rejected contact out until lift. Contact size may start small
+and grow, so check moves too and restore an accidental erase/move snapshot when
+a contact becomes a palm. Reset rejected IDs on a fresh down and input state on
+blur, hidden document and worksheet replacement. Raw touch undo/redo must obey
+the same pen/palm rules. A captured pointer leaving the overlay keeps drawing;
+actual lost capture closes the gesture once.
+
+Run `node --test tools/writing-tests.mjs` and `node tools/tutor-tests.mjs`.
+The deterministic handler/DOM tests cannot measure pencil-and-hand feel on glass;
+retain the hardware check described below and report when it was unavailable.
+
 ## App
 - `index.html` — **"Study Buddy"**. One self-contained file (markup + CSS + JS) on the shared
   `mathgen--app` Firebase project with Google sign-in. **A student uploads their own worksheet as a
   PDF, writes their answers on it, and works through it with a buddy that HINTS rather than
   answers.** When they are done it MARKS the paper, and every question they did not get right goes
-  into a **mistake book** with a picture of the question that can be cropped down to just that
-  question. `README.md` is the feature log, newest version first — add a section there for anything
-  user-visible.
+  into a **mistake book** — the question SET OUT AGAIN, its wording typeset and the paper's own
+  figures cut out and put back where they belong, so it can be practised one at a time on screen or
+  printed as a worksheet (and saved as a PDF from the print dialog). `README.md` is the feature log,
+  newest version first — add a section there for anything user-visible.
 - Version badge (`APP_VERSION`, shown in the header) is hard-coded — bump it on every change.
 - Roles: `isAdmin()` is the one admin email (`chungzhikai@gmail.com`) — the teacher. Everyone else
   is a student, and a student's device runs the hints and the marking itself. Only the admin sees
   the 📚 Teaching notes window and the AI engine dialog, and only the admin ever writes a note.
 
-## 🧭 All the apps under one roof, and 📖 a worksheet sent from the Science portal (v1.13.0)
+## 🧭 All the apps under one roof, and 📖 a worksheet sent from the Science portal (v1.24.0)
 
 `APP_KEY` / `POLYMATH_APPS` / `appsIsFramed` / `renderAppsMenu` / `appsMenuOpen` (search
 `ALL THE APPS UNDER ONE ROOF`), `OPEN_LINK_ID` / **`openFromLink`** (search `A WORKSHEET NAMED
@@ -215,7 +566,7 @@ Everything that decides what the buddy SAYS is a lift from `polymathlc/anskey`, 
   syllabus knowledge only where they say nothing. What the student has already written on the page
   is never evidence of anything.
 
-## 🧠 The teacher's corrections reach this app (v1.14.0)
+## 🧠 The teacher's corrections reach this app (v1.24.0)
 
 `cerStyle` / `cerStyleDocRef` / `styleBucketKey` / `styleProfilePick` / `_styleCountIn` /
 `_styleTokens` / `_styleOverlap` / `_styleTier` / `_styleRetrieve` / `styleExemplarsFor` /
@@ -435,9 +786,83 @@ literal rather than a `var` assigned up there.
 - **`aiVendorName()` is the vendor**, and the admin's two surfaces keep using it. Branding the
   student's side must not take the truth away from the teacher's: an admin who cannot tell which
   engine answered cannot tell a missing key from a broken one.
-- **There is deliberately no API-key box in this app.** Ans Key keeps the ChatGPT and Kimi keys in
-  the admin's own record; a key field in an app students sign into on shared iPads is a key waiting
-  to be typed on the wrong device.
+- **There is deliberately no API-key box in this app**, and that has not changed now
+  that ChatGPT and Kimi answer here: both are reached through their **server-keyed**
+  Cloud Functions, so no key ever reaches the page. A key field in an app students
+  sign into on shared iPads is a key waiting to be typed on the wrong device — see
+  **⚙️ THREE ENGINES** above.
+- **`window.askGemini` KEEPS ITS NAME AND ITS SHAPE**, and that is why this
+  was one change rather than fifteen. It is the ONE door every call site
+  already goes through — the hint ladder, the marking run, the chat, the
+  mistake reader, the practice check — so all of them gained the backup at
+  once and not one of them had to be told. `aiAskWith` is the failover loop
+  and `_aiRun` the dispatcher; **a route past them is a call that still dies
+  on the cap with nothing on screen saying why**, so `askGeminiDirect` is
+  reached from exactly one place and the harness counts it.
+- **THERE IS NO KEY BOX HERE, AND THERE NEVER WILL BE.** This app is opened by
+  children on shared iPads, so the backups are **server-keyed only**: the keys
+  are Firebase secrets behind the `askOpenAi` / `askKimi` Cloud Functions in
+  `polymathlc/math/functions`, and a browser never sees one. That is also what
+  makes them work on a student's phone with nothing set up on it — the half of
+  the school that matters. Ans Key keeps the pasted-key fallback; this app
+  deliberately does not.
+- **IT NEEDS ONE DEPLOY** — `firebase functions:secrets:set OPENAI_API_KEY`
+  (and `MOONSHOT_API_KEY`) and a functions deploy. Until then the call returns
+  `failed-precondition` and the engine panel says **in those words** that the
+  secret is not set, rather than reporting it as an AI error the teacher would
+  go looking for in the wrong place.
+- **A REFUSED ROUTE GOES TO THE BACK AND NEVER OFF THE LIST.** A cap is lifted
+  eventually and a network does come back; an app that refuses on a stale note
+  is worse than one that spends a call finding out. The mark expires by itself
+  after `AI_DOWN_MS` and a success clears it. `sort` is stable, so the
+  preference order survives underneath the down-marking.
+- **NO TEMPERATURE AND NO MODEL ARE SENT TO A SERVER ROUTE.** A reasoning
+  model runs only at its own default temperature and one sent is a **400** —
+  not a worse answer, no answer at all — and the server chooses the model
+  anyway. `thinkingLevel` is deliberately not translated either. And **nothing
+  names a model to Kimi**: Moonshot renames its flagship every release, this
+  app has no box to correct a stale id in, and the function falls back to its
+  own current one when the client names none.
+- **WHEN NOTHING ANSWERS, EVERY ROUTE IS NAMED.** The first error is kept as
+  `cause`, but the message lists them all — reporting one hides the rest, and
+  *"Gemini: your billing account has exceeded its monthly spending cap"* sends
+  the teacher to the Google console when the job is to deploy a function.
+- **The callable rides the COMPAT app**, because that is the app holding the
+  signed-in user; the modular app beside it carries App Check but no session,
+  and the function refuses a caller it cannot name. A blocked
+  `firebase-functions-compat.js` leaves the route unavailable rather than
+  throwing on load — a backup degrading quietly is the whole point of it.
+
+### …and the switch is the CENTRE'S, not this device's
+
+- **It is a field on `config/admin`** — the Learning Portal's own admin
+  pointer, which this app **already reads** to learn whose teaching notes to
+  apply, and which only the admin can write. So it needs **no rules change and
+  no deploy**, and it is the very SAME field the Portal's and Scan & Answer's
+  toggles write: **one switch moves them all**.
+- **A device-local choice is the bug wearing a feature's clothes** — the
+  teacher switches engine on their own laptop, watches it work, and every
+  student stays on the capped one, with the screen on the machine they set it
+  on looking exactly as it should.
+- **It is a LIVE listener**, so a phone with the app open follows within
+  seconds, and it **comes down on every account change** — one account's
+  setting governing the next person to sign in on a shared iPad is the same
+  fault the teaching-notes listener already guards against.
+- **The write is a MERGE, always.** That document is the bank pointer as well,
+  and a plain set would take `uid` off it — which is how every student in the
+  Learning Portal loses the question bank. Only the admin may write it, and
+  **that is checked in `aiEngineSetShared` rather than only on the picker**:
+  hiding a control is never the lock.
+- **An unset field means Gemini**, the default this app already had, so a
+  centre that never touches it is unaffected — and a read that is DENIED
+  changes nothing at all.
+- **A write that FAILED is reported.** A teacher told nothing would believe the
+  whole centre had moved.
+- **`aiVendorName()` reads `window.aiEngines()`**, the one door, rather than
+  assembling the engine state a second time — that second reading is exactly
+  how the badge comes to say *Gemini* while ChatGPT is answering. The
+  student's side is still **Chung GPT**, from a literal, and always will be.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## 🎙️ TRANSCRIPTION — one model, one door (v1.1.0)
 
@@ -503,6 +928,151 @@ written into a text box exactly where they tapped.
 - **The bar is FIXED to the viewport, not to the worksheet.** The page under it
   scrolls while a student is speaking, and a ⏹ Done button that scrolls away is
   one they cannot find.
+
+## 📖 THE PAPER, READ AT UPLOAD — subject, level, name and key pages off its first and last pages (v1.22.0)
+
+`PAPER_READ_HEAD` / `PAPER_READ_TAIL` / `KEY_WALK_MAX` / `PAPER_READ_PX` /
+`PAPER_READ_TITLE_MAX` / `PAPER_READ_SYS` / `paperReadWindow` / `paperReadSubject` /
+`paperReadLevel` / **`paperReadClean`** / **`paperReadEnds`** / **`paperApplyRead`** /
+**`keyEyeOn`** / `keyScanByEye` / **`keyWalkBack`** / `keyScanPdf(read)` /
+`keyAutoScan(defer, read)` (all inside the 🔑 THE ANSWER KEY section — search `THE PAPER, READ AT
+UPLOAD`), the `read` / `got` half of `handleUpload`, the ✨ *Let Chung GPT read it off the paper*
+rows on `#upLevel` and `#upSubject`, and the 🔑 hint in the upload dialog.
+
+A worksheet arrives as a PDF and nothing about it is known until somebody says: the upload dialog
+asked for the level, the subject and the name, and got most of them blank or wrong — *Not sure*,
+the first subject on the list, the file's own name. The key scan then read the PDF's text layer,
+which a scanned paper does not have, so a marking scheme at the back of a photographed paper was
+served to the student as ordinary pages. The paper already prints all four things on its cover and
+its last pages, so **those pages are shown to the model ONCE, as pictures**, and it is asked what
+the paper IS.
+
+- **IT FILLS BLANKS AND OVERRIDES NOTHING, and `paperApplyRead` is the ONE place that is
+  decided.** A student's level comes off THEIR OWN ROW (see EVERY STUDENT HAS A LEVEL) and is
+  handed in with `levelFree: false`, so a paper that says "Primary 6" cannot re-tag a P5 child's
+  worksheet — which would take it off their own list the moment it was saved, with nothing on any
+  screen to say why. A subject is filled only from the list the student takes (`subjects`), and a
+  two-subject student whose paper names neither gets the FIRST of their own, never one they do not
+  take. A name the uploader TYPED is kept; only a file name is replaced by what the paper calls
+  itself. Everything filled is named back in a toast, because a worksheet quietly re-titled and
+  re-filed is one nobody can find.
+- **THE READ IS ADDED TO THE SCAN, NEVER SUBSTITUTED FOR IT.** `keyScanPdf(read)` still runs the
+  text pass, still refuses to hide an inked page and still refuses to hide every page — the two
+  guards the 🔑 section has always carried — and UNIONS the read's key pages with what the text
+  found. The whole-paper eye pass stands down only when the read already saw every page
+  (`readSawAll`), which on a paper of seven pages or fewer it did: the same question asked twice is
+  a second bill for the same answer.
+- **THE KEY IS WALKED BACKWARDS, ONE PAGE AT A TIME** (`keyWalkBack`, v1.23.0 — it was
+  `keyExtendTail`, four pages a call, until then). A marking scheme is often longer than the last
+  four pages, and a read that stops at the window's edge hides pages 11–12 and serves page 10 of
+  the same key. So from just below the HIGHEST key page already known in the tail (the last page
+  when none is) each page is shown to `keyEyeOn` **on its own**, added while it is a key, and
+  **THE FIRST PAGE CONFIRMED NOT TO BE A KEY ENDS THE WALK**. `KEY_WALK_MAX` bounds the calls;
+  the never-every-page guard in `keyScanPdf` is what stops a paper that is all key being hidden
+  whole. `keyEyeOn` is `keyScanByEye`'s body lifted out to take a page list, so the whole-paper
+  look and the walk are one eye and the `KEY_EYE_SYS` exemption is still used by a real call.
+  - **ONE PAGE PER CALL, deliberately.** Four pages in one call let the model answer the batch
+    rather than each page — a key that ended on page 10 came back with 9 and 8 tagged along as
+    "the same section", and a page asked beside three keys is a page it can be talked into. Asked
+    alone the question is simply *is THIS page a key*, and the one it says no to is the edge.
+  - **IT STARTS FROM THE TOP OF THE KNOWN PAGES, NOT THE BOTTOM.** A page the text scan already
+    called a key is stepped over rather than asked again — but the walk begins just below the
+    highest known page, so a page the text scan MISSED between two it found is still asked instead
+    of being left showing below them. Started from the lowest known page, that gap could never be
+    reached.
+- **A KEY PAGE THE MODEL NEVER SAW IS NOT A KEY PAGE.** `paperReadClean` keeps only page numbers
+  that were in the window, deduped and sorted; the model is told the numbers as LABELLED beside
+  each picture, so a paper of twelve pages is asked about 9–12, not "the third picture".
+- **IT ERRS TOWARDS LEAVING A PAGE ALONE**, the rule the whole 🔑 section carries, and the prompt
+  says so twice: leave a doubtful page out, and handwriting is the student's work, not the key.
+- **THE LEVEL IS READ OFF THE PAPER'S OWN HEADING, never guessed from difficulty.** The prompt
+  says that in as many words, and `paperReadLevel` accepts only the ladder (`LEVELS`) after folding
+  "Primary 5" / "Pri 5" / "Sec 1" — "Grade 5", "5" and "hard" come back empty, and an empty level
+  leaves the field blank rather than filing the worksheet somewhere.
+- **IT IS ONE CALL, SMALL, WITH A DEADLINE, and it runs AFTER the worksheet is on screen.** Seven
+  pages at `PAPER_READ_PX`, `timeoutMs` 45 s, and a failure is caught and read as "nothing learned":
+  an upload with the AI off, or a read that times out, is byte-for-byte the upload it always was.
+  It sits between the "Ready" toast and `keyAutoScan(true, read)`, which still runs before
+  `ensureCover` — the read's key pages must be put away before the cover is drawn, or a marking
+  scheme on the last page is still an ordinary page when the front page is chosen.
+- **IT IS UNGROUNDED BY DESIGN and exempt from the census by name** (`PAPER_READ_SYS`). It reads
+  what a paper IS — metadata — and says no science to anybody; grounded, it would file every paper
+  under whatever the teaching notes happen to be about.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
+## 🏫 THE SCHOOL IS IN THE NAME, and 📚 THE WORKSHEETS ARE ON A BOOKSHELF (v1.23.0)
+
+`PAPER_READ_SCHOOL_MAX` / `PAPER_READ_TOPIC_MAX` / the `school` / `exam` / `topic` fields of
+`PAPER_READ_SYS` and `paperReadClean` / **`paperReadName`** / the `school` / `topic` / `exam` on
+`paperApplyRead`'s answer, the two fields on `wsMeta` (written by `performSave`, read back by
+`openWorksheet`, set by `handleUpload`), and the shelf — `SHELF_LEVEL_ORDER` /
+`SHELF_SUBJECT_ORDER` / `SHELF_WHEEL_TURN` / `SHELF_WHEEL_DEPTH` / `SHELF_WHEEL_SHRINK` /
+`SHELF_WHEEL_MAX` / `shelfLevelRank` / `shelfSubjectRank` / `shelfStamp` / `shelfCompare` /
+**`shelfGroups`** / `shelfTitle` / **`shelfWheelPose`** / `shelfWheelCss` / `shelfWheelApply` /
+`shelfWheelWatch` / `shelfNudge` / **`shelfNode`** / `wsCardNode` (all just above
+`/* ---- The worksheet list ---- */`, so `SRC_COVER` in the harness loads them), plus the
+`.shelf*` / `.chipTopic` / `.chipSchool` CSS.
+
+### 🏫 The school's name is read off the cover and put in the file name
+
+An exam paper prints the school that set it across the top of its first page, and *"P5 Science
+SA2 2024"* is a name that fits eleven papers on one shelf. The read (v1.22.0) now asks for the
+**school** as printed, whether the paper is an **exam** (a cover sheet, marks, a time allowed —
+not a topical worksheet), and for a topical worksheet the ONE **topic** it drills.
+
+- **`paperReadName` IS THE ONE PLACE THE NAME IS PUT TOGETHER**, and it puts the school in ONLY
+  on an exam paper: a school worksheet on fractions is a fractions worksheet, and prefixing every
+  one of them with the school's name is what makes a shelf of thirty unreadable. A title that
+  already names the school is left alone — *"Nan Hua Primary School — Nan Hua P5 SA2"* is the
+  name read twice — and a paper the model could not title at all becomes *"<school> exam paper"*
+  rather than the file's own name.
+- **IT FILLS THE NAME ONLY WHEN NOBODY TYPED ONE**, exactly as v1.22.0's title did: a name the
+  uploader wrote is theirs, and only a bare file name is replaced.
+- **`school` and `topic` are FIELDS on the worksheet, never parsed back out of the name.** The
+  shelf sorts on the topic and the card wears both as chips, and a topic that had to be cut out of
+  a title would be wrong the first time a title did not follow the pattern. They are written on
+  every save and read back on every open, so a worksheet uploaded before this simply has neither
+  and sorts to the end of its shelf.
+- **THE MODEL IS TOLD NEVER TO GUESS THE SCHOOL.** A name not printed on the paper is `""`; a
+  school invented from the paper's style is a wrong name on a file for good.
+
+### 📚 The bookshelf — level, then subject, then a wheel of topics
+
+The list of worksheets was one grid, newest first. It is a **bookshelf** now: one shelf per
+level-and-subject (P3 · Science, P5 · Science, P5 · Maths, …), levels in the ladder's order and
+subjects in the app's, and on each shelf the papers stand in a **row that scrolls sideways like
+a wheel** — the card in the middle faces you, the ones either side turn away, sink back and
+shrink — sorted by **topic** (alphabetically, untopiced papers last) and then newest first.
+
+- **`shelfGroups` IS THE ONE PLACE THE SHELVES ARE DECIDED**, and it is pure: a list in, ordered
+  groups out. A worksheet with a level or subject the app does not know is shelved AFTER the known
+  ones rather than dropped — a Sec 1 paper set up in Ans Key is still somebody's paper — and a
+  worksheet with neither goes on one last *Any level · Any subject* shelf. **Nothing is ever
+  filtered out here.** A shelf that lost a paper would look exactly like a shelf that never had
+  it, which is the fault the whole list exists to prevent.
+- **`shelfStamp` reads a Firestore stamp, a `Date`, a number or nothing**, the same way
+  `stampOf` does for the backup: a worksheet whose date will not parse sorts as oldest rather
+  than throwing the render.
+- **`shelfWheelPose` IS PURE, and that is what makes the wheel testable.** It takes a card's
+  distance from the row's centre in viewport widths and gives back the turn, the sink, the shrink
+  and the fade, clamped at `SHELF_WHEEL_MAX` so a card ten screens away is posed exactly like one
+  a screen away; `shelfWheelCss` turns that into one `transform`. With `motion === false` — or
+  junk in — it is the identity, which is how `prefers-reduced-motion` gets a flat row through
+  `liveOrbMotionOk()`, the ONE motion preference this app already keeps.
+- **THE POSE IS PAINTED ON SCROLL, NEVER ON A TIMER.** `shelfWheelWatch` listens to the row's
+  own `scroll` (passive) and to `resize`, and coalesces into one `requestAnimationFrame` — a row
+  of thirty cards re-posed on every scroll event is a list that stutters on an iPad, and a timer
+  is what the live orb's house rule forbids. `scroll-snap-type: x mandatory` on the row is what
+  makes it settle on a card rather than between two.
+- **‹ › nudge by one card and scroll the ROW, not the page**, so the shelves above and below stay
+  where they are; on a phone the buttons go and the row is swiped, which is the gesture the wheel
+  was built for.
+- **`wsCardNode` is the card factored OUT of the render**, unchanged in what it draws except the
+  two new chips — the cover stack, the setter chip, the attempts, every button and every handler
+  are the same node they were, so the shelf changed where a card SITS and not what it does.
+- The row's side padding is `calc(50% - <half a card>)`, so the first and last card can reach
+  the centre and be faced; without it the first paper on every shelf is permanently turned away.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## 🔑 THE ANSWER KEY — hidden from the student, read by the buddy (v1.1.0)
 
@@ -598,7 +1168,7 @@ THE TEACHER SETS`), plus 📌 **Set for my students** on a worksheet card and th
 - **Taking one off the list leaves the copies alone.** A worksheet that
   disappeared half way through, with the marking on it, would be work taken
   away rather than an assignment withdrawn.
-- **DELETING THE TEACHER'S OWN COPY LEAVES THE FILE ALONE TOO** (v1.14.1,
+- **DELETING THE TEACHER'S OWN COPY LEAVES THE FILE ALONE TOO** (v1.23.1,
   `worksheetReadByClass`). `sharedPdf` is on the STUDENT's copy; the
   teacher's original is the one the file belongs to and never carried the
   flag, so the teacher tidying up after setting a worksheet deleted the one
@@ -612,7 +1182,7 @@ THE TEACHER SETS`), plus 📌 **Set for my students** on a worksheet card and th
   `checkAssignmentPdfs` flags a set worksheet whose file has gone on the
   TEACHER's home screen only — a student's device may not be allowed to
   read metadata, and a refused read would flag a worksheet that opens.
-- **THE SET LIST GOES THROUGH `canSeeWorksheet` TOO** (v1.14.2,
+- **THE SET LIST GOES THROUGH `canSeeWorksheet` TOO** (v1.23.1,
   `assignmentsForMe` / `assignmentNotMineText` / `blankStarterCopy` /
   `duplicateBlankCopies`). It never did: `renderAssignments` painted every
   active assignment for every student, so a P5 Maths paper sat on a P6
@@ -627,6 +1197,7 @@ THE TEACHER SETS`), plus 📌 **Set for my students** on a worksheet card and th
   child is shown another class's paper; drop the handler check and a link
   starts a copy that can never open; let `blankStarterCopy` pass a copy with
   work on it and a tidy-up deletes a child's work.
+
 
 ## 📏 How big the mark is (v1.2.0)
 
@@ -873,6 +1444,86 @@ that already has words in it — and passes only inside half a page unit.
   had to exist at all.
 - Like scan's `mobile-check`, it needs `playwright-core` and the Chromium
   already on the machine, so it is a tool you reach for rather than a gate.
+
+## 🧭 THE DIAGNOSTIC — every question filed under the SYLLABUS, and kept for the long run (v1.18.0)
+
+`SYLLABUS` / `syllabusEntries` / `syllabusLo` / `syllabusTopic` / `diagChoices` /
+`markSyllabusBlock` / **`diagPlace`** / `diagItemPlace` / `reportDiagnostic` /
+`diagPct` / `diagResult` / **`diagSummary`** / `progressRows` / `progressFocus` /
+`diagAsText` / `diagTrendText` / `diagGroupsOf` (search `THE DIAGNOSTIC — every
+question filed`), the `ctx` on `_markNewItem` / `_markFoldRows`, `diagTableNode`
+/ `renderProgress` / `progressAsText` beside the report's renderers, the
+`diagnostic` field `performSave` writes, `#progressModal` and 📈 **My progress**
+on Home.
+
+The report grouped by whatever topic the marking happened to name — right for
+"what went wrong on THIS paper" and useless for "is Heat still the problem?",
+because a topic named freely is named five ways over five papers and never adds
+up. So the marking is handed THE SAME TWO LISTS the teacher's own apps file a
+question under, and every question lands on a syllabus line.
+
+- **`SYLLABUS.science` is cer's `SYLLABUS_LO_TOPICS` and `SYLLABUS.math` is
+  the Maths app's `MOE_SYLLABUS` (P3–P6), IDS AND ALL** — `heat-flow`,
+  `P5.FR.2.6`. A diagnostic filed here names the objective a question in those
+  banks is filed under, which is what lets a weak line be matched to practice
+  there. Each science heading is tagged with the portal's rapid-add TOPIC
+  (`bank`, with a per-objective override where one heading spans several —
+  Reproduction is two topics there, the Environment three), so the student
+  reads *Heat*, not *Energy Forms and Uses (Heat)*. **Edit an id and the two
+  apps stop meaning the same thing with nothing anywhere to say so** — the
+  harness pins both counts (79 and 171) and a sample of ids. MOE changes the
+  syllabus rarely; when it does, all three files want editing.
+- **`syllabusEntries` is the ONE reader** of the catalogue: one row per
+  objective, in syllabus order, with `tkey` unique across the subject. A maths
+  topic is "Fractions: Four Operations" with its strand, because "Four
+  Operations" is two topics at P5 and "Angles" is a topic at three levels.
+- **THE LIST IS NARROWED TO THE WORKSHEET'S LEVEL** (`diagChoices`), the way
+  ⚡ Rapid add's batch level narrows the topics — and, like that picker's "Any
+  level" row, a worksheet with no level is offered the whole subject. A subject
+  with no list (English, Chinese, a Sec 1 paper) gets **no block at all**
+  (`markSyllabusBlock` returns `''`) and the generic topic rule stands byte for
+  byte. The block goes into the SYSTEM prompt beside the grounding and the key.
+- **A REPLY OFF THE LIST IS SHOWN, NEVER SNAPPED** (`diagPlace`). The portal's
+  `_rapidApplyLevel` files an off-list topic into the level's first topic and
+  marks it low because a person vets every low there. Nobody vets a diagnostic
+  — it is written into a record the student keeps for years — so a wrong snap
+  here is a lesson filed under the wrong topic for good. A real objective id
+  wins outright; a topic matching a name on the list is placed under it with no
+  objective, preferring the worksheet's level where the name exists at several;
+  anything else keeps the model's own wording, unplaced, under *Not on the
+  syllabus list* — visible, and last.
+- **The placement rides the ITEM** (`lo`, `sylTopic`) and the fold carries it
+  with the topic, from the half that saw the whole question. **A worksheet
+  marked before this is placed BY NAME at render time** (`diagItemPlace`), so an
+  old paper is not all "unlisted".
+- **EVERYTHING IS PLAIN CODE over the marking that already happened** — no
+  second AI call, the rule the report has always carried; the harness fails on
+  an `askGemini` anywhere in the block.
+- **The rate is over what was ATTEMPTED** (`diagPct`), the headline score's own
+  rule: a blank keeps its full marks, adds nothing obtained, is counted blank
+  and never wrong, and a row nothing was attempted on reads *Untried* rather
+  than nought per cent. The result is a WORD with a class, never a colour
+  alone, for the reason the report's verdicts are.
+- **`diagSummary()` is what survives the tab**: one small row per
+  topic-and-objective — the topic key, the objective id and the numbers,
+  capped at `DIAG_ROWS_MAX` — written beside `score` on EVERY save, because
+  the long run is added up off the worksheet LIST and never off a body. An
+  unplaced row keeps the model's wording (`n`) so the long run can still name
+  it. No marking is `null`, never an empty summary.
+- **`progressRows` adds the summaries up across every worksheet the student
+  can see**, per subject, in syllabus order, with each objective's history
+  oldest first; a row that is not a row is skipped, not the paper. The
+  objective's wording is read from the CATALOGUE, never from the summary.
+  `progressFocus` is the weakest first, under `DIAG_FOCUS_PCT`, then the most
+  marks behind them.
+- **ONE table builder draws both tables** (`diagTableNode`) and ONE text
+  renderer both copies (`diagAsText`), so the report and 📈 My progress cannot
+  disagree about what a row is. The print rules key off `.modalBack.printMe`
+  rather than the report's id — a second printable window was exactly the case
+  `printThis` was written for.
+- A filed mistake carries `topic` / `lo` / `sylTopic` too, so the book can one
+  day be read by objective.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## 📊 The report, and the ticks on the page (v1.3.0)
 
@@ -1332,218 +1983,287 @@ plus the key pages.
   looks perfectly right.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
-## ✍️ WRITING ON THE PAGE WITH A STYLUS (v1.12.0)
+## 🧩 THE MISTAKE IS THE QUESTION, SET OUT AGAIN (v1.12.0)
 
-`stylusOnly` / `pencilSeen` / `setStylusOnly` / `renderStylusBtn` /
-`PALM_CONTACT` / `isPalmTouch` / `isDrawTool` / `claimPointer` /
-`activePointerId` / `activePointerType` / `cancelStaleGesture` /
-**`redrawTemp`** / **`commitDrawing`** / `pointIn` / `overlayRebuilding` /
-**`bindTextEditNode`**, the whole of `attachOverlayHandlers`, the
-`attachTouchNavigation()` engine, `rasterWaits`, and `#stylusBtn` (search
-`WRITING ON THE PAGE WITH A STYLUS` and `MOVING THE PAGE WITH FINGERS`).
+`MB_*` / `_mb*` / `rbCleanPage` / `mbRebuild` (search `REPRODUCING THE
+QUESTION`), `mistakeTier` / `mistakeBlocks` / `mistakeOptions` (search `WHICH
+TIER THIS ONE IS`) and `questionNodes` / `MQ_SKIN` (search `THE ONE PLACE A
+MISTAKE'S QUESTION IS DRAWN`).
 
-**This is Ans Key's INPUT PIPELINE, ported.** The section above says the
-annotation *engine* is Ans Key's, and that was only ever true of the
-SHAPES — `annHeads`, `annDashName`, `annBounds`, the data a worksheet
-carries between the two apps. The way a stroke got ONTO the page was this
-app's own, and it was the half a child feels. **Ship a change to the
-pipeline to both repos.**
+A mistake used to be kept as a photograph of the **whole page** it was printed
+on — with the two questions either side of it, and the student's own wrong
+answer written across it. Printed on a practice sheet that is a photocopy of
+the paper with one question somewhere in it, which is not a question anybody
+can practise. So the question is read into **ordered blocks** instead: the
+wording typeset, with an `image` block wherever a figure belongs, each figure
+cut out of the page by its own rectangle. That is the Science portal's ⚡
+**Rapid add**, by way of Scan & Answer's port of it.
 
-Every fault below is invisible from a screenshot and invisible on a laptop,
-because a mouse has no palm, dispatches one sample per move, and never asks
-to scroll the page it is drawing on.
+- **THE IDENTIFIERS ARE DELIBERATELY THE SAME ONES** — `_mbBoxOk`,
+  `_mbTightenRect`, `_mbCleanBlocks`, `_mbUnionBox`, `MB_*`. That is the rule
+  Nova Protocol follows against Realm of Embers: a fix in `polymathlc/scan` or
+  `polymathlc/cer` copies straight across rather than being re-derived, and
+  what genuinely differs here is called out below and nowhere else.
+- **THIS APP CROPS A CLEAN PAGE, WHICH IS THE ONE THING SCAN & ANSWER CANNOT
+  DO.** That app only ever has a photograph of a worksheet somebody has
+  already written on. This one holds the PDF, so `rbCleanPage` re-renders the
+  page out of it with no annotations at all: the crop is sharp, square, and
+  carries none of the student's answer. **Every tier is clean, including the
+  whole page** — `mistakeShotFor` was `compositeJpeg`, the page as it was
+  MARKED, which is right for looking back at what you wrote and useless for
+  doing the question again. What they wrote is kept as TEXT and shown beside
+  it, which is where it can be read.
+- **THREE TIERS, BEST FIRST, and `mistakeTier` is the ONE place the choice is
+  made**: ① the blocks, ② the whole-question crop, ③ the whole page. Every
+  consumer asks it — the card, the practice session, the printed sheet, and
+  the ✂️ Crop button. Two readings of it is a card showing one thing and the
+  sheet printing another, and nothing anywhere would say so.
+  - A question shown as **blocks** must NOT also show its picture: the picture
+    is the same question, so the student is asked it twice.
+  - A **whole-question** crop prints no wording of its own, for the same
+    reason. A **whole page** keeps it, because the page has other questions on
+    it and the wording is what says which one this is.
+  - ✂️ **Crop** is offered only where the picture is actually on screen. On a
+    rebuilt question it would crop a picture nobody can see.
+- **`questionNodes` is the ONE renderer** the card, the practice session and
+  the printed sheet all build the question with. `MQ_SKIN` is three sets of
+  class names over one function, not three functions. A second copy would be
+  free to drift, and the drift is silent.
+- **IT IS ITS OWN CALL, and that is deliberate.** The marking run is already
+  doing two hard things at once — marking what is written, answering what is
+  not — on a prompt tuned for both, and bolting a block specification onto
+  `MARK_SYS` would buy a better practice sheet at the price of worse marking.
+  The **whole-question rectangle is asked for in the rebuild call too**, for
+  the same reason: it is the call already drawing rectangles.
+- **IT CAN NEVER COST THE MISTAKE.** The document is written FIRST and every
+  picture is an extra on it; every failure returns null and the entry is filed
+  exactly as it would have been before any of this existed.
+- **THE RATION IS PER RUN.** `MB_BUILD_MAX` (10), spent **before** the call so
+  a failure cannot buy another try, and refilled in `fileMistakes` and nowhere
+  else. A paper where every question is wrong must not quietly spend twenty
+  vision calls.
+- **THE PROMPT IS EXEMPT FROM THE GROUNDING CENSUS, BY NAME.** `MB_BUILD_SYS`
+  is a transcriber with a ruler: it sets out what is PRINTED and draws
+  rectangles round the figures. A reproducer told how this teacher words an
+  answer rewords the QUESTION, and a question quietly improved on the way into
+  the mistake book is not the question the student got wrong.
+- **THE OPTIONS TRAVEL WITH THE QUESTION** (`type`, `options`, `option`). The
+  rebuild is TOLD to leave word options out of its blocks precisely because
+  they are held on the mistake and printed underneath — so losing them breaks
+  both halves at once, and a multiple-choice question printed with nothing to
+  choose between is a question nobody can answer. `mistakeOptions` is the one
+  door, and it goes quiet when a picture already holds the choices.
+- **`role: 'options'` is the picture-options contract**, shared with
+  `polymathlc/scan` and `cer/mistakes.html`: four little drawings travel as
+  ONE rectangle, because cut out separately they lose the row they were
+  printed in and a student answering "(3)" cannot see which one (3) was. It is
+  a field on a known TYPE rather than a type of its own, so anything that has
+  never heard of it draws a figure — untidy, and still answerable. **Ship a
+  change to the word in all three.**
+- **The ink threshold is MEASURED, not assumed**, and it is the one thing that
+  could not be ported as it stood. A PDF re-rendered here is white at 255 and
+  a fixed line would do — but the PDF is very often a SCAN of a paper
+  worksheet, where the paper is grey, and a fixed line then reads the whole
+  page as ink: the trimmer finds one band covering everything and does nothing
+  at all, with nothing on screen to say it has stopped working.
+- **At most two clean pages are held** (`RB_PAGE_CACHE`). One at 2200px is
+  tens of megabytes of canvas, and holding a twelve-page paper resident is
+  what makes Safari discard the tab — the lesson `rasterVisiblePages` already
+  learned. Two, because a question running over a page break is measured on
+  both.
+- **A block figure is stored as a PATH, never a download URL.** Everything in
+  this book is a path resolved on demand, so a URL stored here would be the
+  one row the deleting and the caching could not see — and `deleteMistake`
+  takes every picture a mistake owns, or a figure is left in the bucket that
+  nothing will ever point at again.
+- **It needed NO Firestore or Storage rules change**: more fields on a
+  document this app already writes, and more files under the folder it already
+  uploads to. Those rules live in `polymathlc/math` and are shared with five
+  apps, so a feature that needs one is a feature that waits.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
-### 🐛 THE WHOLE PAGE WAS REBUILT ON EVERY POINTERMOVE
+## ✍️ THE STYLUS, THE PALM AND THE FINGERS (v1.13.0)
 
-`renderOverlay(p)` empties the SVG and re-creates a node for every
-annotation on the page, re-serialising every point of every stroke. A
-stylus dispatches ~120 moves a second, so by the tenth answer each one of
-those cost a rebuild of the previous nine.
+`stylusOnly` / `PALM_CONTACT` / `isPalmTouch` / `isDrawTool` / `claimPointer` /
+`cancelStaleGesture` / `abortYoungStroke` / `commitTouchStrokeForNav` / `nav` /
+`navBind` / `zoomAt` / `startNavMomentum` / `setStylusOnly` (search `THE STYLUS,
+THE PALM AND THE FINGERS`), plus the ✍️ button in the toolbar and
+`touch-action: pan-x pan-y` on `#viewerArea`.
 
-- **A LIVE STROKE IS ONE TEMP NODE WHOSE `d` GROWS IN PLACE**
-  (`redrawTemp`), and it is **NOT in `annotations` until it is finished**.
-  In the array it would be rebuilt with everything else on every move —
-  and a gesture iPadOS cancelled would leave a half-stroke in the saved
-  body.
-- **THE SYMPTOM COMPOUNDS, WHICH IS WHY IT READS AS A TIRED IPAD.** A
-  browser dispatches one `pointermove` per frame; blow the frame budget and
-  it dispatches FEWER, so fewer points are captured, so **the handwriting
-  gets more angular the fuller the page gets**.
-- **`commitDrawing` IS THE ONE DOOR**, because a stroke can finish three
-  ways — lifted, cancelled by iPadOS, or handed to the navigation engine
-  when a second finger lands — and all three must keep the ink and push
-  exactly one undo step. It keeps the node already on screen rather than
-  rebuilding the page, which is what makes rapid dots cheap.
-- Measured, in a real browser, on a page holding 30 answers: **772 ms and
-  18,631 nodes for one line of working, against 32 ms and one node.**
+**Ported whole from `polymathlc/anskey`** — the same iPad, flat on a table, an
+Apple Pencil in one hand and the heel of the other resting on the page. Keep
+the two in step; a fix to either belongs in both.
 
-### 🐛 A RESTING PALM DREW — AND MERGED INTO THE PEN'S STROKE
-
-There was no palm rejection, no pointer ownership and no pencil-only mode.
-A second contact **overwrote `drawing`**, so the pen's later moves were
-appended to the PALM's point list: a line across the working, in the
-child's own ink, on a page that is then marked from a picture of it. The
-orphaned first stroke was left in `annotations` with no undo entry.
-
-- **`isPalmTouch` refuses a palm-sized contact.** `PALM_CONTACT` is 55
-  because iPads report ordinary fingertips up to ~45px — **a threshold at
-  or below that eats normal finger scrolling, which is a worse bug than the
-  one it fixes**.
-- **`activePointerId` lets ONE pointer own a gesture**, checked on the way
-  down AND on the way across: rejected on `pointerdown` and accepted on
-  `pointermove` is a palm that draws.
-- **A lost up/cancel clears the stale state rather than locking the page.**
-  Without `cancelStaleGesture` a swallowed `pointerup` leaves the app
-  looking frozen with nothing on any screen to say why. `lostpointercapture`
-  is the same reasoning by the other door.
-- **PENCIL-ONLY DEFAULTS *OFF*, AND THAT IS A DELIBERATE DIVERGENCE FROM
-  ANS KEY**, which defaults it on. Ans Key is a teacher's app on a
-  teacher's iPad and the teacher knows where the button is. This one is
-  opened by a nine-year-old on whatever is in the house — very often a
-  phone with no stylus anywhere near it, where pencil-only means tapping
-  the page, nothing happening, and no way of knowing why. **It arms itself
-  the first time a `pointerType === 'pen'` touches down**, which is the
-  moment palm rejection is worth having. Change the default back and the
-  app is broken, silently, for the commonest device it runs on.
-- **`isDrawTool` decides what a finger may not do**, and 🖱️ select, 💡 hint
-  and 🎤 speak are deliberately NOT in it: they make no marks, and a child
-  asking for a hint should not have to find their stylus first.
-
-### 🐛 THE STYLUS'S EXTRA SAMPLES WERE THROWN AWAY
-
-- **`getCoalescedEvents()` or fast handwriting is a chain of straight
-  segments.** A stylus samples far faster than `pointermove` is dispatched
-  and the samples in between are reachable no other way.
-- **The page is measured ONCE per move and the rectangle shared across the
-  samples** (`pointIn`). A `getBoundingClientRect` per sample is a dozen
-  forced layouts inside one event — this app is a step ahead of Ans Key
-  here, which measures per sample.
-- **The points are THINNED at one page unit.** Untinned, one line of
-  working is thousands of points, saved and re-serialised for the rest of
-  the worksheet's life.
-
-### 🐛 A FINGER COULD NOT MOVE THE PAGE AT ALL
-
-The overlay is `touch-action: none` (which is what lets a stroke be drawn
-without the page sliding out from under it) and **nothing had been put in
-the browser's place**. The 24px strips beside the page were the only place
-a finger could scroll from, and **zooming in once took even those away**.
-
-- **`attachTouchNavigation()` is Ans Key's engine**: two fingers pan and
-  pinch, one finger pans in pencil-only mode, a flick decays, and the
-  browser's own scroll is stopped while it drives.
-- **ONE ZOOM PER ANIMATION FRAME** (`scheduleNavZoom`). A pinch reports up
-  to 120 moves a second and each one resizes every page and reads the
-  scroll back — a forced layout twice a frame. That IS the lag.
-- **Every scrap of the pinch counts.** Ignoring changes under a threshold
-  and applying the whole of it at once is what makes a zoom feel steppy.
-- **A second finger on a JUST-started stroke throws the accident away
-  (`abortYoungStroke`); on an established one the ink is COMMITTED**
-  (`commitTouchStrokeForNav`) — by then it is the child's work. Without the
-  second half the finger simply did nothing and stayed dead until lifted.
-- **`rasterWaits` never re-rasterises mid-gesture.** Repainting a page under
-  a finger that has merely PAUSED is a visible stutter; the fingers coming
-  off is what says the zoom has settled. Capped, so a lost `pointerup`
-  cannot leave the pages soft for good.
-- **`applyScale` does NOT rebuild the pins during a gesture.** Each pin is a
-  foreignObject, a div and two listeners rebuilt across every page, and a
-  pinch asks for a new scale every frame. They catch up once, in `navEnd`.
-- **Two- and three-finger double taps are undo and redo.** ↶ is most of a
-  phone screen's sideways scrolling away and Ctrl+Z is not a thing on an
-  iPad.
-- **`#viewerArea` is `touch-action: pan-x pan-y`** so the margins still
-  scroll natively, and every control is `touch-action: manipulation` — a
-  child double-tapping ▲ to grow the pen would otherwise zoom the whole app.
-
-### 🐛 …AND `hidden` DID NOT HIDE
-
-`[hidden] { display: none }` is a **UA-stylesheet** rule, and ANY author rule
-beats the UA sheet whatever its specificity. `.toolBtn { display: grid }` and
-`.iconBtn { display: grid }` therefore re-showed every button hidden with
-`el.hidden = true` — measured in Chromium as `display: grid`.
-
-- **THIS WAS ALREADY BREAKING 🎤.** `renderMicBtns` hides both microphones on
-  a device with no support for one, and this app's own rule is that **a
-  button which silently does nothing is worse than no button**. They were
-  being drawn anyway, on every such device, doing nothing when tapped.
-- The fix is one author-level `[hidden] { display: none !important; }`. Every
-  `hidden` in this file is on something that is meant to be hidden (the three
-  file inputs, 🎤 ×2, ✍️), so making the attribute work can only ever hide
-  what was always meant to be hidden — **check that again before adding a
-  `hidden` to anything that is supposed to show.**
-
-### 🐛 AND A TYPED ANSWER COULD BE SILENTLY LOST
-
-Not a matter of feel. `a.text` is written ONLY by `commitActiveTextEdit`,
-and the only things that called it were tapping elsewhere on the page,
-switching tool, Escape, printing and marking. **Type an answer and press
-Save — or ← Back, or close the tab — and the answer was gone.** Not saved
-wrongly: the box carried `text: ''` the whole time, `dirty` had already
-been cleared by the auto-save that fired when the EMPTY box was created, so
-every exit path's `if (dirty && currentDocId)` was false and none of them
-wrote anything at all. The app reported a clean save.
-
-- **`bindTextEditNode` attaches `blur` (commit) and `input` (grow).** Every
-  button in the app takes the focus off the box, so the words are written
-  down the moment the child reaches for anything.
-- **`overlayRebuilding` is what stops a blur from the REBUILD committing the
-  box.** `renderOverlay` lifts the live node out and puts it back; without
-  the flag that closes the box mid-word and takes the iPad's keyboard down
-  with it. Ans Key carries the identical flag.
-- **IT IS A COUNTER CLEARED ON THE NEXT TURN, NOT A BOOLEAN CLEARED IN
-  LINE.** Chromium moves the focus to the body with NO event when a focused
-  element is removed; **Firefox and Safari fire a real `blur`, and not
-  always synchronously** — so a flag already back to false by the time it
-  lands admits exactly the case it was written for, on two engines out of
-  three and never on the one this is developed in. The blur handler asks
-  again on the next turn for the same reason. A counter rather than a flag
-  because `renderAllOverlays` rebuilds every page in a row.
-- **THE REBUILD PUTS THE FOCUS BACK.** Taking the node out of the document
-  drops the focus even though the very same node goes back in — the child
-  then types into nothing, and on an iPad the keyboard goes down with it.
-- **The box GROWS with the words and never shrinks below the one-line
-  floor.** `a.h` was written only at commit, so until then a two-line answer
-  depended on `overflow: visible` — and a clipped answer is one the marking
-  run never sees, and marks as blank.
-- **🔴 THE AUTO-SAVE MUST NOT CLOSE THE BOX, and the first version of this
-  fix did.** `commitActiveTextEdit` does TWO jobs — write the words down and
-  END the edit — and `performSave` runs on a **2.5-second timer armed the
-  moment the box is created** (`startTextBox` → `setDirty` →
-  `scheduleAutoSave`). Putting the full commit at the top of it was a
-  regression with a fuse on it: the box a child was still hunting for the
-  keyboard to answer closed itself under them, and **deleted itself outright
-  if they had not typed yet**. There is no double-tap-to-edit here, so there
-  is no way back in — tapping again makes a NEW box.
-  **`syncTextEditValue` is the non-destructive half** and is what the save
-  calls: the words reach `annotations`, the child carries on typing. The FULL
-  commit stays on the paths where the child is LEAVING — `flushSave`, ← Back,
-  `beforeunload`, `setTool`, and a tap elsewhere on the page.
-- **`readTextInto` is the ONE place the words are read out of the div**, so
-  the save and the commit can never disagree about what a child wrote. The
-  duplicate had already gone wrong once: the ` ` arrived as a LITERAL
-  non-breaking space, which is the hazard `ANN_CARET_PROBE` is written as an
-  escape to avoid — *an invisible literal is one a later edit silently drops*.
-- **TYPING MARKS THE WORKSHEET DIRTY** (`input` → `setDirty`). Without it the
-  worksheet is not dirty while an answer is being written, so `flushSave`'s
-  guard is false and a tab closed mid-sentence saves nothing — and the
-  auto-save timer never slides to 2.5s after the child STOPS.
-- **Every write reads the box FIRST, before the `dirty` test.** Asking `dirty`
-  first is the bug: an uncommitted box need not have made the worksheet dirty.
-- **A KNOWN, DELIBERATE CONSEQUENCE: an untyped box can now be SAVED empty.**
-  The auto-save firing on a box nobody has typed into writes `text: ''` and
-  stores it, where the old full commit deleted it. It is invisible — every
-  LEAVING path still deletes an empty box — and it can only be seen by opening
-  the worksheet on another device while that box sits open. Deleting a box a
-  child has this second tapped into existence is the worse of the two.
-- **A TEST CAN HOLD A BUG IN PLACE.** The first version of the harness check
-  here asserted `performSave` calls `commitActiveTextEdit` — pinning the
-  property that is right for the Save BUTTON onto the TIMER, without
-  distinguishing them. It now asserts the opposite, and says why.
-
-- Run **`node tools/tutor-tests.mjs`** after touching any of it, and
-  **`node tools/stylus-check.mjs`** (and `--selftest`) to see what it costs.
+- **PENCIL-ONLY MODE IS ON FROM THE START**, and that default is the feature: a
+  palm that can draw ruins a worksheet before anyone notices, and a student who
+  has just watched it happen has no idea what to press. Turning it off is one
+  tap on ✍️, remembered per device — and **the first time a real stylus touches
+  down it comes back on**, because whoever has just picked a pencil up is about
+  to rest a hand on the screen.
+- **A PALM IS A CONTACT PATCH.** iPads report ordinary fingertips at up to
+  ~45px, so `PALM_CONTACT` (55) has to sit above that: set it lower and
+  ordinary finger scrolling is eaten instead, which is the same feature failing
+  the other way round.
+- **ONE POINTER AT A TIME, AND A PALM LIFTING OFF MUST NOT END THE STROKE.**
+  `activePointerId` does both jobs, and it is claimed exactly where the pointer
+  is CAPTURED — the eraser, the move and the draw — never on a tap that returns
+  (💡 hint, 🎤 speak, 🅣 text), which would leave it claimed with no pointerup
+  coming. A gesture whose end never arrived would lock every later touch out of
+  the page for the rest of the session, so a fresh PRIMARY pointer of the same
+  kind clears the stale one (`cancelStaleGesture`) rather than being refused.
+- **`isDrawTool` deliberately excludes 💡 hint, 🎤 speak and 🖱️ select.** Those
+  are a tap and a drag of something already on the page; a finger doing either
+  is not a palm about to ruin the worksheet, and handing them to the pan engine
+  would make them unusable without a pencil.
+- **A SECOND FINGER MEANS NAVIGATE, AND THE INK IS NOT THE PRICE.** Under 300ms
+  the stroke is an accidental dot and is thrown away (`abortYoungStroke`); over
+  it, the stroke is real work — it is COMMITTED as one undo step and the two
+  fingers get the pinch (`commitTouchStrokeForNav`). Leaving it running instead
+  is what makes the second finger appear dead.
+- **THE ENGINE IS BOUND IN CAPTURE ON `#viewerArea`**, ahead of the page
+  overlay, which is the only reason a second finger can take a stroke over into
+  a pinch at all.
+- **The pinch is collected into ONE zoom per animation frame** (`scheduleNavZoom`
+  / `endNavZoom`). A zoom per `pointermove` resizes every page and then reads
+  the scroll back — a forced layout twice a frame on a twenty-page document,
+  which IS the lag. `endNavZoom` flushes the last few milliseconds so the page
+  lands exactly where the fingers left it.
+- **`touch-action: pan-x pan-y` on the scroller is load-bearing**: it keeps the
+  ordinary scroll in the margins either side of a page and takes the browser's
+  own pinch-zoom away. Left on, a pinch zooms the whole app instead of the
+  worksheet and fights the gesture the whole way.
+- **`zoomAt` clears `fittedWidth`** — a pinch is a decision, and the next
+  window resize must not undo it. That rule is older than this block and is the
+  reason `fittedWidth` exists.
+- The ✍️ button carries **no `data-tool`**: it is a MODE, and the tool buttons
+  are wired and lit by that attribute. `S` toggles it, and is handled before the
+  tool table for the same reason.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **🏫 the school in the name or 📚 the bookshelf** (`paperReadName`, the `school`
+  / `exam` / `topic` fields in `PAPER_READ_SYS` / `paperReadClean` / `paperApplyRead`, the two
+  `wsMeta` fields and their `performSave` / `openWorksheet` / `handleUpload` lines, `shelfGroups`,
+  `shelfCompare`, `shelfStamp`, `shelfWheelPose`, `shelfWheelCss`, `shelfWheelApply`,
+  `shelfWheelWatch`, `shelfNudge`, `shelfNode`, `wsCardNode`, or the `.shelf*` CSS), run
+  `node tools/tutor-tests.mjs` **and look at the home screen**. Every failure is silent and the
+  list still paints. Put the school on every worksheet's name and a shelf of thirty reads as one
+  name repeated thirty times; put it on a title that already carries it and the name reads twice.
+  Parse the topic back out of the name instead of reading the field and the first title that does
+  not follow the pattern shelves the paper in the wrong place. Let `shelfGroups` FILTER anything —
+  an unknown level, a blank subject — and a paper vanishes from a list that looks complete, which
+  is the one fault the list exists to prevent. Pose the wheel on a timer, or on every scroll event
+  without the frame, and the row stutters on an iPad and runs after the tab is closed; ignore
+  `motion === false` and the cards turn for a child who asked them not to; drop the side padding
+  and the first paper on every shelf can never face the reader. And stop writing `school` / `topic`
+  in `performSave` and both chips vanish on the next open, on a card that otherwise looks right.
+- After touching **📖 the paper read at upload** (`PAPER_READ_SYS`, `paperReadWindow`,
+  `paperReadSubject`, `paperReadLevel`, `paperReadClean`, `paperReadEnds`, `paperApplyRead`,
+  `keyEyeOn`, `keyWalkBack`, `KEY_WALK_MAX`, `keyScanPdf`'s `read`, `keyAutoScan`'s `read`, the `read` / `got`
+  half of `handleUpload`, or the ✨ rows on `#upLevel` / `#upSubject`), run
+  `node tools/tutor-tests.mjs`. Every failure is silent and the upload still lands. Let
+  `paperApplyRead` take the paper's level over a STUDENT's own and a P5 child's worksheet is filed
+  at P6 and vanishes from their list the moment it is saved; let it fill a subject they do not take
+  and the same happens through the other field. Let `paperReadClean` keep a page number the model
+  never saw and a question page is put away as a key. Substitute the read for the text scan instead
+  of unioning it and a text-layer key the read did not see comes back on screen; drop the
+  `readSawAll` guard and a short scanned paper pays for the same look twice. Stop walking the tail
+  and pages 11–12 of a marking scheme are hidden while page 10 of it is served; walk it four pages
+  a call again and the model answers the batch rather than each page, so the edge of the key lands
+  wherever the batch happened to end; start the walk from the LOWEST known key page and a page the
+  text scan missed between two it found is never asked and is served to the student. Read the level from
+  how hard the questions look and a P4 revision sheet is filed at P6. Move the read after
+  `keyAutoScan` and the key pages it found are never put away; move `keyAutoScan` after
+  `ensureCover` and the marking scheme's last page can be the cover. And ground the prompt and
+  every paper is filed under whatever the notes are about that week.
+- After touching **🔮 the live orb or the filler scrubber** (`LIVE_ORB_MASK`, `LIVE_ORB_STRIDE`,
+  `LIVE_ORB_GRAIN_COVER`, `LIVE_ORB_IDLE_GUSTS`, `LIVE_ORB_SNAP`, `liveOrbPitch`,
+  `liveOrbGrains`, `liveOrbBroken`, `liveOrbTarget`, `liveOrbEnter`, `liveOrbStep`,
+  `liveOrbSettle`, `liveOrbState`, `liveOrbPaint`, `liveOrbFrame`, `liveOrbStrideFor`,
+  `liveOrbDraw`, `liveOrbVisible`, `liveOrbListen`, `liveOrbHush`, `liveOrbSpoke`,
+  `LIVE_FILLER_RE`, `LIVE_FILLER_SENTENCE_RE`, `liveStripFiller`, the `.liveOrb` / `.orbBody` /
+  `.orbGlass` / `.orbShadow` CSS, or the prompts in `worksheetContextRule` / `runLiveDelegation` /
+  `functions/live-service.js`), run `node --test tools/live-tutor-tests.mjs`,
+  `node tools/tutor-tests.mjs` and `cd functions && node --test test/*.test.js` **and watch
+  one live session** — a drawing is the one thing reading the source cannot check. Every
+  failure is silent. Schedule the talking state or a gust with a timer and End leaves it
+  running, on a session that says it has ended. Let the loop run while no orb is on screen
+  and a phone burns its battery drawing thousands of grains nobody can see; stop it and never
+  restart it from a paint and the orb freezes the next time the buddy is opened. Sample the
+  homes from anything but the mask and the sand settles into a sketch of the logo rather than
+  the logo. Jitter the homes inside their cells, let the cover fall under √½, or let the idle
+  jitter back in, and the logo is a scatter of dots with paper showing between them — which is
+  exactly what was asked to go. Switch `LIVE_ORB_IDLE_GUSTS` on and the idle logo blows apart
+  every eight seconds, so it is never quite the logo. Let the renderer size a grain from
+  anything but the pitch and the float is either sprinkles or a blob. Draw the shadow inside
+  the host's box and the card clips it; put the caption outside `.orbBody` and it stops bobbing
+  with the glass it is written on. Let the card and the float read the phase separately and one spins while the other
+  listens. Attach the analyser to a stream other than the one the speaker plays and the row
+  rises with nothing the student can hear; drop the transcript fallback and an iPad in Lockdown
+  Mode has a tutor that talks with a still face. Loosen `LIVE_FILLER_VERB` and "let me know when
+  you have tried it" is cut to "when you have tried it"; tighten it and "Let me check the
+  worksheet" is read aloud again, which is the one sentence this whole change exists to remove.
+  Hand an all-filler reply to the speaker and the tutor says "Let me check." and stops. And
+  let the frame loop ignore `liveOrbMotionOk` and the sand swirls for a child who asked it not
+  to.
+- After touching **🧩 the keyword check or the syllabus** (`kwQuizAllowed`,
+  `kwQuizClean`, `kwQuizGivesAnswer`, `kwQuizKeyAnswers`, `kwQuizMatch`,
+  `kwQuizBuild`, `KWQ_SYS`, `kwQuizCeilingRule`, `kwQuizShow`, `kwQuizRender`,
+  `kwQuizForHint`, `kwQuizForLive`, `kwQuizTellTutor`, `sylObjectivesFor`,
+  `sylPromptBlock`, `SYLLABUS_TOPICS`, or the hooks in `askHintAt` /
+  `runLiveDelegation` / `loadPdf` / `showView`), run `node tools/tutor-tests.mjs`
+  **and** `node --test tools/live-tutor-tests.mjs`. Every failure here is
+  silent and the box still pops up looking helpful. Let `kwQuizAllowed` stop
+  asking the ladder and a child on *Nudges only* is handed the concept and the
+  keywords their parent switched off, in a box that looks like a game. Drop
+  the key guard — or make it drop the ONE blank instead of refusing the quiz —
+  and the paper's own answer is on the screen with a box round it, or a hole
+  nobody can fill. Send the syllabus whole and every quiz costs thousands of
+  tokens; put it BEFORE the notes and a rule Mr Chung typed this morning loses
+  to a public syllabus. Build the live quiz before the reply is sent and the
+  tutor goes slow on every answer; hand the tutor the missing words and it
+  reads them out. Save the busy flag ON the hint and a quiz built while the
+  tab closed is "building" for ever. Paint the sentence with `innerHTML` and
+  model output is markup on the page. And let a hole and its blank disagree
+  and the box asks for a word it cannot check, which reads as a child getting
+  it wrong.
+- After touching **✍️ the stylus, the palm and the fingers** (`stylusOnly`,
+  `PALM_CONTACT`, `isPalmTouch`, `isDrawTool`, `claimPointer`,
+  `cancelStaleGesture`, `abortYoungStroke`, `commitTouchStrokeForNav`, `nav`,
+  `navBind`, `zoomAt`, `startNavMomentum`, `setStylusOnly`, the pointer gates
+  in `attachOverlayHandlers`, or `#viewerArea`'s `touch-action`), run
+  `node tools/tutor-tests.mjs` **and use it with a pencil and a hand on the
+  glass** — no test can feel a gesture. Every failure is silent and the page
+  still draws: a palm threshold under a fingertip eats ordinary scrolling,
+  one over a palm lets the heel of a hand write across the worksheet, a
+  pointer claimed on a tap that returns locks every later touch out of the
+  page for the rest of the session, and a palm allowed to end a stroke cuts
+  the pencil off mid-word. On the other side, a second finger that aborts an
+  established stroke throws the student's own work away to make a pinch
+  work, and one that does not commit it leaves the second finger apparently
+  dead. And `touch-action` left off the scroller zooms the whole app instead
+  of the worksheet.
+- After touching **🧩 the question rebuild or the three tiers** (`MB_BUILD_SYS`,
+  `_mbBoxOk`, `_mbInkLevel`, `_mbTrimTextRows`, `_mbTightenRect`, `_mbCropBox`,
+  `_mbUnionBox`, `_mbCleanBlocks`, `_mbCleanBuild`, `_mbText`, `_mbBuildBlocks`,
+  `_mbBuildFigures`, `_mbUpload`, `mbRebuild`, `rbCleanPage`, `rbJpeg`,
+  `mistakeTier`, `mistakeBlocks`, `mistakeOptions`, `mistakeHasPictureOptions`,
+  `questionNodes`, `MQ_SKIN`, or the `blocks` / `shot` / `options` fields
+  `fileMistakes` writes), run `node tools/tutor-tests.mjs`. Every failure here
+  is silent and the mistake is still filed — the app quietly drops back a tier
+  and hands the student a photocopy of a whole page with nothing on any screen
+  to say so. The failures in the other direction are worse: a rectangle nobody
+  checked keeps somebody else's question and looks exactly like a working crop;
+  a build with no wording in it is a question made of pictures asking nothing;
+  four picture options cut out separately lose the row they were printed in, so
+  a student answering "(3)" cannot see which one (3) was; and a fixed ink level
+  reads a scanned paper worksheet as ink from edge to edge, so the trimmer
+  finds one band, does nothing, and never says it stopped working. Two readings
+  of `mistakeTier` is a card showing the question set out properly and a sheet
+  printing a photograph of the page. Word options dropped is a multiple-choice
+  question printed with nothing to choose between. And a whole-page picture
+  that goes back to `compositeJpeg` puts last week's wrong answer across every
+  question on the sheet.
 - After touching **🧠 the corrections loop** (`cerStyle`, `cerStyleDocRef`, the third listener
   in `loadTeachingNotes`, `styleBucketKey`, `styleProfilePick`, `_styleCountIn`, `_styleTier`,
   `_styleRetrieve`, `styleExemplarsFor`, `styleEditsAll`, `styleCorrections`, `styleEditRules`,
@@ -1562,33 +2282,6 @@ wrote anything at all. The app reported a clean save.
   page or the far end of this one and the exemplars are retrieved for the wrong question; and
   turn a pot back into a `.slice()` and the teacher's second standing instruction reaches no
   prompt while sitting in the notebook looking obeyed.
-- After touching **✍️ the stylus pipeline, the touch navigation or the text
-  box's commit** (`stylusOnly`, `pencilSeen`, `setStylusOnly`,
-  `renderStylusBtn`, `PALM_CONTACT`, `isPalmTouch`, `isDrawTool`,
-  `claimPointer`, `activePointerId`, `cancelStaleGesture`, `redrawTemp`,
-  `commitDrawing`, `pointIn`, `overlayRebuilding`, `bindTextEditNode`,
-  `rasterWaits`, `attachOverlayHandlers`, `attachTouchNavigation`, or the
-  `touch-action` rules), run **`node tools/tutor-tests.mjs`** and
-  **`node tools/stylus-check.mjs --selftest`**. Reading the source cannot
-  answer this one and neither can a screenshot: a mouse has no palm, sends
-  one sample per move, and never wants to scroll the page it is drawing on,
-  so on the machine this is written on every one of these looks perfect.
-  Put `renderOverlay(p)` back in the `pointermove` and writing gets slower
-  and JAGGIER the fuller the page gets — the browser drops moves to keep up,
-  so fewer points are captured — and it reads as a tired iPad rather than as
-  a bug. Drop the palm rules and the heel of a hand writes across the
-  working and merges into the pen's own stroke, in the child's ink, on a
-  page that is then marked from a picture of it. Default pencil-only ON
-  again and a child on a phone taps the page, nothing happens, and no screen
-  says why. Take the navigation engine away and the worksheet cannot be
-  moved with fingers at all, and zooming in traps them. Lose
-  `getCoalescedEvents` and fast handwriting is a chain of straight segments;
-  lose the thinning and one line of working is thousands of points saved for
-  ever. Put the stroke back into `annotations` at `pointerdown` and a
-  cancelled gesture saves a half-stroke. And take `bindTextEditNode`'s
-  `blur` away — or ask `dirty` before committing in any save path — and a
-  typed answer is silently replaced with an empty box by the button marked
-  Save.
 - After touching **↻ Practise again or 🖨 Print** (`practiseAgainAvailable`,
   `practiseAgain`, `attempts`, `printKeyAllowed`, `printHasKeyPages`,
   `printWorksheet`, `openPrintModal`, `PRINT_MAX_SIDE`, the `#printSheet`
@@ -1676,6 +2369,28 @@ wrote anything at all. The app reported a clean save.
   reading. A blank marked wrong is the one mistake this whole app is built not
   to make. And the pictures not awaited is the quietest of them: the dialog
   opens, the sheet prints, and the questions are simply not on it.
+- After touching **🧭 the diagnostic** (`SYLLABUS`, `syllabusEntries`,
+  `diagChoices`, `markSyllabusBlock`, `diagPlace`, `diagItemPlace`,
+  `reportDiagnostic`, `diagPct`, `diagResult`, `diagSummary`, `progressRows`,
+  `progressFocus`, `diagAsText`, `diagGroupsOf`, the `ctx` on `_markNewItem` /
+  `_markFoldRows`, or the `diagnostic` field in `performSave`), run
+  `node tools/tutor-tests.mjs`. Every failure here is silent and lands in a
+  record the student keeps for years. Snap an off-list reply into the nearest
+  topic and a question is filed under the wrong objective for good, on a table
+  that looks perfectly complete; drop the id check and a real objective from
+  another year is thrown away for the level's first topic. Edit an id — or
+  rebuild the catalogue from anything but cer's `SYLLABUS_LO_TOPICS` and the
+  Maths app's `MOE_SYLLABUS` — and a weak line here stops naming the objective
+  the question banks there are filed under. Stop narrowing to the level and a
+  P5 paper is filed across four years' objectives; narrow a subject with no
+  list and the marking is handed an empty list, which it fills in. Read the
+  rate over the full marks rather than what was attempted and a child who ran
+  out of time is reported as a child who got it wrong. Fold the fold's `ctx`
+  away and every question is unlisted while the prompt still asks for the id.
+  Stop writing `diagnostic` on the save and 📈 My progress is empty for ever
+  with nothing to say why; write the items into it instead of the numbers and
+  the document holds the marking twice. And add a second AI call anywhere in
+  it and the same marked paper stops producing the same diagnostic twice.
 - After touching **📊 the report, the marks or the ticks on the page**
   (`MARK_TOPIC_RULE`, `MARK_MARKS_RULE`, `MARK_WHERE_RULE`, `_markPair`,
   `markPairOf`, `_markAt`, `markMarkTally`, `reportTopicKey`, `reportTopics`,

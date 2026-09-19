@@ -31,7 +31,7 @@ import vm from 'node:vm';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FILE = join(here, '..', 'index.html');
-const html = readFileSync(FILE, 'utf8');
+const html = readFileSync(FILE, 'utf8').replace(/\r\n/g, '\n');
 
 let failures = 0;
 let checks = 0;
@@ -60,6 +60,8 @@ function between(startMarker, endMarker, what) {
    middle of a comment and what comes out has an unterminated /* in it, and
    the harness dies on a syntax error in code that is perfectly fine. */
 const BAR = '/* =====================================================================';
+const SRC_DEADLINES = between('/* ================= AI request deadlines ================= */',
+                             '/* ================= End AI request deadlines ================= */', 'request deadlines');
 const SRC_CORE   = between('/* ================= Small helpers ================= */',
                            BAR + '\n   THE ANNOTATION ENGINE', 'the helpers, the ladder and the grounding');
 const SRC_ANN    = between('/* Unrotated frame of an x/y/w/h annotation.',
@@ -79,6 +81,19 @@ const SRC_PRAC   = between('var pracSel = {};',
 const SRC_PEOPLE = between('var PEOPLE_COL =', 'function renderAuth() {', 'the first sign-in and the roster');
 const SRC_GUIDE  = between('/* ---- WHOSE HELP LEVEL IS IT? ----', 'function openGradeModal(', 'the help-level lock');
 const SRC_COVER  = between('var COVER_W =', "/* ---- The worksheet list ---- */", 'the worksheet cover');
+/* The rebuild: the crop machinery ported from Scan & Answer under the SAME
+   identifiers, so that a fix in either app copies straight across. */
+const SRC_REBUILD = between('var MB_BUILD_MAX = 10;',
+                            '/* ================= The mistake book =================', 'the question rebuild');
+const SRC_TIERS   = between('/* ---- WHICH TIER THIS ONE IS',
+                            'async function loadMistakes(quiet) {', 'the three tiers');
+/* The ONE renderer the card, the practice session and the printed sheet all
+   build the question with. The practice tests below drive it for real. */
+const SRC_QNODES  = between('/* =====================================================================\n   THE ONE PLACE A MISTAKE\'S QUESTION IS DRAWN',
+                            'function mistakeCard(m) {', 'the question renderer');
+
+const SRC_PALM   = between('var stylusOnly = (function () {',
+                           'function attachOverlayHandlers(p) {', 'palm rejection and touch navigation');
 
 /* ---- A sandbox with just enough world to evaluate them ---- */
 const noop = () => {};
@@ -86,7 +101,8 @@ const domStub = {
   getElementById: () => null,
   querySelectorAll: () => [],
   createElement: () => ({ style: {}, classList: { add: noop, remove: noop, toggle: noop },
-                          appendChild: noop, setAttribute: noop, addEventListener: noop, focus: noop }),
+                          appendChild: noop, setAttribute: noop, addEventListener: noop, focus: noop,
+                          remove: noop }),
   addEventListener: noop
 };
 /* A real map, because the local backup's whole job is what it keeps and what
@@ -118,6 +134,8 @@ const sandbox = {
   worksheetBody: () => '{}',
   // The practice session and the printed sheet reach these at CALL time.
   mistakes: [], mistFilter: 'open', levelLabel: v => v, subjectLabel: () => 'Science',
+  // The rebuild reads these at CALL time only; nothing here calls it.
+  MISTAKE_DIR: 'tutor-mistakes', marking: { items: [] },
   // The cover reads the pages the STUDENT has, and writes one small field.
   worksheets: [], COLLECTION: 'tutorWorksheets', studentPages: () => [],
   // The two locks on a worksheet the teacher SET.
@@ -128,12 +146,15 @@ const sandbox = {
   boxNode: () => ({}), escHtml: v => String(v),
   bodyByteLength: j => String(j).length,
   setTimeout, clearTimeout, Blob: class { constructor(p) { this.size = String(p).length; } },
-  Math, JSON, Date, String, Number, Array, Object, parseInt, parseFloat, isNaN, Promise
+  Math, JSON, Date, String, Number, Array, Object, parseInt, parseFloat, isNaN, Promise,
+  // The touch-navigation engine keeps its live fingers in a Map.
+  Map, Set, AbortController
 };
 vm.createContext(sandbox);
-vm.runInContext(SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
+vm.runInContext(SRC_DEADLINES + '\n' + SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
                 '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
-                '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER + '\n' + SRC_GUIDE,
+                '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER + '\n' + SRC_GUIDE +
+                '\n' + SRC_REBUILD + '\n' + SRC_TIERS + '\n' + SRC_QNODES + '\n' + SRC_PALM,
                 sandbox, { filename: 'index.html' });
 const S = sandbox;
 
@@ -601,6 +622,162 @@ ok('…and never hides a page the student has written on',
    /annotations\.forEach[\s\S]{0,120}inked\[a\.page\]/.test(scanSrc) && /!inked\[n\]/.test(scanSrc),
    scanSrc.slice(0, 900).replace(/\s+/g, ' '));
 
+/* =====================================================================
+   📖 THE PAPER, READ AT UPLOAD — subject, level, name and key pages off
+   the first and last pages. Every failure here is silent: a level
+   overridden files a student's worksheet where they cannot see it, a
+   subject they do not take does the same, and a key page the model
+   invented for a page it never saw is a question page gone.
+   ===================================================================== */
+section('The paper, read at upload');
+
+eq('the window is the first three and the last four pages, in order',
+   S.paperReadWindow(12), [1, 2, 3, 9, 10, 11, 12]);
+eq('a short paper is every page once, never twice', S.paperReadWindow(5), [1, 2, 3, 4, 5]);
+eq('a one-page paper is one page', S.paperReadWindow(1), [1]);
+eq('no pages is no window', S.paperReadWindow(0), []);
+eq('the head and the tail can be chosen', S.paperReadWindow(20, 1, 2), [1, 19, 20]);
+ok('the window covers a paper no bigger than head plus tail, which is what stops the eye pass running twice',
+   S.paperReadWindow(7).length >= 7 && S.paperReadWindow(8).length < 8);
+
+/* What the model wrote, made ours. */
+eq('"Mathematics" is math', S.paperReadSubject('Mathematics'), 'math');
+eq('"Maths" is math', S.paperReadSubject('maths'), 'math');
+eq('"Science (Primary)" is science', S.paperReadSubject('Science (Primary)'), 'science');
+eq('华文 is chinese', S.paperReadSubject('华文'), 'chinese');
+eq('a subject the centre does not teach is nothing', S.paperReadSubject('Social Studies'), '');
+eq('"Primary 5" is P5', S.paperReadLevel('Primary 5'), 'P5');
+eq('"p6" is P6', S.paperReadLevel('p6'), 'P6');
+eq('"Secondary 1" and "Sec 1" are S1', [S.paperReadLevel('Secondary 1'), S.paperReadLevel('Sec 1')], ['S1', 'S1']);
+eq('a level off the ladder is nothing — "Grade 5", "5", "hard"',
+   [S.paperReadLevel('Grade 5'), S.paperReadLevel('5'), S.paperReadLevel('hard')], ['', '', '']);
+eq('P1 is not a level this centre takes', S.paperReadLevel('P1'), '');
+
+const cleaned = S.paperReadClean(
+  { subject: 'MATHS', level: 'primary 5', title: '  P5   Maths  SA2 2024 ', keyPages: ['12', 11, 11, 4, 99, 'x'] },
+  [1, 2, 3, 9, 10, 11, 12]);
+eq('the clean read carries our subject, our level and a tidied title',
+   [cleaned.subject, cleaned.level, cleaned.title], ['math', 'P5', 'P5 Maths SA2 2024']);
+eq('key pages are only the pages that were SHOWN, deduped and sorted — 4 and 99 were never on screen',
+   cleaned.keyPages, [11, 12]);
+ok('a title is cut to a line', S.paperReadClean({ title: 'x'.repeat(300) }, []).title.length <= S.PAPER_READ_TITLE_MAX);
+eq('a reply that is not an object is an empty read',
+   S.paperReadClean(null, [1, 2]), { subject: '', level: '', title: '', school: '', exam: false, topic: '', keyPages: [] });
+/* The school, the exam flag and the topic. */
+const rich = S.paperReadClean({ school: '  Nan Hua   Primary School ', exam: 'true', topic: ' Heat ' }, []);
+eq('the school is tidied to a line', rich.school, 'Nan Hua Primary School');
+ok('exam is a real boolean, read from true or "true" and nothing else', rich.exam === true &&
+   S.paperReadClean({ exam: 'yes' }, []).exam === false && S.paperReadClean({ exam: 1 }, []).exam === false);
+eq('the topic is tidied', rich.topic, 'Heat');
+ok('a school name is cut to a line', S.paperReadClean({ school: 'x'.repeat(200) }, []).school.length <= S.PAPER_READ_SCHOOL_MAX);
+/* THE NAME: an exam paper carries its school; a worksheet does not. */
+eq('an exam paper is named with its school in front', S.paperReadName({ title: 'P6 Science SA2 2024', school: 'Nan Hua Primary School', exam: true }),
+   'Nan Hua Primary School — P6 Science SA2 2024');
+eq('a topical worksheet is NOT given the school', S.paperReadName({ title: 'Heat revision', school: 'Nan Hua Primary School', exam: false }), 'Heat revision');
+eq('a title that already names the school is left alone',
+   S.paperReadName({ title: 'Nan Hua Primary School P6 Prelim', school: 'nan hua primary school', exam: true }), 'Nan Hua Primary School P6 Prelim');
+eq('an exam paper with a school and no title is still named', S.paperReadName({ title: '', school: 'Rosyth School', exam: true }), 'Rosyth School exam paper');
+eq('no school is just the title', S.paperReadName({ title: 'P5 Maths CA1', school: '', exam: true }), 'P5 Maths CA1');
+eq('no read at all is no name', S.paperReadName(null), '');
+eq('keyPages that is not a list is no key pages', S.paperReadClean({ keyPages: 'all' }, [1, 2]).keyPages, []);
+
+/* THE RULE THAT MATTERS: nothing chosen is overridden, and a blank is only
+   ever filled with a value this account may hold. */
+const readP6 = { subject: 'math', level: 'P6', title: 'P6 Maths Prelim', keyPages: [10] };
+let ap = S.paperApplyRead(readP6, { level: 'P4', levelFree: false, subject: 'science', subjects: ['science'], name: 'Heat', nameTyped: true });
+eq('a STUDENT\'s own level is never overridden by the paper', ap.level, 'P4');
+eq('…nor a subject already chosen', ap.subject, 'science');
+eq('…nor a name the uploader typed', ap.name, 'Heat');
+eq('…so nothing was filled', ap.filled, []);
+ap = S.paperApplyRead(readP6, { level: '', levelFree: true, subject: '', subjects: null, name: 'scan0042', nameTyped: false });
+eq('the teacher\'s blank level is filled from the paper', ap.level, 'P6');
+eq('…and the blank subject', ap.subject, 'math');
+eq('…and a file name is replaced by what the paper calls itself', ap.name, 'P6 Maths Prelim');
+eq('…and each is named back', ap.filled, ['P6', 'Mathematics', '“P6 Maths Prelim”']);
+ap = S.paperApplyRead({ subject: 'science', level: 'P6', title: 'P6 Science Prelim 2024', school: 'Nan Hua Primary School', exam: true, topic: '' },
+                      { level: '', levelFree: true, subject: '', subjects: null, name: 'scan0042.pdf', nameTyped: false });
+eq('an exam paper\'s file name becomes school — title', ap.name, 'Nan Hua Primary School — P6 Science Prelim 2024');
+eq('…and the school and the exam flag travel with it', [ap.school, ap.exam, ap.topic], ['Nan Hua Primary School', true, '']);
+ap = S.paperApplyRead({ subject: 'science', level: 'P5', title: 'Heat', school: 'Nan Hua Primary School', exam: false, topic: 'Heat' },
+                      { level: '', levelFree: true, subject: '', subjects: null, name: 'x', nameTyped: true });
+eq('a topic is carried and named back', [ap.topic, ap.filled[ap.filled.length - 1]], ['Heat', 'topic Heat']);
+eq('…and a typed name is still kept, school or no school', ap.name, 'x');
+ap = S.paperApplyRead(readP6, { level: '', levelFree: false, subject: '', subjects: ['science'], name: 'x', nameTyped: true });
+eq('a level that is not free stays blank even when the paper names one', ap.level, '');
+eq('a subject the student does not take is refused, and their own stands in', ap.subject, 'science');
+ap = S.paperApplyRead({ subject: 'science', level: 'P5' }, { level: '', levelFree: true, subject: '', subjects: ['math', 'science'], name: 'x', nameTyped: true });
+eq('a student who takes both is filed under the one the paper says', ap.subject, 'science');
+ap = S.paperApplyRead(null, { level: '', levelFree: true, subject: '', subjects: ['math', 'science'], name: 'x', nameTyped: true });
+eq('with NO read at all a two-subject student still gets a subject they take', ap.subject, 'math');
+eq('…and nothing else moves', [ap.level, ap.name, ap.filled], ['', 'x', []]);
+ap = S.paperApplyRead({ subject: 'Social Studies', level: 'Grade 9' }, { level: '', levelFree: true, subject: '', subjects: null, name: 'x', nameTyped: false });
+eq('a read the cleaner would refuse fills nothing', [ap.level, ap.subject, ap.filled], ['', '', []]);
+
+/* Against the file: the read is ADDED to the scan, the tail is walked
+   backwards, and the whole-paper eye stands down when the read saw it all. */
+ok('the scan UNIONS the read\'s key pages with what the text found',
+   /readPages\.forEach\(function \(n\) \{ if \(found\.indexOf\(n\) < 0\) found\.push\(n\); \}\);/.test(scanSrc));
+ok('…and only looks at the whole paper when the read has not already',
+   /if \(!anyText && !found\.length && !readSawAll && aiAvailable\(true\)\)/.test(scanSrc));
+ok('…and walks the key backwards from the last page, one page at a time', /found = await keyWalkBack\(found\);/.test(scanSrc));
+ok('…whenever the paper was read at all, never with the AI off', /if \(\(found\.length \|\| read\) && aiAvailable\(true\)\)/.test(scanSrc));
+ok('the whole-paper look goes through the one eye', /async function keyScanByEye\(\) \{\n\s*return keyEyeOn\(pages\.map/.test(SRC_KEY));
+ok('the walk is bounded', /asked < KEY_WALK_MAX/.test(SRC_KEY));
+ok('the walk asks ONE page per call', /var hit = await keyEyeOn\(\[n\]\);/.test(SRC_KEY));
+
+/* THE WALK, driven by hand: a stubbed eye that knows which pages are the
+   key, and a count of what it was asked. */
+{
+  const eyeLog = [];
+  const savedEye = S.keyEyeOn, savedPages = S.pages;
+  const withKey = (n, keySet) => {
+    S.pages = Array.from({ length: n }, (_, i) => ({ num: i + 1 }));
+    eyeLog.length = 0;
+    S.keyEyeOn = async nums => { eyeLog.push(nums.slice()); return nums.filter(x => keySet.indexOf(x) >= 0); };
+  };
+  // A 12-page paper whose key is pages 5–12: the read saw 9–12, so the
+  // walk starts at 8 and asks 8, 7, 6, 5, then 4 — which is not a key.
+  withKey(12, [5, 6, 7, 8, 9, 10, 11, 12]);
+  eq('the walk carries on down from the lowest key page the read found until a page is NOT a key',
+     await S.keyWalkBack([9, 10, 11, 12]), [5, 6, 7, 8, 9, 10, 11, 12]);
+  eq('…asking one page per call, in order, and stopping at the first that is not a key',
+     eyeLog, [[8], [7], [6], [5], [4]]);
+  // The read found nothing: the walk asks the last page itself first.
+  withKey(6, [5, 6]);
+  eq('with nothing known it starts at the last page', await S.keyWalkBack([]), [5, 6]);
+  eq('…and stops at the first page that is not', eyeLog, [[6], [5], [4]]);
+  // A blank back cover: the read saw the last four, called 8–9 the key and
+  // 10 not, so the walk starts at 7 and never re-asks page 10.
+  withKey(10, [6, 7, 8, 9]);
+  eq('a page the read has already ruled out is not asked again', await S.keyWalkBack([8, 9]), [6, 7, 8, 9]);
+  eq('…the walk starts just above the lowest known key page', eyeLog[0], [7]);
+  // A page the text scan already called a key is stepped over, not asked.
+  withKey(8, [4, 5, 6, 7, 8]);
+  eq('a page the text scan already called a key is stepped over', await S.keyWalkBack([5, 7, 8]), [4, 5, 6, 7, 8]);
+  ok('…and never asked about', !eyeLog.some(a => a[0] === 5 || a[0] === 7), JSON.stringify(eyeLog));
+  // A paper that is ALL key walks to page 1 and hands the never-every-page
+  // guard the whole lot to refuse.
+  withKey(5, [1, 2, 3, 4, 5]);
+  eq('a paper that is all key comes back whole for the guard in keyScanPdf to refuse', await S.keyWalkBack([5]), [1, 2, 3, 4, 5]);
+  // The bound: a very long key stops asking at KEY_WALK_MAX.
+  const many = Array.from({ length: 200 }, (_, i) => i + 1);
+  withKey(200, many);
+  await S.keyWalkBack([200]);
+  ok('the walk never asks more than KEY_WALK_MAX pages', eyeLog.length === S.KEY_WALK_MAX, 'asked ' + eyeLog.length);
+  eq('a paper with no pages walks nowhere', await (async () => { S.pages = []; return S.keyWalkBack([3]); })(), [3]);
+  S.keyEyeOn = savedEye; S.pages = savedPages;
+}
+ok('the read is ONE call over small pictures, with a deadline',
+   /system: PAPER_READ_SYS, maxOutputTokens: 500, temperature: 0, json: true, thinkingLevel: 'low',\n\s*images: imgs, timeoutMs: 45000/.test(SRC_KEY));
+ok('the read swallows its own failure at upload', /try \{ read = await paperReadEnds\(\); \}\n\s*catch/.test(html));
+ok('what the read changed is applied only to the worksheet still open', /if \(currentDocId === id\) \{\n\s*wsMeta\.level = got\.level;/.test(html));
+ok('the upload dialog offers the blank the read fills — the level', /<option value="">✨ Let Chung GPT read it off the paper<\/option>/.test(html));
+ok('…and the subject, only where there is more than one to choose from',
+   /if \(subs\.length >= 2\) \{\n\s*var auto = document\.createElement\('option'\);\n\s*auto\.value = '';/.test(html));
+ok('the prompt says to LEAVE OUT a page it is not sure of', /LEAVE IT OUT/.test(S.PAPER_READ_SYS));
+ok('…and never to guess a level from how hard the questions look', /never guess a level/.test(S.PAPER_READ_SYS));
+ok('…and that handwriting is not a key', /handwriting is the student/.test(S.PAPER_READ_SYS));
+
 /* What actually reaches the model. The rows are TEXT, so they can travel in
    every batch — the difference between "the key is considered" and "the key
    is considered on the first page". */
@@ -666,6 +843,501 @@ ok('…never in pinyin and never translated',
    /never in pinyin/i.test(hintZh) && /never translated/i.test(hintZh), hintZh);
 S.wsMeta.subject = 'science';
 
+
+/* =====================================================================
+   🧩 REPRODUCING THE QUESTION — the rebuild, and the three tiers
+   ---------------------------------------------------------------------
+   Every failure in here is SILENT and the mistake is still filed: the app
+   quietly drops back a tier and hands the student a photocopy of a whole
+   page instead of the question set out properly, with nothing on any
+   screen to say so. And the failures in the other direction are worse —
+   a rectangle nobody checked keeps somebody else's question and looks
+   exactly like a working crop, a build with no wording in it is a
+   question made of pictures asking nothing, and a picture-options
+   question that loses its band is four choices nobody can see.
+   ===================================================================== */
+section('The rebuild — what may be cropped at all');
+
+/* A FIGURE that fills the page is a selection that failed: nothing was
+   picked out. A whole QUESTION that fills the page is perfectly ordinary —
+   an open question with a big diagram and six ruled lines really is the
+   whole sheet, and refusing it throws away exactly the questions worth
+   trying again. */
+ok('a sane figure box is accepted', S._mbBoxOk([100, 100, 500, 700]));
+ok('a missing box is refused', !S._mbBoxOk(null) && !S._mbBoxOk(undefined));
+ok('a box of the wrong length is refused', !S._mbBoxOk([1, 2, 3]));
+ok('a box off the page is refused', !S._mbBoxOk([0, 0, 500, 1400]));
+ok('a box with a word in it is refused', !S._mbBoxOk([0, 'x', 500, 700]));
+ok('a minute box is refused', !S._mbBoxOk([500, 500, 510, 510]));
+ok('a FIGURE box filling the page is refused', !S._mbBoxOk([2, 2, 998, 998]));
+ok('…but the same box as a whole QUESTION is accepted', S._mbBoxOk([2, 2, 998, 998], true));
+
+section('The rebuild — four picture options are ONE picture');
+
+eq('one box comes straight back', S._mbUnionBox([[100, 100, 300, 300]]), [100, 100, 300, 300]);
+eq('two boxes side by side union',
+   S._mbUnionBox([[700, 100, 900, 400], [700, 420, 900, 700]]), [700, 100, 900, 700]);
+ok('boxes in opposite corners are refused — that is a failed reading, not a row of options',
+   S._mbUnionBox([[20, 20, 120, 120], [880, 880, 980, 980]]) === null);
+ok('a union that is most of the page is refused',
+   S._mbUnionBox([[10, 10, 480, 480], [520, 520, 990, 990]]) === null);
+ok('a union built out of junk is refused', S._mbUnionBox([null, [1, 2, 3]]) === null);
+ok('nothing in, nothing out', S._mbUnionBox([]) === null);
+
+section('The rebuild — reading a reply back');
+
+/* A build with NO WORDING is refused OUTRIGHT: the tiers under it are
+   better than a question made of pictures with nothing asking anything,
+   and finding that out on the printed page is far too late. */
+eq('a reply with no wording at all is refused',
+   S._mbCleanBlocks({ blocks: [{ type: 'image', page: 1, box_2d: [100, 100, 400, 400] }] }), []);
+eq('an empty reply is refused', S._mbCleanBlocks({}), []);
+eq('junk is refused', S._mbCleanBlocks(null), []);
+
+const built = S._mbCleanBlocks({
+  blocks: [
+    { type: 'text', text: 'Look at the circuit below.' },
+    { type: 'image', page: 1, box_2d: [200, 100, 500, 700] },
+    { type: 'image', page: 1, box_2d: [0, 0, 5, 5] },          // minute — dropped
+    { type: 'text', text: '  (a) Name the part labelled X. [2]  ' }
+  ]
+});
+eq('the blocks come back in the order they were printed',
+   built.map(b => b.type), ['text', 'image', 'text']);
+eq('a figure keeps its own page and rectangle',
+   [built[1].page, built[1].box], [1, [200, 100, 500, 700]]);
+eq('the wording is trimmed but kept', built[2].text, '(a) Name the part labelled X. [2]');
+
+/* `_mkStr` folds every newline away, which is right for a marking field
+   and WRONG here: a text block listing labelled statements is one line
+   each, and run together it stops being a list at all. */
+ok('a statement list keeps its line breaks',
+   S._mbText('A: it melts\nB: it boils', 900) === 'A: it melts\nB: it boils');
+eq('…and a run of blank lines is one gap, not a hole in the question',
+   S._mbText('one\n\n\n\ntwo', 900), 'one\n\ntwo');
+eq('…and it is capped like every other stored field', S._mbText('abcdef', 3), 'abc');
+
+/* The options are held back and merged, because "ONE rectangle round all
+   of them" is a rule a model can be ASKED to follow and cannot be made to.
+   And they go LAST whatever order they arrived in: that is where they are
+   printed, and a block asking the question has to come before them. */
+const withOpts = S._mbCleanBlocks({
+  blocks: [
+    { type: 'options', page: 1, box_2d: [700, 100, 900, 400] },
+    { type: 'options', page: 1, box_2d: [700, 420, 900, 700] },
+    { type: 'text', text: 'Which shape has one line of symmetry?' }
+  ]
+});
+eq('the options land LAST, as one image block', withOpts.map(b => b.type), ['text', 'image']);
+eq('…covering all of them', withOpts[1].box, [700, 100, 900, 700]);
+eq('…and wearing the role that says not to print the words as well',
+   withOpts[1].role, 'options');
+
+/* An options block whose rectangles do not sit together is a failed
+   reading; dropping it leaves an ordinary question rather than a crop of
+   half the sheet filed as the choices. */
+const scattered = S._mbCleanBlocks({
+  blocks: [
+    { type: 'text', text: 'Which one?' },
+    { type: 'options', page: 1, box_2d: [20, 20, 120, 120] },
+    { type: 'options', page: 1, box_2d: [880, 880, 980, 980] }
+  ]
+});
+eq('a scattered options reading is dropped, not filed', scattered.map(b => b.type), ['text']);
+
+/* The question box is asked for in the SAME call, and it is validated as a
+   WHOLE box — a question that fills its page is ordinary. */
+const build1 = S._mbCleanBuild({
+  blocks: [{ type: 'text', text: 'Work it out.' }],
+  questionBox: [5, 5, 995, 995], questionPage: 2
+});
+eq('a whole-question rectangle covering the page is kept', build1.qbox, [5, 5, 995, 995]);
+eq('…on the page it says it is on', build1.qpage, 2);
+ok('a malformed question rectangle is dropped rather than guessed at',
+   S._mbCleanBuild({ blocks: [{ type: 'text', text: 'x' }], questionBox: [1, 2] }).qbox === null);
+eq('a missing question page falls back to the first picture',
+   S._mbCleanBuild({ blocks: [{ type: 'text', text: 'x' }] }).qpage, 1);
+
+section('The rebuild — the ink threshold is MEASURED, not assumed');
+
+/* THE ONE THING THAT COULD NOT BE PORTED AS IT STOOD. A PDF re-rendered
+   here is white at 255 and a fixed "darker than 190" would do — but the
+   PDF is very often a SCAN of a paper worksheet, where the paper is grey.
+   A fixed line then reads the whole page as ink: the trimmer finds one
+   band covering everything and does nothing at all, on every scanned
+   paper, with nothing on screen to say it has stopped working. */
+function hist(map) {
+  const h = new Array(256).fill(0);
+  let total = 0;
+  Object.keys(map).forEach(v => { h[+v] = map[v]; total += map[v]; });
+  return { hist: h, total };
+}
+const white = hist({ 252: 9800, 20: 200 });
+const grey  = hist({ 186: 9800, 20: 200 });
+const wThr = S._mbInkLevel(white.hist, white.total);
+const gThr = S._mbInkLevel(grey.hist, grey.total);
+ok('a white page reads its ink line off its own white', wThr > gThr,
+   'white ' + wThr + ' vs grey ' + gThr);
+ok('a grey scan gets a LOWER line, or the whole page reads as ink', gThr < 186,
+   'the paper itself is 186 and the line came back ' + gThr);
+ok('the line never rises above the paper', wThr <= S.MB_INK_CEIL && gThr <= S.MB_INK_CEIL);
+ok('…and never falls to almost-black-only', wThr >= S.MB_INK_FLOOR && gThr >= S.MB_INK_FLOOR);
+ok('nothing to measure falls back rather than throwing', S._mbInkLevel(null, 0) === S.MB_INK_CEIL);
+
+section('The rebuild — the figure, and not the sentence above it');
+
+/* Rows are the ink profile the pixel pass builds. Prose is one line tall,
+   spans most of the width, is not solid, has NO long stroke in it and
+   breaks into many short pieces — and a framed table is not trimmed at
+   all, because every one of its rows reads as prose on its own. */
+function rowsOf(spec, w) {
+  return spec.map(k => {
+    if (k === 'blank') return { n: 0, minX: -1, maxX: -1, runs: 0, maxRun: 0 };
+    if (k === 'prose') return { n: w * 0.35, minX: 2, maxX: w - 3, runs: 30, maxRun: 4 };
+    if (k === 'rule')  return { n: w * 0.02, minX: 0, maxX: w - 1, runs: 1, maxRun: w - 1 };
+    return { n: w * 0.30, minX: 5, maxX: w - 6, runs: 2, maxRun: w * 0.5 };   // 'fig'
+  });
+}
+const W = 400, PAGE = 1000;
+const proseThenFig = rowsOf(
+  [].concat(Array(9).fill('prose'), Array(14).fill('blank'), Array(160).fill('fig')), W);
+const cut = S._mbTrimTextRows(proseThenFig, W, proseThenFig.length, PAGE);
+ok('a line of prose above the figure is cut off', cut.top > 0,
+   'top came back ' + cut.top + ' of ' + proseThenFig.length);
+ok('…and the figure itself is kept', cut.bot >= proseThenFig.length - 2);
+
+const table = rowsOf(
+  [].concat(['rule'], Array(6).fill('prose'), ['rule'], Array(6).fill('prose'),
+            ['rule'], Array(6).fill('prose'), ['rule'], Array(6).fill('prose')), W);
+const tcut = S._mbTrimTextRows(table, W, table.length, PAGE);
+eq('a framed table is not trimmed at all — every row of it reads as prose',
+   [tcut.top, tcut.bot], [0, table.length - 1]);
+
+const allFig = rowsOf(Array(120).fill('fig'), W);
+const fcut = S._mbTrimTextRows(allFig, W, allFig.length, PAGE);
+eq('a figure with no prose on it is left exactly as it was',
+   [fcut.top, fcut.bot], [0, allFig.length - 1]);
+eq('something too small to analyse is handed straight back',
+   S._mbTrimTextRows(rowsOf(['fig'], 10), 10, 1, PAGE), { top: 0, bot: 0 });
+
+section('The three tiers, and the ONE place the choice is made');
+
+/* A question shown as blocks must NOT also show its picture — that is the
+   same question asked twice, on the card and on the printed sheet alike.
+   And a picture that is not on screen must not carry a ✂️ Crop button. */
+const blocky = { blocks: [{ type: 'text', text: 'Q' }, { type: 'image', path: 'p/a.jpg' }],
+                 imagePath: 'p/whole.jpg', shot: 'question', question: 'Q' };
+eq('blocks beat every picture', S.mistakeTier(blocky), 'blocks');
+eq('a whole-question crop beats the page',
+   S.mistakeTier({ imagePath: 'p/q.jpg', shot: 'question' }), 'question');
+eq('the whole page is the last picture tier',
+   S.mistakeTier({ imagePath: 'p/w.jpg', shot: 'page' }), 'page');
+eq('a mistake filed before any of this reads as the page it kept',
+   S.mistakeTier({ imagePath: 'p/w.jpg' }), 'page');
+eq('with no picture at all the wording does the asking',
+   S.mistakeTier({ question: 'Q' }), 'text');
+
+/* A block that would not draw is not a block. Validating on the way OUT as
+   well as on the way in is what stops a half-written document rendering as
+   an empty frame in the middle of a question. */
+eq('a text block with no text is not a block',
+   S.mistakeBlocks({ blocks: [{ type: 'text', text: '' }] }).length, 0);
+eq('an image block with no path is not a block',
+   S.mistakeBlocks({ blocks: [{ type: 'image', path: '' }] }).length, 0);
+eq('…so a document full of them falls back a tier',
+   S.mistakeTier({ blocks: [{ type: 'image', path: '' }], imagePath: 'p/w.jpg' }), 'page');
+eq('blocks that are not an array are no blocks', S.mistakeBlocks({ blocks: 'x' }).length, 0);
+
+section('The options travel with the question');
+
+/* A multiple-choice question printed with nothing to choose between is a
+   question nobody can answer — and the rebuild is TOLD to leave word
+   options out of its blocks precisely because they are held here and
+   printed under them. */
+const mcq = { type: 'mcq', options: [{ label: '1', text: 'melts' }, { label: '2', text: 'boils' }] };
+eq('an mcq offers its options', S.mistakeOptions(mcq).length, 2);
+eq('an open question offers none', S.mistakeOptions({ type: 'open', options: mcq.options }).length, 0);
+eq('a mistake filed before options were kept offers none', S.mistakeOptions({ type: 'mcq' }).length, 0);
+eq('an empty option is not an option',
+   S.mistakeOptions({ type: 'mcq', options: [{ label: '', text: '' }] }).length, 0);
+
+/* WHEN A PICTURE ALREADY HOLDS THE CHOICES the words must not be printed
+   as well: for a picture question they are four empty strings, and printed
+   they read as four choices nobody filled in. */
+const picOpts = { type: 'mcq', options: [{ label: '1', text: '' }, { label: '2', text: '' }],
+                  blocks: [{ type: 'text', text: 'Which one?' },
+                           { type: 'image', path: 'p/o.jpg', role: 'options' }] };
+ok('a picture-options question says so', S.mistakeHasPictureOptions(picOpts));
+eq('…and its word options are not printed underneath', S.mistakeOptions(picOpts).length, 0);
+ok('an ordinary figure is not an options band',
+   !S.mistakeHasPictureOptions({ blocks: [{ type: 'image', path: 'p/f.jpg' }] }));
+
+
+section('The rebuild, against index.html itself');
+
+/* THE PROMPT IS A TRANSCRIBER WITH A RULER. A reproducer that starts
+   answering, correcting or rewording puts a question into the mistake book
+   that is not the question the student got wrong — and it prints and
+   practises perfectly. */
+const RBSYS = between('var MB_BUILD_SYS =', "/* The pages this question is printed on", 'the rebuild prompt');
+ok('it says it is NOT answering, marking or rewording',
+   /NOT answering it, NOT marking it and NOT rewording it/.test(RBSYS));
+ok('…and never writing an answer in', /NEVER write in an answer/.test(RBSYS));
+ok('it asks for the whole-question rectangle in the SAME call',
+   /"questionBox"/.test(RBSYS) && /"questionPage"/.test(RBSYS));
+ok('every rectangle is the family\'s own 0–1000 convention',
+   /\[ymin, xmin, ymax, xmax\], four whole numbers from 0 to 1000/.test(RBSYS));
+ok('picture options are ONE rectangle round the lot, never one per option',
+   /NEVER one rectangle per option/.test(RBSYS));
+ok('a lettered part carries its shared stem', /INCLUDE THE SHARED STEM/.test(RBSYS));
+ok('word options are left out, because they are held separately',
+   /LEAVE OUT the multiple-choice options WHEN THEY ARE WORDS OR NUMBERS/.test(RBSYS));
+ok('a figure it cannot place is omitted rather than guessed at',
+   /wrong rectangle keeps somebody else\\'s picture/.test(RBSYS));
+
+/* THE RATION IS PER RUN, and it is spent BEFORE the call so a failure
+   cannot buy another try. Left unbounded, a paper where every question is
+   wrong quietly spends a vision call on every one of them. */
+const RBCALL = between('async function _mbBuildBlocks(it, context) {', 'async function _mbUpload', 'the rebuild call');
+ok('the budget is spent BEFORE the call', RBCALL.indexOf('_mbBuildBudget--') < RBCALL.indexOf('askGemini('));
+ok('…and refused outright once it is gone', /if \(_mbBuildBudget <= 0\) return null;/.test(RBCALL));
+ok('the budget is refilled in fileMistakes and NOWHERE else',
+   (html.match(/_mbBuildBudget = MB_BUILD_MAX/g) || []).length === 2,
+   'once as the declaration, once in fileMistakes');
+ok('the rebuild reads a CLEAN page, never the canvas the student is writing on',
+   /await rbCleanPage\(nums\[i\]\)/.test(RBCALL));
+
+/* A PDF page is transparent where nothing is drawn, and a transparent
+   canvas flattens to BLACK in a JPEG — the whole page, ink and all. The
+   cover already learned this; so has every crop here. */
+const RBPAGE = between('async function rbCleanPage(num) {', 'function rbJpeg(', 'the clean page');
+ok('the clean page is painted white before the PDF is drawn on it',
+   /ctx\.fillStyle = '#fff';\s*\n\s*ctx\.fillRect\(0, 0, c\.width, c\.height\);/.test(RBPAGE));
+ok('…and it waits for the on-screen raster rather than racing it',
+   /if \(p\.renderTask\) \{ try \{ await p\.renderTask\.promise; \}/.test(RBPAGE));
+ok('at most two pages are held, or a twelve-page paper is the tab Safari discards',
+   /while \(_rbPages\.length > RB_PAGE_CACHE\) _rbPages\.shift\(\);/.test(RBPAGE));
+
+/* EVERY TIER IS CLEAN. The whole-page picture used to be `compositeJpeg` —
+   the page as it was MARKED. Right for looking back at what you wrote,
+   useless for doing the question again, and worse on a sheet handed to a
+   class: last week's wrong answer is written across it. */
+const SHOTFOR = between('async function mistakeShotFor(it) {', '/* ---- WHICH TIER THIS ONE IS', 'the page shot');
+ok('the whole-page tier is the CLEAN page', /rbCleanPage\(it\.page\)/.test(SHOTFOR));
+ok('…and never the composited one, which carries the student\'s own answer',
+   !/compositeJpeg/.test(SHOTFOR));
+
+/* THE DOCUMENT IS WRITTEN FIRST and every picture is an extra on it: a
+   Storage bucket that is not there, or rules that refuse the write, must
+   cost the picture and never the mistake. */
+const FILING = between('async function fileMistakes() {', '/* ③ THE LAST TIER', 'filing a mistake');
+ok('the document is added before anything is uploaded',
+   FILING.indexOf('await coll.add(doc)') < FILING.indexOf('mbRebuild('));
+ok('a rebuild that failed cannot cost the mistake',
+   /try \{\s*\n\s*var built = await mbRebuild/.test(FILING));
+ok('the whole page stands in when no question crop was made',
+   /if \(!patch\.imagePath\) \{/.test(FILING));
+
+/* A multiple-choice question printed with nothing to choose between is a
+   question nobody can answer — and the rebuild is TOLD to leave word
+   options out of its blocks precisely because they are held here. */
+ok('the options are filed with the question', /options: \(it\.options \|\| \[\]\)\.slice\(0, 8\)/.test(FILING));
+ok('…along with which of them was right', /option: _mkStr\(it\.option, 8\)/.test(FILING));
+ok('…and whether it is an mcq at all', /type: it\.type === 'mcq' \? 'mcq' : 'open'/.test(FILING));
+
+/* A block figure left behind on a delete is a file in the bucket nothing
+   will ever point at again, and nothing anywhere would say so. */
+const DEL = between('async function deleteMistake(id) {', '/* ================= Cropping a mistake', 'deleting a mistake');
+ok('deleting takes every picture the mistake owns, not only the one on the card',
+   /\[m\.imagePath\]\.concat\(mistakeBlocks\(m\)\.map/.test(DEL));
+
+/* ONE RENDERER. The card, the practice session and the sheet all show the
+   same question; a second copy of it is free to drift, and the drift is
+   silent — the card shows the question set out properly and the sheet
+   prints a photograph of the page. */
+ok('the card builds its question through the one renderer',
+   /questionNodes\(m, 'card', \{ noPic: true \}\)/.test(html));
+ok('the practice session does too', /questionNodes\(m, 'prac'\)/.test(html));
+ok('and so does the printed sheet', /questionNodes\(m, 'sheet'\)/.test(html));
+ok('✂️ Crop is offered only where the picture is actually on screen',
+   /if \(m\.imagePath && tier !== 'blocks'\)/.test(html));
+
+/* Everything in this app's mistake book is stored as a PATH and resolved on
+   demand, so a download URL stored here would be the one row the deleting
+   and the caching could not see. */
+ok('a block figure is stored as a path, never a download URL',
+   /var path = MISTAKE_DIR \+ '\/' \+ currentUser\.uid \+ '\/' \+ name \+ '\.jpg';/.test(html));
+
+/* =====================================================================
+   🧩 THE KEYWORD CHECK — the syllabus it reads, the cleaner and the hook
+   ===================================================================== */
+section('The science syllabus');
+
+const kqLos = [].concat(...S.SYLLABUS_TOPICS.map(t => t.los));
+eq('79 objectives across 18 topics', [S.SYLLABUS_TOPICS.length, kqLos.length], [18, 79]);
+ok('every objective has an id, a title, an objective and keywords',
+   kqLos.every(lo => lo.id && lo.title && lo.obj && Array.isArray(lo.kw) && lo.kw.length));
+ok('the ids are unique', new Set(kqLos.map(lo => lo.id)).size === kqLos.length);
+ok('every topic is on the P3–P6 ladder', S.SYLLABUS_TOPICS.every(t => /^P[3-6]$/.test(t.level)));
+ok('no objective carries questions — this is the syllabus and nothing else', kqLos.every(lo => !('questions' in lo)));
+
+const kqEvap = S.sylObjectivesFor('Explain why the puddle dried up. The water changed into water vapour by evaporation.', 'science', 'P5');
+ok('a water-cycle question finds the water objectives first',
+   kqEvap.length >= 2 && /^wat-/.test(kqEvap[0].id), JSON.stringify(kqEvap.map(m => m.id)));
+ok('…scored by the keywords the text really uses, a two-word phrase counting double',
+   kqEvap[0].score >= 3 && kqEvap[0].hits.indexOf('water vapour') >= 0, JSON.stringify(kqEvap[0]));
+eq('a maths worksheet matches nothing — this is the SCIENCE syllabus',
+   S.sylObjectivesFor('The water tank holds 24 litres of water. Find the total cost of 3 tanks at $2 each', 'math', 'P5'), []);
+eq('a question about nothing on the syllabus matches nothing, even with no subject set',
+   S.sylObjectivesFor('Find the total cost of 3 pens at 2 dollars each', '', 'P5'), []);
+eq('nothing to read is nothing matched', S.sylObjectivesFor('', 'science', 'P5'), []);
+const kqP6 = S.SYLLABUS_TOPICS.filter(t => t.level === 'P6')[0];
+const kqP6Text = kqP6.los[0].kw.join(' ') + ' ' + kqP6.los[0].kw.join(' ');
+ok('a P6 objective is found for its own keywords',
+   S.sylObjectivesFor(kqP6Text, 'science', 'P6').some(m => m.id === kqP6.los[0].id));
+ok('a P4 worksheet is never told it tests a P5 or P6 objective',
+   S.sylObjectivesFor(kqP6Text, 'science', 'P4').every(m => m.level === 'P3' || m.level === 'P4'));
+ok('…and a worksheet outside the ladder is not narrowed by it',
+   S.sylObjectivesFor(kqP6Text, 'science', 'S1').some(m => m.id === kqP6.los[0].id));
+ok('a P6 child is still reminded of P3 science — that is what a P6 question builds on',
+   S.sylObjectivesFor('Living things grow, respond and reproduce; they need food, water and air to survive', 'science', 'P6').some(m => m.level === 'P3'));
+ok('at most three objectives travel',
+   S.sylObjectivesFor(kqLos.slice(0, 12).map(lo => lo.kw.join(' ')).join(' '), 'science', '').length <= 3);
+eq('plurals fold onto their singular', S.sylNorm('Living things and their properties'), 'living thing and their property');
+const kqBlock = S.sylPromptBlock(kqEvap);
+ok('the prompt kqBlock names the objective, its level and its keywords',
+   /THE SYLLABUS \(MOE Primary Science Syllabus 2023/.test(kqBlock) && /\(P5\)/.test(kqBlock) && /Keywords:/.test(kqBlock));
+ok('…and says the teacher\'s notes win', /the notes win/.test(kqBlock));
+eq('no matches, no kqBlock', S.sylPromptBlock([]), '');
+
+section('🧩 The keyword check — what a quiz may hold');
+
+S.wsMeta = { level: 'P5', subject: 'science', guidance: 'concepts' };
+S.wsKey = { rows: [] };
+eq('allowed exactly when the concepts rung is',
+   ['nudge', 'concepts', 'method', 'answer'].map(g => { S.wsMeta.guidance = g; return S.kwQuizAllowed(); }),
+   [false, true, true, true]);
+S.wsMeta.guidance = 'nudge';
+ok('the locked note names the level', /Nudges only/.test(S.kwQuizLockedNote()));
+S.wsMeta.guidance = 'concepts';
+const kqGood = {
+  concept: 'Water changes state when it gains or loses heat.',
+  sentence: 'Water turns into [1] by [2].',
+  blanks: [{ n: 1, answer: 'water vapour', alt: ['vapour'], clue: 'water as a gas' }, { n: 2, answer: 'evaporation', clue: 'the process' }],
+  praise: 'Well done!'
+};
+const kqQ1 = S.kwQuizClean(kqGood, {});
+ok('a well-formed reply is kept whole', kqQ1 && kqQ1.blanks.length === 2 && kqQ1.sentence === 'Water turns into [1] by [2].', JSON.stringify(kqQ1));
+eq('…with its concept, its praise and its clues', [kqQ1.concept, kqQ1.praise, kqQ1.blanks[0].clue, kqQ1.blanks[0].alt], ['Water changes state when it gains or loses heat.', 'Well done!', 'water as a gas', ['vapour']]);
+eq('…not yet done', kqQ1.done, false);
+S.wsMeta.guidance = 'nudge';
+eq('the same reply is refused when the rung it sits on is locked', S.kwQuizClean(kqGood, {}), null);
+S.wsMeta.guidance = 'concepts';
+eq('a hole with no blank refuses the quiz — the box cannot check a word it was not kqGiven',
+   S.kwQuizClean({ sentence: 'Water turns into [1] by [2].', blanks: [{ n: 1, answer: 'water vapour' }] }, {}), null);
+eq('a blank with no hole is simply dropped',
+   S.kwQuizClean({ sentence: 'Water turns into [1].', blanks: [{ n: 1, answer: 'water vapour' }, { n: 2, answer: 'evaporation' }] }, {}).blanks.length, 1);
+eq('a sentence with no holes is no quiz', S.kwQuizClean({ sentence: 'Water evaporates.', blanks: [] }, {}), null);
+eq('a reply that is not an object is no quiz', [S.kwQuizClean(null, {}), S.kwQuizClean('x', {}), S.kwQuizClean([], {})], [null, null, null]);
+const kqMany = S.kwQuizClean({ sentence: '[1] [2] [3] [4] [5] [6]', blanks: [1, 2, 3, 4, 5, 6].map(n => ({ n, answer: 'w' + n })) }, {});
+eq('more than four blanks is a test, not a reminder: the later holes are filled in as kqGiven',
+   [kqMany.blanks.length, kqMany.sentence], [4, '[1] [2] [3] [4] w5 w6']);
+const kqGiven = S.kwQuizClean({ sentence: 'Photosynthesis makes food: plants use [1] for photosynthesis and give out [2].',
+                              blanks: [{ n: 1, answer: 'photosynthesis' }, { n: 2, answer: 'oxygen' }] }, {});
+eq('an answer word printed beside its own hole is filled in and dropped from the check',
+   [kqGiven.blanks.length, kqGiven.blanks[0].answer, kqGiven.blanks[0].n, kqGiven.sentence],
+   [1, 'oxygen', 1, 'Photosynthesis makes food: plants use photosynthesis for photosynthesis and give out [1].']);
+const kqRenum = S.kwQuizClean({ sentence: 'First [3], then [7].', blanks: [{ n: 7, answer: 'b' }, { n: 3, answer: 'a' }] }, {});
+eq('holes are renumbered 1..k in order of appearance, and the blanks follow',
+   [kqRenum.sentence, kqRenum.blanks.map(b => b.answer), kqRenum.blanks.map(b => b.n)], ['First [1], then [2].', ['a', 'b'], [1, 2]]);
+eq('a five-word "keyword" is not a keyword',
+   S.kwQuizClean({ sentence: 'It is [1].', blanks: [{ n: 1, answer: 'because the water gets hotter' }] }, {}), null);
+eq('a hole used twice is one blank', S.kwQuizClean({ sentence: '[1] and [1] again', blanks: [{ n: 1, answer: 'heat' }] }, {}).blanks.length, 1);
+
+/* THE KEY NEVER LIFTS THE CEILING. A blank whose word IS the paper's answer
+   is the answer with a box round it, so the whole quiz is refused below full
+   help — filling that hole in would state the answer, and leaving it empty
+   would be a hole the student cannot fill. */
+S.wsKey = { rows: [{ number: '7', answer: 'Evaporation.', working: '' }, { number: '8', answer: '24 g', working: '' }] };
+eq('a blank that IS the paper\'s answer refuses the whole quiz below full help',
+   S.kwQuizClean({ sentence: 'The puddle dried up because of [1].', blanks: [{ n: 1, answer: 'evaporation' }] }, { number: '7' }), null);
+eq('…through an accepted form of it too',
+   S.kwQuizClean({ sentence: 'The puddle dried up because of [1].', blanks: [{ n: 1, answer: 'evaporating', alt: ['evaporation'] }] }, { number: '7' }), null);
+eq('…and against every row on the paper when the number is not known',
+   S.kwQuizClean({ sentence: 'The mass is [1].', blanks: [{ n: 1, answer: '24 g' }] }, {}), null);
+ok('a blank that is a keyword and not the answer is kept',
+   !!S.kwQuizClean({ sentence: 'The puddle dried up because the water gained [1].', blanks: [{ n: 1, answer: 'heat' }] }, { number: '7' }));
+ok('another question\'s answer is not this question\'s',
+   !!S.kwQuizClean({ sentence: 'The mass is measured in [1].', blanks: [{ n: 1, answer: '24 g' }] }, { number: '7' }));
+S.wsMeta.guidance = 'answer';
+ok('at full help the key guard stands down — the answer is allowed there anyway',
+   !!S.kwQuizClean({ sentence: 'The puddle dried up because of [1].', blanks: [{ n: 1, answer: 'evaporation' }] }, { number: '7' }));
+S.wsMeta.guidance = 'concepts';
+S.wsKey = { rows: [] };
+
+section('🧩 The keyword check — marking a blank');
+const kqWv = { n: 1, answer: 'water vapour', alt: ['vapour'] };
+eq('exact, case, spacing and punctuation are forgiven',
+   ['water vapour', 'WATER  VAPOUR.', 'Water-Vapour', 'vapour'].map(t => S.kwQuizMatch(kqWv, t)), [true, true, true, true]);
+eq('a plural or a tense ending is the same keyword',
+   [S.kwQuizMatch(kqWv, 'water vapours'), S.kwQuizMatch({ n: 1, answer: 'condense' }, 'condenses'),
+    S.kwQuizMatch({ n: 1, answer: 'evaporate' }, 'evaporated'), S.kwQuizMatch({ n: 1, answer: 'gases' }, 'gas')],
+   [true, true, true, true]);
+eq('…but a different word, or a different form the model did not list, is not',
+   [S.kwQuizMatch(kqWv, 'condensation'), S.kwQuizMatch({ n: 1, answer: 'evaporation' }, 'evaporating'), S.kwQuizMatch(kqWv, ''), S.kwQuizMatch(kqWv, '   ')],
+   [false, false, false, false]);
+ok('the ceiling is restated where the blanks are decided, below full help',
+   /CONCEPT & KEYWORDS/.test(S.kwQuizCeilingRule()) && /never the answer/.test(S.kwQuizCeilingRule()));
+S.wsMeta.guidance = 'answer';
+eq('…and falls away at full help', S.kwQuizCeilingRule(), '');
+S.wsMeta.guidance = 'concepts';
+
+section('🧩 The keyword check on a hint');
+/* The real `toast` was evaluated with the helpers and paints a node this
+   sandbox does not have; a refused build says so through it. */
+S.toast = noop;
+let kqCall = null;
+S.window.askGemini = async (prompt, opts) => { kqCall = { prompt, opts }; return JSON.stringify(kqGood); };
+S.hints = [{ id: 'h1', page: 1, x: 1, y: 1, number: '7',
+             question: 'Explain why the puddle dried up after the water vapour formed by evaporation.',
+             rungs: [{ key: 'nudge', text: 'Look at the sun.', keywords: [] },
+                     { key: 'concepts', text: 'Water cycle.', keywords: ['evaporation', 'water vapour'] }],
+             shown: 1, working: false }];
+S.wsEpoch = 0;
+const kqBuilt = await S.kwQuizForHint('h1', {});
+ok('the quiz is kqBuilt off the hint\'s question and the keywords the ladder found',
+   !!kqBuilt && /puddle dried up/.test(kqCall.prompt) && /evaporation, water vapour/.test(kqCall.prompt), kqCall && kqCall.prompt);
+ok('…and only the rungs the student has been SHOWN go along as context',
+   /Look at the sun/.test(kqCall.prompt) && !/Water cycle\./.test(kqCall.prompt));
+ok('the call is grounded as a HINT, then the key, then the syllabus, then the ceiling — in that order',
+   (() => {
+     const sys = kqCall.opts.system;
+     const at = ['fill-in-the-blank reminder', 'THE SYLLABUS (MOE', 'STOPS AT "CONCEPT & KEYWORDS"'].map(m => sys.indexOf(m));
+     return at.every(x => x >= 0) && at[0] < at[1] && at[1] < at[2];
+   })(), kqCall && kqCall.opts.system.slice(0, 160));
+ok('it is text only and cheap', !kqCall.opts.images && kqCall.opts.json === true && kqCall.opts.thinkingLevel === 'low');
+ok('the quiz is remembered ON the hint, so it is saved with the worksheet',
+   S.hints[0].quiz && S.hints[0].quiz.sentence === kqGood.sentence && S.hints[0].quiz.done === false);
+ok('…with the syllabus objectives it drew on, by name only',
+   Array.isArray(S.hints[0].quiz.syllabus) && S.hints[0].quiz.syllabus.length > 0 &&
+   S.hints[0].quiz.syllabus.every(m => m.id && m.title && m.level && !m.obj));
+kqCall = null;
+await S.kwQuizForHint('h1', {});
+eq('a second press reopens the same quiz — no second call', kqCall, null);
+S.wsMeta.guidance = 'nudge';
+S.hints.push({ id: 'h2', page: 1, x: 1, y: 1, question: 'q', number: '', rungs: [{ key: 'nudge', text: 't', keywords: [] }], shown: 1, working: false });
+eq('a locked level builds nothing at all', await S.kwQuizForHint('h2', {}), null);
+eq('…and the model was never asked', kqCall, null);
+S.wsMeta.guidance = 'concepts';
+S.window.askGemini = async () => { S.wsEpoch = 99; return JSON.stringify(kqGood); };
+eq('a quiz that comes back after another worksheet was opened is dropped', await S.kwQuizForHint('h2', {}), null);
+ok('…and never attached', !S.hints[1].quiz);
+S.wsEpoch = 0;
+S.window.askGemini = async () => { S.hints = S.hints.filter(x => x.id !== 'h2'); return JSON.stringify(kqGood); };
+eq('a hint removed while its quiz was being kqBuilt gets nothing attached', await S.kwQuizForHint('h2', {}), null);
+S.window.askGemini = async () => JSON.stringify({ question: '', rungs: [] });
+S.hints = [];
+
 /* =====================================================================
    7. Against the FILE itself — the things no unit test can see
    ===================================================================== */
@@ -684,7 +1356,14 @@ const UNGROUNDED_BY_DESIGN = {
   KEY_READ_SYS: 'transcribes the paper\'s own answer key. A transcriber told what the answer ought to say ' +
                 'writes that down instead of what is printed, and a key rewritten on the way in is a whole ' +
                 'class marked against something the paper never said.',
-  KEY_EYE_SYS:  'asks which PAGES are the answer key. It returns page numbers, not science said to anybody.'
+  KEY_EYE_SYS:  'asks which PAGES are the answer key. It returns page numbers, not science said to anybody.',
+  PAPER_READ_SYS: 'reads what a paper IS — its subject, its level, its name and which of its pages are its ' +
+                  'answer key — off its first and last pages. Metadata about the paper, not science said to ' +
+                  'anybody; grounded, it would file every paper under whatever the notes happen to be about.',
+  MB_BUILD_SYS: 'REPRODUCES a printed question so it can be tried again. It is a transcriber with a ruler: it ' +
+                'sets out what is on the page and draws rectangles round the figures. A reproducer told how ' +
+                'this teacher words an answer rewords the QUESTION, and a question quietly improved on the way ' +
+                'into the mistake book is not the question the student got wrong.'
 };
 const callSites = [...html.matchAll(/window\.askGemini\(/g)].map(m => m.index);
 ok('there are askGemini call sites to check at all', callSites.length >= 3,
@@ -704,6 +1383,24 @@ Object.keys(UNGROUNDED_BY_DESIGN).forEach(sys => {
   ok('the exemption for ' + sys + ' is still used by a real call site', !!exemptSeen[sys],
      'nothing calls askGemini with system: ' + sys + ' any more — take the exemption out');
 });
+
+/* 🧩 The keyword check, against the file: the one builder's prompt, the
+   moment the live quiz is built, and the doors that close the box. */
+const kqSrc = between('/* ================= THE KEYWORD QUIZ =================', '/* ================= End the keyword quiz', 'the keyword quiz');
+ok('the keyword check is grounded as a hint, with the key, the syllabus and the ceiling beside it',
+   /system: KWQ_SYS \+ aiGrounding\('hint'\) \+ keyRuleBlock\(source\.question\) \+ sylPromptBlock\(matches\) \+ kwQuizCeilingRule\(\)/.test(kqSrc));
+ok('the live quiz is built AFTER the spoken reply is on its way, never before it',
+   html.indexOf('kwQuizForLive(generation, spokenQuestion, spokenReply)') >
+   html.indexOf("content: spokenReply || 'I could not read that clearly."),
+   'a box that delayed the tutor\'s answer would be a box that made the tutor slow');
+ok('the hint hook builds the quiz in the background, off the hint that just landed', /kwQuizAfterHint\(h, epoch\);/.test(html));
+ok('a new worksheet closes the box', /wsEpoch\+\+;\n\s*kwQuizClose\(\);/.test(html));
+ok('leaving the worksheet closes the box', /if \(v !== 'ws'\) \{ stopLiveTutor\(\); liveTutor\.transcript = \[\]; kwQuizClose\(\); \}/.test(html));
+ok('Escape closes the box', /if \(e\.key === 'Escape'\) \{\n\s*kwQuizClose\(\);/.test(html));
+ok('the box paints model output as TEXT, never as markup', !/\.innerHTML\s*=/.test(kqSrc) && /textContent = q\.concept/.test(kqSrc));
+ok('the box is a floating card with no backdrop, and it never prints',
+   /#kwQuiz \{\s*\n\s*position: fixed;/.test(html) && /@media print \{ #kwQuiz \{ display: none !important; \} \}/.test(html));
+ok('a busy hint is tracked OFF the hint object, which is saved into the body', /var kwQuizBusyHints = \{\};/.test(kqSrc) && !/h\.quizBusy/.test(html));
 
 /* Both ceiling rules go into the SYSTEM prompt, beside the grounding. A
    hard constraint carried in the user message is one the next question can
@@ -778,7 +1475,7 @@ ok('the hint prompt carries the answer key', /aiGrounding\('hint', \{ q: q \}\)\
 ok('the marking prompt carries the answer key', /aiGrounding\('mark'\)\s*\+\s*keyRuleBlock\(\)/.test(markCall),
    markCall.replace(/\s+/g, ' ').slice(0, 260));
 ok('the chat carries it too, behind the ceiling rule',
-   /buddyCeilingRule\(\)\s*\+\s*aiGrounding\('teach', \{ q: text \}\)\s*\+\s*keyRuleBlock\(\)/.test(chatCall),
+   /buddyCeilingRule\(\)\s*\+\s*aiGrounding\('teach', \{ q: text \}\)\s*\+\s*keyRuleBlock\(text\)/.test(chatCall),
    chatCall.replace(/\s+/g, ' ').slice(0, 260));
 ok('the corrections document is watched beside the profile, and comes down with it',
    /_cerStyleUnsub = cerStyleDocRef\(owner\)\.onSnapshot\(/.test(html) &&
@@ -815,7 +1512,7 @@ const del = html.slice(html.indexOf('async function deleteWorksheet'),
 ok('deleting a copy never deletes the class\'s shared PDF',
    /w\.storagePath && !w\.sharedPdf/.test(del), del.replace(/\s+/g, ' ').slice(0, 300));
 
-/* …AND NEITHER DOES DELETING THE TEACHER'S OWN COPY (v1.14.1). The
+/* …AND NEITHER DOES DELETING THE TEACHER'S OWN COPY (v1.23.1). The
    teacher's original is the one the file BELONGS to and it never carries
    `sharedPdf`, so before this the teacher tidying up after setting a
    worksheet deleted the one PDF every student's copy read — the assignment
@@ -1277,6 +1974,247 @@ eq('a worksheet marked before the marks existed reports no score, not zero',
    S.markMarkTally().has, false);
 
 /* =====================================================================
+   THE DIAGNOSTIC — the paper filed under the syllabus, kept for the long
+   run. Every failure here is silent: a question filed under the wrong
+   objective prints perfectly and is wrong in the record for years.
+   ===================================================================== */
+section('The diagnostic — the syllabus catalogue');
+
+/* The two lists are COPIES of the sibling apps' own — cer's
+   SYLLABUS_LO_TOPICS and the Maths app's MOE_SYLLABUS (P3–P6) — and the
+   ids have to stay theirs byte for byte, or a weak objective here stops
+   naming the question bank's objective there. The counts and a sample of
+   ids pin the copy. */
+const sci = S.syllabusEntries('science');
+const mth = S.syllabusEntries('math');
+eq('science carries every one of the portal\'s 79 objectives', sci.length, 79);
+eq('…under its 18 syllabus headings', S.SYLLABUS.science.length, 18);
+eq('maths carries the 171 P3–P6 objectives of the maths app', mth.length, 171);
+ok('a science id is cer\'s own', !!S.syllabusLo('science', 'heat-flow'));
+ok('a maths id is the maths app\'s own', !!S.syllabusLo('math', 'P5.FR.2.6'));
+eq('…and reads level.sub-strand.number', S.syllabusLo('math', 'P5.FR.2.6').level, 'P5');
+ok('every id is unique within its subject',
+   new Set(sci.map(e => e.id)).size === 79 && new Set(mth.map(e => e.id)).size === 171);
+/* The TOPIC a student reads is the portal's rapid-add topic, not the
+   syllabus's own heading: "Heat", not "Energy Forms and Uses (Heat)". */
+eq('a science topic is the rapid-add name', S.syllabusLo('science', 'heat-flow').topic, 'Heat');
+eq('…with the syllabus heading kept as its group', S.syllabusLo('science', 'heat-flow').group,
+   'Energy Forms and Uses (Heat)');
+eq('a heading spanning several rapid-add topics files each objective under its own',
+   S.syllabusLo('science', 'env-food').topic, 'Food Chains and Webs');
+eq('…and the rest under the heading\'s default', S.syllabusLo('science', 'env-adapt').topic, 'Living Together');
+eq('a maths topic carries its sub-strand, because "Four Operations" is two topics at P5',
+   S.syllabusLo('math', 'P5.FR.2.6').topic, 'Fractions: Four Operations');
+ok('…and the two are different keys',
+   S.syllabusLo('math', 'P5.FR.2.6').tkey !== S.syllabusLo('math', 'P5.WN.2.4').tkey);
+ok('the entries come out in syllabus order',
+   sci.every((e, i) => i === 0 || e.order > sci[i - 1].order));
+eq('a subject with no list has no entries', S.syllabusEntries('english').length, 0);
+eq('…and neither does nothing at all', S.syllabusEntries('').length, 0);
+
+section('The diagnostic — the selector');
+/* The list is narrowed to the worksheet's level, the way ⚡ Rapid add's
+   batch level narrows the topics the AI may choose from. */
+const p5 = S.diagChoices('science', 'P5');
+ok('a P5 science worksheet is offered the P5 objectives only',
+   p5.entries.length > 0 && p5.entries.every(e => e.level === 'P5'));
+eq('…and says which level was offered', p5.level, 'P5');
+eq('no level is the whole subject — the picker\'s "Any level" row', S.diagChoices('science', '').entries.length, 79);
+eq('a level the list does not know falls back to the whole subject', S.diagChoices('science', 'S1').entries.length, 79);
+eq('…and says no level was applied', S.diagChoices('science', 'S1').level, '');
+eq('a subject with no list offers nothing', S.diagChoices('english', 'P5').entries.length, 0);
+
+const blk = S.markSyllabusBlock('science', 'P5');
+ok('the prompt block names the P5 objectives', blk.indexOf('wat-evap') !== -1 && blk.indexOf('elec-cond') !== -1);
+ok('…and not the P4 ones', blk.indexOf('heat-flow') === -1);
+ok('…and says the year is not in question', /year is not in question/.test(blk));
+ok('…and says to leave both empty rather than force a fit', /leave both empty/.test(blk));
+ok('the whole subject goes when there is no level',
+   S.markSyllabusBlock('science', '').indexOf('heat-flow') !== -1 && S.markSyllabusBlock('science', '').indexOf('wat-evap') !== -1);
+eq('a subject with no list gets NO block, so the generic topic rule stands', S.markSyllabusBlock('english', 'P5'), '');
+ok('the block puts each objective beside its topic',
+   /• Water and its 3 States \[P5\]: wat-three — /.test(blk));
+
+section('The diagnostic — where a reply lands');
+/* A real id wins outright, whatever the topic said. */
+let pl = S.diagPlace('science', 'P5', 'Heat', 'wat-evap');
+eq('an objective id wins over the topic beside it', pl.topic, 'Water and its 3 States');
+eq('…and files the objective', pl.lo, 'wat-evap');
+eq('…on the list', pl.onList, true);
+eq('an id is matched whatever its case', S.diagPlace('science', 'P5', '', 'WAT-EVAP').lo, 'wat-evap');
+/* A topic that matches a name is placed under it with no objective. */
+pl = S.diagPlace('science', 'P5', '  electrical   systems ', '');
+eq('a topic matching a name on the list is placed, case and space aside', pl.sylTopic, 'Electrical Systems');
+eq('…with no objective', pl.lo, '');
+eq('…and the list\'s own spelling', pl.topic, 'Electrical Systems');
+/* "Angles" is a topic at P3, P4 and P5 in maths; the worksheet's level
+   decides, and the strand may be left off. */
+pl = S.diagPlace('math', 'P5', 'Angles', '');
+ok('a bare maths topic is placed under the worksheet\'s own level', /^P5\.GEO /.test(pl.sylTopic), pl.sylTopic);
+ok('…where the level has it', /^P3\.GEO /.test(S.diagPlace('math', 'P3', 'Angles', '').sylTopic));
+ok('…and under the first level that does otherwise', /^P3\.GEO /.test(S.diagPlace('math', 'P6', 'Angles', '').sylTopic));
+eq('the strand spelled out matches too', S.diagPlace('math', 'P5', 'Geometry: Angles', '').lo, '');
+ok('…', /^P5\.GEO /.test(S.diagPlace('math', 'P5', 'Geometry: Angles', '').sylTopic));
+/* NEVER SNAPPED: a reply off the list keeps its own wording, unplaced. */
+pl = S.diagPlace('science', 'P5', 'Photosynthesis in the dark', 'not-an-id');
+eq('an unknown topic and id are kept as the model wrote them', pl.topic, 'Photosynthesis in the dark');
+eq('…unplaced', pl.onList, false);
+eq('…with no objective', pl.lo, '');
+eq('…and no topic key', pl.sylTopic, '');
+ok('the model\'s own wording is clipped, not dropped', S.diagPlace('science', 'P5', 'x'.repeat(200), '').topic.length === 70);
+pl = S.diagPlace('english', 'P5', 'Subject-verb agreement', 'anything');
+eq('a subject with no list keeps the raw topic', pl.topic, 'Subject-verb agreement');
+eq('…and is never on a list', pl.onList, false);
+
+section('The diagnostic — the item carries its filing');
+const dctx = { subject: 'science', level: 'P5' };
+let it = S._markNewItem({ question: 'q', answer: 'a', topic: 'Water', lo: 'wat-evap', marks: '2/2',
+                          studentAnswer: 'x', verdict: 'correct' }, [1], dctx);
+eq('a marked item carries its objective', it.lo, 'wat-evap');
+eq('…its topic key', it.sylTopic, 'Water and its 3 States');
+eq('…and the list\'s own topic name', it.topic, 'Water and its 3 States');
+it = S._markNewItem({ question: 'q', answer: 'a', topic: 'Water', lo: 'wat-evap' }, [1]);
+eq('without a context the topic is raw, exactly as before', it.topic, 'Water');
+eq('…and nothing is filed', it.lo + it.sylTopic, '');
+/* A question over a page break is filed by the half that saw all of it. */
+const run = [];
+S._markFoldRows([{ question: 'first half', answer: '', topic: 'Heat', lo: 'heat-flow' }], [1], run, { subject: 'science', level: '' });
+S._markFoldRows([{ continuation: true, question: 'second half', answer: 'a', topic: 'Water', lo: 'wat-evap' }], [2], run, { subject: 'science', level: '' });
+eq('a continuation is one question', run.length, 1);
+eq('…filed by the half that saw the whole of it', run[0].lo, 'wat-evap');
+eq('…topic key and all', run[0].sylTopic, 'Water and its 3 States');
+
+section('The diagnostic — the table');
+S.wsMeta.subject = 'science';
+S.wsMeta.level = 'P5';
+function dk(o) {
+  return mk(Object.assign({ lo: '', sylTopic: '' }, o));
+}
+setItems([
+  dk({ number: '1', topic: 'Electrical Systems', sylTopic: 'Electrical Systems', lo: 'elec-cond', verdict: 'wrong', marks: '0/2' }),
+  dk({ number: '2', topic: 'Water and its 3 States', sylTopic: 'Water and its 3 States', lo: 'wat-evap', verdict: 'correct', marks: '2/2' }),
+  dk({ number: '3', topic: 'Water and its 3 States', sylTopic: 'Water and its 3 States', lo: 'wat-evap', verdict: 'partial', marks: '1/2' }),
+  dk({ number: '4', topic: 'Water and its 3 States', sylTopic: 'Water and its 3 States', lo: '', objective: 'Read a graph of temperature.', verdict: 'correct', marks: '1/1' }),
+  dk({ number: '5', topic: 'Water and its 3 States', sylTopic: 'Water and its 3 States', lo: 'wat-three', marked: false, verdict: '', studentAnswer: '', marks: '0/3' }),
+  dk({ number: '6', topic: 'Kitchen chemistry', verdict: 'wrong', marks: '0/1' }),
+  dk({ number: '7', topic: '', verdict: 'wrong', marks: '0/1' }),
+  dk({ number: '8', topic: 'Electrical Systems', sylTopic: 'Electrical Systems', lo: 'elec-cond', verdict: 'correct', marks: '2/2' })
+]);
+let dg = S.reportDiagnostic();
+eq('the table knows the subject has a list', dg.hasList, true);
+eq('the topics come out in SYLLABUS order — Water before Electrical, the paper\'s order aside',
+   dg.groups.map(g => g.topic), ['Water and its 3 States', 'Electrical Systems', 'Kitchen chemistry', S.REPORT_UNLABELLED]);
+eq('a question off the list keeps its own heading, after every listed topic', dg.groups[2].onList, false);
+eq('a question with no topic at all is last of all', dg.groups[3].labelled, false);
+const water = dg.groups[0];
+eq('the objectives under a topic are in syllabus order, with the topic-only row last',
+   water.rows.map(r => r.lo), ['wat-three', 'wat-evap', '']);
+eq('an objective row names the objective', water.rows[1].objective, 'What affects the rate of evaporation');
+eq('a topic-only row shows what the marking said the question tests', water.rows[2].objective, 'Read a graph of temperature.');
+eq('the objective\'s full marks add up', water.rows[1].total, 4);
+eq('…and the marks obtained', water.rows[1].awarded, 3);
+eq('…and the topic\'s subtotal over all its rows', [water.total, water.awarded, water.n], [8, 4, 4]);
+eq('a blank keeps its full marks and adds nothing obtained', [water.rows[0].total, water.rows[0].awarded, water.rows[0].blankMarks], [3, 0, 3]);
+eq('…and is counted as blank, never wrong', [water.rows[0].blank, water.rows[0].wrong], [1, 0]);
+eq('the rate is over what was ATTEMPTED', S.diagPct(water), 80);
+eq('a row nothing was attempted on has no rate, not nought', S.diagPct(water.rows[0]), null);
+eq('…and reads as untried', S.diagResult(water.rows[0]).text, 'Untried');
+eq('80% is strong', S.diagResult(water).text, 'Strong');
+eq('50% is getting there', S.diagResult(dg.groups[1]).text, 'Getting there');
+eq('under 50% is revise', S.diagResult(dg.groups[2]).text, 'Revise');
+eq('the same objective on two questions is one row', dg.groups[1].rows.length, 1);
+eq('…counting both', dg.groups[1].rows[0].n, 2);
+/* A worksheet marked BEFORE this existed carries no filing; its topics are
+   placed by name at render time, so an old paper is not all "unlisted". */
+setItems([mk({ topic: 'heat', verdict: 'wrong', marks: '0/1' }), mk({ topic: 'Something else', verdict: 'wrong', marks: '0/1' })]);
+dg = S.reportDiagnostic();
+eq('an old marking whose topic is a syllabus name is placed at render time', dg.groups[0].sylTopic, 'Heat');
+eq('…with the list\'s spelling', dg.groups[0].topic, 'Heat');
+eq('…and one that is not stays unlisted', dg.groups[1].onList, false);
+S.wsMeta.subject = 'english';
+dg = S.reportDiagnostic();
+eq('a subject with no list has no list, and every topic is simply a topic', dg.hasList, false);
+eq('…in the order the marking named them', dg.groups.map(g => g.topic), ['heat', 'Something else']);
+S.wsMeta.subject = 'science';
+
+/* The text copy is built from the same groups as the screen. */
+const lines = S.diagAsText(S.reportDiagnostic().groups, { hasList: true });
+ok('the text lists every topic', lines.length >= 2 && /Heat/.test(lines[0]));
+ok('…with its marks and rate', /0\/1 marks/.test(lines[0]) && /0% · Revise/.test(lines[0]));
+ok('…and says when a topic is off the list', /Not on the syllabus list/.test(lines[1]));
+eq('the trend line runs oldest to newest', S.diagTrendText([{ awarded: 1, attempted: 2 }, { awarded: 0, attempted: 0 }, { awarded: 4, attempted: 4 }]), '50% → – → 100%');
+
+section('The diagnostic — what is saved, and the long run');
+setItems([
+  dk({ number: '1', topic: 'Electrical Systems', sylTopic: 'Electrical Systems', lo: 'elec-cond', verdict: 'wrong', marks: '0/2' }),
+  dk({ number: '2', topic: 'Kitchen chemistry', verdict: 'correct', marks: '1/1' })
+]);
+S.marking.runAt = 1700000000000;
+let sum = S.diagSummary();
+eq('the summary names the subject and level', [sum.subject, sum.level], ['science', 'P5']);
+eq('…when it was marked', sum.at, 1700000000000);
+eq('…one small row per topic-and-objective', sum.rows.length, 2);
+eq('…with the topic key and objective id', [sum.rows[0].t, sum.rows[0].lo], ['Electrical Systems', 'elec-cond']);
+eq('…and the numbers', [sum.rows[0].q, sum.rows[0].tot, sum.rows[0].got, sum.rows[0].att, sum.rows[0].no], [1, 2, 0, 2, 1]);
+eq('an unlisted row keeps the model\'s wording so the long run can still name it', [sum.rows[1].t, sum.rows[1].n], ['', 'Kitchen chemistry']);
+ok('a row is a handful of short fields, never the items', !('items' in sum.rows[0]) && JSON.stringify(sum).length < 400);
+setItems([]);
+eq('no marking is no summary, not an empty one', S.diagSummary(), null);
+setItems(Array.from({ length: 200 }, (_, i) => dk({ number: String(i), topic: 'T' + i, verdict: 'wrong', marks: '0/1' })));
+eq('the rows are capped, because the summary rides a document that also holds the body',
+   S.diagSummary().rows.length, S.DIAG_ROWS_MAX);
+
+/* Added up across worksheets, off the list's own fields. */
+const list = [
+  { name: 'Paper A', subject: 'science', diagnostic: { v: 1, subject: 'science', level: 'P5', at: 100, rows: [
+      { t: 'Electrical Systems', n: 'Electrical Systems', lo: 'elec-cond', q: 1, tot: 2, got: 0, att: 2, ok: 0, half: 0, no: 1, blank: 0 },
+      { t: 'Water and its 3 States', n: 'Water and its 3 States', lo: 'wat-evap', q: 2, tot: 4, got: 4, att: 4, ok: 2, half: 0, no: 0, blank: 0 },
+      { t: '', n: 'Kitchen chemistry', lo: '', q: 1, tot: 1, got: 0, att: 1, ok: 0, half: 0, no: 1, blank: 0 } ] } },
+  { name: 'Paper B', subject: 'science', diagnostic: { v: 1, subject: 'science', level: 'P5', at: 300, rows: [
+      { t: 'Electrical Systems', n: 'Electrical Systems', lo: 'elec-cond', q: 2, tot: 4, got: 3, att: 4, ok: 1, half: 1, no: 0, blank: 0 },
+      'junk', null ] } },
+  { name: 'Sums', subject: 'math', diagnostic: { v: 1, subject: 'math', level: 'P5', at: 200, rows: [
+      { t: 'P5.FR Fractions: Four Operations', n: 'Fractions: Four Operations', lo: 'P5.FR.2.6', q: 1, tot: 3, got: 1, att: 3, ok: 0, half: 1, no: 0, blank: 0 } ] } },
+  { name: 'Unmarked', subject: 'science' },
+  { name: 'Old', subject: 'science', diagnostic: { rows: [] } }
+];
+const subs = S.progressRows(list);
+eq('one block per subject, science first', subs.map(s => s.subject), ['science', 'math']);
+eq('a worksheet with no summary is not a paper', subs[0].papers, 2);
+const elec = subs[0].rows.find(r => r.lo === 'elec-cond');
+eq('an objective is added up across papers', [elec.papers, elec.n, elec.total, elec.awarded, elec.attempted], [2, 3, 6, 3, 6]);
+eq('…with every verdict counted', [elec.correct, elec.partial, elec.wrong], [1, 1, 1]);
+eq('…and its history oldest first', elec.history.map(h => h.name), ['Paper A', 'Paper B']);
+eq('the rows come out in syllabus order', subs[0].rows.map(r => r.lo || r.topic), ['wat-evap', 'elec-cond', 'Kitchen chemistry']);
+eq('a row the summary could not place is still there, by name', subs[0].rows[2].onList, false);
+eq('a row that is not a row is skipped, not the paper', subs[0].rows.length, 3);
+eq('the objective reads from the catalogue, never from the summary', elec.objective, 'Electrical conductors and insulators');
+eq('a maths objective is placed the same way', subs[1].rows[0].topic, 'Fractions: Four Operations');
+eq('what to work on is the weakest first', S.progressFocus(subs[0].rows).map(r => r.lo || r.topic), ['Kitchen chemistry', 'elec-cond']);
+ok('…and never a strong one', S.progressFocus(subs[0].rows).every(r => S.diagPct(r) < S.DIAG_FOCUS_PCT));
+eq('nothing at all is nothing', S.progressRows([]).length, 0);
+
+section('The diagnostic — against index.html itself');
+const runSrc = html.slice(html.indexOf('async function runMarking()'), html.indexOf('function markTally()'));
+ok('the marking\'s system prompt carries the syllabus list',
+   /system: MARK_SYS \+ markBlankRule\(\) \+ aiGrounding\('mark'\) \+ keyRuleBlock\(\) \+ tutorMethodRule\(\) \+\s*markSyllabusBlock\(wsMeta\.subject, wsMeta\.level\)/.test(runSrc));
+ok('…and the fold is told the subject and level, or nothing is filed',
+   /_markFoldRows\(\(res && res\.questions\) \|\| \[\], pageNums, marking\.items,\s*\{ subject: wsMeta\.subject, level: wsMeta\.level \}\)/.test(runSrc));
+ok('the reply shape asks for the objective id', /"lo":"the learning objective/.test(html));
+const saveSrc = html.slice(html.indexOf('async function performSave('), html.indexOf('function applyWorksheetBody('));
+ok('the summary rides every save beside the score', /score: scoreOf\(\),[\s\S]{0,300}diagnostic: diagSummary\(\),/.test(saveSrc));
+ok('a filed mistake carries its objective', /lo: it\.lo \|\| '',\s*sylTopic: it\.sylTopic \|\| '',/.test(html));
+ok('the report draws the table', /body\.appendChild\(diagTableNode\(dg\.groups/.test(html));
+ok('…and the copy prints it', /DIAGNOSTIC — BY TOPIC AND LEARNING OBJECTIVE/.test(html));
+ok('📈 My progress is on the home screen and wired', /id="progressBtn"/.test(html) && /\$\('progressBtn'\)\.addEventListener\('click', openProgress\)/.test(html));
+ok('…prints through the ONE door', /printThis\(\$\('progressModal'\)\)/.test(html));
+ok('the print rules key off .printMe, never the report\'s id',
+   !/#reportModal[^\n]*\{/.test(html.slice(html.indexOf('@media print'), html.indexOf('@media print') + 4000)) &&
+   /\.modalBack\.printMe \.modalFoot \{ display: none !important; \}/.test(html));
+ok('there is still no second AI call anywhere in the diagnostic',
+   !/askGemini/.test(html.slice(html.indexOf('THE DIAGNOSTIC — every question filed'), html.indexOf('/* ================= The mistake book'))));
+
+/* =====================================================================
    CHUNG GPT
    ===================================================================== */
 section('Chung GPT');
@@ -1304,6 +2242,41 @@ ok('it blinks, and the lid is scaled from its OWN top rather than the canvas’s
    /@keyframes cgBlink/.test(html));
 ok('…and everything that moves stops for prefers-reduced-motion',
    /@media \(prefers-reduced-motion: reduce\)[\s\S]{0,400}\.cgFace/.test(html));
+/* THE LIVE ORB (v1.20.0): the tutor drawn as the centre's logo in SAND — a
+   particle model stepped in JS and drawn on a canvas. What is pinned here is
+   what the live harness cannot see: the stylesheet still knows the states
+   the JS paints, the colours are the logo's own, the shape is the ARTWORK (a
+   mask read off the logo, not a sketch), the motion is a frame loop and
+   never a timer, the float never takes a pointer, and reduced motion is
+   honoured. */
+const orbBlock = html.slice(html.indexOf('/* ---- THE LIVE ORB'), html.indexOf('/* ---- NO "LET ME CHECK"'));
+ok('the live orb has a state for idle, thinking, talking, listening, connecting, muted and closing',
+   orbBlock.length > 2000 && ['logo', 'thinking', 'talking', 'listening', 'connecting', 'muted', 'closing'].every(st => orbBlock.includes("'" + st + "'")) &&
+   /\.liveOrb\[data-state="thinking"\] \.orbCap \{ opacity: 1; \}/.test(html));
+ok('…its sand wears the logo’s teal and magenta, and its shape is the logo’s own mask',
+   /LIVE_ORB_TEAL = '#5090a0'/.test(html) && /LIVE_ORB_MAGENTA = '#c00080'/.test(html) &&
+   /LIVE_ORB_MASK = '[0-9a-f.|]{500,}'/.test(html) && /LIVE_ORB_STRIDE = 1;/.test(html) && /LIVE_ORB_STRIDE_FLOAT = 2;/.test(html));
+ok('…the settled logo is SOLID: one grain per cell at the cell\'s centre, drawn wide enough to cover it, no jitter at rest, snapped exactly home, and no idle gust',
+   /LIVE_ORB_GRAIN_COVER = 0\.7[1-9]\d*;/.test(html) && /LIVE_ORB_IDLE_GUSTS = false;/.test(html) && /LIVE_ORB_SNAP = 0\.0\d+;/.test(html) &&
+   /if \(cell\.px % stride \|\| cell\.py % stride\) continue;/.test(orbBlock) && /\(cell\.px \+ stride \/ 2\) \* scale/.test(orbBlock) &&
+   /var jitter = ring \? 60 : state === 'talking' \? 40 : 0;/.test(orbBlock) && /if \(state === 'logo' && LIVE_ORB_IDLE_GUSTS\)/.test(orbBlock) &&
+   /function liveOrbBroken\(state\)/.test(orbBlock) && /radius \* \(1 \+ \(g\.sz - 1\) \* sandy\)/.test(orbBlock) &&
+   /LIVE_ORB_GRAIN_COVER \* unit/.test(orbBlock));
+ok('…and the sand sits inside a floating GLASS SPHERE with a shadow beneath it, both still under reduced motion',
+   ['.liveOrb .orbBody {', '.liveOrb .orbGlass {', '.liveOrb .orbGloss {', '.liveOrb .orbShadow {', '@keyframes orbFloat {', '@keyframes orbShadow {'].every(rule => html.includes(rule)) &&
+   /\.liveOrb \.orbGlass \{[^}]*radial-gradient/.test(html) && /\.liveOrb \.orbGlass \{[^}]*backdrop-filter: blur/.test(html) &&
+   /\.liveOrb \.orbShadow \{[^}]*top: calc\(98 \* var\(--u\)\)/.test(html) && /\.liveOrb\[data-state="thinking"\] \{ --halo: /.test(html) &&
+   /\.liveOrb\[data-state="talking"\] \{ --halo: /.test(html) && /\.liveOrb \.orbBody, \.liveOrb \.orbShadow \{ animation: none; \}/.test(html) &&
+   (html.match(/<span class="orbShadow"><\/span><span class="orbBody"><span class="orbGlass"><\/span><canvas class="orbStage"(?: id="liveOrbStage")?><\/canvas><span class="orbGloss"><\/span><span class="orbCap">Thinking<\/span><\/span>/g) || []).length === 2);
+ok('…it is drawn on a canvas by ONE requestAnimationFrame loop, never a timer',
+   /<canvas class="orbStage" id="liveOrbStage"><\/canvas>/.test(html) && /<canvas class="orbStage"><\/canvas>/.test(html) &&
+   /function liveOrbFrame\(/.test(orbBlock) && !/setTimeout|setInterval/.test(orbBlock) &&
+   (orbBlock.match(/requestAnimationFrame\(liveOrbFrame\)/g) || []).length === 2);
+ok('…the floating orb never takes a pointer, and never prints',
+   /#liveOrbFloat \{[^}]*pointer-events: none/.test(html) && /@media print \{ #liveOrbFloat \{ display: none !important; \} \}/.test(html));
+ok('…and it stands still for prefers-reduced-motion',
+   /function liveOrbMotionOk\(\) \{[^}]*prefers-reduced-motion: reduce/.test(orbBlock) && /if \(alive && liveOrbMotionOk\(\)\)/.test(orbBlock) &&
+   /if \(!motion\) \{ liveOrbSettle\(/.test(orbBlock));
 ok('a speech bubble has a tail, drawn as two triangles so it keeps its outline',
    /\.speech::before[\s\S]{0,200}border-right-color/.test(html) &&
    /\.speech::after[\s\S]{0,200}border-right-color/.test(html));
@@ -1386,8 +2359,15 @@ ok('…and both printable things go through the one door',
    (html.match(/printThis\(/g) || []).length >= 3);
 ok('the pictures are AWAITED before the print dialog opens',
    /await Promise\.all\(list\.map/.test(html) && /printThis\(\$\('mistSheet'\)\)/.test(html));
+/* EVERY picture the sheet will print, at every tier: the whole-page or
+   whole-question crop AND every figure inside a rebuilt question. A block
+   figure left unawaited is a diagram missing off the printed page — the
+   same failure the crop already learned, one tier further in. */
+ok('the block figures are awaited too, not only the whole-page picture',
+   /mistakeBlocks\(m\)\.map\(function \(b\) \{ return mistakeBlockUrl\(b\)\.then\(warm\); \}\)/.test(html));
 ok('a picture that will not load takes itself off the sheet',
-   /im\.onerror = function \(\) \{ m\._sheetUrl = ''; res\(\); \}/.test(html));
+   /im\.onerror = res;/.test(html) &&
+   /img\.addEventListener\('error', function \(\) \{ if \(img\.parentNode\) img\.parentNode\.removeChild\(img\); \}\)/.test(html));
 /* Getting it right is what the book is for, so a correct retry files it
    under Sorted — and it must be reversible, which is the card's own ↩︎. */
 ok('a correct retry clears the mistake',
@@ -1544,7 +2524,7 @@ S.currentUser = { email: 'chungzhikai@gmail.com' };
 ok('the teacher sees everything', S.canSeeWorksheet({ level: 'P3', subject: 'math' }));
 S.currentUser = null;
 
-/* THE SET LIST GOES THROUGH THE SAME RULE (v1.14.2). It never did: every
+/* THE SET LIST GOES THROUGH THE SAME RULE (v1.23.1). It never did: every
    active assignment was painted for every student, and pressing Start on
    one set for another level wrote a copy the list then filtered out — a
    worksheet that "got ready" and never opened, one more hidden copy per
@@ -1644,7 +2624,9 @@ ok('the list is filtered by the rule', /worksheets = out\.filter\(canSeeWorkshee
 /* A worksheet tagged with a level the student is not is one that vanishes
    from their own list the moment it is saved. */
 ok('an upload takes the level off the active student, never a picker',
-   /var level = \(!isAdmin\(currentUser\) && upSt && upSt\.level\) \? upSt\.level/.test(html));
+   /var levelFixed = !!\(!isAdmin\(currentUser\) && upSt && upSt\.level\);\n\s*var level = levelFixed \? upSt\.level : \$\('upLevel'\)\.value;/.test(html));
+ok('…and the paper read at upload is TOLD that level is not free',
+   /paperApplyRead\(read, \{\n\s*level: level, levelFree: !levelFixed,/.test(html));
 ok('the students are dropped on every account change',
    /myStudents = \[\];[\s\S]{0,120}currentDocId = null;/.test(html));
 
@@ -1850,6 +2832,57 @@ eq('one page is one sheet', S.coverSheets(1), 0);
 eq('two pages puts one behind it', S.coverSheets(2), 1);
 eq('a whole paper is a stack', S.coverSheets(9), 2);
 eq('…and it never grows past two', S.coverSheets(400), 2);
+
+/* =====================================================================
+   📚 THE BOOKSHELF — level, then subject, then topic along the shelf
+   ===================================================================== */
+section('The bookshelf');
+{
+  const ws = [
+    { id: 'a', level: 'P5', subject: 'science', topic: 'Heat', updatedAt: 10 },
+    { id: 'b', level: 'P6', subject: 'math', topic: '', updatedAt: 50 },
+    { id: 'c', level: 'P5', subject: 'science', topic: '', updatedAt: 90 },
+    { id: 'd', level: 'P5', subject: 'science', topic: 'Cells', updatedAt: 20 },
+    { id: 'e', level: 'P5', subject: 'math', topic: 'Fractions', updatedAt: 30 },
+    { id: 'f', level: '', subject: '', updatedAt: 99 },
+    { id: 'g', level: 'P5', subject: 'science', topic: 'heat', updatedAt: 40 },
+    { id: 'h', level: 'S1', subject: 'science', updatedAt: 1 },
+    { id: 'i', level: 'P3', subject: 'science', updatedAt: 1 }
+  ];
+  const groups = S.shelfGroups(ws);
+  eq('one shelf per level and subject, levels up the ladder, subjects in the centre\'s order, untagged LAST',
+     groups.map(g => g.level + '|' + g.subject), ['P3|science', 'P5|science', 'P5|math', 'P6|math', 'S1|science', '|']);
+  const p5sci = groups[1];
+  eq('along a shelf the papers are filed by topic, a topic\'s newest first, no topic at the end',
+     p5sci.items.map(w => w.id), ['d', 'g', 'a', 'c']);
+  eq('an untagged worksheet is on its own shelf rather than dropped', groups[5].items.map(w => w.id), ['f']);
+  eq('a shelf says what it holds', [S.shelfTitle(p5sci), S.shelfTitle(groups[5])], ['P5 · Science', 'Any level · Any subject']);
+  eq('an empty list is no shelves', S.shelfGroups([]), []);
+  eq('a Firestore stamp, a Date and a number all order a shelf',
+     S.shelfGroups([
+       { id: 'x', level: 'P4', subject: 'math', updatedAt: { toMillis: () => 5 } },
+       { id: 'y', level: 'P4', subject: 'math', updatedAt: new Date(9) },
+       { id: 'z', level: 'P4', subject: 'math', updatedAt: 7 }
+     ])[0].items.map(w => w.id), ['y', 'z', 'x']);
+  /* THE WHEEL, pinned as a function of distance from the middle. */
+  const mid = S.shelfWheelPose(0);
+  eq('the card in the middle faces you, full size', [mid.rot, mid.z, mid.scale, mid.op], [0, 0, 1, 1]);
+  const l = S.shelfWheelPose(-0.5), r = S.shelfWheelPose(0.5);
+  ok('a card to the left turns the opposite way to a card to the right, by the same amount', l.rot === -r.rot && r.rot < 0, JSON.stringify([l, r]));
+  ok('…and both sink and shrink the same', l.z === r.z && l.z < 0 && l.scale === r.scale && l.scale < 1);
+  ok('the pose is clamped, so a card far along the shelf is not turned edge-on into nothing',
+     S.shelfWheelPose(4).rot === S.shelfWheelPose(1).rot && S.shelfWheelPose(4).scale > 0.5 && S.shelfWheelPose(-9).op > 0.5);
+  ok('a card nearer the middle is turned less', Math.abs(S.shelfWheelPose(0.2).rot) < Math.abs(S.shelfWheelPose(0.6).rot));
+  eq('with motion switched off a card is never turned at all', S.shelfWheelPose(0.7, false), { rot: 0, z: 0, scale: 1, op: 1 });
+  ok('junk is the middle pose', S.shelfWheelPose('x').rot === 0 && S.shelfWheelPose(undefined).scale === 1);
+  ok('the row is the scroller and snaps to a paper', /\.shelfRow \{[^}]*scroll-snap-type: x mandatory/.test(html) && /\.shelfItem \{[^}]*scroll-snap-align: center/.test(html));
+  ok('the wheel is posed off the scroll, one paint a frame', /row\.addEventListener\('scroll', kick, \{ passive: true \}\)/.test(html) && /requestAnimationFrame\(run\)/.test(html));
+  ok('the home screen is built from shelfGroups', /var groups = shelfGroups\(worksheets\);\n\s*groups\.forEach\(function \(g\) \{ box\.appendChild\(shelfNode\(g\)\); \}\);/.test(html));
+  ok('a card wears its topic and its school', /chipNode\('📖 ' \+ w\.topic, 'chip chipTopic'\)/.test(html) && /chipNode\('🏫 ' \+ w\.school, 'chip chipSchool'\)/.test(html));
+  ok('the school and the topic ride every save', /school: wsMeta\.school \|\| '',\n\s*topic: wsMeta\.topic \|\| '',/.test(html));
+  ok('…and come back when a worksheet is opened', /wsMeta\.school = w\.school \|\| '';\n\s*wsMeta\.topic = w\.topic \|\| '';/.test(html));
+  ok('…and are taken off the paper at upload', /wsMeta\.school = got\.school;\n\s*wsMeta\.topic = got\.topic;/.test(html));
+}
 eq('an unknown page count is not a stack', S.coverSheets(undefined), 0);
 
 /* ---- Drawing it ---- */
@@ -1927,7 +2960,10 @@ S.currentUser = null;
 ok('the cover is drawn from the pages the STUDENT has',
    /makeCoverDataUrl[\s\S]{0,400}studentPages\(\)/.test(html));
 ok('…and it is made after the key scan, never before it',
-   html.indexOf('await keyAutoScan(true)') < html.indexOf("await ensureCover(id, '')"));
+   html.indexOf('await keyAutoScan(true, read)') < html.indexOf("await ensureCover(id, '')"));
+ok('…which itself comes after the paper has been read, so the read\'s key pages are put away too',
+   html.indexOf('read = await paperReadEnds()') > 0 &&
+   html.indexOf('read = await paperReadEnds()') < html.indexOf('await keyAutoScan(true, read)'));
 ok('an older worksheet gets one the first time it is opened',
    /offerLocalBackup\(id[\s\S]{0,320}ensureCover\(id, w\.cover\)/.test(html));
 /* A class of thirty costs one render, the same way the key rows travel
@@ -2202,455 +3238,163 @@ ok('one page per sheet, and the last one carries no break',
    /\.printPage \{[\s\S]{0,200}break-after: page;/.test(html) &&
    /\.printPage:last-child \{ break-after: auto/.test(html));
 
+/* =====================================================================
+   ✍️ THE STYLUS, THE PALM AND THE FINGERS
+   ---------------------------------------------------------------------
+   None of this can be caught by reading a screenshot: a palm threshold set
+   below a fingertip eats ordinary scrolling, one set too high lets the heel
+   of a hand draw across the worksheet, and a stroke that does not release
+   its pointer locks every later touch out of the page for the rest of the
+   session — on a screen that looks perfectly right.
+   ===================================================================== */
+section('The stylus, the palm and the fingers');
+
+const PALM = between("var stylusOnly = (function () {", 'function setStylusOnly(', 'palm rejection');
+ok('pencil-only mode is ON unless the device says otherwise',
+   /v === null \? true : v === '1'/.test(PALM),
+   'a palm that can draw ruins a worksheet before anyone notices');
+ok('the palm threshold sits above a fingertip',
+   /var PALM_CONTACT = (5[5-9]|[6-9]\d);/.test(PALM),
+   'iPads report ordinary fingers at up to ~45px — below that, finger scrolling gets eaten');
+ok('a palm is a CONTACT PATCH, and only a touch can be one',
+   /e\.pointerType === 'touch' && \(e\.width > PALM_CONTACT \|\| e\.height > PALM_CONTACT\)/.test(PALM),
+   'a stylus reports a tiny patch; testing size alone would reject nothing and testing kind alone everything');
+
+const DOWN = between("svg.addEventListener('pointerdown', function (e) {", "if (tool === 'hint')", 'the pointerdown gate');
+ok('a palm starts nothing at all', /if \(isPalmTouch\(e\)\) \{ e\.preventDefault\(\); return; \}/.test(DOWN));
+ok('a second touch cannot hijack a stroke in progress',
+   /activePointerId !== null && e\.pointerId !== activePointerId/.test(DOWN));
+ok('…but a stale gesture is cleared rather than locking the page for good',
+   /cancelStaleGesture\(\)/.test(DOWN),
+   'a pointerup the browser swallowed would otherwise refuse every later touch');
+ok('a touch the navigation engine has taken never reaches a tool',
+   /e\.pointerType === 'touch' && nav\.mode/.test(DOWN));
+ok('in pencil-only mode a finger on a drawing tool does not draw',
+   /stylusOnly && e\.pointerType === 'touch' && isDrawTool\(tool\)/.test(DOWN));
+ok('the first stylus down switches the mode back on',
+   /e\.pointerType === 'pen' && !pencilSeen/.test(DOWN),
+   'whoever has just picked a pencil up is about to rest a hand on the screen');
+
+const MOVE = between("svg.addEventListener('pointermove', function (e) {", 'function endStroke(e) {', 'pointermove');
+ok('only the pointer that started the stroke may continue it',
+   /activePointerId !== null && e\.pointerId !== activePointerId\) return;/.test(MOVE));
+const ENDS = between('function endStroke(e) {', "svg.addEventListener('pointerup', endStroke);", 'endStroke');
+ok('a palm LIFTING OFF does not end the stroke the pencil is drawing',
+   /activePointerId !== null && e\.pointerId !== activePointerId\) return;/.test(ENDS));
+ok('…and the pointer is released when the real one lifts',
+   /activePointerId = null;/.test(ENDS),
+   'a pointer never released locks every later touch out of the page');
+
+/* 💡 hint, 🎤 speak and 🖱️ select are deliberately NOT draw tools: those are
+   a tap and a drag of something already on the page, and a finger doing
+   either is not a palm about to ruin the worksheet. */
+ok('the pen and the eraser are tools a finger must not drive',
+   S.isDrawTool('pen') && S.isDrawTool('highlight') && S.isDrawTool('eraser') && S.isDrawTool('text'));
+ok('…and the hint, the mic and select are not',
+   !S.isDrawTool('hint') && !S.isDrawTool('speak') && !S.isDrawTool('select'));
+
+const NAV = between('function navBind() {', '/* Two-finger double-tap', 'the navigation engine');
+ok('the engine is bound in CAPTURE, ahead of the page overlay',
+   /pointerdown', function \(e\) \{[\s\S]*?\}, true\);/.test(NAV),
+   'bound after it, a second finger could never take a stroke over into a pinch');
+ok('a resting palm navigates nothing either', /if \(rejectTouch\(e\)\)/.test(NAV));
+ok('a second finger on a young stroke throws the accidental dot away',
+   /abortYoungStroke\(e\.timeStamp\)/.test(NAV));
+ok('…and on an established one KEEPS the ink and pinches',
+   /commitTouchStrokeForNav\(\)/.test(NAV),
+   'the ink already drawn is the student’s own work');
+ok('one finger pans only in pencil-only mode, and only on a drawing tool',
+   /nav\.pts\.size === 1 && stylusOnly && isDrawTool\(tool\)/.test(NAV));
+ok('the pinch is collected into one zoom per frame',
+   /scheduleNavZoom\(\)/.test(NAV),
+   'a zoom per pointermove is a forced layout twice a frame on a twenty-page document — that IS the lag');
+ok('the browser’s own touch scroll stands down while the engine pans',
+   /if \(nav\.mode \|\| penBlocksTouch\(\) \|\| rejectedTouches\.size\) e\.preventDefault\(\)/.test(NAV),
+   'the two together double-scroll and fight each other');
+ok('a flick carries on with momentum', /startNavMomentum\(\)/.test(NAV));
+ok('the pages sharpen up once the gesture is over', /scheduleRaster\(\)/.test(NAV));
+
+ok('the browser’s own pinch-zoom is taken off the scroller',
+   /#viewerArea \{[^}]{0,800}touch-action: pan-x pan-y;/.test(html),
+   'left on, it zooms the whole app instead of the worksheet and fights the gesture');
+ok('the mode is remembered on the device',
+   /localStorage\.setItem\('tutorStylusOnly'/.test(html));
+ok('the button is a MODE, not a tool',
+   /<button class="toolBtn" id="stylusBtn"/.test(html) &&
+   !/id="stylusBtn"[^>]*data-tool/.test(html),
+   'the tool buttons are wired and lit by data-tool; a mode wearing one would be set as a tool');
 
 /* =====================================================================
-   ✍️ WRITING ON THE PAGE WITH A STYLUS
-   ---------------------------------------------------------------------
-   Every fault this section guards against is INVISIBLE from a screenshot
-   and invisible from reading the app on a laptop, because a mouse has no
-   palm, dispatches one sample per move and never asks to scroll the page
-   it is drawing on. They only show up on the device the app is actually
-   used on, in front of a child who cannot say what is wrong beyond "it's
-   laggy" or "it drew when I didn't want it to".
-
-   • Rebuild the overlay on every pointermove again and writing gets
-     slower with every answer already on the page — a symptom that reads
-     as a tired iPad rather than as a bug.
-   • Drop getCoalescedEvents and fast handwriting comes back angular.
-   • Take the thinning out and a line of working is thousands of points,
-     saved and re-serialised for the rest of the worksheet's life.
-   • Lose the palm rules and the heel of a hand writes on the page — in
-     the child's own ink, on a worksheet that is then MARKED from a
-     picture of it.
-   • Put the stroke back into `annotations` at pointerdown and a gesture
-     iPadOS cancels leaves a half-stroke in the saved body.
-   • Default pencil-only ON and a child on a phone taps the page, nothing
-     happens, and nothing on any screen says why.
+   ⚙️ THREE ENGINES, AND WHICHEVER ONE WILL ANSWER
+   The way this app dies is not a bug in it: "[429] Your billing account has
+   exceeded its monthly spending cap", returned identically to every call on
+   every device until the month turns over. Everything pinned here is silent
+   — the app carries on looking exactly as it did that morning.
    ===================================================================== */
-section('Writing with a stylus');
+ok('`window.askGemini` is still the ONE door, and it goes through the loop',
+   /window\.askGemini = async function askGemini\([^)]*\) \{\s*return aiAskWith\(prompt, opts, aiEngineOrder\(\)\);/.test(html),
+   'a door that calls askGeminiDirect again is every call site back on one engine, with no backup at all');
+ok('…and `askGeminiDirect` is reached only through the dispatcher',
+   (html.match(/askGeminiDirect\(prompt, opts\)/g) || []).length === 1,
+   'a second call site past _aiRun is a call that still dies on the cap with nothing saying why');
+ok('the backups are SERVER-KEYED and there is no key box',
+   /askOpenAi/.test(html) && /askKimi/.test(html) && !/type="password"/.test(html),
+   'this app is opened by children on shared iPads — a key field here is a key typed on the wrong device');
+ok('…and no OpenAI-shaped key is in the file',
+   !/\bsk-[A-Za-z0-9_-]{16,}/.test(html),
+   'a public static site served to every student browser');
+ok('a refused route goes to the BACK of the list and never off it',
+   /sort\(\(a, b\) => \(aiEngineIsDown\(a\) \? 1 : 0\) - \(aiEngineIsDown\(b\) \? 1 : 0\)\)/.test(html),
+   'taken off, the app is dead once the cap has been lifted');
+ok('…and the mark expires by itself', /_aiDown\[e\] = Date\.now\(\) \+ AI_DOWN_MS/.test(html));
+ok('…and a success clears it', /function _aiMarkUp\(e\) \{ _aiDown\[e\] = 0/.test(html));
+ok('an engine name nobody recognises still yields every route',
+   /AI_ENGINES\.indexOf\(first\) >= 0[\s\S]{0,120}: AI_ENGINES\.slice\(\)/.test(html),
+   'a stale word in the centre-wide setting would take the AI off every device at once');
+ok('when nothing answers, EVERY route is named',
+   /order\.map\(e => AI_ROUTE_LABEL\[e\] \+ ": " \+ \(_aiWhy\[e\] \|\| "refused"\)\)/.test(html),
+   'reporting only the first sends the teacher to the Google console when the job is to deploy a function');
+ok('no temperature is sent to a server route',
+   !/_aiServerAsk[\s\S]{0,600}temperature/.test(html),
+   'a reasoning model runs only at its own default — a temperature is a 400, not a worse answer');
+ok('no model is named to Kimi',
+   /function askKimiServer\(prompt, opts\) \{ return _aiServerAsk\("askKimi", prompt, opts\); \}/.test(html),
+   'Moonshot renames its flagship every release and this app has no box to correct a stale id in');
+ok('the callable rides the COMPAT app, which holds the signed-in user',
+   /firebase\.app\(\)\.functions\(\)\.httpsCallable/.test(html) &&
+   /firebase-functions-compat\.js/.test(html),
+   'the modular app carries App Check but no session, and the function refuses a caller it cannot name');
+ok('…and a blocked CDN leaves the backup unavailable rather than throwing on load',
+   /typeof firebase === "undefined" \|\| !firebase\.functions/.test(html));
 
-const SRC_STYLUS = between('var stylusOnly = (function () {',
-                           'function setTool(t) {', 'the stylus input pipeline');
+/* THE ENGINE IS THE CENTRE'S SETTING, on the document this app already
+   reads. A device-local choice is the bug wearing a feature's clothes. */
+ok('the shared setting is a field on config/admin',
+   /db\.collection\('config'\)\.doc\('admin'\)\.onSnapshot/.test(html),
+   'the same field the Portal and Scan write — one switch moves them all');
+ok('…and it is LIVE, not a one-shot read',
+   /_aiCfgStop = db\.collection\('config'\)\.doc\('admin'\)\.onSnapshot/.test(html));
+ok('…and it comes DOWN on every account change',
+   /stopTeachingNotes\(\);\s*\n\s*aiEngineStopShared\(\);/.test(html),
+   'one account setting left running governs the next person to sign in on a shared iPad');
+ok('the write is a MERGE, always',
+   /aiEngine: engine,[\s\S]{0,220}\{ merge: true \}/.test(html),
+   'a plain set takes `uid` off the document and every student in the Portal loses the bank');
+ok('…and only the admin may write it',
+   /async function aiEngineSetShared\(engine\) \{\s*\n\s*if \(!isAdmin\(currentUser\)\) return;/.test(html),
+   'hiding the picker is never the lock');
+ok('an unset field means Gemini',
+   /window\.aiSetEngine\(d\.aiEngine \|\| 'gemini'\)/.test(html),
+   'a centre that never touches this must be unaffected');
+ok('a failed write is REPORTED',
+   /Could not save the centre-wide setting/.test(html),
+   'a teacher told nothing would believe the whole centre had moved');
 
-/* A DOM small enough to run the renderer against, and honest about the two
-   things these tests actually measure: how many nodes get built, and what
-   ends up in the `d` string. */
-function fakeNode(tag) {
-  return {
-    tag, children: [], parentNode: null, attrs: {},
-    setAttribute(k, v) { this.attrs[k] = String(v); },
-    getAttribute(k) { return this.attrs[k] === undefined ? null : this.attrs[k]; },
-    removeAttribute(k) { delete this.attrs[k]; },
-    appendChild(n) { n.parentNode = this; this.children.push(n); return n; },
-    removeChild(n) {
-      const i = this.children.indexOf(n);
-      if (i >= 0) this.children.splice(i, 1);
-      n.parentNode = null;
-      return n;
-    },
-    querySelector(sel) {
-      if (sel === 'path') {
-        for (const c of this.children) { if (c.tag === 'path') return c; }
-      }
-      return null;
-    }
-  };
-}
-
-function stylusSandbox() {
-  const built = { annNode: 0, renderOverlay: 0, pushUndo: 0 };
-  const ctx = {
-    console, localStorage: { getItem: () => null, setItem: () => {} },
-    window: { matchMedia: () => ({ matches: false }) },
-    navigator: { maxTouchPoints: 0 },
-    document: { createElement: () => fakeNode('div') },
-    built,
-    annotations: [],
-    drawing: null, erasing: null, moving: null,
-    round2: n => Math.round(n * 100) / 100,
-    pathFromPoints(pts) {
-      if (!pts.length) return '';
-      let d = 'M ' + pts[0].x + ' ' + pts[0].y;
-      for (let i = 1; i < pts.length; i++) d += ' L ' + pts[i].x + ' ' + pts[i].y;
-      return d;
-    },
-    annNode(a) {
-      built.annNode++;
-      const g = fakeNode('g');
-      g.setAttribute('data-id', a.id);
-      if (a.type === 'pen' || a.type === 'highlight') {
-        const p = fakeNode('path');
-        p.setAttribute('d', ctx.pathFromPoints(a.points || []));
-        g.appendChild(p);
-      }
-      return g;
-    },
-    annBounds(a) {
-      if (a.type === 'pen' || a.type === 'highlight') {
-        const xs = (a.points || []).map(q => q.x), ys = (a.points || []).map(q => q.y);
-        if (!xs.length) return { x: 0, y: 0, x2: 0, y2: 0 };
-        return { x: Math.min(...xs), y: Math.min(...ys), x2: Math.max(...xs), y2: Math.max(...ys) };
-      }
-      return { x: a.x || 0, y: a.y || 0, x2: (a.x || 0) + (a.w || 0), y2: (a.y || 0) + (a.h || 0) };
-    },
-    pushUndo() { built.pushUndo++; },
-    setDirty() {},
-    renderOverlay() { built.renderOverlay++; },
-    renderAllOverlays() { built.renderOverlay++; },
-    renderPinsOn() {}, renderMarksOn() {},
-    toast() {},
-    $: () => null
-  };
-  ctx.globalThis = ctx;
-  vm.createContext(ctx);
-  vm.runInContext(SRC_STYLUS, ctx);
-  return ctx;
-}
-
-const STY = stylusSandbox();
-
-/* ---- Palm rejection ---- */
-/* iPads report ordinary fingertips at contact sizes up to ~45px, so a
-   threshold at or below that eats normal finger scrolling — which would be
-   a worse bug than the one it fixes. */
-ok('a palm-sized touch is refused', STY.isPalmTouch({ pointerType: 'touch', width: 70, height: 70 }));
-ok('…and so is one that is wide but not tall', STY.isPalmTouch({ pointerType: 'touch', width: 90, height: 8 }));
-ok('an ordinary fingertip is NOT a palm', !STY.isPalmTouch({ pointerType: 'touch', width: 44, height: 44 }));
-ok('a stylus is never a palm, whatever it reports',
-   !STY.isPalmTouch({ pointerType: 'pen', width: 300, height: 300 }),
-   'a pen that reported a big contact patch would be locked out of the app entirely');
-ok('a mouse is never a palm', !STY.isPalmTouch({ pointerType: 'mouse', width: 999, height: 999 }));
-
-/* ---- Which tools a finger may not use in pencil-only mode ---- */
-['pen', 'highlight', 'rect', 'ellipse', 'line', 'arrow', 'text', 'eraser'].forEach(t => {
-  ok('“' + t + '” makes marks, so a finger pans instead', STY.isDrawTool(t));
-});
-/* These three make no marks, and a finger has to keep them: a child asking
-   for a hint should not have to go and find their stylus first, and a text
-   box you cannot drag is a text box in the wrong place for ever. */
-ok('🖱️ select is NOT a marking tool — a finger still drags a box', !STY.isDrawTool('select'));
-ok('💡 hint is NOT a marking tool — it is a tap', !STY.isDrawTool('hint'));
-ok('🎤 speak is NOT a marking tool — it is a tap', !STY.isDrawTool('speak'));
-
-/* ---- Pencil-only defaults OFF ---- */
-/* Ans Key defaults it ON, and that is right for a teacher who knows where
-   the button is. Here it would be a nine-year-old on a phone tapping the
-   page and nothing happening. */
-ok('pencil-only defaults OFF with nothing stored', STY.stylusOnly === false,
-   'a finger-only phone is the commonest device this app runs on');
-ok('…and the file says why it diverges from Ans Key',
-   /DELIBERATE DIVERGENCE FROM ANS KEY/.test(html),
-   'a default that disagrees with the app it was ported from needs its reason written down, or it reads as a porting slip and gets "fixed" back');
-ok('…and it is stored per device', /localStorage\.setItem\('tutorStylusOnly'/.test(SRC_STYLUS));
-ok('a stylus touching down switches it on by itself',
-   /pencilSeen = true;[\s\S]{0,80}setStylusOnly\(true\)/.test(html),
-   'palm rejection that has to be found in a toolbar is palm rejection nobody has on');
-
-/* ---- The live stroke is ONE node whose `d` grows in place ---- */
-/* This is the whole performance fix. Rebuilding the overlay per move made
-   every stroke cost a rebuild of every answer already on the page. */
-{
-  const c = stylusSandbox();
-  const svg = fakeNode('svg');
-  const page = { num: 1, svg, baseW: 600, baseH: 800 };
-  const ann = { id: 'a1', type: 'pen', page: 1, points: [{ x: 0, y: 0 }] };
-  c.drawing = { page, ann, svgNode: null, _d: null, _dCount: 0 };
-  c.redrawTemp(true);
-  const madeAtStart = c.built.annNode;
-  for (let i = 1; i <= 400; i++) {
-    ann.points.push({ x: i, y: i });
-    c.redrawTemp();
-  }
-  ok('400 samples build NO extra nodes after the first',
-     c.built.annNode === madeAtStart, 'built ' + c.built.annNode + ' nodes for one stroke');
-  ok('…and never rebuild the page overlay', c.built.renderOverlay === 0,
-     'renderOverlay ran ' + c.built.renderOverlay + ' times during one stroke');
-  ok('…and the page still holds exactly one live node', svg.children.length === 1);
-  const d = svg.children[0].querySelector('path').getAttribute('d');
-  ok('the `d` string is complete', d.startsWith('M 0 0 L 1 1 ') && d.endsWith(' L 400 400'), d.slice(0, 40));
-  ok('…and has one segment per point', d.split(' L ').length === 401,
-     'got ' + d.split(' L ').length + ' segments');
-  /* The incremental string has to be INVALIDATED by a full rebuild, or the
-     next append lands on a `d` that no longer describes what is on screen. */
-  c.redrawTemp(true);
-  ok('a forced rebuild invalidates the incremental string', c.drawing._d === null);
-  ok('…and replaces the node rather than stacking a second one',
-     svg.children.length === 1, 'got ' + svg.children.length + ' nodes');
-}
-
-/* ---- Committing the stroke ---- */
-{
-  const c = stylusSandbox();
-  const svg = fakeNode('svg');
-  const page = { num: 1, svg, baseW: 600, baseH: 800 };
-  const ann = { id: 'a2', type: 'pen', page: 1, points: [{ x: 5, y: 5 }, { x: 9, y: 9 }] };
-  c.drawing = { page, ann, svgNode: null, _d: null, _dCount: 0 };
-  c.redrawTemp(true);
-  const kept = c.commitDrawing(true);
-  ok('a real stroke is committed', kept === true);
-  ok('…into annotations, once', c.annotations.length === 1 && c.annotations[0].id === 'a2');
-  ok('…with exactly one undo step, pushed BEFORE it lands',
-     c.built.pushUndo === 1, 'got ' + c.built.pushUndo);
-  ok('…keeping the node already on screen rather than rebuilding the page',
-     c.built.renderOverlay === 0 && svg.children.length === 1);
-  ok('…and the finished node catches the eraser again',
-     svg.children[0].getAttribute('pointer-events') === null,
-     'a stroke left pointer-events:none can never be rubbed out');
-}
-
-/* A TAP IS A DOT. `pathFromPoints` of a single point draws nothing at all,
-   so without this the child's mark is invisible ink that still catches the
-   eraser — they see nothing and then rub out something they cannot see. */
-{
-  const c = stylusSandbox();
-  const svg = fakeNode('svg');
-  const page = { num: 1, svg, baseW: 600, baseH: 800 };
-  const ann = { id: 'a3', type: 'pen', page: 1, points: [{ x: 5, y: 5 }] };
-  c.drawing = { page, ann, svgNode: null, _d: null, _dCount: 0 };
-  c.redrawTemp(true);
-  ok('a one-point tap is KEPT, as a visible dot', c.commitDrawing(true) === true);
-  ok('…by giving it a second point', c.annotations[0].points.length === 2);
-  ok('…and the node on screen is redrawn to show it',
-     svg.children[0].querySelector('path').getAttribute('d').split(' L ').length === 2);
-}
-
-/* A box or a line dragged nowhere is a tap, not a mark — dropping it keeps
-   the page free of invisible zero-size shapes that still catch the eraser. */
-{
-  const c = stylusSandbox();
-  const svg = fakeNode('svg');
-  const page = { num: 1, svg, baseW: 600, baseH: 800 };
-  const ann = { id: 'a4', type: 'rect', page: 1, x: 10, y: 10, w: 0.5, h: 0.5 };
-  c.drawing = { page, ann, svgNode: null, _d: null, _dCount: 0 };
-  c.redrawTemp(true);
-  ok('a box dragged nowhere is dropped', c.commitDrawing(true) === false);
-  ok('…and leaves nothing behind, in the array or on the page',
-     c.annotations.length === 0 && svg.children.length === 0);
-  ok('…and costs no undo step', c.built.pushUndo === 0);
-}
-
-/* A GESTURE THE BROWSER LOST must not leave its half-stroke on the page and
-   every later touch locked out — the app looks frozen and nothing says why. */
-{
-  const c = stylusSandbox();
-  const svg = fakeNode('svg');
-  const page = { num: 1, svg, baseW: 600, baseH: 800 };
-  c.drawing = { page, ann: { id: 'a5', type: 'pen', page: 1, points: [{ x: 1, y: 1 }] },
-                svgNode: null, _d: null, _dCount: 0 };
-  c.redrawTemp(true);
-  c.claimPointer({ pointerId: 7, pointerType: 'touch' });
-  ok('a pointer can be claimed', c.activePointerId === 7 && c.activePointerType === 'touch');
-  c.cancelStaleGesture();
-  ok('a stale gesture releases the pointer', c.activePointerId === null && c.activePointerType === null,
-     'left claimed, every later touch on the page is swallowed for the rest of the session');
-  ok('…and sweeps its half-drawn stroke off the page', svg.children.length === 0);
-  ok('…and puts nothing into annotations', c.annotations.length === 0);
-}
-
-/* ---- Against index.html itself ---- */
-/* None of the rest can be measured from the outside: they are properties of
-   the event handlers, and the one that gets forgotten is always the one no
-   screen can show. */
-const OVERLAY = between('function attachOverlayHandlers(p) {',
-                        '/* `eventPoint` with the page\'s rectangle already measured',
-                        'the overlay handlers');
-
-ok('the pen reads every coalesced sample the stylus gave us',
-   /getCoalescedEvents\s*&&\s*e\.getCoalescedEvents\(\)/.test(OVERLAY),
-   'without it, fast handwriting comes back as a chain of straight segments');
-ok('…falling back to the event itself where there are none',
-   /if \(!samples \|\| !samples\.length\) samples = \[e\];/.test(OVERLAY));
-ok('…and the page is measured ONCE per move, not once per sample',
-   /var rect = p\.svg\.getBoundingClientRect\(\);/.test(OVERLAY) &&
-   /pointIn\(samples\[si\], p, rect\)/.test(OVERLAY),
-   'a getBoundingClientRect per sample is a dozen forced layouts inside one event');
-ok('the points are thinned',
-   /Math\.abs\(sp\.x - last\.x\) \+ Math\.abs\(sp\.y - last\.y\) >= 1/.test(OVERLAY),
-   'untinned, one line of working is thousands of points saved for ever');
-
-ok('the live stroke goes through redrawTemp, never renderOverlay',
-   /redrawTemp\(\);/.test(OVERLAY) && !/^\s*renderOverlay\(p\);\s*$/m.test(
-     OVERLAY.slice(OVERLAY.indexOf("addEventListener('pointermove'"),
-                   OVERLAY.indexOf('function endStroke'))
-       .replace(/if \(moving[\s\S]*?\n    \}/, '')),
-   'a rebuild per move makes every stroke cost a rebuild of the whole page');
-ok('the stroke in hand is NOT in `annotations` yet',
-   !/annotations\.push\(a\);\s*\n\s*renderOverlay\(p\);/.test(OVERLAY),
-   'in the array it is rebuilt with everything else on every single move — and a cancelled gesture saves a half-stroke');
-
-ok('a palm never starts anything', /if \(isPalmTouch\(e\)\) \{ e\.preventDefault\(\); return; \}/.test(OVERLAY));
-ok('one pointer owns the gesture', /activePointerId !== null && e\.pointerId !== activePointerId/.test(OVERLAY));
-ok('…and a lost up/cancel clears the stale state rather than locking the page',
-   /cancelStaleGesture\(\)/.test(OVERLAY));
-ok('a moving palm is ignored too',
-   /pointermove'[\s\S]{0,200}activePointerId !== null && e\.pointerId !== activePointerId/.test(OVERLAY),
-   'rejected on the way down and accepted on the way across is a palm that draws');
-ok('a palm lifting off never ends the real gesture',
-   /function endStroke\(e\) \{[\s\S]{0,200}e\.pointerId !== activePointerId/.test(OVERLAY));
-
-ok('a finger pans rather than draws in pencil-only mode',
-   /if \(stylusOnly && e\.pointerType === 'touch' && isDrawTool\(tool\)\) return;/.test(OVERLAY));
-ok('…and the navigation engine\'s touches never reach the tools',
-   /e\.pointerType === 'touch' && nav\.mode/.test(OVERLAY));
-
-/* iPadOS cancels a gesture for a system swipe or a palm-triggered scroll.
-   Losing half an answer to a swipe nobody meant to make is the kind of thing
-   that stops a child using the app at all. */
-ok('pointercancel KEEPS the ink', /addEventListener\('pointercancel', endStroke\)/.test(OVERLAY));
-ok('there is deliberately no pointerleave handler',
-   !/addEventListener\('pointerleave'/.test(OVERLAY),
-   'with pointer capture it only cuts a stroke in half at the margin — which is exactly where working goes');
-ok('…and the file says so, so it is not "restored" as a missing case',
-   /Deliberately NO pointerleave handler/.test(OVERLAY));
-
-/* ---- The navigation engine ---- */
-const NAV = between('(function attachTouchNavigation() {', "$('stylusBtn').addEventListener",
-                    'the touch navigation engine');
-ok('two fingers pinch-zoom', /nav\.mode = 'pinch'/.test(NAV));
-ok('…keeping the point under the fingers fixed', /function zoomAt\(clientX, clientY, factor\)/.test(NAV));
-ok('…and one zoom per animation frame, not one per event',
-   /requestAnimationFrame\(flushNavZoom\)/.test(NAV),
-   'a resize plus a scroll read per event is a forced layout twice a frame on a ten-page document');
-ok('…landing exactly where the fingers left it', /function endNavZoom/.test(NAV) && /endNavZoom\(\);/.test(NAV));
-ok('one finger pans in pencil-only mode', /nav\.mode = 'pan'/.test(NAV));
-ok('…but NEVER while the stylus is mid-stroke', /!drawing &&/.test(NAV),
-   'a hand contact SMALLER than PALM_CONTACT is not a palm, and would set the page panning under a live stroke — which measures against a moving rectangle, so the writing smears');
-ok('…in the CAPTURE phase, ahead of the overlay', /\}, true\);/.test(NAV));
-ok('a flick carries on', /function startNavMomentum/.test(NAV));
-ok('a palm is not a navigating finger', /if \(isPalmTouch\(e\)\) return;/.test(NAV));
-
-/* A second finger landing on a stroke means "scroll". A young stroke was an
-   accident; an established one is the child's work and is kept. */
-ok('a second finger on a JUST-started stroke throws the accident away',
-   /function abortYoungStroke/.test(NAV) && /startT < 300/.test(NAV));
-ok('…but on an established one the ink is COMMITTED, not lost',
-   /function commitTouchStrokeForNav/.test(NAV) && /commitDrawing\(true\)/.test(NAV));
-
-/* ↶ is in a toolbar that scrolls sideways on a phone, and Ctrl+Z is not a
-   thing on an iPad. */
-ok('a two-finger double tap is undo', /mtap\.max === 2/.test(NAV) && /undo\(\);/.test(NAV));
-ok('…and three fingers is redo', /redo\(\);/.test(NAV));
-ok('…never while a text box is being typed in', /if \(editingId\) return;/.test(NAV));
-ok('the browser\'s own scroll is stopped while the engine is driving',
-   /if \(nav\.mode\) e\.preventDefault\(\);/.test(NAV) && /\{ passive: false \}/.test(NAV));
-
-/* ---- The box being typed in ----
-   The one DATA-LOSS bug in this app: `a.text` is written only by
-   `commitActiveTextEdit`, and until v1.12.0 no save path called it — so
-   typing an answer and pressing Save wrote an EMPTY box over it and reported
-   a clean save. Every check here is silent and the app looks right. */
-const TEXTBIND = between('function bindTextEditNode(div, id) {', 'function commitActiveTextEdit(',
-                         'the text-box binding');
-ok('the box being typed in is BOUND, not just made editable',
-   /if \(editingId === a\.id\) bindTextEditNode\(div, a\.id\);/.test(html));
-ok('…committing on blur', /addEventListener\('blur'/.test(TEXTBIND),
-   'without it the words reach the worksheet only if the child happens to tap the page again');
-ok('…and growing the box on input', /addEventListener\('input'/.test(TEXTBIND));
-ok('…never shrinking one the student dragged taller',
-   /Math\.max\(div\.scrollHeight, a\.h \|\| 0/.test(TEXTBIND),
-   'that was their decision — and a box that shrinks clips the answer out of the marked picture');
-
-/* A blur caused by the REBUILD is not the child leaving the box. Chromium
-   drops the focus silently; Firefox and Safari fire a real blur, and not
-   always synchronously — so a flag cleared in line lets exactly the case it
-   was written for through, on two engines out of three. */
-ok('a blur from the overlay rebuild never commits the box',
-   /if \(overlayRebuilding \|\| !div\.isConnected\) return;/.test(TEXTBIND));
-ok('…and it is asked again on the next turn, for a browser that fires it late',
-   /setTimeout\(function \(\) \{[\s\S]{0,200}document\.activeElement === div\) return;/.test(TEXTBIND),
-   'an async blur lands after a flag cleared in line is already back to false');
-ok('`overlayRebuilding` is a COUNTER, not a boolean',
-   /var overlayRebuilding = 0;/.test(html),
-   'renderAllOverlays rebuilds every page in a row, so the flag nests');
-ok('…and survives an annNode that throws',
-   /\} finally \{\s*setTimeout\(function \(\) \{ if \(overlayRebuilding > 0\)/.test(html),
-   'left above zero it never comes down, and the blur backstop is silently dead for the rest of the session');
-ok('…cleared on the NEXT turn, not in line',
-   /setTimeout\(function \(\) \{ if \(overlayRebuilding > 0\) overlayRebuilding--; \}, 0\);/.test(html));
-ok('…and the rebuild puts the focus back on the box',
-   /if \(hadFocus && keptDiv && keptDiv\.isConnected/.test(html),
-   'taking the node out of the document drops the focus even though the same node goes back in — the child then types into nothing, and on an iPad the keyboard goes down with it');
-
-/* EVERY write commits FIRST, before the `dirty` test. Asking `dirty` first is
-   the bug: an uncommitted box does not make the worksheet dirty, so the guard
-   is false and nothing is written at all. */
-/* 🔴 THE AUTO-SAVE MUST NOT CLOSE THE BOX, and this is the one place that
-   says so. `commitActiveTextEdit` does two jobs — write the words down AND
-   end the edit — and `performSave` runs on a 2.5-SECOND TIMER armed the
-   moment the box is created. Putting the full commit at the top of it was a
-   regression with a fuse on it: the box a child is still hunting for the
-   keyboard to answer closed itself under them, and deleted itself outright
-   if they had not typed yet. There is no double-tap-to-edit in this app, so
-   there is no way back into it — tapping again makes a NEW box.
-   An earlier version of THIS CHECK asserted the opposite and held the bug in
-   place: it pinned the property that is right for the Save BUTTON onto the
-   TIMER, without distinguishing them. */
-const SAVE_FN = between('async function performSave(quiet) {', 'function autoSaveDelay(',
-                        'the save');
-ok('the auto-save writes the words down…',
-   /syncTextEditValue\(\);/.test(SAVE_FN),
-   'an open box holds the answer outside `annotations`, so the save stores an empty box over it');
-ok('…and does NOT end the edit',
-   !/commitActiveTextEdit\(\)/.test(SAVE_FN),
-   'performSave runs on a 2.5s timer armed when the box was OPENED — ending the edit here closes the box under a child who is still typing, and deletes it if they have not started');
-ok('`syncTextEditValue` really is the non-destructive half',
-   /function syncTextEditValue\(\) \{\s*if \(editingId\) readTextInto\(editingId\);\s*\}/.test(html),
-   'it must not clear editingId, rebuild the overlay, or drop an empty box');
-ok('…and both halves read the div through ONE door',
-   /var a = readTextInto\(id\);/.test(html) &&
-   (html.match(/innerText\.replace/g) || []).length === 1,
-   'two copies of that extraction is two answers for what a child wrote');
-ok('…written as an escape, not an invisible literal',
-   /innerText\.replace\(\/\\u00a0\/g, ' '\)/.test(html),
-   'a literal non-breaking space is one a later edit silently drops — the lesson ANN_CARET_PROBE carries');
-
-/* TYPING IS A CHANGE. Without it the worksheet is not `dirty` while an answer
-   is being written, so `flushSave`'s guard is false and a tab closed
-   mid-sentence saves nothing — and the auto-save timer, armed when the box was
-   OPENED, never slides to 2.5s after the child STOPS. */
-ok('typing marks the worksheet dirty',
-   /div\.addEventListener\('input', function \(\) \{ setDirty\(true\); \}\);/.test(TEXTBIND));
-
-/* The LEAVING paths keep the full commit: there is no box to keep open when
-   the child has gone. All three ask BEFORE the `dirty` test — an uncommitted
-   box need not have made the worksheet dirty, and asking first decides there
-   is nothing to save and lets the answer die with the tab. */
-const LEAVING = [
-  ['flushSave', /function flushSave\(\) \{[\s\S]{0,600}?commitActiveTextEdit\(\);\s*\n\s*if \(dirty/],
-  ['the ← Back button', /\$\('backBtn'\)\.addEventListener\('click', function \(\) \{\s*commitActiveTextEdit\(\);/],
-  ['beforeunload', /addEventListener\('beforeunload', function \(e\) \{\s*commitActiveTextEdit\(\);/]
-];
-LEAVING.forEach(([name, re]) => {
-  ok(name + ' commits the open box before it tests `dirty`', re.test(html),
-     'the child leaves and their answer is replaced by an empty box, with the app reporting a clean save');
-});
-
-/* ---- The button ---- */
-/* THE `hidden` ATTRIBUTE ONLY WORKS IF THE STYLESHEET LETS IT. `[hidden]`
-   is a UA rule and ANY author rule beats the UA sheet whatever its
-   specificity, so `.toolBtn { display: grid }` re-shows every toolbar button
-   hidden with `el.hidden = true` — measured in Chromium as `display: grid`.
-   Both `renderMicBtns` and `renderStylusBtn` hide that way, and this app's
-   own rule is that a button which silently does nothing is worse than no
-   button. */
-ok('the stylesheet makes `hidden` actually hide',
-   /\n  \[hidden\] \{ display: none !important; \}/.test(html),
-   '.toolBtn sets `display: grid`, which beats the UA [hidden] rule — 🎤 and ✍️ are both drawn on devices that cannot use them');
-ok('…and the buttons that rely on it are still hidden that way',
-   /tb\.hidden = !voiceSupported\(\)/.test(html) && /b\.hidden = !touchy/.test(html));
-
-ok('the ✍️ button exists', /id="stylusBtn"/.test(html));
-ok('…and is hidden on a device with no touchscreen',
-   /<button class="toolBtn" id="stylusBtn" hidden/.test(html),
-   'on a laptop it is a switch that can only ever break the mouse');
-ok('…revealed by one door', /function renderStylusBtn\(\)/.test(html));
-ok('…which reads the device rather than guessing',
-   /any-pointer: coarse/.test(html) && /navigator\.maxTouchPoints/.test(html));
-ok('…and it is wired up', /\$\('stylusBtn'\)\.addEventListener\('click'/.test(html));
-ok('the gestures are said on screen, not only in a tooltip',
-   /class="zoomTip"/.test(html),
-   'a tooltip is a thing nobody on a touchscreen can open');
-
+ok('the vendor name is read from the ONE engine door',
+   /var st = window\.aiEngines && window\.aiEngines\(\);\s*\n\s*if \(st && st\.vendor\) return st\.vendor;/.test(html),
+   'a second reading of the engine state is how the badge says Gemini while ChatGPT is answering');
+ok('…and the student side is still Chung GPT, from a literal',
+   /function aiEngineName\(\) \{ return 'Chung GPT'; \}/.test(html));
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'

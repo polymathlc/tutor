@@ -12,156 +12,441 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
-## v1.14.2 — A set worksheet shows only on the accounts it was set for
+## v1.24.0 — All the apps under one roof, a worksheet sent from the Science portal, and the teacher's corrections reach the buddy
 
-**The bug.** The "📌 Set for you" section painted **every** active set worksheet for **every**
-student, so a P5 Maths paper sat on a P6 Science account. A student's own list has always been
-filtered by their level and subject; the class list never was.
+Two features that had shipped on a side branch and never reached the live app, now on it.
 
-**Why pressing Start did nothing.** Start it wrote the student a copy tagged P5, the list then
-filtered that copy straight back out (P5 is not P6), and opening it found nothing and gave up in
-silence: the toast said *Getting it ready…* and nothing happened. Every press after that wrote one
-more copy nobody could see.
+**🧭 All the apps under one roof.** **Apps** in the header lists every Polymath app — the four
+subject portals and the two tools (Ans Key and this one) — from ONE table (`POLYMATH_APPS`) that
+every app carries byte for byte. You stay signed in. Inside the Science portal this app is embedded
+on a page of its own; a link followed from in there moves the whole portal, never a portal inside
+a portal.
 
-**The fix.**
-- The set list goes through the **same rule** as the student's own list: only worksheets set for
-  this student's level and a subject they take. The teacher still sees every one, which is how one
-  is taken off the list.
-- Start it asks the rule **again in the handler** — a link or a stale screen can still name a
-  worksheet the list would not draw — and says, in words, which class it was set for and which
-  student this is, instead of writing a copy.
+**📖 A worksheet sent from the Science portal.** `?ws=<id>` opens a worksheet the moment your list
+has loaded: one of your own, or one the teacher has set (your copy is started, exactly as "Start it"
+would). The Science portal's **Send to Study Buddy** files a printed worksheet here in this app's
+own shape, with the answer key already read and its pages hidden, then opens this page on it. The
+link is read once and taken off the address bar. A worksheet that came across wears a **🔬 From the
+Science portal** chip.
+
+**🧠 The teacher's corrections reach the buddy.**
+- Every hint, every chat reply and every mark is written against the WHOLE of what Mr Chung has
+  taught the apps, not the flat summary it used to read: one voice per level and subject, the
+  corpus of the teacher's own answers, and every correction he has made to an answer an app wrote,
+  with the lesson each one taught. The Science portal's own corrections are read beside them, live,
+  so a correction made in either app is obeyed by the very next hint here.
+- The voice is the worksheet's own: a P5 Science worksheet is hinted in the P5 Science voice once
+  there are 30 answers behind it, then the Science-at-any-level one, then the overall one, and the
+  hints tab says which.
+- The example answers are chosen for the question in hand: the chat retrieves them for the
+  student's own message, a hint for the question an earlier hint on the same spot already read.
+- Marking is held to the teacher's TYPED standard and never to a guess. The profile's inferred
+  marking standard, the example answers and the corrections never reach a mark.
+- Two long standing notes both reach the buddy now. Every note is guaranteed its share of the
+  budget; a long one is trimmed (and says so) rather than the next one vanishing.
+
+## v1.23.1 — A set worksheet shows only on the accounts it was set for, and deleting your copy keeps the class's PDF
+
+**Two bugs on the "📌 Set for you" list, one behind the other.**
+
+**A P5 paper on a P6 account.** The set list painted **every** active set worksheet for **every**
+student. A student's own list has always been filtered by their level and subject; the class list
+never was. Pressing Start on one set for another level wrote the student a copy tagged with that
+level, the list then filtered that copy straight back out, and opening it found nothing and gave
+up in silence: the toast said *Getting it ready…* and nothing happened. Every press after that
+wrote one more copy nobody could see.
+
+- The set list goes through the **same rule** as the student's own list. The teacher still sees
+  every one, which is how one is taken off the list.
+- Start it asks the rule **again in the handler** and says, in words, which class the worksheet was
+  set for and which student this is, instead of writing a copy.
 - Opening a worksheet that is not in the list now **says so** instead of returning in silence.
 - The blank duplicate copies the bug wrote are tidied on the next sign-in: only a **duplicate** of a
   blank starter copy is dropped — never the only copy, never one with a single stroke on it, and
   never the class's PDF.
 
-## v1.14.1 — Deleting your copy of a set worksheet no longer deletes the class's PDF
+**"Object 'tutor-worksheets/….pdf' does not exist" on every student's copy.** Every student's copy
+of a set worksheet reads the **teacher's** PDF, and the guard that stops a student's tidy-up
+deleting it only ever protected the *student's* copy. So the teacher deleting their own copy after
+setting it deleted the one file the whole class read, and every Start / Carry on failed.
 
-- **The bug**: a worksheet set for the class shares ONE PDF in Storage — every student's copy
-  points at the teacher's own file. Deleting a student's copy has always left that file alone,
-  but deleting the **teacher's** original took it with it. The assignment stayed on every home
-  screen and every *Start it* / *Carry on* came back *"Object 'tutor-worksheets/…pdf' does not
-  exist"*. The students' work on their copies was untouched — and unreachable.
-- **Now** the delete asks, live off the assignment, whether the class reads the file, and keeps
-  the PDF and the key file when it does. The confirm says so: only your own marks and hints go,
-  the class keeps the worksheet, and withdrawing it is *Take off the list*.
-- **A set worksheet whose PDF has already gone** is caught before a copy is made: *Start it*
-  checks the file first and says, in words, to ask Mr Chung to upload and set it again — instead
-  of leaving a copy that can never be opened. A copy that is already stuck says the same, and
-  that the work on it is kept.
-- **The teacher's home screen flags it.** Every set worksheet is checked against Storage once
-  per sitting, and one whose file has gone wears a warning on its card with Start disabled:
-  take it off the list, upload the worksheet, set it again.
-- **To fix the one already broken**: take that worksheet off the list, upload the PDF again and
-  set it again. Students start a fresh copy of the new one.
+- Deleting your own copy of a set worksheet now asks the assignment, live, whether the class reads
+  the file, and **keeps the PDF and the key file** when it does. Only your own marks and hints go;
+  withdraw it from the class with "Take off the list".
+- Start it checks the PDF exists **before** a copy is written, so a broken assignment never leaves
+  a copy that can never be opened.
+- A missing PDF is explained in words, and the work on the copy is said to be kept.
+- The teacher's home screen checks each set worksheet against Storage once per sitting and flags
+  one whose file has gone, with Start disabled. To repair one: take it off the list, upload the
+  worksheet again and set it again.
 
-## v1.14.0 — The teacher's corrections reach the buddy
+## v1.23.0 — the school in the name, a bookshelf, and the whole answer key put away
 
-- **Every hint, every chat reply and every mark is now written against the WHOLE of what Mr Chung
-  has taught the apps**, not the flat summary it used to read. Ans Key keeps one voice per level
-  and subject, the corpus of the teacher's own answers, and every correction he has made to an
-  answer an app wrote — with the lesson each one taught. The Science portal keeps its own
-  corrections beside them. The buddy reads both, live, and a correction made in either app is
-  obeyed by the very next hint here.
-- **The voice is the worksheet's own.** A P5 Science worksheet is hinted in the P5 Science voice
-  once there are 30 answers behind it, then the Science-at-any-level one, then the overall one —
-  and the hints tab says which (*the teacher's learned style (P5 Science) · 4 corrections*).
-- **The example answers are chosen for the question in hand**: the chat retrieves them for the
-  student's own message, a hint for the question an earlier hint on the same spot already read.
-- **Marking is held to the teacher's TYPED standard and never to a guess.** The profile's inferred
-  marking standard, the example answers and the corrections never reach a mark — a marker handed
-  the answer stops marking against the paper.
-- **Two long standing notes both reach the buddy now.** The note budget used to be cut at a fixed
-  length, so a second house rule could fall off the end; every note is guaranteed its share and a
-  long one is trimmed (and says so) rather than the next one vanishing.
+- **An exam paper is named after the school that set it.** The read now takes the **school** off
+  the cover as printed and, for an exam paper, puts it at the front of the name — *"Nan Hua
+  Primary School — P5 Science SA2 2024"*. A topical worksheet keeps its own name; a name you typed
+  is never touched. The school and the worksheet's **topic** are shown as chips on the card.
+- **Your worksheets are on a bookshelf.** One shelf per level and subject — P3 · Science,
+  P5 · Science, P5 · Maths… — and on each shelf the papers stand in a row you **swipe sideways
+  like a wheel**, sorted by topic and then newest first. The paper in the middle faces you; the
+  ones either side turn away. ‹ › nudge one paper at a time on a laptop.
+- **The answer key is walked back one page at a time.** A marking scheme longer than four pages
+  used to be only partly hidden. The buddy now reads from the last page backwards, one page per
+  look, hiding each page that is a key and stopping at the **first page confirmed not to be one**
+  — so a ten-page key is put away whole and the question page before it is left where it was.
 
-## v1.13.0 — All the apps under one roof, and a worksheet sent from the Science portal
+## v1.22.0 — the paper is read when it is uploaded
 
-- **🧭 Apps** in the header lists every Polymath app — the four subject portals
-  and the two tools (Ans Key and this one) — from ONE table (`POLYMATH_APPS`)
-  that every app carries byte for byte. Relative sibling-folder links, the repo
-  name as the folder, you stay signed in. Inside the Science portal this app is
-  embedded on a page of its own; a link followed from in there moves the whole
-  portal (`target="_top"`), never a portal inside a portal.
-- **`?ws=<id>` opens a worksheet** the moment the account's list has loaded: one
-  of your own, or one the teacher has set (your copy is started, exactly as
-  “Start it” would). The Science portal's **📖 Send to Study Buddy** photographs
-  a worksheet's printed pages into a PDF, files it here in this app's own
-  shape — the PDF under `tutor-worksheets/`, the `tutorWorksheets` document, and
-  a `tutorAssignments` document when the teacher sets it for the class — with
-  the answer key already read (`key.scanned`) and its pages hidden, then opens
-  this page on it. It is read once and taken off the address bar.
-- A worksheet that came across wears a **🔬 From the Science portal** chip.
+Upload a PDF and Chung GPT reads its **first three and last four pages** once, as pictures, and
+says what the paper is: the **subject**, the **level** printed on its heading, what it **calls
+itself**, and **which pages are its answer key**. Whatever you left blank in the upload dialog is
+filled in and named back in a toast; the key pages are **put away** — hidden from the worksheet and
+never marked — and handed to the buddy, exactly as a key found by the old text scan was.
 
-## v1.12.1 — the text box stays open while you are typing in it
-
-Three fixes on top of v1.12.0, all found by re-reading the work rather than by anyone hitting them.
-**v1.12.0 was reported before these landed, so the badge says v1.12.1** — that is what the badge is
-for.
-
-- **The auto-save was closing the text box under you.** Saving an open box has to write the words
-  down *and* it used to end the edit — so two and a half seconds after tapping 🅣, the box you were
-  still finding the keyboard to answer closed itself, and vanished entirely if you had not typed
-  yet. There is no way back into a box in this app; tapping again makes a new one. The save now
-  writes the words and leaves you typing.
-- **Typing marks the worksheet as unsaved.** It did not, so closing the tab mid-sentence saved
-  nothing, and the save landed a fixed 2.5 seconds after you *opened* the box rather than after you
-  stopped writing.
-- **The caret survives the page redrawing under it** — the box keeps the caret, and on an iPad the
-  keyboard, when something else on the page changes.
+- The level and subject pickers both open on **✨ Let Chung GPT read it off the paper**; pick one
+  yourself and the paper never changes it. A student's own level is never overridden, and a subject
+  they do not take is never filed.
+- A scanned or photographed paper has no text layer, so its marking scheme at the back used to be
+  served as ordinary pages. It is found now.
+- A long marking scheme is followed **backwards** from the last pages until it ends.
+- The AI being off, or the read failing, is an upload exactly as before.
 
 ---
 
-## v1.12.0 — ✍️ Writing on the page, properly
+## v1.21.0 — the live tutor is the WHOLE logo, in a glass sphere
 
-**The answers go on the page with a stylus, and until now that was the roughest part of the app.**
-The annotation *shapes* were Ans Key's; the way a stroke got onto the page was not. Four faults,
-every one of them silent — the ink appeared either way, just worse.
+Chung GPT's orb is now the centre's logo **complete and solid** — one grain of sand per cell of
+the artwork, two and a half thousand of them, each drawn wide enough to touch its neighbours, so at
+rest there is no gap anywhere in the M. And it sits inside a **floating glass sphere**, Siri-style:
+lit from the top left, a specular highlight over the sand, a hairline rim, a glow that comes on
+while it works, and a soft shadow on the surface beneath it that shrinks as the sphere rises.
 
-- **Your hand can rest on the screen now.** There was no palm rejection at all, so the heel of a
-  hand made marks, and its contact was *merged into the pen's own stroke* — a line shooting across
-  your working, in your own ink, on a page that is then marked from a picture of it. A palm-sized
-  contact is refused, one pointer owns a stroke at a time, and **the first time a stylus touches
-  the page, pencil-only mode switches itself on**: your stylus writes, your fingers move the page.
-  ✍️ in the toolbar turns it off again, and the device remembers.
-- **Your fingers can move the worksheet.** They could not — at all. The page refuses the browser's
-  own scrolling so that writing on it works, and nothing had been put in its place, so the only way
-  to get around was the +/− buttons and a 24-pixel strip down each side. Zoom in once and even that
-  was gone. **Two fingers now pan and pinch-zoom**, a flick carries on, and in pencil-only mode one
-  finger moves the page.
-- **Undo is two fingers, double-tapped.** Redo is three. ↶ is most of a phone screen's worth of
-  sideways scrolling away, and Ctrl+Z is not a thing on an iPad.
-- **Fast handwriting is not angular any more.** A stylus samples far faster than the browser
-  reports it, and every sample in between was being thrown away, so writing quickly came back as a
-  chain of straight segments.
-- **And it does not slow down as the page fills up.** Every movement of the pen used to rebuild
-  every answer already on the page. Measured in a real browser, on a page holding thirty answers,
-  one line of working cost **772 ms and built 18,631 nodes**; it now costs **32 ms and builds
-  one** — [24× faster](tools/stylus-check.mjs).
+- **Idle and listening** — the whole logo stands, still and solid (listening breathes it gently
+  and lets it drift in the glass). The idle gust of v1.20.0 is gone: nothing blows the logo apart
+  unless the tutor is working.
+- **Thinking** — the logo breaks apart into a **ring of sand that spins** under the word
+  *Thinking*, and the glass glows teal.
+- **Talking** — the logo breaks apart into a row that rises and falls with the tutor's voice, and
+  the glass glows magenta.
+- The moment either ends, the sand flies back and re-forms the logo **exactly, grain for grain**.
 
-**A typed answer can no longer be lost.** This one was not a matter of feel. The words in a text
-box were only written into the worksheet when you tapped somewhere else on the page — so typing an
-answer and then pressing **Save**, or ← Back, or simply closing the tab, saved an *empty box* over
-it. The box now writes itself down the moment you touch anything else, every save path commits it
-first, and **the box grows as you type** rather than staying one line tall and clipping the answer
-out of the picture the marking reads. The box also stops losing the caret — and, on an iPad, the
-keyboard — when something else on the page redraws underneath it, and **the auto-save no longer
-closes it while you are still writing**: it saves the words and leaves you typing.
+The small orb over the worksheet is the same glass sphere at half the size, frosting the page
+behind it. Reduced motion stops the sphere's bob and its shadow's breath as well as the sand.
 
-Smaller things that come with it: a tap leaves a visible dot rather than invisible ink; a gesture
-iPadOS interrupts keeps what you had written instead of throwing it away; the pages stop
-re-sharpening under your fingers mid-pinch; and double-tapping ▲ to make the pen bigger no longer
-zooms the whole app.
+## v1.20.0 — the live tutor is the logo in sand, with physics
 
-**And 🎤 no longer appears on devices that cannot use it.** Buttons in this app are hidden by
-setting `hidden` on them — which the stylesheet had been quietly overriding, so the microphone was
-drawn on machines with no support for it and did nothing when tapped. Both mics and the new ✍️
-button are properly hidden now.
+Sixteen spheres could not look like the logo, so Chung GPT in live mode is now drawn as the
+centre's own logo in **a thousand grains of sand** — sampled from the real artwork, cell by cell,
+so the teal block, its shadowed face and the magenta ribbon's fold come out exactly as printed.
+The sand moves under **physics**: every grain is pulled to where the current state wants it and
+pushed by that state's own field, so a change of state is a flow, never a jump.
 
-**Two harnesses cover it.** `node tools/tutor-tests.mjs` grew a *Writing with a stylus* section
-(78 checks). `node tools/stylus-check.mjs` is new and drives the **real** handlers in a **real**
-browser with synthetic pointer events, printing the before-and-after timings above;
-`--selftest` breaks the pipeline eight ways and requires every break to be caught.
+- **Idle** — the M stands; every so often a gust of wind, a whirl or a puff blows the grains off
+  it and they drift back into place.
+- **Thinking** — the grains swirl out into a **ring of sand that spins**, Siri-style, under the
+  word *Thinking*.
+- **Talking** — a row of sand that rises and falls as a wave with the tutor's voice, measured
+  off the audio the student is hearing.
+- **Listening** — the M, breathing gently.
+
+It is drawn on a canvas by one frame loop that runs only while an orb is on screen, sets no
+timer, and stands still for *prefers-reduced-motion*. The floating orb over the worksheet is the
+same sand at a smaller size.
+
+## v1.19.0 — the live tutor is the logo, in tiny spheres, and never says "let me check"
+
+Chung GPT in live mode is drawn as the centre's own logo — the teal block and the magenta
+ribbon that make the **M** — in sixteen tiny spheres, in the live card and floating over the
+worksheet while a session runs. What the spheres do is what the tutor is doing:
+
+- **Thinking** — the spheres peel off one after another into a ring that **spins**, Siri-style,
+  under the word *Thinking*. Nothing is spoken until the teaching result is ready.
+- **Talking** — a row that rises and falls with the tutor's voice, measured off the audio the
+  student is hearing, so there is feedback while it speaks.
+- **Listening** — the M, breathing gently. **Idle** — every so often the spheres drift apart and
+  settle back into the M.
+
+The tutor also **never says “let me check”, “let me think”, “let me see”, “one moment” or “hmm”
+any more.** The voice model is told, twice over, to stay silent while it waits and to begin with
+the teaching itself; and the spoken reply is **scrubbed on the way to the speaker**, so a text
+model that opens with “Let me check the worksheet…” has that cut before the student hears it.
+Teaching is never touched — “let me *know* when you have tried it” stays exactly as written.
+Everything that moves stops for *prefers-reduced-motion*.
+
+## v1.18.0 — the diagnostic: every question filed under the syllabus, and kept for the long run
+
+Marking a worksheet now files every question under the **MOE syllabus topic and learning objective**
+it tests, and the report opens with a **diagnostic table** — one line per topic, its objectives
+under it, with the **full marks** and the **marks obtained** on each, the rate over what was
+attempted, and a result in words (Strong · Getting there · Revise · Untried). It is the table a
+parent asks for and the one a student can keep an eye on over a term: the same objective on next
+month's paper lands on the same line.
+
+- **The lists are the teacher's own.** Science is filed under the Science Learning Portal's rapid-add
+  topics (*Heat*, *Electrical Systems*, *Food Chains and Webs*…) and its learning-objective selector —
+  the 79 Learning Outcomes of the MOE Primary Science Syllabus 2023 — and Mathematics under the
+  Maths app's MOE Primary Mathematics syllabus for P3 to P6, all 171 objectives. The ids are those
+  apps' own (`heat-flow`, `P5.FR.2.6`), so a weak objective here is the objective the question banks
+  there are filed under.
+- **The list is narrowed to the worksheet's level**, exactly as ⚡ Rapid add's batch level narrows the
+  topics the AI may choose from: a P5 paper is filed under P5 objectives, and a worksheet with no
+  level is offered the whole subject.
+- **A question the marking cannot place is shown, never forced into the nearest topic.** It keeps the
+  marking's own wording under *Not on the syllabus list*, where it can be seen. English, Chinese and
+  Sec 1 papers have no list yet and are reported by topic as before.
+- **📈 My progress**, on the home screen, adds the diagnostic up across every worksheet you have
+  marked — per subject, in syllabus order, with each objective's marks over time (*40% → 60% →
+  80%*) and a short *Work on* line naming the weakest. It is read straight off your worksheet list,
+  so it opens instantly, and it copies and prints like the report.
+- A worksheet marked before this existed is still placed where its topics happen to be syllabus
+  names, so the old papers are not all "unlisted".
+
+---
+
+## v1.17.0 — 🧩 Keyword checks: fill in the blanks
+
+A fill-in-the-blank box now pops up over the worksheet to remind you which
+**concept** a question is testing and which **keywords** a full-mark answer
+needs — by making you supply the words yourself. *"Water turns into [1] by
+[2]."* Type the words, press **Check**, and see which you have.
+
+- **In 💡 Hints:** the moment a hint arrives, a keyword check is built in the
+  background from the question the hint read and pops up when it is ready.
+  Every hint card also carries **🧩 Quiz me on the keywords**, which opens it
+  again — or builds one for a hint that has none yet.
+- **In 🎧 Live:** after Chung GPT answers you out loud, a check can pop up
+  while it is still talking. The tutor is told it is on your screen, so you can
+  ask about it — but it never reads the missing words out. At most one per
+  answer, and never while you are still doing the last one.
+- **Right words go green, wrong ones red.** ⓘ beside a blank gives a clue,
+  Enter checks, and **Show me** appears once you have had an honest go. A
+  plural or a different tense of the right word still counts.
+- **It is built from three things, in order:** Mr Chung's own teaching notes
+  (the keywords and the key facts), the paper's answer key, and the **MOE
+  Primary Science Syllabus 2023** — the objectives the question matches, at or
+  below the student's level. The notes win where the two differ.
+- **It obeys the help level.** A keyword check is the *Concept & keywords*
+  rung of the ladder asked as a question, so it is offered exactly when that
+  rung is and shown 🔒 locked on *Nudges only*. Below full help, a check that
+  would put the paper's own answer in a blank is refused outright.
+- **Keyword quizzes: on / off** is a button on the Live card and a switch on
+  the Hints tab, remembered on your device. Off, a hint still offers the quiz
+  on its card; it just stops popping up by itself.
+- It floats over the page with no backdrop, so you can keep writing round it;
+  ✕ or Escape closes it, and a solved check is saved with its hint.
+
+## v1.16.0 — Subtitles for what the tutor says
+
+Live tutoring now repeats **what Chung GPT just said** as subtitles across the
+bottom of the screen — translucent grey, black text, over the worksheet you are
+working on. The transcript beside the page is for reading a conversation back;
+this is for the sentence being spoken **right now**, while you are looking at
+the question rather than at the panel.
+
+- **Subtitles: on / off** is a button on the live tutoring card, next to Start.
+  It is remembered on your device and can be switched at any time — including
+  mid-answer, which catches the rest of the sentence.
+- Only the **tutor's** replies are subtitled. You know what you just said, and
+  captioning it back would cover the question you are reading; the panel still
+  keeps both sides of the conversation.
+- A reply clears itself a few seconds after it finishes, and a new reply
+  replaces the last one — so the worksheet never ends up under a wall of text.
+- They never swallow a pen stroke: the subtitle box cannot be tapped or drawn
+  on, so writing on the page underneath it works exactly as it always did.
+
+## v1.15.4 — See typed answers and think quietly
+
+Live tutoring and Ask now read text that is still being edited on the worksheet,
+without moving the caret or closing the keyboard. The tutor receives both the
+annotated worksheet images and the exact typed answers, including which box is
+active or selected. Visible pages are ranked by their actual area on screen;
+adjacent visible pages can supply a diagram or the rest of an answer. Hidden
+answer-key pages remain excluded from this view.
+
+The voice tutor receives a silent, current view summary when the session starts
+and when the visible pages or typed answers change. During a worksheet check the
+status says **Thinking…**, and the tutor waits for the teaching result instead of
+saying “I’ll check” or asking the pupil to repeat an answer already supplied.
+
+Regression checks cover unfinished text, the annotated image, page visibility,
+hidden key pages, bounded context, quiet updates and the final spoken answer.
+
+## v1.15.3 — Faster checks, arithmetic teaching and answer-key readiness
+
+Spoken worksheet checks now have a 35-second total limit, including preparation,
+and try a backup after a 12-second provider wait. Slow teaching-note loads and
+answer-key reads produce a clear retry message. Ending a live session cancels
+the pending check; late replies cannot be spoken or start another fallback.
+Normal answer checks and full-paper batches have their own longer limits.
+Network failures no longer repeat the same high-thinking Gemini request.
+
+Teaching uses step-by-step arithmetic and the unitary method. Units and parts
+are reserved for questions that clearly call for them. The live tutor gives
+one arithmetic step, asks the pupil to try it, and waits. It does not introduce
+algebraic unknowns. These teaching preferences do not invalidate a pupil's
+otherwise correct method or override the worksheet's help ceiling.
+
+Hints, chat, marking and Live wait for the attached answer key before answering.
+Concurrent requests share its existing read, and saved transcriptions are reused.
+A linked key that cannot be read is reported rather than silently ignored.
+Live and text chat prioritise the entry for an explicitly named question,
+including its working, so later questions in a long key are not left out.
+Missing key rows are prepared when the worksheet opens. The generated teaching
+step uses the matching key's method and checks its result against the key.
+
+Completed marks appear before mistake-book pictures are prepared. The app labels
+that remaining work separately and prevents duplicate marking while it saves.
+
+Writing now paints only the active annotation once per animation frame, keeping
+the page's existing ink, text, hints and marks in place. Coalesced pen samples
+and the final pen-up position are retained, including stationary decimal-point
+taps in the saved ink and images sent for checking. A refreshed overlay during a stroke
+does not lose its preview, and losing pointer capture or leaving the app closes
+the stroke once without inventing extra points.
+
+The pen stops finger navigation and momentum as soon as it touches down. Touches
+present while writing, including contacts initially reported as tiny, remain
+ignored until they lift; a short guard also covers the gaps between letters.
+Growing palm contacts cancel their accidental gesture, and rejected palms cannot
+trigger multi-touch undo. Deliberate finger pan, pinch and undo remain available.
+
+Validation: deterministic tests cover provider stalls, total deadlines,
+cancellation, late results, shared key reads, unreadable keys, long-key lookup,
+and the teaching instructions sent by Live. Writing tests drive the real event
+handlers and SVG renderer, including a page with 1,000 saved strokes. They cover
+coalesced samples, pen/palm ordering, growing contacts, capture loss, cancellation
+and overlay refresh. These tests simulate input, network and model responses;
+they do not measure Apple Pencil hardware feel or a signed-in conversation.
+
+---
+
+## v1.15.2 — Protect Live session records and usage limits
+
+The Live deployment tools now protect Study Buddy and Ans Key's server-managed
+session records and usage counters from browser access. The focused rules update
+starts from the current shared project rules, preserves unrelated permissions,
+and checks both the existing permissions and the new protection before publishing.
+It rechecks the active rules immediately before publication and verifies the result.
+Both voice service codebases and this protection were deployed on 16 September
+2026; all 166 server-side permission checks passed.
+See [Live tutoring setup](docs/live-tutoring.md#shared-firestore-protection) for
+read-only inspection, validation, and the explicit apply command.
+
+---
+
+## v1.15.1 — Live service deployment fix
+
+The live service dependency lockfile now matches Firebase's Node 22 / npm 10
+build environment. Clean installation and all 36 server tests pass. The Live
+tab and tutoring behavior are unchanged; the voice service still requires an
+authorized Firebase deployment using the existing server secret.
+
+---
+
+## v1.15.0 — Live tutoring that listens and speaks
+
+Open a saved worksheet, choose **🎧 Live**, and select **Start live tutoring**. Chung GPT listens
+and replies aloud, with natural interruptions, a live transcript, microphone mute, and **End
+session**. The voice uses GPT-Live-1; worksheet reasoning uses the existing teaching engine,
+including the current page, Mr Chung's notes, answer-key rules, and the worksheet's help ceiling.
+Follow-up questions and corrections are queued while the tutor checks the worksheet.
+
+Microphone access begins only when the student starts. Ending, hiding the app, leaving Live,
+changing worksheets, or signing out silences the microphone and closes the session. A lesson
+lasts up to 10 minutes. Captions stay in the current browser session and are not saved to the
+worksheet. Existing dictation and written chat remain available.
+
+The new authenticated Firebase backend keeps `OPENAI_API_KEY` on the server. It requires the
+student's Google sign-in, App Check verification, and ownership of the worksheet. See
+[Live tutoring setup](docs/live-tutoring.md) for deployment, usage limits, and verification.
+
+---
+
+## v1.14.0 — ⚙️ Three engines, and whichever one will answer
+
+When the shared Firebase project hits its monthly spending cap, every hint, every mark and every
+reply in this app came back as the same error — on every device, until the month turned over. One
+engine was one thing standing between a child and a dead app.
+
+**Gemini still answers first. ChatGPT and Kimi now stand behind it**, and a route that refuses is
+skipped for a few minutes and then tried again rather than being written off. Nothing on the
+student's side changes: the buddy is still **Chung GPT**, and it still hints rather than answers.
+
+**There is still no key box here, and there never will be.** This app is opened by children on
+shared iPads, so the two backups are reached through the centre's own server — their keys are
+secrets the browser never sees, which is also what makes them work on a student's phone with
+nothing set up on it.
+
+**The teacher's ⚙️ AI panel now picks which engine leads, for the whole centre.** It is the same
+switch as the one in the Learning Portal and Scan & Answer — changing it in any of them moves them
+all — and the panel says which routes will be tried, in order, and what each one said the last time
+it refused.
+
+*(The two backups need their keys set on the server before they can answer. Until then the panel
+says so in as many words, rather than reporting it as an AI error.)*
+
+## v1.13.0 — ✍️ Write with the pencil, scroll with your fingers
+
+The worksheet is now used the way a notebook app on an iPad is used.
+**Pencil-only mode is on from the start**: the Apple Pencil draws, **your fingers scroll and
+pinch the page**, and **a palm resting on the screen does nothing at all**. One tap on ✍️ (or the
+`S` key) turns it off if you would rather draw with a finger, and the device remembers which way
+you left it — but the first time a real pencil touches down it comes back on by itself, because
+whoever has just picked a pencil up is about to rest a hand on the page.
+
+- **One finger pans**, two fingers pan and **pinch-zoom**, and a flick carries on with momentum.
+- **A second finger landing on a stroke you have only just begun** throws the accidental dot away
+  and scrolls instead; landing on one you have been drawing for a moment **keeps the ink** and
+  hands the two fingers the pinch. Your work is never the price of a gesture.
+- **Two-finger double-tap is undo, three-finger is redo.**
+- A palm cannot start a mark, cannot hijack the stroke the pencil is drawing, and — just as
+  important — **cannot end it by lifting off**.
+- The pages sharpen up again the moment the gesture is over.
+
+The whole engine is the Ans Key annotator's, ported across, so a worksheet feels the same in both
+apps and a fix to either belongs in both.
+
+---
+
+## v1.12.0 — 🧩 The mistake is the question, set out again
+
+**A mistake used to be kept as a photograph of the whole page it was printed on** — with the two
+questions either side of it, and the student's own wrong answer written across it. Printed on a
+practice sheet that is a photocopy of the paper with one question somewhere in it, which is not a
+question anybody can practise.
+
+**So the question is read into ordered blocks instead.** The wording is typeset, and wherever a
+figure belongs there is a picture of that figure, cut out of the page by its own rectangle. It is
+the Science portal's ⚡ **Rapid add**, by way of the Scan app's port of it, and the identifiers are
+deliberately the same ones so that a fix in any of the three copies straight across.
+
+**Three tiers, best first**, and a question is shown at the best one it has:
+
+1. **the question set out again** — typeset wording, the paper's own diagrams back in place;
+2. **the whole question**, cut out of the page;
+3. **the whole page**, which is where this started.
+
+**Every tier is clean.** The page is re-rendered out of the PDF with no annotations on it, so
+nothing here carries the student's own answer — a question handed back for practice with last
+week's wrong answer written across it cannot be practised, and printed for a class it is worse.
+What they wrote is kept as text and shown beside the question, which is where it can be read.
+
+**The options travel with the question now.** A multiple-choice question was being filed with
+nothing to choose between: the reproduction is told to leave word options out of its blocks
+*because* they are printed underneath, so they had to be kept. When the four choices are pictures
+— four shapes, four graphs — they travel as **one** rectangle round the lot, because cut out
+separately they lose the row they were printed in and a student answering "(3)" cannot see which
+one (3) was.
+
+**One renderer.** The card, the ✏️ practice session and the 🖨 printed sheet all build the question
+through the same function, so the sheet cannot print something the card never showed. Every
+picture on the sheet — including every figure inside a rebuilt question — is fetched and awaited
+before the print dialog opens.
+
+Under the hood: the reproduction is its own AI call, on the handful of questions actually being
+filed, budgeted at ten per marking run and spent before the call so a failure cannot buy another
+try. Every failure returns nothing and the mistake is filed exactly as it would have been before
+any of this existed. It needed no Firestore or Storage rules change.
 
 ---
 
