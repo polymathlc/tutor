@@ -93,6 +93,21 @@
   .brandSub { font-size: 0.74rem; color: var(--ink-faint); }
   #versionTag { font-size: 0.7rem; color: var(--ink-faint); }
   #whoAmI { font-size: 0.8rem; color: var(--ink-soft); white-space: nowrap; }
+  /* 🧭 the apps menu */
+  .appsMenu { position: relative; }
+  .appsPanel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 268px; background: #fff; border: 1px solid var(--line, #e3e1dc);
+    border-radius: 14px; box-shadow: 0 12px 32px rgba(20, 18, 16, 0.16); padding: 8px; z-index: 80; }
+  .appsTitle { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint, #8a8680); padding: 8px 10px 4px; }
+  .appsTitle + .appsTitle, .appsOpt + .appsTitle { border-top: 1px solid var(--line, #e3e1dc); margin-top: 6px; padding-top: 10px; }
+  .appsOpt { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; text-decoration: none; color: inherit; font-size: 0.86rem; line-height: 1.3; }
+  .appsOpt:hover { background: var(--paper-2, #f5f3ee); }
+  .appsOpt .appsIco { font-size: 1.1rem; line-height: 1; flex: 0 0 auto; }
+  .appsOpt b { font-weight: 600; display: block; }
+  .appsOpt small { color: var(--ink-faint, #8a8680); font-size: 0.74rem; }
+  .appsOpt.here { background: var(--paper-2, #f5f3ee); cursor: default; }
+  .appsOpt.here b::after { content: ' · you are here'; font-weight: 500; font-size: 0.72rem; color: var(--ink-faint, #8a8680); }
+  .appsFoot { font-size: 0.72rem; color: var(--ink-faint, #8a8680); padding: 8px 10px 4px; line-height: 1.4; }
+  @media (max-width: 640px) { .appsPanel { position: fixed; left: 12px; right: 12px; top: 64px; min-width: 0; } }
   @media (max-width: 720px) {
     #whoAmI, .brandSub { display: none; }
     header { padding: 10px 12px; gap: 8px; }
@@ -1328,6 +1343,11 @@
     <button class="btn hidden" id="peopleBtn" title="Everyone who has signed in, and whether they are enrolled">👥 People</button>
   <button class="btn hidden" id="notesBtn" title="The teaching notes every answer and every hint is grounded in">📚 Notes</button>
     <button class="btn hidden" id="engineBtn" title="Which AI engine answers">AI</button>
+    <!-- 🧭 Every Polymath app, one menu. The SAME table every app carries — see POLYMATH_APPS. -->
+    <div class="appsMenu" id="appsMenu">
+      <button class="btn" id="appsBtn" type="button" aria-haspopup="true" aria-expanded="false" title="Every Polymath app — you stay signed in">🧭 Apps</button>
+      <div class="appsPanel" id="appsPanel" role="menu" hidden></div>
+    </div>
     <button class="btn btnPrimary" id="signInBtn">Sign in with Google</button>
     <button class="btn hidden" id="signOutBtn">Sign out</button>
   </header>
@@ -1961,7 +1981,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.23.1';
+var APP_VERSION = 'v1.24.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -1972,6 +1992,121 @@ var COLLECTION = 'tutorWorksheets';
 var STORAGE_DIR = 'tutor-worksheets';
 var MISTAKE_DIR = 'tutor-mistakes';
 var SVG_NS = 'http://www.w3.org/2000/svg';
+
+/* =====================================================================
+   🧭 ALL THE APPS UNDER ONE ROOF (v1.13.0)
+   ---------------------------------------------------------------------
+   The centre's four SUBJECT portals and its two TOOLS — this app and Ans
+   Key — are one family, and every one of them carries this SAME table, so
+   the menu a student opens reads the same wherever they are standing. The
+   urls are RELATIVE sibling-folder hops (the six are project sites on one
+   GitHub Pages host, and side-by-side folders on a checkout), the folder is
+   the REPO name (Science is `cer`), and no host is baked into the page.
+   `here` marks THIS app's own row, which is drawn and never a link.
+
+   Inside the Science portal this app is embedded on a page of its own; a
+   link followed from inside that frame goes to the TOP window, so the
+   whole portal moves rather than a portal-inside-a-portal.
+   ===================================================================== */
+var APP_KEY = 'tutor';
+var POLYMATH_APPS = [
+  { key: 'math',    ico: '🔢', label: 'Math',        sub: 'Math Practice',                     url: '../math/',    kind: 'subject' },
+  { key: 'english', ico: '📕', label: 'English',     sub: 'English Learning Portal',           url: '../english/', kind: 'subject' },
+  { key: 'chinese', ico: '📗', label: 'Chinese',     sub: '华文 · Chinese Portal',              url: '../chinese/', kind: 'subject' },
+  { key: 'science', ico: '🔬', label: 'Science',     sub: 'Science Learning Portal',           url: '../cer/',     kind: 'subject' },
+  { key: 'anskey',  ico: '🔑', label: 'Ans Key',     sub: 'Mark up & share PDF worksheets',    url: '../anskey/',  kind: 'tool' },
+  { key: 'tutor',   ico: '📖', label: 'Study Buddy', sub: 'Hints, marking & a mistake book',   url: '../tutor/',   kind: 'tool' }
+];
+function appsIsFramed() { try { return window.top !== window.self; } catch (e) { return true; } }
+function renderAppsMenu() {
+  var panel = document.getElementById('appsPanel');
+  if (!panel) return;
+  panel.innerHTML = '';
+  var groups = [['subject', 'Your subjects'], ['tool', 'Your tools']];
+  groups.forEach(function (g) {
+    var t = document.createElement('div');
+    t.className = 'appsTitle';
+    t.textContent = g[1];
+    panel.appendChild(t);
+    POLYMATH_APPS.filter(function (a) { return a.kind === g[0]; }).forEach(function (a) {
+      var here = a.key === APP_KEY;
+      var row = document.createElement(here ? 'div' : 'a');
+      row.className = 'appsOpt' + (here ? ' here' : '');
+      row.setAttribute('role', 'menuitem');
+      if (!here) {
+        row.href = a.url;
+        if (appsIsFramed()) row.target = '_top';
+      } else {
+        row.setAttribute('aria-current', 'page');
+      }
+      var ico = document.createElement('span');
+      ico.className = 'appsIco';
+      ico.setAttribute('aria-hidden', 'true');
+      ico.textContent = a.ico;
+      var txt = document.createElement('span');
+      var b = document.createElement('b');
+      b.textContent = a.label;
+      var sm = document.createElement('small');
+      sm.textContent = a.sub;
+      txt.appendChild(b);
+      txt.appendChild(sm);
+      row.appendChild(ico);
+      row.appendChild(txt);
+      panel.appendChild(row);
+    });
+  });
+  var foot = document.createElement('div');
+  foot.className = 'appsFoot';
+  foot.textContent = 'Each app keeps its own worksheets and progress. You stay signed in.';
+  panel.appendChild(foot);
+}
+function appsMenuOpen(open) {
+  var panel = document.getElementById('appsPanel');
+  var btn = document.getElementById('appsBtn');
+  if (!panel || !btn) return;
+  if (open) renderAppsMenu();
+  panel.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+(function wireAppsMenu() {
+  var btn = document.getElementById('appsBtn');
+  var panel = document.getElementById('appsPanel');
+  if (!btn || !panel) return;
+  btn.addEventListener('click', function (e) { e.stopPropagation(); appsMenuOpen(panel.hidden); });
+  panel.addEventListener('click', function (e) { e.stopPropagation(); });
+  document.addEventListener('click', function () { appsMenuOpen(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') appsMenuOpen(false); });
+})();
+
+/* =====================================================================
+   📖 A WORKSHEET NAMED ON THE URL (v1.13.0)
+   ---------------------------------------------------------------------
+   `?ws=<id>` opens that worksheet the moment the account's list has
+   loaded. The Science portal's "📖 Send to Study Buddy" writes a worksheet
+   here and then opens this page on it, so the id is either one of this
+   account's OWN worksheets (the teacher's, or a copy the student already
+   started) or a worksheet the teacher has SET — in which case the student's
+   own copy is started from it, exactly as pressing "Start it" would. It is
+   read ONCE and taken off the address bar, so a reload does not open it
+   again over whatever the student moved on to.
+   ===================================================================== */
+var OPEN_LINK_ID = '';
+try { OPEN_LINK_ID = new URLSearchParams(location.search).get('ws') || ''; } catch (e) { OPEN_LINK_ID = ''; }
+async function openFromLink() {
+  var id = OPEN_LINK_ID;
+  if (!id || !currentUser) return;
+  OPEN_LINK_ID = '';
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { /* not ours to change */ }
+  try {
+    if (worksheets.some(function (w) { return w.id === id; })) { await openWorksheet(id); return; }
+    var a = assignments.find(function (x) { return x.id === id; });
+    if (a) { await startAssignment(id); return; }
+    toast('That worksheet is not in your list — it may not have been set for you yet.', 6000);
+  } catch (e) {
+    console.warn('open from link', e);
+    toast('That worksheet could not be opened: ' + ((e && e.message) || e), 6000);
+  }
+}
 
 document.getElementById('versionTag').textContent = APP_VERSION;
 
@@ -13026,6 +13161,9 @@ function wsCardNode(w) {
     if (w.topic) meta.appendChild(chipNode('📖 ' + w.topic, 'chip chipTopic'));
     if (w.school) meta.appendChild(chipNode('🏫 ' + w.school, 'chip chipSchool'));
     var grule = guidanceRule(w);
+    // 🔬 Sent across from the Science portal — the card says where it came from,
+    // because a worksheet nobody uploaded reads as one that appeared by itself.
+    if (w.source === 'cer') meta.appendChild(chipNode('🔬 From the Science portal', 'chip'));
     meta.appendChild(chipNode((grule.locked ? '🔒 ' : '💡 ') + guidanceLabel(grule.level), 'chip chipGrade'));
     if (w.score && w.score.attempted) {
       meta.appendChild(chipNode('✅ ' + w.score.correct + '/' + w.score.attempted, 'chip chipScore'));
@@ -15790,7 +15928,9 @@ if (auth) auth.onAuthStateChanged(function (user) {
     // covers the screen and cannot be dismissed.
     loadTeachingNotes(true);
     aiEngineWatchShared();
-    loadWorksheets();
+    // The linked worksheet (?ws=) opens once the list it is looked up in has
+    // arrived — and only once, whatever else the sign-in does.
+    loadWorksheets().then(openFromLink);
     loadMistakes();
     usageStart(user);
     usageNote('signin');

@@ -366,6 +366,31 @@ retain the hardware check described below and report when it was unavailable.
   is a student, and a student's device runs the hints and the marking itself. Only the admin sees
   the 📚 Teaching notes window and the AI engine dialog, and only the admin ever writes a note.
 
+## 🧭 All the apps under one roof, and 📖 a worksheet sent from the Science portal (v1.13.0)
+
+`APP_KEY` / `POLYMATH_APPS` / `appsIsFramed` / `renderAppsMenu` / `appsMenuOpen` (search
+`ALL THE APPS UNDER ONE ROOF`), `OPEN_LINK_ID` / **`openFromLink`** (search `A WORKSHEET NAMED
+ON THE URL`), the `source === 'cer'` chip in `renderWorksheets`, and the `.appsMenu` / `.appsPanel`
+CSS.
+
+- **`POLYMATH_APPS` is ONE table carried by every Polymath app** — the four subject portals
+  (`SUBJECT_APPS` + `POLYMATH_TOOLS` there) and the two tools. Same keys, same relative urls,
+  same folder-is-the-repo-name rule (Science is `cer`). Ship a change to all of them; a menu that
+  differs between two apps is a menu one of them has let drift.
+- **A link followed from inside the Science portal's frame goes to `_top`.** This app is
+  embedded there on a page of its own, and a subject link navigating the FRAME would put a
+  portal inside a portal.
+- **`?ws=<id>` is read ONCE and taken off the address bar** (`history.replaceState`), or a reload
+  opens it again over whatever the student moved on to. It is resolved AFTER `loadWorksheets`
+  (own copy first, then a set worksheet through `startAssignment`, which is the same door
+  “Start it” uses) — resolved before the list is in, every id is “not in your list”.
+- **The Science portal writes THIS app's shape** (`tutorWorksheets`, `tutorAssignments`,
+  `tutor-worksheets/`, `HINT_DEFAULT`, `GUIDANCE_GRADES` keys, `LEVELS`, `ADMIN_DISPLAY_NAME`) and
+  its harness `tools/tutor-bridge-tests.mjs` reads this file to pin every one of those names.
+  Rename any of them here and that harness is what says so — nothing here throws; the key pages
+  simply show, or the class never gets the sheet.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 📌 The teacher is "Mr Chung", not the name on their Google account (v1.9.1)
 
 `setterName()` (search `WHO SET IT, as a student reads it`).
