@@ -278,7 +278,7 @@ model**.
 `kwQuiz` / `kwQuizBusyHints` / **`kwQuizAllowed`** / `kwQuizLockedNote` /
 `KWQ_SYS` / `kwQuizCeilingRule` / `kwQuizNorm` / `kwQuizKeyAnswers` /
 **`kwQuizGivesAnswer`** / **`kwQuizClean`** / `kwQuizMatch` / **`kwQuizBuild`**
-/ `kwQuizShow` / `kwQuizClose` / `kwQuizLayout` / `kwQuizRender` /
+/ `kwQuizShow` / `kwQuizClose` / **`floatBoxLayout`** / `kwQuizRender` /
 `kwQuizCheck` / `kwQuizSolved` / `kwQuizReveal` / `kwQuizTellTutor` /
 `kwQuizAfterHint` / `kwQuizForHint` / `kwQuizForLive` (search `THE KEYWORD
 QUIZ`), the syllabus it reads — `SYLLABUS_TOPICS` / `sylLevelNum` / `sylNorm` /
@@ -362,8 +362,9 @@ ladder asked as a question rather than read out.
   carries the forms a suffix rule cannot reach.
 - **IT IS A FLOATING BOX, NOT A MODAL.** No backdrop, so the rest of the page
   can still be written on — and in live mode the tutor still heard — while it
-  is open. It lifts `#liveSubs` clear of itself (`kwQuizLayout`), so a spoken
-  answer is never captioned underneath the quiz it just set. Escape and ✕
+  is open. It lifts `#liveSubs` clear of itself (`floatBoxLayout`, which since
+  v1.27.0 reads the ✏️ maths pad too), so a spoken answer is never captioned
+  underneath the box it just set. Escape and ✕
   close it; a new worksheet (`loadPdf`) and leaving the worksheet (`showView`)
   close it too, and `kwQuizRender` refuses to paint a quiz whose `epoch` is
   not the open worksheet's.
