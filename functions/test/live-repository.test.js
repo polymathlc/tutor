@@ -3,7 +3,13 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { createRepository, dayKey, userKey, SESSION_COLLECTION, LIMIT_COLLECTION } = require('../live-repository');
-const { LIMITS } = require('../live-service');
+const { LIMITS, DURATION_MAX, DURATION_MIN, capOn, liveDuration } = require('../live-service');
+/* The rations are OFF by default (v1.33.0), so a test ABOUT a cap has to
+   turn one on explicitly. `CAPPED` is that policy and nothing else reads
+   it — every other test runs on the shipped LIMITS, which is what a real
+   student meets. */
+const CAPPED = Object.freeze({ ...LIMITS, startsPerDay: 6, globalStartsPerDay: 100, concurrent: 20 });
+const SECONDS = liveDuration(LIMITS);
 
 function database() {
   const data = new Map();
@@ -71,7 +77,7 @@ test('activation stores the opaque provider ID and changes cleanup from reservat
   const { db, repo, now } = setup();
   const lease = await repo.reserve('child', 'sheet', now, LIMITS);
   assert.equal(lease.cleanupAt, now + 60000);
-  assert.equal(lease.expiresAt, now + 600000);
+  assert.equal(lease.expiresAt, now + SECONDS * 1000);
   await repo.activate(lease, 'live-opaque-provider-id');
   const saved = db.data.get(`${SESSION_COLLECTION}/${lease.id}`);
   assert.equal(saved.sessionId, 'live-opaque-provider-id');
@@ -107,17 +113,114 @@ test('per-user starts stay counted after stops and reset at Singapore midnight',
   const { db, repo, now } = setup();
   // A lesson that really RAN and was then stopped: the provider call was
   // made, so the start is spent. Activating it is what makes it one.
-  for (let i = 0; i < LIMITS.startsPerDay; i++) {
-    const lease = await repo.reserve('child', 'sheet', now + i, LIMITS);
+  for (let i = 0; i < CAPPED.startsPerDay; i++) {
+    const lease = await repo.reserve('child', 'sheet', now + i, CAPPED);
     await repo.activate(lease, 'call-' + i);
     await repo.release({ ...lease, sessionId: 'call-' + i });
   }
-  await assert.rejects(repo.reserve('child', 'sheet', now, LIMITS), error => error.code === 'daily_limit');
-  const next = await repo.reserve('child', 'sheet', now + 86400000, LIMITS);
+  await assert.rejects(repo.reserve('child', 'sheet', now, CAPPED), error => error.code === 'daily_limit');
+  const next = await repo.reserve('child', 'sheet', now + 86400000, CAPPED);
   assert.ok(next.id);
   assert.equal(db.data.get(`${LIMIT_COLLECTION}/${userKey('child')}`).starts, 1);
   assert.equal(dayKey(Date.parse('2026-09-15T15:59:59Z')), '2026-09-15');
   assert.equal(dayKey(Date.parse('2026-09-15T16:00:00Z')), '2026-09-16');
+});
+
+/* ⏱ THE RATIONS ARE OFF (v1.33.0). Three numbers stood between a child
+   and the live tutor and all three are `0` now. The COUNT is deliberately
+   still kept: it is what the teacher can look at, and it is what the
+   refund below takes back off — turn the counter off with the cap and that
+   whole path rots into code nothing runs. */
+test('with the rations off a student may start as often as they like', async () => {
+  const { db, repo, now } = setup();
+  for (let i = 0; i < CAPPED.startsPerDay + 12; i++) {
+    const lease = await repo.reserve('child', 'sheet', now + i, LIMITS);
+    assert.ok(lease.id, 'no start is ever refused for the day\'s count');
+    await repo.activate(lease, 'call-' + i);
+    await repo.release({ ...lease, sessionId: 'call-' + i });
+  }
+  assert.equal(db.data.get(`${LIMIT_COLLECTION}/${userKey('child')}`).starts, CAPPED.startsPerDay + 12,
+    'the count is still kept, so the teacher can see it and a refund has something to take off');
+});
+
+test('…and the centre\'s own two ceilings are off with it', async () => {
+  const { db, repo, now } = setup();
+  db.data.set(`${LIMIT_COLLECTION}/_global`, { active: {}, day: '2026-09-16', starts: 9999 });
+  const many = {};
+  for (let i = 0; i < 50; i++) many['other-' + i] = now - 1000;
+  db.data.set(`${LIMIT_COLLECTION}/_global`, { active: many, day: '2026-09-16', starts: 9999 });
+  const lease = await repo.reserve('child', 'sheet', now, LIMITS);
+  assert.ok(lease.id, 'neither the day\'s centre-wide count nor fifty open lessons refuses a start');
+});
+
+test('a cap is ON only when it is a real number of at least one', () => {
+  assert.equal(capOn(1), true);
+  assert.equal(capOn(6), true);
+  for (const off of [0, -1, 0.5, NaN, Infinity, null, undefined, '6', {}]) {
+    assert.equal(capOn(off), false, `${String(off)} must read as NO cap`);
+  }
+});
+
+/* The duration is NOT a ration and is NOT removed: the lease's expiry, the
+   scheduled sweep and the stale-slot rule are all built on it, so a junk
+   value would be a lease that never ends and a paid call that never
+   closes. It is CLAMPED rather than trusted. */
+/* AND THE LEASE ITSELF CARRIES THE CLAMPED NUMBER. `now + policy.durationSeconds
+   * 1000` looks identical while the shipped value is in range, and on a junk one
+   it is `NaN` — an expiry that is never past, on a lease the sweep can therefore
+   never find, holding a paid call open for ever. */
+test('a lease never ends up with an expiry the policy typed wrong', async () => {
+  for (const junk of [undefined, null, NaN, Infinity, 'an hour', 0, -5, 999999, 900]) {
+    const { repo, now } = setup();
+    const lease = await repo.reserve('child', 'sheet', now, { ...LIMITS, durationSeconds: junk });
+    assert.ok(Number.isFinite(lease.expiresAt), `durationSeconds: ${String(junk)} must not give a lease with no end`);
+    assert.ok(lease.expiresAt >= now + DURATION_MIN * 1000 && lease.expiresAt <= now + DURATION_MAX * 1000);
+    assert.equal(lease.expiresAt, now + liveDuration({ durationSeconds: junk }) * 1000);
+    assert.ok(Number.isFinite(lease.cleanupAt));
+  }
+});
+
+test('the session length is clamped, never trusted, and never unbounded', () => {
+  assert.equal(liveDuration(LIMITS), 3600);
+  assert.equal(liveDuration({ durationSeconds: 1 }), 60);
+  assert.equal(liveDuration({ durationSeconds: 0 }), 60, '0 means no cap for a ration and must NOT here');
+  assert.equal(liveDuration({ durationSeconds: -5 }), 60);
+  assert.equal(liveDuration({ durationSeconds: 999999 }), 14400);
+  for (const junk of [undefined, null, NaN, Infinity, 'an hour', {}]) {
+    assert.equal(liveDuration({ durationSeconds: junk }), 14400, 'junk is bounded, never endless');
+    assert.ok(Number.isFinite(liveDuration({ durationSeconds: junk })));
+  }
+  assert.equal(liveDuration(undefined), 14400);
+});
+
+/* THE ACCOUNT'S OWN LOCK LETS GO OF ITSELF (v1.33.0). `currentLease` is
+   cleared by `release`, so a tab closed mid-lesson left it set and every
+   later start on that account was refused for ever — the one limit a
+   student could hit that would never come back. A lock written before this
+   shipped carries no `leaseAt` and is let go for the same reason a legacy
+   `active[key] = true` is. */
+test('an account lock left behind by a closed tab is let go', async () => {
+  for (const held of [{ currentLease: 'ghost', leaseAt: 1, day: '2026-09-16', starts: 1 },
+                      { currentLease: 'ghost', day: '2026-09-16', starts: 1 }]) {
+    const { db, repo, now } = setup();
+    db.data.set(`${LIMIT_COLLECTION}/${userKey('child')}`, { ...held });
+    const lease = await repo.reserve('child', 'sheet', now, LIMITS);
+    assert.ok(lease.id, 'a stale account lock cannot shut live mode for ever');
+    assert.equal(db.data.get(`${LIMIT_COLLECTION}/${userKey('child')}`).currentLease, lease.id);
+  }
+});
+
+test('…but a lesson that really is open still refuses a second one', async () => {
+  const { db, repo, now } = setup();
+  const first = await repo.reserve('child', 'sheet', now, LIMITS);
+  assert.equal(db.data.get(`${LIMIT_COLLECTION}/${userKey('child')}`).leaseAt, now,
+    'a lock with no time on it can never be told from an abandoned one');
+  await assert.rejects(repo.reserve('child', 'sheet', now + 60000, LIMITS),
+    error => error.code === 'lesson_already_active');
+  await repo.release(first);
+  assert.equal(db.data.get(`${LIMIT_COLLECTION}/${userKey('child')}`).currentLease, null,
+    'release frees the lock itself — the stale rule is the net under it, not the way out');
+  assert.ok((await repo.reserve('child', 'sheet', now + 61000, LIMITS)).id, 'and it frees on release');
 });
 
 /* THE REPORTED FAULT. The allowance is spent in `reserve`, before the
@@ -162,14 +265,19 @@ test('a refund is never taken twice, and never off another day', async () => {
     'a refund that lands after midnight must not take one off tomorrow');
 });
 
+/* TWO CEILINGS, TWO ANSWERS. "Twenty are running right now" comes back in
+   minutes; "the centre has used today's allowance" comes back at midnight.
+   One sentence for both is the very fault v1.32.0 fixed at the client end
+   of the same wire, so they carry different codes and different words. */
 test('global concurrency and daily ceilings are independently enforced', async () => {
-  for (const state of [{ active: 'fresh' }, { starts: 100 }]) {
+  for (const state of [{ active: true, code: 'live_busy' }, { starts: 100, code: 'daily_limit' }]) {
     const { db, repo, now } = setup();
     const globalState = state.active
       ? { active: { other: now - 1000 }, day: '2026-09-16', starts: 1 }
       : { active: {}, day: '2026-09-16', starts: 100 };
     db.data.set(`${LIMIT_COLLECTION}/_global`, globalState);
-    await assert.rejects(repo.reserve('child', 'sheet', now, { ...LIMITS, concurrent: 1 }), error => error.code === 'live_busy');
+    await assert.rejects(repo.reserve('child', 'sheet', now, { ...CAPPED, concurrent: 1 }),
+      error => error.code === state.code && !/busy or has reached/.test(error.message));
     assert.ok(!db.data.has(`${LIMIT_COLLECTION}/${userKey('child')}`));
   }
 });
@@ -181,11 +289,11 @@ test('global concurrency and daily ceilings are independently enforced', async (
    while". An entry written before this shipped is `true` rather than a
    time, and is let go for exactly the same reason. */
 test('a concurrency slot older than a whole lesson is let go', async () => {
-  for (const age of [LIMITS.durationSeconds * 1000 + 120000, 'legacy']) {
+  for (const age of [SECONDS * 1000 + 120000, 'legacy']) {
     const { db, repo, now } = setup();
     const held = age === 'legacy' ? true : now - age;
     db.data.set(`${LIMIT_COLLECTION}/_global`, { active: { orphan: held }, day: '2026-09-16', starts: 1 });
-    const lease = await repo.reserve('child', 'sheet', now, { ...LIMITS, concurrent: 1 });
+    const lease = await repo.reserve('child', 'sheet', now, { ...CAPPED, concurrent: 1 });
     assert.ok(lease.id, 'a stale slot cannot hold live mode shut for ever');
     assert.deepEqual(Object.keys(db.data.get(`${LIMIT_COLLECTION}/_global`).active), [lease.id]);
   }
@@ -194,7 +302,7 @@ test('a concurrency slot older than a whole lesson is let go', async () => {
 test('…but a slot from a lesson that really is running is kept', async () => {
   const { db, repo, now } = setup();
   db.data.set(`${LIMIT_COLLECTION}/_global`, { active: { live: now - 60000 }, day: '2026-09-16', starts: 1 });
-  await assert.rejects(repo.reserve('child', 'sheet', now, { ...LIMITS, concurrent: 1 }), error => error.code === 'live_busy');
+  await assert.rejects(repo.reserve('child', 'sheet', now, { ...CAPPED, concurrent: 1 }), error => error.code === 'live_busy');
 });
 
 /* A SLOT THIS BUILD TAKES CARRIES THE TIME IT WAS TAKEN, and the check has
@@ -205,10 +313,10 @@ test('…but a slot from a lesson that really is running is kept', async () => {
 test('a slot a lesson is holding is not swept by the next start', async () => {
   const { db, repo, now } = setup();
   db.data.set('tutorWorksheets/other-sheet', { ownerUid: 'other-child' });
-  const held = await repo.reserve('child', 'sheet', now, { ...LIMITS, concurrent: 1 });
+  const held = await repo.reserve('child', 'sheet', now, { ...CAPPED, concurrent: 1 });
   assert.equal(typeof db.data.get(`${LIMIT_COLLECTION}/_global`).active[held.id], 'number',
     'a slot with no time on it can never be told from an abandoned one');
-  await assert.rejects(repo.reserve('other-child', 'other-sheet', now + 1000, { ...LIMITS, concurrent: 1 }),
+  await assert.rejects(repo.reserve('other-child', 'other-sheet', now + 1000, { ...CAPPED, concurrent: 1 }),
     error => error.code === 'live_busy');
 });
 
@@ -218,7 +326,7 @@ test('expired query includes abandoned reservations and excludes active lessons'
   assert.deepEqual((await repo.expired(now + 61000)).map(lease => lease.id), [pending.id]);
   await repo.activate(pending, 'live-active');
   assert.deepEqual(await repo.expired(now + 61000), []);
-  assert.deepEqual((await repo.expired(now + 600000)).map(lease => lease.id), [pending.id]);
+  assert.deepEqual((await repo.expired(now + SECONDS * 1000)).map(lease => lease.id), [pending.id]);
 });
 
 test('user IDs cannot escape bookkeeping document paths', () => {

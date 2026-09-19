@@ -1,6 +1,55 @@
 'use strict';
 
-const LIMITS = Object.freeze({ durationSeconds: 600, startsPerDay: 6, globalStartsPerDay: 100, concurrent: 20 });
+/* ⏱ THE RATIONS ARE OFF, AND `0` IS HOW THAT IS WRITTEN.
+   ------------------------------------------------------------------
+   Four numbers used to stand between a child and the live tutor, and
+   three of them were RATIONS: six lessons a student a day, a hundred a
+   day for the whole centre, twenty at once. They are off — `0` means no
+   cap, `capOn` is the ONE place that is decided, and `reserve` asks it
+   before every refusal. The counters are still KEPT: `starts` is what
+   the teacher can look at, and the refund that v1.32.0 added (a start
+   that never became a paid call is given back) stays live rather than
+   rotting into dead code nobody runs.
+
+   `durationSeconds` is NOT a ration and is NOT removed. It is how long
+   ONE lesson lasts before its lease expires, and three separate things
+   are built on it: the lease's own `expiresAt`, the scheduled sweep
+   that closes an abandoned paid call, and the stale-slot rule in
+   `reserve`. Remove it and a tab left open on a desk holds a lease that
+   never expires and a call that never closes — a bill that runs all
+   night with nobody in the room. So it is RAISED instead, from ten
+   minutes to an hour, and CLAMPED (`liveDuration`) rather than trusted:
+   a junk value here would be a lease with no end at all, which is the
+   one thing in this file that fails expensively rather than loudly. */
+const LIMITS = Object.freeze({
+  durationSeconds: 3600,     // one lesson's own length — a runaway guard, never a ration
+  startsPerDay: 0,           // 0 = no limit
+  globalStartsPerDay: 0,     // 0 = no limit
+  concurrent: 0              // 0 = no limit
+});
+const DURATION_MIN = 60;
+const DURATION_MAX = 14400;  // four hours — past this, nobody is in the room
+
+/* A cap is ON only when it is a real number of at least one. `0` is the
+   deliberate way to switch one off; anything that is not a finite number
+   — a typo, a missing field, `Infinity` — is off too, because the rations
+   are the half of this file that fails SAFELY when it fails open: the
+   worst case is a bill the teacher can see, where failing shut is a
+   child told to come back at midnight. `durationSeconds` is the other
+   half and deliberately does not use this. */
+function capOn(n) { return Number.isFinite(n) && n >= 1; }
+/* `typeof`, NEVER `Number()`. `Number(null)` is 0 and `Number('')` is 0, so
+   coercing a MISSING field gives a lesson one minute long — quietly, on
+   every child, from a deploy nobody would think to check. Something that is
+   not a number at all is the bounded CEILING; a real number out of range is
+   pulled to the nearest end of it. And `0` is a number, so unlike the three
+   rations it does NOT mean "off" here: a lease with no end is a paid call
+   nothing ever closes. */
+function liveDuration(policy) {
+  const n = policy && policy.durationSeconds;
+  if (typeof n !== 'number' || !Number.isFinite(n)) return DURATION_MAX;
+  return Math.min(DURATION_MAX, Math.max(DURATION_MIN, Math.floor(n)));
+}
 const APP_ID = '1:165654161198:web:16c8bd60eb3a2aa7edbcbf';
 const MAX_SDP_BYTES = 64000;
 
@@ -100,7 +149,7 @@ function createLiveService({ auth, appCheck, repository, provider, now = Date.no
       session = await provider.create(body.sdp, sessionConfig());
       await repository.activate(lease, session.sessionId);
       if (abandoned()) throw new Error('Live request disconnected.');
-      return { sessionId: session.sessionId, sdp: session.sdp, expiresAt: lease.expiresAt, maxDurationSeconds: LIMITS.durationSeconds };
+      return { sessionId: session.sessionId, sdp: session.sdp, expiresAt: lease.expiresAt, maxDurationSeconds: liveDuration(LIMITS) };
     } catch (error) {
       if (!session && error.sessionId) session = { sessionId: error.sessionId };
       // If creation succeeded but the database write failed, close the paid call
@@ -162,4 +211,4 @@ function createLiveService({ auth, appCheck, repository, provider, now = Date.no
   return { handler, sweep };
 }
 
-module.exports = { APP_ID, LIMITS, LiveError, allowedOrigin, createLiveService, sessionConfig, validateBody };
+module.exports = { APP_ID, DURATION_MAX, DURATION_MIN, LIMITS, LiveError, allowedOrigin, capOn, createLiveService, liveDuration, sessionConfig, validateBody };

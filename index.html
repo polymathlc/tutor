@@ -2279,7 +2279,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.32.0';
+var APP_VERSION = 'v1.33.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -12767,7 +12767,7 @@ var LIVE_STREAM_MIN_CHARS = 24;
 var liveTutor = {
   generation: 0, phase: 'idle', message: 'Ready when you are.', pc: null, channel: null,
   stream: null, audio: null, sessionId: null, headers: null, tick: null, startup: null,
-  disconnected: null, startedAt: 0, muted: false, playbackBlocked: false,
+  disconnected: null, startedAt: 0, maxSeconds: 0, muted: false, playbackBlocked: false,
   transcript: [], delegations: new Set(), pendingDelegation: null, working: false, epoch: null, worksheetId: null, contextSnapshot: null,
   // The orb: the analyser handle, the level it last measured and when the tutor last spoke.
   orbAudio: null, level: 0, spokeAt: 0, orbTalking: false
@@ -13535,9 +13535,8 @@ function renderLiveTutor() {
   liveOrbPaint();
   $('livePlaybackBtn').hidden = !liveTutor.playbackBlocked;
   $('liveClock').textContent = liveTutor.startedAt && liveActive()
-    ? Math.floor((Date.now() - liveTutor.startedAt) / 60000) + ':' +
-      String(Math.floor((Date.now() - liveTutor.startedAt) / 1000) % 60).padStart(2, '0') + ' / 10:00'
-    : 'Up to 10 minutes';
+    ? liveClockText(Math.floor((Date.now() - liveTutor.startedAt) / 1000)) + ' / ' + liveClockText(liveMaxSeconds())
+    : 'Up to ' + liveLengthWords(liveMaxSeconds());
   $('liveHelpLevel').textContent = 'Help level: ' + guidanceLabel(wsMeta.guidance);
   var log = $('liveTranscript');
   var nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 70;
@@ -13611,6 +13610,42 @@ async function liveRequest(body, headers, keepalive) {
    for the student by `functions/live-service.js`, so it is shown as it
    stands — but it is still text off the network, so it is bounded and
    folded to one line before it can become the message on the card. */
+/* ⏱ HOW LONG A LESSON MAY RUN IS THE SERVER'S ANSWER, NOT A NUMBER TYPED
+   HERE. The card read `/ 10:00` and *Up to 10 minutes* as literals while
+   `functions/live-service.js` decided the real length, so the two were one
+   deploy apart from disagreeing — and in v1.33.0 they did: the lesson became
+   an hour and the clock still counted towards ten minutes, which a student
+   watching it go past 10:00 reads as a broken clock rather than as a longer
+   lesson. `maxDurationSeconds` has been in the start reply all along and was
+   thrown away; it is read now, so the card is right whatever the server is
+   set to and there is no second place to keep in step.
+
+   `LIVE_MAX_SECONDS_DEFAULT` is only what the card says BEFORE a lesson has
+   started, when nothing has been asked yet — keep it in step with
+   `LIMITS.durationSeconds`, and note that a wrong one is a caption a minute
+   out rather than a lesson cut short: the length itself is the server's. */
+var LIVE_MAX_SECONDS_DEFAULT = 3600;
+function liveMaxSeconds() {
+  var n = liveTutor.maxSeconds;
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : LIVE_MAX_SECONDS_DEFAULT;
+}
+/* m:ss under an hour and h:mm:ss at or over it — "65:00" is a number nobody
+   reads as an hour and five minutes. */
+function liveClockText(sec) {
+  var t = Math.max(0, Math.floor(Number(sec) || 0));
+  var h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = t % 60;
+  var pad = function (n) { return String(n).padStart(2, '0'); };
+  return h ? h + ':' + pad(m) + ':' + pad(s) : m + ':' + pad(s);
+}
+/* The caption before it starts, in words a child reads rather than a clock:
+   "Up to 1 hour", not "Up to 60:00". */
+function liveLengthWords(sec) {
+  var t = Math.max(60, Math.floor(Number(sec) || 0));
+  var mins = Math.round(t / 60);
+  if (mins < 60) return mins + ' minute' + (mins === 1 ? '' : 's');
+  var h = Math.floor(mins / 60), rest = mins % 60;
+  return h + ' hour' + (h === 1 ? '' : 's') + (rest ? ' ' + rest + ' min' : '');
+}
 function liveErrorText(data) {
   var msg = data && data.error && data.error.message;
   if (typeof msg !== 'string') return '';
@@ -13736,6 +13771,7 @@ async function startLiveTutor() {
   var user = currentUser, generation = ++liveTutor.generation;
   liveTutor.phase = 'connecting'; liveTutor.epoch = wsEpoch; liveTutor.worksheetId = currentDocId;
   liveTutor.transcript = []; liveTutor.delegations = new Set(); liveTutor.pendingDelegation = null; liveTutor.startedAt = 0;
+  liveTutor.maxSeconds = 0;           // the server says how long a lesson is; until it has, the default stands
   liveTutor.contextSnapshot = null;
   liveTutor.guidance = wsMeta.guidance;
   // Started BEFORE the microphone prompt: granting permission and exchanging
@@ -13797,6 +13833,7 @@ async function startLiveTutor() {
     var answer = await liveRequest({ action: 'start', sdp: pc.localDescription.sdp, worksheetId: currentDocId }, headers);
     if (!liveCurrent(generation)) { closeLiveRemote(answer.sessionId, headers); return; }
     liveTutor.sessionId = answer.sessionId;
+    liveTutor.maxSeconds = Number(answer.maxDurationSeconds) || 0;   // how long THIS lesson may run, from the server that decides it
     if (!answer.sessionId || typeof answer.sdp !== 'string' || !answer.sdp.startsWith('v=0')) throw new Error('The tutor returned an incomplete audio connection. Please try again.');
     await pc.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
     // session.started, not data-channel open, is the confirmation that speech is ready.

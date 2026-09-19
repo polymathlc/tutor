@@ -12,6 +12,70 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.33.0 — ⏱ The limits are off the live tutor
+
+Four numbers stood between a child and the live tutor. **Three of them were rations and all three
+are gone:**
+
+| | was | now |
+| --- | --- | --- |
+| Lessons a student may start in a day | 6 | **no limit** |
+| Lessons the whole centre may start in a day | 100 | **no limit** |
+| Lessons that may run at the same time | 20 | **no limit** |
+| How long ONE lesson lasts | 10 minutes | **1 hour** |
+
+### The fourth is not a ration, and it is not removed
+
+`durationSeconds` is how long a single lesson runs before its lease expires, and three separate
+things are built on it: the lease's own expiry, the scheduled sweep that closes an abandoned paid
+call, and the stale-slot rule that lets a dropped tab's reservation go. **Remove it and a tab left
+open on a desk holds a lease that never expires and a call that never closes** — a bill that runs
+all night with nobody in the room. So it is raised from ten minutes to an hour, and it is
+**clamped** (60 seconds to 4 hours) rather than trusted: a junk value there is the one setting in
+this file that would fail expensively rather than loudly.
+
+The three rations are the opposite, so they fail the opposite way: `0` means off, and anything
+that is not a real number is off too. The worst case is a bill the teacher can see; failing shut
+is a child told to come back at midnight.
+
+**The counts are still kept.** They are what the teacher can look at, and they are what v1.32.0's
+refund takes back off — switching the counter off with the cap would leave that whole path as code
+nothing ever runs.
+
+### A lesson that was never open, blocking every later one
+
+`currentLease` is the per-account lock that stops two live sessions billing at once. It is cleared
+when a lesson is released — so a tab closed mid-lesson, a dropped network or a failed close left it
+**set for ever**, and every later start on that account was refused with *"A live lesson is already
+open on this account"* about a lesson that ended days ago. That was the one limit a student could
+hit that would never come back on its own, and it is the per-account twin of the concurrency slot
+v1.32.0 fixed for the whole school. A lock carries the moment it was taken now, and one older than
+a whole lesson is let go.
+
+### The clock on the card told the truth again
+
+The live card read **`/ 10:00`** and *Up to 10 minutes* as literals typed into the page, while the
+server decided the real length. The moment the lesson became an hour those two disagreed — and a
+student watching the clock count past 10:00 reads a broken clock, not a longer lesson. The start
+reply has carried `maxDurationSeconds` all along and the app threw it away; it is read now, so the
+card is right whatever the server is set to, in words a child reads (*Up to 1 hour*, `1:04:22`)
+rather than a four-figure count of minutes.
+
+### And the two centre-wide ceilings answer differently
+
+Both are off, but for the day somebody turns one back on: *"twenty lessons are already running,
+try again in a few minutes"* and *"the centre has used today's allowance, it comes back at
+midnight"* are different things to be told, and the old wording said *"busy or has reached today's
+allowance"* and left the student to guess — the very fault v1.32.0 fixed at the other end of the
+same wire.
+
+> ⚠️ **This needs `firebase deploy --only functions`.** The limits live in
+> `functions/live-service.js`, which does not ship with GitHub Pages. Until that runs, the card's
+> clock is the only half that changes — and it would then be counting towards an hour on a server
+> still ending lessons at ten minutes.
+
+---
+
 ## v1.32.0 — 📕 The mistake book is FILED, 🧩 set out again, and the live tutor stops saying "busy"
 
 ### 📕 Every mistake under its subject, its topic and its objective

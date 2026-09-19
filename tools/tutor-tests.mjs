@@ -2584,6 +2584,58 @@ ok('what comes back off the network is bounded before it is shown',
      between('function liveErrorText(data) {', 'function closeLiveRemote(', 'the live error reader')));
 
 /* =====================================================================
+   ⏱ THE RATIONS ARE OFF, AND THE CARD READS THE SERVER'S OWN NUMBER
+   =====================================================================
+   Three numbers stood between a child and the live tutor and all three
+   are `0` now. The fourth — how long ONE lesson lasts — is not a ration
+   and is not removed: the lease expiry, the scheduled sweep and the
+   stale-slot rule are all built on it, so an endless one is a paid call
+   nothing ever closes.
+   ===================================================================== */
+const LIVE_SVC = readFileSync(new URL('../functions/live-service.js', import.meta.url), 'utf8');
+const LIVE_REPO = readFileSync(new URL('../functions/live-repository.js', import.meta.url), 'utf8');
+
+ok('the three rations are written off, as 0',
+   /startsPerDay:\s*0\b/.test(LIVE_SVC) && /globalStartsPerDay:\s*0\b/.test(LIVE_SVC) &&
+   /concurrent:\s*0\b/.test(LIVE_SVC),
+   'a student told to come back at midnight is the fault this removes');
+ok('…and the session’s own length is NOT one of them',
+   /durationSeconds:\s*(?!0\b)\d+/.test(LIVE_SVC),
+   'a lease with no end is a paid call nobody closes and a bill that runs all night');
+ok('every refusal asks capOn first, so a 0 really is off',
+   (LIVE_REPO.match(/capOn\(policy\./g) || []).length === 3,
+   'one refusal left unguarded is the whole change quietly not happening');
+ok('the duration is CLAMPED rather than trusted, and by typeof',
+   /typeof n !== 'number' \|\| !Number\.isFinite\(n\)/.test(LIVE_SVC) &&
+   /Math\.min\(DURATION_MAX, Math\.max\(DURATION_MIN/.test(LIVE_SVC),
+   'Number(null) is 0, so coercing a missing field hands every child a one-minute lesson');
+ok('the account’s own lock carries the moment it was taken',
+   /leaseAt: now/.test(LIVE_REPO) && /Number\(ownerData\.leaseAt\) > staleBefore/.test(LIVE_REPO),
+   'a tab closed mid-lesson left currentLease set, and every later start on that account was refused for ever');
+/* Read off the THROWS, never the whole file: this section's own comments
+   quote the wording being retired, and a check that matched its own
+   documentation would go red on the fix and green on the fault. */
+const LIVE_THROWS = (LIVE_REPO.match(/throw new LiveError\([\s\S]*?\);/g) || []).join('\n');
+ok('the two centre-wide ceilings answer differently',
+   /'live_busy'/.test(LIVE_THROWS) && /'daily_limit'/.test(LIVE_THROWS) &&
+   !/busy or has reached today/.test(LIVE_THROWS),
+   '"in a few minutes" and "at midnight" are different things to be told');
+
+ok('the reply reports the CLAMPED length, never the raw constant',
+   /maxDurationSeconds: liveDuration\(/.test(LIVE_SVC),
+   'the card would then count towards a number the lease does not end at');
+ok('the card reads how long a lesson is off the start reply',
+   /liveTutor\.maxSeconds = Number\(answer\.maxDurationSeconds\)/.test(html),
+   'maxDurationSeconds was in the reply all along and was thrown away');
+const CLOCK_SRC = between("$('liveClock').textContent =", "$('liveHelpLevel').textContent", 'the live clock');
+ok('…and no literal ceiling is typed into the clock',
+   !/10:00|Up to 10 minutes/.test(CLOCK_SRC) && /liveClockText\(liveMaxSeconds\(\)\)/.test(CLOCK_SRC),
+   'the lesson became an hour and the clock still counted towards ten minutes');
+ok('a junk length can never SHRINK the clock',
+   /Number\.isFinite\(n\) && n >= 1 \? Math\.floor\(n\) : LIVE_MAX_SECONDS_DEFAULT/.test(html),
+   'a caption counting towards a number the session does not end at is worse than no caption');
+
+/* =====================================================================
    📕 THE MISTAKE BOOK, FILED UNDER THE SYLLABUS
    =====================================================================
    The book was one grid, newest first, behind three chips. After a term
