@@ -24,8 +24,12 @@ const ladderSource = html.slice(html.indexOf('var HINT_RUNGS = ['), html.indexOf
 const syllabusSource = html.slice(html.indexOf('/* ================= THE SCIENCE SYLLABUS'), html.indexOf('/* ================= End the science syllabus'));
 const parseSource = html.slice(html.indexOf('/* ================= Tolerant JSON parse for model output'), html.indexOf('function aiEngineName() {'));
 const quizSource = html.slice(html.indexOf('/* ================= THE KEYWORD QUIZ ================='), html.indexOf('/* ================= End the keyword quiz'));
-assert.ok(ladderSource && syllabusSource && parseSource && quizSource, 'the ladder, the syllabus, the JSON parse and the keyword quiz can be loaded independently');
-const source = deadlineSource + syncTextSource + ladderSource + syllabusSource + parseSource + contextSource + quizSource + html.slice(start, end);
+/* ✏️ The maths pad, cut in beside the quiz it replaces — `kwQuizOffReason`
+   asks `mathWorksheet()`, so the two only make sense together. */
+const mathSource = html.slice(html.indexOf('/* =====================================================================\n   ✏️ THE MATHS PAD'), html.indexOf('/* ================= End the maths pad'));
+assert.ok(ladderSource && syllabusSource && parseSource && quizSource && mathSource,
+  'the ladder, the syllabus, the JSON parse, the keyword quiz and the maths pad can be loaded independently');
+const source = deadlineSource + syncTextSource + ladderSource + syllabusSource + parseSource + contextSource + quizSource + mathSource + html.slice(start, end);
 const flattenSource = html.slice(html.indexOf('function drawAnnsOnCtx('), html.indexOf('/* A full-width band of the page'));
 const voiceSource = html.slice(html.indexOf('function startVoice(target) {'), html.indexOf('function _voiceClearTimers()'));
 
@@ -79,8 +83,10 @@ function node(tagName = 'div') {
 
 function harness(options = {}) {
   const nodes = new Map();
-  const calls = { media: [], fetch: [], ai: [], toast: [], timers: new Map(), peers: [], audio: [], usage: [] };
+  const calls = { media: [], fetch: [], ai: [], toast: [], timers: new Map(), peers: [], audio: [], usage: [], undo: [], tools: [] };
   let nextTimer = 0;
+  let annSeq = 0;
+  const store = Object.assign({}, options.storage || {});
   const element = id => {
     if (!nodes.has(id)) nodes.set(id, node());
     return nodes.get(id);
@@ -177,6 +183,22 @@ function harness(options = {}) {
     renderMicBtns() {}, renderVoiceBar() {}, renderChat() {},
     openBuddy() {}, usageNote(key, detail) { calls.usage.push({ key, detail }); }, setDirty() {}, syncTextEditValue() {},
     renderHints() {}, hints: [], wsKey: { rows: [] },
+    /* What the ✏️ maths pad stands on outside the live section: the
+       annotation plumbing a placed model becomes ordinary ink through.
+       `tutorMethodRule` is NOT stubbed — the real one is cut in with the
+       request deadlines above, and the check asserts on its own words. */
+    round2: n => Math.round(n * 100) / 100,
+    color: '#1A1A1A', fontSize: 16, tool: 'pen',
+    ANN_TEXT_PAD_X: 3, ANN_TEXT_PAD_Y: 2, ANN_TEXT_LINE: 1.35,
+    pushUndo() { calls.undo.push(JSON.stringify(c.annotations)); },
+    newAnnId() { return 'ann' + (++annSeq); },
+    renderOverlay() {}, renderAllOverlays() {},
+    setTool(t) { c.tool = t; calls.tools.push(t); },
+    localStorage: {
+      getItem: key => (key in store ? store[key] : null),
+      setItem: (key, value) => { store[key] = String(value); },
+      removeItem: key => { delete store[key]; }
+    },
     escHtml: value => String(value).replace(/[&<>"']/g, ch => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[ch]))
@@ -1593,4 +1615,488 @@ test('a spoken reply is scrubbed of "let me check" and thinking sounds, and teac
   await all.c.runLiveDelegation('all-filler', all.c.liveTutor.generation);
   assert.equal(comments(all.c.liveTutor.channel)[0].content, 'I could not read that clearly. Please say the question again.');
   all.c.stopLiveTutor();
+});
+
+/* =====================================================================
+   ✏️ THE MATHS PAD
+   ---------------------------------------------------------------------
+   Every failure below is SILENT and the app goes on looking right:
+
+   • A keyword check on a maths worksheet is the wrong tool asked for
+     confidently — and a student told "fill in the blanks" about a sum has
+     been handed a question nobody can answer.
+   • A working line that a help level can switch off is the one thing a
+     maths student has, taken away by a rule that was never about it.
+   • A drawn model offered below the method rung is the method handed over
+     by a box the ladder never gated.
+   • The answer written into the segment the question is ASKING for is the
+     answer with a box round it, printed first and read first.
+   • An arithmetic slip called "right" teaches a child something false, in
+     a green box, with a tick beside it.
+   ===================================================================== */
+
+function maths(options = {}) {
+  const h = harness(options);
+  h.c.wsMeta = { subject: 'math', level: 'P5', guidance: options.guidance || 'method' };
+  return h;
+}
+
+test('a maths worksheet has no keyword check, and the note says why it has none', () => {
+  const h = maths();
+  assert.equal(h.c.mathWorksheet(), true);
+  assert.equal(h.c.kwQuizOffReason(), 'maths');
+  assert.equal(h.c.kwQuizAllowed(), false, 'recalling a wording is not what a maths answer needs');
+  assert.match(h.c.kwQuizLockedNote(), /maths worksheet/i);
+  assert.doesNotMatch(h.c.kwQuizLockedNote(), /help level/i,
+    'a maths student told their help level forbids it goes looking for a setting that has nothing to do with it');
+  // …and the science side is untouched, at every level.
+  h.c.wsMeta = { subject: 'science', level: 'P5', guidance: 'concepts' };
+  assert.equal(h.c.mathWorksheet(), false);
+  assert.equal(h.c.kwQuizOffReason(), '');
+  assert.equal(h.c.kwQuizAllowed(), true);
+  h.c.wsMeta.guidance = 'nudge';
+  assert.equal(h.c.kwQuizOffReason(), 'level');
+  assert.match(h.c.kwQuizLockedNote(), /Nudges only/);
+  // 'both' is Ans Key's legacy pairing and is NOT maths: half a science
+  // worksheet still wants its keywords.
+  h.c.wsMeta = { subject: 'both', level: 'P5', guidance: 'concepts' };
+  assert.equal(h.c.mathWorksheet(), false);
+  assert.equal(h.c.kwQuizAllowed(), true);
+});
+
+test('the working line is offered at EVERY help level, and the drawn model only from "How to do it"', () => {
+  const h = maths();
+  const at = level => { h.c.wsMeta.guidance = level; return [h.c.mthAllowed(), h.c.mthModelAllowed(), h.c.mthAnswerAllowed()]; };
+  assert.deepEqual(at('nudge'), [true, false, false], 'asking for the next step tells a student nothing at all');
+  assert.deepEqual(at('concepts'), [true, false, false]);
+  assert.deepEqual(at('method'), [true, true, false], 'a model IS the method');
+  assert.deepEqual(at('answer'), [true, true, true]);
+  h.c.wsMeta.guidance = 'nudge';
+  assert.match(h.c.mthModelLockedNote(), /Nudges only/);
+  assert.match(h.c.mthModelLockedNote(), /working line below is still yours/, 'the one thing they DO have is named');
+  // A level this build has never heard of falls back to the default rather
+  // than to the top — the ladder's own rule, and the pad inherits it.
+  h.c.wsMeta.guidance = 'whatever-comes-next';
+  assert.deepEqual([h.c.mthModelAllowed(), h.c.mthAnswerAllowed()], [true, false]);
+  // …and nothing at all is offered on a science worksheet.
+  h.c.wsMeta = { subject: 'science', level: 'P5', guidance: 'answer' };
+  assert.deepEqual([h.c.mthAllowed(), h.c.mthModelAllowed()], [false, false]);
+});
+
+test('the unknown is never filled in below the answer rung, whatever the model returns', () => {
+  const h = maths();
+  const spec = {
+    why: 'Ali and Siti share the stickers.',
+    bars: [
+      { label: 'Ali', segments: [{ text: '48', units: 3 }, { text: '360', units: 1, unknown: true }] },
+      { label: 'Siti', segments: [{ text: '48', units: 3, ask: true }] }
+    ],
+    total: '408 in all', note: 'Find one unit first.'
+  };
+  const held = h.c.mthModelClean(JSON.parse(JSON.stringify(spec)));
+  assert.equal(held.bars[0].segments[1].text, '?', 'the value the question asks for is the answer with a box round it');
+  assert.equal(held.bars[0].segments[0].text, '48', 'a number the question STATES is theirs to read off the page');
+  assert.equal(held.bars[1].segments[0].ask, true);
+  assert.equal(held.bars[0].segments[1].ask, false, 'the unknown is never also a labelling exercise');
+  // At the top of the ladder the worked answer is allowed, so it stands.
+  h.c.wsMeta.guidance = 'answer';
+  const shown = h.c.mthModelClean(JSON.parse(JSON.stringify(spec)));
+  assert.equal(shown.bars[0].segments[1].text, '360');
+  // A segment marked unknown with nothing in it still reads as the unknown.
+  h.c.wsMeta.guidance = 'answer';
+  const bare = h.c.mthModelClean({ bars: [{ label: 'x', segments: [{ text: '', units: 1, unknown: true }] }] });
+  assert.equal(bare.bars[0].segments[0].text, '?');
+});
+
+test('a model that would render perfectly and read as nonsense is bounded, and an empty one is refused', () => {
+  const h = maths();
+  assert.equal(h.c.mthModelClean(null), null);
+  assert.equal(h.c.mthModelClean({ bars: [] }), null, 'a model with no bars is a blank box');
+  assert.equal(h.c.mthModelClean({ bars: [{ label: 'a', segments: [] }] }), null);
+  assert.equal(h.c.mthModelClean({ bars: 'lots' }), null);
+  const big = h.c.mthModelClean({
+    bars: Array.from({ length: 40 }, () => ({
+      label: 'a name far longer than any bar in any model anybody has ever drawn',
+      segments: Array.from({ length: 40 }, () => ({ text: 'a whole sentence written into a box the width of a number', units: 5000 }))
+    }))
+  });
+  assert.equal(big.bars.length, 5);
+  assert.equal(big.bars[0].segments.length, 10);
+  assert.equal(big.bars[0].segments[0].units, 24, 'one part three hundred times another is not a bar model');
+  assert.ok(big.bars[0].segments[0].text.length <= 14);
+  assert.ok(big.bars[0].label.length <= 22);
+  // Junk units become ONE rather than nothing: a zero-width segment is a
+  // segment the student cannot see and cannot label.
+  const odd = h.c.mthModelClean({ bars: [{ label: '', segments: [{ text: '4', units: 0 }, { text: '5', units: -3 }, { text: '6', units: 'two' }] }] });
+  assert.deepEqual(Array.from(odd.bars[0].segments, s => s.units), [1, 1, 1]);
+});
+
+test('which segments a student is asked to label, and a model that marked none asks for the unknowns', () => {
+  const h = maths();
+  const marked = h.c.mthModelClean({ bars: [{ label: 'A', segments: [{ text: '5', units: 1, ask: true }, { text: '?', units: 1, unknown: true }] }] });
+  assert.deepEqual(Array.from(h.c.mthModelBlanks(marked)), ['0:0']);
+  const none = h.c.mthModelClean({ bars: [{ label: 'A', segments: [{ text: '5', units: 1 }, { text: '?', units: 1, unknown: true }] }] });
+  assert.deepEqual(Array.from(h.c.mthModelBlanks(none)), ['0:1'], 'a model with every part filled in is a picture, not an exercise');
+  const flat = h.c.mthModelClean({ bars: [{ label: 'A', segments: [{ text: '5', units: 1 }] }] });
+  assert.deepEqual(Array.from(h.c.mthModelBlanks(flat)), [], 'nothing to ask for is not the same as asking for everything');
+});
+
+test('the app checks the arithmetic itself, and only ever overrules a "right"', () => {
+  const h = maths();
+  // The palette's own − × ÷ are folded into real operators: a student who
+  // pressed the key and one who typed the hyphen wrote the same sum.
+  assert.equal(h.c.mthArith('12 × 5 = 60').ok, true);
+  assert.equal(h.c.mthArith('12 x 5 = 60'), null, 'a letter x is not the app’s to read as a multiplication');
+  assert.equal(h.c.mthArith('60 ÷ 5 = 12').ok, true);
+  assert.equal(h.c.mthArith('60 − 12 = 48').ok, true, 'U+2212 is not the hyphen a keyboard gives');
+  assert.equal(h.c.mthArith('60 - 12 = 48').ok, true);
+  assert.equal(h.c.mthArith('1,200 + 300 = 1500').ok, true);
+  assert.equal(h.c.mthArith('12 × 5 = 70').ok, false);
+  assert.equal(h.c.mthArith('0.1 + 0.2 = 0.3').ok, true, '0.30000000000000004 is not a thing to teach a child');
+  assert.equal(h.c.mthArith('5 ÷ 0 = 0'), null);
+  // NARROW on purpose: anything that is not `number op number = number` is
+  // the tutor's to judge, because a half-understood step wrongly called
+  // wrong is far worse than one the model has to look at.
+  assert.equal(h.c.mthArith('1 unit = 12'), null);
+  assert.equal(h.c.mthArith('12 × 5'), null);
+  assert.equal(h.c.mthArith('Ali has 12 sweets'), null);
+  assert.equal(h.c.mthArith(''), null);
+  // A sum that does not come out is not a correct step whatever the model says…
+  const bad = h.c.mthWorkClean({ verdict: 'right', note: 'Good.', done: true }, '12 × 5 = 70');
+  assert.equal(bad.verdict, 'close');
+  assert.equal(bad.done, false);
+  assert.match(bad.note, /not equal/);
+  // …and in the OTHER direction it says nothing: a sum that comes out can
+  // still be entirely the wrong step.
+  const wrongStep = h.c.mthWorkClean({ verdict: 'wrong', note: 'That is not what the question asks for.' }, '12 × 5 = 60');
+  assert.equal(wrongStep.verdict, 'wrong');
+});
+
+test('a verdict nobody recognises is "close", never "right" and never "wrong"', () => {
+  const h = maths();
+  assert.equal(h.c.mthWorkClean({ verdict: 'perfect', note: 'x' }, 'anything').verdict, 'close');
+  assert.equal(h.c.mthWorkClean({ verdict: 'RIGHT', note: 'x' }, 'anything').verdict, 'right');
+  assert.equal(h.c.mthWorkClean({}, 'anything').verdict, 'close');
+  assert.equal(h.c.mthWorkClean(null, 'anything'), null);
+  assert.equal(h.c.mthWorkClean('right', 'anything'), null);
+  // "done" is only ever reachable from a step that really stands.
+  assert.equal(h.c.mthWorkClean({ verdict: 'close', done: true, note: 'x' }, 'a').done, false);
+  assert.equal(h.c.mthWorkClean({ verdict: 'right', done: true, note: 'x' }, 'a').done, true);
+  assert.equal(h.c.mthWorkClean({ verdict: 'right', done: 'yes', note: 'x' }, 'a').done, false);
+  // A reply with no words still says something a student can act on.
+  assert.ok(h.c.mthWorkClean({ verdict: 'wrong' }, 'a').note.length > 10);
+});
+
+test('the step check is grounded, carries the key, the method rule and the ceiling, and is never a mark', async () => {
+  const h = maths();
+  h.c.window.askGemini = async (prompt, config) => {
+    h.calls.ai.push({ prompt, config });
+    return JSON.stringify({ verdict: 'right', note: 'Good — one unit is 12.', next: 'Now find 5 units.', done: false });
+  };
+  h.c.mthShow({ from: 'hint', question: 'Ali has 60 sweets in 5 equal bags.', ask: 'How many are in one bag?' });
+  h.c.mthPad.typed = '60 ÷ 5 = 12';
+  await h.c.mthWorkCheck();
+  const { prompt, config } = h.calls.ai[0];
+  assert.match(config.system, /\[TEACHER_GROUNDING:hint\]/, 'the key facts build a nudge; the marking standards are for a mark');
+  assert.match(config.system, /\[ANSWER_KEY_RULES\]/);
+  assert.match(config.system, /MATHEMATICS TEACHING METHOD/, 'arithmetic and the unitary method, never algebra dressed up as units');
+  assert.match(config.system, /\[NUDGES_ONLY\]/);
+  assert.match(config.system, /note NEVER states the value the student was asked to find/);
+  assert.equal(config.json, true);
+  assert.match(prompt, /Ali has 60 sweets/);
+  assert.match(prompt, /60 ÷ 5 = 12/);
+  assert.match(prompt, /comes out correctly/, 'what the app already knows goes over as evidence, not as the verdict');
+  // A step that stands is cleared out of the line so the next one is typed
+  // into an empty box; the ask moves on; the chain remembers it.
+  assert.equal(h.c.mthPad.typed, '');
+  assert.equal(h.c.mthPad.ask, 'Now find 5 units.');
+  assert.deepEqual(Array.from(h.c.mthPad.steps, st => ({ text: st.text, verdict: st.verdict })), [{ text: '60 ÷ 5 = 12', verdict: 'right' }]);
+  assert.deepEqual(h.calls.usage.filter(u => u.key === 'mathstep').map(u => ({ key: u.key, detail: u.detail })),
+    [{ key: 'mathstep', detail: 'right' }]);
+});
+
+test('a step that does not stand is LEFT in the line to fix, and a blank one costs no call', async () => {
+  const h = maths({ ai: async () => JSON.stringify({ verdict: 'wrong', note: 'That is not what the question asks for yet.' }) });
+  h.c.mthShow({ from: 'hint', question: 'Q' });
+  h.c.mthPad.typed = '';
+  await h.c.mthWorkCheck();
+  assert.equal(h.calls.ai.length, 0, 'an empty line is not a question worth asking a model');
+  assert.match(h.c.mthPad.note, /Type one line of working/);
+  h.c.mthPad.typed = '60 + 5 = 65';
+  await h.c.mthWorkCheck();
+  assert.equal(h.c.mthPad.typed, '60 + 5 = 65', 'a step to fix is a step still in front of them');
+  assert.equal(h.c.mthPad.verdict, 'wrong');
+});
+
+test('the symbol palette writes at the caret, never at the end, and never past the cap', () => {
+  const h = maths();
+  const input = { value: '60  5 = 12', selectionStart: 3, selectionEnd: 3, focus() {}, setSelectionRange(a) { this.selectionStart = this.selectionEnd = a; } };
+  h.c.mthPad.input = input;
+  h.c.mthInsert('÷');
+  assert.equal(input.value, '60 ÷ 5 = 12', 'a student who went back to fix the first number wants it where they are looking');
+  assert.equal(input.selectionStart, 4, 'and the caret after it, ready for the next character');
+  assert.equal(h.c.mthPad.typed, '60 ÷ 5 = 12');
+  // A selection is REPLACED, the way typing would.
+  Object.assign(input, { value: '12 + 5', selectionStart: 3, selectionEnd: 4 });
+  h.c.mthInsert('×');
+  assert.equal(input.value, '12 × 5');
+  // The cap is the cap: a line longer than it is not one line of working.
+  input.value = 'x'.repeat(160); input.selectionStart = input.selectionEnd = 160;
+  h.c.mthInsert('°');
+  assert.equal(input.value.length, 160);
+  h.c.mthPad.input = null;
+  h.c.mthInsert('×');   // nothing to write into is not a crash
+});
+
+test('a model is drawn to the same proportions in the pad and on the page, with no hairline gap', () => {
+  const h = maths();
+  const spec = h.c.mthModelClean({
+    bars: [{ label: 'Ali', segments: [{ text: '12', units: 3 }, { text: '?', units: 1, unknown: true }] }],
+    total: '48 in all'
+  });
+  const lay = h.c.mthModelLayout(spec, 330);
+  const bar = lay.bars[0];
+  assert.equal(bar.segments.length, 2);
+  // Three units against one: the whole point of a bar model, and the same
+  // number the pad's flexbox grows on.
+  assert.ok(Math.abs(bar.segments[0].w / bar.segments[1].w - 3) < 0.05, JSON.stringify(bar.segments));
+  // The LAST segment takes whatever is left, so rounding can never leave a
+  // sliver of white at the end of a bar. Three equal parts is the case that
+  // proves it: a third of the width does not round cleanly, so a bar built
+  // by adding up rounded widths comes up short every single time.
+  const thirds = h.c.mthModelLayout(h.c.mthModelClean({
+    bars: [{ label: 'Ali', segments: [{ text: '1', units: 1 }, { text: '1', units: 1 }, { text: '?', units: 1, unknown: true }] }]
+  }), 330);
+  const tbar = thirds.bars[0];
+  assert.equal(tbar.segments[2].x + tbar.segments[2].w, thirds.labelW + tbar.w,
+    'a bar that stops short of its own end is a bar model with a sliver of white in it');
+  const right = bar.segments[1].x + bar.segments[1].w;
+  assert.equal(right, lay.labelW + bar.w);
+  assert.ok(lay.total && lay.total.y > bar.y + bar.h, 'the total is drawn under the bars, not through them');
+  // A model with no names at all gives its whole width to the bars.
+  const plain = h.c.mthModelLayout(h.c.mthModelClean({ bars: [{ label: '', segments: [{ text: '4', units: 1 }] }] }), 330);
+  assert.equal(plain.labelW, 0);
+  assert.equal(plain.bars[0].x, 0);
+});
+
+test('a placed model is ORDINARY INK, in one undo step, clamped onto the paper', () => {
+  const h = maths();
+  h.c.pages = [{ num: 1, wrap: node(), svg: node(), baseW: 400, baseH: 500 }];
+  h.c.annotations = [];
+  h.c.mthPad.model = h.c.mthModelClean({
+    bars: [{ label: 'Ali', segments: [{ text: '12', units: 3 }, { text: '?', units: 1, unknown: true }] }],
+    total: '48 in all'
+  });
+  assert.equal(h.c.mthModelPlace(h.c.pages[0], { x: 20, y: 40 }), true);
+  const made = h.c.annotations;
+  assert.ok(made.length >= 6, JSON.stringify(made.map(a => a.type)));
+  // Nothing but the types both renderers, the bounds, the hit test, the
+  // eraser and the print path already know.
+  assert.deepEqual([...new Set(Array.from(made, a => a.type))].sort(), ['line', 'rect', 'text']);
+  assert.ok(made.every(a => a.page === 1 && a.id));
+  assert.equal(h.calls.undo.length, 1, 'one Ctrl+Z takes the whole model back off again');
+  assert.ok(made.some(a => a.type === 'text' && a.text === 'Ali'));
+  assert.ok(made.some(a => a.type === 'text' && a.text === '?'));
+  assert.ok(made.some(a => a.type === 'line' && a.heads === 'both'), 'the total is a span, so it has a head at each end');
+  // Clamped onto the paper: a model half off the bottom is one nobody can
+  // read, and it would be measured into the marking.
+  h.c.annotations = [];
+  h.c.mthModelPlace(h.c.pages[0], { x: 9999, y: 9999 });
+  const far = h.c.annotations;
+  assert.ok(far.every(a => (a.x === undefined || a.x >= 0) && (a.y === undefined || a.y >= 0)));
+  assert.ok(far.every(a => a.type !== 'rect' || a.x + a.w <= 400.5), JSON.stringify(far.filter(a => a.type === 'rect')));
+  // A page that is not on screen any more places nothing at all.
+  h.c.annotations = [];
+  assert.equal(h.c.mthModelPlace({ num: 99 }, { x: 10, y: 10 }), false);
+  assert.equal(h.c.annotations.length, 0);
+});
+
+test('placing is a ONE-SHOT mode nobody can be left stranded in', () => {
+  const h = maths();
+  h.c.tool = 'pen';
+  h.c.mthPad.model = h.c.mthModelClean({ bars: [{ label: 'A', segments: [{ text: '4', units: 1 }] }] });
+  h.c.mthArmPlace();
+  assert.equal(h.c.tool, 'model');
+  assert.equal(h.c.mthPad.prevTool, 'pen');
+  assert.match(h.calls.toast.at(-1), /Tap the page/);
+  // Arming twice must not remember 'model' as the thing to go back to.
+  h.c.mthArmPlace();
+  assert.equal(h.c.mthPad.prevTool, 'pen');
+  // With no model there is nothing to arm.
+  h.c.tool = 'pen';
+  h.c.mthPad.model = null;
+  h.c.mthArmPlace();
+  assert.equal(h.c.tool, 'pen');
+});
+
+test('labels are checked here and free, and "Show me" waits for one honest go', () => {
+  const h = maths();
+  h.c.mthPad.model = h.c.mthModelClean({
+    bars: [{ label: 'Ali', segments: [{ text: '$12', units: 1, ask: true }, { text: '?', units: 1, unknown: true }] }]
+  });
+  h.c.mthPad.open = true;
+  h.c.mthPad.epoch = h.c.wsEpoch;
+  h.c.mthPad.modelTyped = { '0:0': '12' };
+  h.c.mthModelCheck();
+  assert.equal(h.calls.ai.length, 0, 'a number the question states needs no model to compare it');
+  assert.equal(h.c.mthPad.modelMarks['0:0'], 'right', 'a currency sign is not a different answer');
+  assert.equal(h.c.mthPad.reveal, true);
+  assert.equal(h.c.mthPad.modelTries, 1);
+  // A wrong one is wrong, and an empty round says so in its own words.
+  Object.assign(h.c.mthPad, { modelTyped: { '0:0': '15' }, modelMarks: {}, reveal: false, modelTries: 0 });
+  h.c.mthModelCheck();
+  assert.equal(h.c.mthPad.modelMarks['0:0'], 'wrong');
+  assert.equal(h.c.mthPad.reveal, false, '"Show me" is a button, never something that happens to you');
+  Object.assign(h.c.mthPad, { modelTyped: {}, modelMarks: {}, modelTries: 0 });
+  h.c.mthModelCheck();
+  assert.match(h.c.mthPad.note, /Put a number in each empty part/);
+  assert.equal(h.c.mthPad.modelTries, 1, 'a round with nothing typed is still a go, so "Show me" is one press away');
+});
+
+test('the model is never built below the method rung, and the refusal is in the HANDLER', async () => {
+  const h = maths({ guidance: 'concepts' });
+  h.c.window.askGemini = async () => { throw new Error('a model must not be asked for at this level'); };
+  assert.equal(await h.c.mthModelFor({}), null);
+  assert.equal(h.calls.ai.length, 0, 'a hidden button is not a lock');
+  assert.match(h.calls.toast.at(-1), /Concepts & keywords|help level/);
+});
+
+test('the model build carries the ceiling, and the pad says what it shows', async () => {
+  const h = maths();
+  h.c.window.askGemini = async (prompt, config) => {
+    h.calls.ai.push({ prompt, config });
+    return JSON.stringify({
+      why: 'Four equal parts make the whole.',
+      bars: [{ label: 'Ali', segments: [{ text: '12', units: 3 }, { text: '360', units: 1, unknown: true }] }],
+      total: '48 in all', note: 'Find one unit first.'
+    });
+  };
+  h.c.mthShow({ from: 'hint', question: 'Ali has 48 sweets in 4 equal bags.' });
+  const spec = await h.c.mthModelFor({});
+  const { config } = h.calls.ai[0];
+  assert.match(config.system, /\[TEACHER_GROUNDING:hint\]/);
+  assert.match(config.system, /\[ANSWER_KEY_RULES\]/);
+  assert.match(config.system, /MATHEMATICS TEACHING METHOD/);
+  assert.match(config.system, /final answer is NOT allowed/, 'the ceiling reaches the drawing, not just the words');
+  assert.equal(config.json, true);
+  assert.equal(spec.bars[0].segments[1].text, '?');
+  assert.equal(h.c.mthPad.mode, 'model');
+  assert.equal(h.c.mthPad.reveal, false, 'it opens for them to LABEL — the model they label is the model they learn');
+  // At the top of the ladder the prompt says so instead.
+  h.c.wsMeta.guidance = 'answer';
+  await h.c.mthModelFor({});
+  assert.match(h.calls.ai[1].config.system, /full answer is allowed/);
+});
+
+test('the live tutor raises the working line after it has spoken, as context and never as speech', async () => {
+  const h = maths({ ai: async () => 'Start by finding the cost of one pen. What do you divide?' });
+  await h.c.startLiveTutor();
+  const channel = h.c.liveTutor.channel;
+  channel.open();
+  channel.receive({ type: 'session.started' });
+  await h.c.runLiveDelegation('teach', h.c.liveTutor.generation);
+  assert.equal(h.c.mthPad.open, true);
+  assert.equal(h.c.mthPad.mode, 'work');
+  assert.match(h.c.mthPad.ask, /finding the cost of one pen/);
+  // The tutor is TOLD, in a general thinking append that can never make it
+  // talk — and it is told AFTER the teaching was sent.
+  const told = channel.sent.filter(e => e.type === 'session.thinking.append' && /working line is now on the student/.test(e.content || ''));
+  assert.equal(told.length, 1);
+  assert.equal(told[0].delegation_id, null);
+  const spoke = channel.sent.filter(e => e.type === 'session.commentary.append');
+  assert.equal(spoke.length, 1, 'the box is not a second thing to say');
+  assert.ok(channel.sent.indexOf(spoke[0]) < channel.sent.indexOf(told[0]));
+  assert.match(told[0].content, /symbol palette/);
+  h.c.stopLiveTutor();
+});
+
+test('a running chain of working is not thrown away because the tutor spoke again', async () => {
+  const h = maths({ ai: async () => 'Good. Now find five units.' });
+  await h.c.startLiveTutor();
+  h.c.liveTutor.channel.open();
+  h.c.liveTutor.channel.receive({ type: 'session.started' });
+  await h.c.runLiveDelegation('a', h.c.liveTutor.generation);
+  h.c.mthPad.steps = [{ text: '60 ÷ 5 = 12', verdict: 'right' }];
+  h.c.mthPad.lastLiveAt = 0;     // past the gap, so the next reply may raise it
+  await h.c.runLiveDelegation('b', h.c.liveTutor.generation);
+  assert.deepEqual(Array.from(h.c.mthPad.steps, st => ({ text: st.text, verdict: st.verdict })), [{ text: '60 ÷ 5 = 12', verdict: 'right' }],
+    'a student part way through their working has not finished it because the tutor spoke');
+  assert.match(h.c.mthPad.ask, /five units/);
+  // …but a box that has been finished starts the next one clean.
+  h.c.mthPad.done = true;
+  h.c.mthPad.lastLiveAt = 0;
+  await h.c.runLiveDelegation('c', h.c.liveTutor.generation);
+  assert.deepEqual(Array.from(h.c.mthPad.steps), []);
+  h.c.stopLiveTutor();
+});
+
+test('the pad is not raised on a science worksheet, is switchable off, and never twice in a breath', async () => {
+  const h = harness({ ai: async () => 'Think about where the water goes.' });
+  h.c.wsMeta = { subject: 'science', level: 'P5', guidance: 'method' };
+  await h.c.startLiveTutor();
+  h.c.liveTutor.channel.open();
+  h.c.liveTutor.channel.receive({ type: 'session.started' });
+  await h.c.runLiveDelegation('sci', h.c.liveTutor.generation);
+  assert.equal(h.c.mthPad.open, false, 'a working line on a science worksheet is the wrong tool the other way round');
+  h.c.stopLiveTutor();
+
+  const m = maths({ ai: async () => 'Find one unit first.' });
+  m.c.setMthPref(false);
+  await m.c.startLiveTutor();
+  m.c.liveTutor.channel.open();
+  m.c.liveTutor.channel.receive({ type: 'session.started' });
+  await m.c.runLiveDelegation('off', m.c.liveTutor.generation);
+  assert.equal(m.c.mthPad.open, false, 'a box a student switched off is a box that stays off');
+  m.c.setMthPref(true);
+  await m.c.runLiveDelegation('on', m.c.liveTutor.generation);
+  assert.equal(m.c.mthPad.open, true);
+  // Within the gap a second reply does not raise it again — a box that
+  // popped on every "yes" is a box that gets closed unread.
+  m.c.mthClose();
+  await m.c.runLiveDelegation('again', m.c.liveTutor.generation);
+  assert.equal(m.c.mthPad.open, false);
+  m.c.stopLiveTutor();
+});
+
+test('only ONE floating box stands over the page, and neither outlives its worksheet', () => {
+  const h = maths();
+  h.c.mthShow({ from: 'hint', question: 'Q', ask: 'Find one unit.' });
+  assert.equal(h.c.mthPad.open, true);
+  // The keyword check cannot be offered on a maths worksheet at all, but a
+  // box that opened anyway must still take the other one down.
+  h.c.wsMeta.subject = 'science';
+  h.c.kwQuizShow({ concept: 'c', sentence: 'a [1] b', blanks: [{ n: 1, answer: 'x' }], praise: 'p' }, { from: 'hint' });
+  assert.equal(h.c.kwQuiz.open, true);
+  assert.equal(h.c.mthPad.open, false);
+  h.c.wsMeta.subject = 'math';
+  h.c.mthShow({ from: 'hint', question: 'Q' });
+  assert.equal(h.c.kwQuiz.open, false);
+  assert.equal(h.c.mthPad.open, true);
+  // A pad about the last worksheet must not sit over this one.
+  h.c.wsEpoch++;
+  h.c.mthRender();
+  assert.equal(h.c.mthPad.open, false);
+  assert.equal(h.element('mthPad').hidden, true);
+});
+
+test('a hint opens the working line off what the hint actually said, and costs no call', () => {
+  const h = maths();
+  const hint = {
+    id: 'h1', number: '7', question: 'Ali has 60 sweets in 5 equal bags.',
+    rungs: [{ key: 'nudge', text: 'Look at how many bags there are.' },
+            { key: 'concepts', text: 'This is a sharing question.' },
+            { key: 'method', text: 'Find how many are in one bag first.' }],
+    shown: 2
+  };
+  h.c.hints = [hint];
+  h.c.mthAfterHint(hint, h.c.wsEpoch);
+  assert.equal(h.calls.ai.length, 0, 'the hint has just said what to do; asking a model to say it again is a wait for nothing');
+  assert.equal(h.c.mthPad.open, true);
+  assert.equal(h.c.mthPad.number, '7');
+  assert.equal(h.c.mthPad.ask, 'This is a sharing question.', 'the LAST rung they have been shown');
+  assert.doesNotMatch(h.c.mthPad.context, /one bag first/, 'a rung still folded away is one the ladder has not handed over');
+  // A worksheet that has moved on since is not one to open a box about.
+  h.c.mthClose();
+  h.c.mthAfterHint(hint, h.c.wsEpoch - 1);
+  assert.equal(h.c.mthPad.open, false);
 });
