@@ -2652,8 +2652,94 @@ ok('an upload takes the level off the active student, never a picker',
    /var levelFixed = !!\(!isAdmin\(currentUser\) && upSt && upSt\.level\);\n\s*var level = levelFixed \? upSt\.level : \$\('upLevel'\)\.value;/.test(html));
 ok('…and the paper read at upload is TOLD that level is not free',
    /paperApplyRead\(read, \{\n\s*level: level, levelFree: !levelFixed,/.test(html));
-ok('the students are dropped on every account change',
-   /myStudents = \[\];[\s\S]{0,120}currentDocId = null;/.test(html));
+ok('the students are dropped on every account change, and the list is made to WAIT for the next ones',
+   /rosterReset\(\);[\s\S]{0,120}currentDocId = null;/.test(html) &&
+   /function rosterReset\(\) \{\n\s*myStudents = \[\];/.test(html));
+
+/* =====================================================================
+   👤 A P5 ACCOUNT MUST NOT BE READING P6 AND P4 PAPERS (v1.25.2)
+   ---------------------------------------------------------------------
+   The sign-in fired `loadWorksheets()` and `onboardRequire()` side by side
+   with `myStudents` freshly emptied, so the whole list was filtered against
+   NOBODY — and both filters read "no active student" as "show everything".
+   For an account that had already answered, no gate ever appeared and
+   `adoptStudents` repainted the header alone, so it was never filtered
+   again. Every set worksheet at every level stood on a P5 child's shelves.
+   ===================================================================== */
+section('The roster is settled before a single row is filtered');
+S.currentUser = { email: 'kid@example.com' };
+S.myStudents = [];
+S.setActiveIdx(0);
+/* ① THE RULE ITSELF: an unknown student is shown no SET worksheet at all. */
+ok('with nobody adopted yet, a set worksheet reaches nobody',
+   !S.canSeeAssignment({ id: 'p6', name: 'P6 paper', level: 'P6', subject: 'science' }) &&
+   !S.canSeeAssignment({ id: 'p4', name: 'P4 paper', level: 'P4', subject: 'math' }),
+   'a set worksheet belongs to a CLASS, so "we do not know who this is" must never mean "show every class\'s paper"');
+ok('…not even one tagged for the level they will turn out to be',
+   !S.canSeeAssignment({ id: 'p5', level: 'P5', subject: 'science' }));
+/* …and the OTHER way round is deliberately NOT symmetrical: a student's own
+   uploads are their own work, and hiding those with no explanation is the
+   worse fault. */
+ok('a student\'s OWN worksheet is still shown while the roster is unknown',
+   S.canSeeWorksheet({ level: 'P6', subject: 'science' }),
+   'your own uploads are yours — canSeeWorksheet stays permissive on purpose');
+/* Once the roster IS in, the ordinary rule decides. */
+S.myStudents = [{ name: 'Ana', level: 'P5', subject: 'both' }];
+S.setActiveIdx(0);
+eq('once the roster is in, a P5 both-subjects student gets P5 science and P5 maths and nothing else',
+   ['P5|science', 'P5|math', 'P6|science', 'P4|math', 'P5|english']
+     .filter(k => S.canSeeAssignment({ id: k, level: k.split('|')[0], subject: k.split('|')[1] })),
+   ['P5|science', 'P5|math']);
+S.currentUser = { email: 'chungzhikai@gmail.com' };
+ok('the teacher is never held up by it', S.canSeeAssignment({ id: 'x', level: 'P6', subject: 'math' }));
+S.currentUser = null;
+
+/* ② THE PROMISE the list waits on. */
+S.myStudents = [{ name: 'Ana', level: 'P5', subject: 'science' }];
+eq('with no account change yet, nothing is waited for at all', await Promise.race([
+     S.rosterReady().then(() => 'ready'), Promise.resolve().then(() => 'pending')
+   ]), 'ready');
+S.rosterReset();
+eq('a fresh account empties the roster and starts a fresh wait', S.myStudents, []);
+eq('…and the list waits', await Promise.race([
+     S.rosterReady().then(() => 'ready'), Promise.resolve().then(() => 'pending')
+   ]), 'pending');
+S.rosterSettled();
+eq('…until who is working is known', await S.rosterReady().then(() => 'ready'), 'ready');
+S.rosterSettled();
+eq('settling twice is harmless, so every path may call it and the finally may call it again',
+   await S.rosterReady().then(() => 'ready'), 'ready');
+
+/* ③ EVERY PATH SETTLES IT. A waiter holding a promise nothing resolves is a
+   home screen that stays empty for ever. */
+S.rosterReset();
+S.renderAuth = () => {};   // the header is not what is under test here
+S.adoptStudents({ tutorOnboard: { students: [{ name: 'Ana', level: 'P5', subject: 'science' }] } });
+eq('adopting the roster settles it', await S.rosterReady().then(() => 'ready'), 'ready');
+eq('…with the students really adopted', S.myStudents.map(x => x.name + ' ' + x.level), ['Ana P5']);
+ok('the sign-in settles it whichever way the gate went, teacher included',
+   /onboardRequire\(user\)\.catch\(function \(e\) \{[\s\S]{0,240}\}\)\.then\(rosterSettled, rosterSettled\);/.test(html));
+ok('…and signing out settles it, because nothing is coming',
+   /_peopleRows = null;\n\s*onboardFinish\(\);\n[\s\S]{0,120}rosterSettled\(\);/.test(html));
+ok('…and answering the gate settles it BEFORE the list is asked for again',
+   /rosterSettled\(\);\n\s*onboardFinish\(\);\n\s*renderAuth\(\);\n\s*loadWorksheets\(\);/.test(html));
+ok('the wait is BOUNDED, so the home screen can never hang on it',
+   /var ROSTER_WAIT_MS = \d+;/.test(html) && /setTimeout\(function \(\) \{[\s\S]{0,200}\}, ROSTER_WAIT_MS\)/.test(html));
+
+/* ④ AND THE LIST REALLY AWAITS IT, before it filters anything. */
+{
+  const load = html.slice(html.indexOf('async function loadWorksheets()'),
+                          html.indexOf('async function loadWorksheets()') + 2600);
+  ok('loadWorksheets awaits the roster', /await rosterReady\(\);/.test(load));
+  ok('…BEFORE it reads or filters a single row',
+     load.indexOf('await rosterReady()') < load.indexOf('.where(\'ownerUid\'') &&
+     load.indexOf('await rosterReady()') < load.indexOf('worksheets = out.filter(canSeeWorksheet)'),
+     'filtering first and repainting afterwards is a flash of another class\'s papers');
+  ok('…and an account signed out while it waited paints nothing',
+     /await rosterReady\(\);\n[\s\S]{0,160}if \(!currentUser\) \{ worksheets = \[\]; assignments = \[\]; renderWorksheets\(\); return; \}/.test(load));
+}
+S.currentUser = null;
+S.myStudents = [];
 
 section('Who has signed in');
 
