@@ -366,6 +366,31 @@ retain the hardware check described below and report when it was unavailable.
   is a student, and a student's device runs the hints and the marking itself. Only the admin sees
   the 📚 Teaching notes window and the AI engine dialog, and only the admin ever writes a note.
 
+## 🧭 All the apps under one roof, and 📖 a worksheet sent from the Science portal (v1.24.0)
+
+`APP_KEY` / `POLYMATH_APPS` / `appsIsFramed` / `renderAppsMenu` / `appsMenuOpen` (search
+`ALL THE APPS UNDER ONE ROOF`), `OPEN_LINK_ID` / **`openFromLink`** (search `A WORKSHEET NAMED
+ON THE URL`), the `source === 'cer'` chip in `renderWorksheets`, and the `.appsMenu` / `.appsPanel`
+CSS.
+
+- **`POLYMATH_APPS` is ONE table carried by every Polymath app** — the four subject portals
+  (`SUBJECT_APPS` + `POLYMATH_TOOLS` there) and the two tools. Same keys, same relative urls,
+  same folder-is-the-repo-name rule (Science is `cer`). Ship a change to all of them; a menu that
+  differs between two apps is a menu one of them has let drift.
+- **A link followed from inside the Science portal's frame goes to `_top`.** This app is
+  embedded there on a page of its own, and a subject link navigating the FRAME would put a
+  portal inside a portal.
+- **`?ws=<id>` is read ONCE and taken off the address bar** (`history.replaceState`), or a reload
+  opens it again over whatever the student moved on to. It is resolved AFTER `loadWorksheets`
+  (own copy first, then a set worksheet through `startAssignment`, which is the same door
+  “Start it” uses) — resolved before the list is in, every id is “not in your list”.
+- **The Science portal writes THIS app's shape** (`tutorWorksheets`, `tutorAssignments`,
+  `tutor-worksheets/`, `HINT_DEFAULT`, `GUIDANCE_GRADES` keys, `LEVELS`, `ADMIN_DISPLAY_NAME`) and
+  its harness `tools/tutor-bridge-tests.mjs` reads this file to pin every one of those names.
+  Rename any of them here and that harness is what says so — nothing here throws; the key pages
+  simply show, or the class never gets the sheet.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 📌 The teacher is "Mr Chung", not the name on their Google account (v1.9.1)
 
 `setterName()` (search `WHO SET IT, as a student reads it`).
@@ -540,6 +565,88 @@ Everything that decides what the buddy SAYS is a lift from `polymathlc/anskey`, 
   prints wins, then the teacher's general guidance, then the notes and the style, and ordinary
   syllabus knowledge only where they say nothing. What the student has already written on the page
   is never evidence of anything.
+
+## 🧠 The teacher's corrections reach this app (v1.24.0)
+
+`cerStyle` / `cerStyleDocRef` / `styleBucketKey` / `styleProfilePick` / `_styleCountIn` /
+`_styleTokens` / `_styleOverlap` / `_styleTier` / `_styleRetrieve` / `styleExemplarsFor` /
+`styleEditsAll` / `styleCorrections` / `styleEditRules` / `styleLessons` / `styleRecentEdits` /
+`_styleProfileBits` / `styleCorpusCount` / **`styleBlock(kind, q)`** / `aiGrounding(kind, opts)`,
+**`hintRetrievalQuery`** / `HINT_SAME_SPOT` beside `hintLadderFor`, the fair-share pots
+`notesTrimTo` / `notesDedupe` / `notesFairShare` / `notesJoinField` / `notesLedger*` (search `THE
+WHOLE LOOP IS READ` and `Every note gets a GUARANTEED share`), and the corrections stat in the 📚
+window. **`polymathlc/scan` carries the same block byte for byte, and both are a port of
+`polymathlc/anskey` — ship a change to all three together.**
+
+Until this the buddy read ONE field of the style document — the flat `profile` mirror — and six
+frozen exemplars, and nothing else. So a P3 Maths profile was averaged into every Sec 1 Science
+hint, a correction the teacher made in Ans Key on Monday reached Ans Key and NO other app, and the
+Science portal's corrections reached nothing here at all. Every one of those was silent: the hint
+still came back, it simply went on making the mistake the teacher had already corrected.
+
+- **DOCUMENT A IS READ WHOLE, AND DOCUMENT C BESIDE IT.** A is Ans Key's
+  `users/{adminUid}/aiTraining/answerStyle` — the corpus (`samples`), the corrections (`edits`,
+  each with the lesson it taught), one profile per level×subject bucket (`profiles`) and the flat
+  mirror. C is the Science portal's `users/{adminUid}/settings/answerStyle`, which holds only that
+  app's corrections. A second `onSnapshot` sits beside the first in `loadTeachingNotes`, comes
+  down in `_notesDetach` / `stopTeachingNotes` on every account change (the same three rules the
+  notebook listener carries), and a denied read is a `console.warn` and nothing more — the block
+  carries fewer corrections, exactly as it did before the listener existed. A student's device
+  reads both through the same `config/admin` pointer the notebook uses.
+- **`styleProfilePick(lvl, sub)` IS THE ONE PLACE THE BUCKET IS CHOSEN**, and the chain is the
+  family's: `lvl:sub` when that bucket has `STYLE_BUCKET_MIN` (30) answers behind it, then
+  `any:sub`, then `_global` (or the flat `profile`). The count is taken off `samples` when the
+  corpus travelled, and off the bucket profile's own `n` when it did not. The level and subject
+  are the WORKSHEET's (`wsMeta.level` / `wsMeta.subject`), so another worksheet is never served a
+  bucket that is not its own, and an unlevelled worksheet is the global one.
+- **THE EXEMPLARS AND THE RAW CORRECTIONS ARE RETRIEVED FOR THE QUESTION** (`opts.q`, token
+  Jaccard over `q`), tier by tier — this bucket, then the same subject at any level, then
+  everything — so a strong Maths match never displaces a weaker one from this worksheet's own
+  bucket. Omitting `q` is the old behaviour byte for byte: the profile's own six and the NEWEST
+  corrections.
+  - **The chat passes the student's own message.** It IS the question.
+  - **A hint passes `hintRetrievalQuery(p, pt)`**, and the choice is deliberate. A hint is asked
+    about a spot on a PICTURE: the question's wording is not known until the model has read the
+    page, and the answer key (`keyContext`) holds numbers, answers and working — never the
+    question — so it cannot supply one. The best text in hand is an EARLIER hint within
+    `HINT_SAME_SPOT` of this tap on this page (a student who raises the help level and taps the
+    same question again is the common re-ask, and that hint already carries the wording the model
+    transcribed). Failing that the level/subject line goes, which resembles nothing and so hands
+    back the profile's own exemplars and the NEWEST corrections — the old behaviour, and the right
+    fallback, because a correction the teacher made a minute ago is the one they are watching for.
+  - **The two marking sites pass nothing**: `'mark'` retrieves nothing.
+- **`styleEditsAll()` IS THE UNION**: A's edits (src defaults `'anskey'`) and C's (keyed
+  `'cer:' + slot`, src `'cer'`), sorted by time so "the newest" is the newest whichever document
+  holds it. They reach a prompt three ways — the profile's distilled `fixes` (up to 6), the
+  lessons (up to 8, deduped by exact lowercase text, this bucket first and newest first inside
+  each tier) and up to 3 raw before/after pairs, which go LAST, nearest the question.
+- **NO EARLY RETURN ON A NULL PROFILE.** The exemplars, the lessons and the pairs come out of the
+  corpus and are current the moment the teacher saves; only the distilled description waits for a
+  rebuild. `if (!p) return ''` is what made a teacher's very first correction reach nothing.
+- **WHAT EACH KIND GETS.** `'mark'` gets the profile's `styleRules`, `phrasing` and `keywords`
+  and nothing else — never an exemplar, a fix, a lesson or a pair, because every one of those is
+  an ANSWER and a marker handed the answer stops marking against the paper. `'hint'`, `'teach'`
+  and `'answer'` get all of it. **NO KIND GETS THE PROFILE'S `markingStandards` ANY MORE.** That
+  field is INFERRED by a model from the teacher's own answers, and an inference must never decide
+  a mark: the standard a student is held to is the typed notes and the guidance (`notesBlock`'s
+  `markingStandards` still reaches `'mark'` exactly as it did). The help ceiling is untouched: the
+  corrections are wording, never rungs, and `keyRuleBlock` still restates it after the grounding.
+- **THE HEADING SAYS WHICH BUCKET AND HOW MANY CORRECTIONS** — *learned from 30 of their own P5
+  Science answers, following 4 corrections* — and `groundingSummary()` says *the teacher's learned
+  style (P5 Science)* and *N corrections* on the hints tab, because a hint grounded on the global
+  fallback looks exactly like one grounded on this worksheet's own bucket.
+- **THE NOTE BUDGETS ARE POTS, NEVER A LENGTH TO CUT TO.** `notesJoinField` used to be a
+  `.slice()` over the JOINED text of every relevant note, so with two standing instructions of
+  1,600 characters the first lost most of itself and the second reached no prompt at all.
+  `notesFairShare` water-fills: every note takes its floor (`NOTES_GUIDE_MIN_EACH` /
+  `NOTES_FIELD_MIN_EACH`), the remainder is handed round, a short note is never trimmed, a long
+  one is trimmed on a word and SAYS so (`NOTES_TRIM_MARK`), the pot grows to `n × minEach` when
+  it cannot floor everybody, and `NOTES_HARD_CHARS` is the only path on which a note is lost.
+  The same rule typed in two apps is ONE rule (`notesDedupe`). The per-app caps stayed as the
+  pots. `notesLedger` records what was trimmed or dropped on every `aiGrounding` call.
+- **This app still WRITES nothing to either document.** Nothing a child writes here is an answer
+  the teacher wrote.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## ONE notebook, FOUR apps
 - The notes live at `users/{adminUid}/teachingNotes/{id}` — the same collection **Ans Key**
@@ -2152,6 +2259,24 @@ the two in step; a fix to either belongs in both.
   question printed with nothing to choose between. And a whole-page picture
   that goes back to `compositeJpeg` puts last week's wrong answer across every
   question on the sheet.
+- After touching **🧠 the corrections loop** (`cerStyle`, `cerStyleDocRef`, the third listener
+  in `loadTeachingNotes`, `styleBucketKey`, `styleProfilePick`, `_styleCountIn`, `_styleTier`,
+  `_styleRetrieve`, `styleExemplarsFor`, `styleEditsAll`, `styleCorrections`, `styleEditRules`,
+  `styleLessons`, `styleRecentEdits`, `_styleProfileBits`, `styleBlock`, `aiGrounding`'s
+  `opts.q`, `hintRetrievalQuery`, the `{ q: … }` at the hint or chat call site, `notesTrimTo`,
+  `notesDedupe`, `notesFairShare`, `notesJoinField`, or the `NOTES_*_MIN_EACH` /
+  `NOTES_HARD_CHARS` pots), run `node tools/tutor-tests.mjs`. Every failure is silent and the
+  hint still comes back. Put the `if (!p) return ''` back in `styleBlock` and a teacher's first
+  correction reaches nothing at all; read `profile` instead of `styleProfilePick` and every hint
+  is written in the averaged voice again; let the profile's `markingStandards` reach `'mark'` and
+  a guess a model drew from the teacher's answers decides a child's mark; let an exemplar, a fix,
+  a lesson or a pair reach `'mark'` and the marker has been handed the answer; drop the C
+  listener and a correction made in the Science portal reaches nothing here, while the panel
+  says the loop is in force; stop sorting the union by time and "the newest correction" is
+  whichever document happens to come second; let `hintRetrievalQuery` pick a hint from another
+  page or the far end of this one and the exemplars are retrieved for the wrong question; and
+  turn a pot back into a `.slice()` and the teacher's second standing instruction reaches no
+  prompt while sitting in the notebook looking obeyed.
 - After touching **↻ Practise again or 🖨 Print** (`practiseAgainAvailable`,
   `practiseAgain`, `attempts`, `printKeyAllowed`, `printHasKeyPages`,
   `printWorksheet`, `openPrintModal`, `PRINT_MAX_SIDE`, the `#printSheet`

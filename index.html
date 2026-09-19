@@ -93,6 +93,21 @@
   .brandSub { font-size: 0.74rem; color: var(--ink-faint); }
   #versionTag { font-size: 0.7rem; color: var(--ink-faint); }
   #whoAmI { font-size: 0.8rem; color: var(--ink-soft); white-space: nowrap; }
+  /* 🧭 the apps menu */
+  .appsMenu { position: relative; }
+  .appsPanel { position: absolute; right: 0; top: calc(100% + 8px); min-width: 268px; background: #fff; border: 1px solid var(--line, #e3e1dc);
+    border-radius: 14px; box-shadow: 0 12px 32px rgba(20, 18, 16, 0.16); padding: 8px; z-index: 80; }
+  .appsTitle { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint, #8a8680); padding: 8px 10px 4px; }
+  .appsTitle + .appsTitle, .appsOpt + .appsTitle { border-top: 1px solid var(--line, #e3e1dc); margin-top: 6px; padding-top: 10px; }
+  .appsOpt { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; text-decoration: none; color: inherit; font-size: 0.86rem; line-height: 1.3; }
+  .appsOpt:hover { background: var(--paper-2, #f5f3ee); }
+  .appsOpt .appsIco { font-size: 1.1rem; line-height: 1; flex: 0 0 auto; }
+  .appsOpt b { font-weight: 600; display: block; }
+  .appsOpt small { color: var(--ink-faint, #8a8680); font-size: 0.74rem; }
+  .appsOpt.here { background: var(--paper-2, #f5f3ee); cursor: default; }
+  .appsOpt.here b::after { content: ' · you are here'; font-weight: 500; font-size: 0.72rem; color: var(--ink-faint, #8a8680); }
+  .appsFoot { font-size: 0.72rem; color: var(--ink-faint, #8a8680); padding: 8px 10px 4px; line-height: 1.4; }
+  @media (max-width: 640px) { .appsPanel { position: fixed; left: 12px; right: 12px; top: 64px; min-width: 0; } }
   @media (max-width: 720px) {
     #whoAmI, .brandSub { display: none; }
     header { padding: 10px 12px; gap: 8px; }
@@ -1328,6 +1343,11 @@
     <button class="btn hidden" id="peopleBtn" title="Everyone who has signed in, and whether they are enrolled">👥 People</button>
   <button class="btn hidden" id="notesBtn" title="The teaching notes every answer and every hint is grounded in">📚 Notes</button>
     <button class="btn hidden" id="engineBtn" title="Which AI engine answers">AI</button>
+    <!-- 🧭 Every Polymath app, one menu. The SAME table every app carries — see POLYMATH_APPS. -->
+    <div class="appsMenu" id="appsMenu">
+      <button class="btn" id="appsBtn" type="button" aria-haspopup="true" aria-expanded="false" title="Every Polymath app — you stay signed in">🧭 Apps</button>
+      <div class="appsPanel" id="appsPanel" role="menu" hidden></div>
+    </div>
     <button class="btn btnPrimary" id="signInBtn">Sign in with Google</button>
     <button class="btn hidden" id="signOutBtn">Sign out</button>
   </header>
@@ -1961,7 +1981,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.23.1';
+var APP_VERSION = 'v1.24.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -1972,6 +1992,121 @@ var COLLECTION = 'tutorWorksheets';
 var STORAGE_DIR = 'tutor-worksheets';
 var MISTAKE_DIR = 'tutor-mistakes';
 var SVG_NS = 'http://www.w3.org/2000/svg';
+
+/* =====================================================================
+   🧭 ALL THE APPS UNDER ONE ROOF (v1.13.0)
+   ---------------------------------------------------------------------
+   The centre's four SUBJECT portals and its two TOOLS — this app and Ans
+   Key — are one family, and every one of them carries this SAME table, so
+   the menu a student opens reads the same wherever they are standing. The
+   urls are RELATIVE sibling-folder hops (the six are project sites on one
+   GitHub Pages host, and side-by-side folders on a checkout), the folder is
+   the REPO name (Science is `cer`), and no host is baked into the page.
+   `here` marks THIS app's own row, which is drawn and never a link.
+
+   Inside the Science portal this app is embedded on a page of its own; a
+   link followed from inside that frame goes to the TOP window, so the
+   whole portal moves rather than a portal-inside-a-portal.
+   ===================================================================== */
+var APP_KEY = 'tutor';
+var POLYMATH_APPS = [
+  { key: 'math',    ico: '🔢', label: 'Math',        sub: 'Math Practice',                     url: '../math/',    kind: 'subject' },
+  { key: 'english', ico: '📕', label: 'English',     sub: 'English Learning Portal',           url: '../english/', kind: 'subject' },
+  { key: 'chinese', ico: '📗', label: 'Chinese',     sub: '华文 · Chinese Portal',              url: '../chinese/', kind: 'subject' },
+  { key: 'science', ico: '🔬', label: 'Science',     sub: 'Science Learning Portal',           url: '../cer/',     kind: 'subject' },
+  { key: 'anskey',  ico: '🔑', label: 'Ans Key',     sub: 'Mark up & share PDF worksheets',    url: '../anskey/',  kind: 'tool' },
+  { key: 'tutor',   ico: '📖', label: 'Study Buddy', sub: 'Hints, marking & a mistake book',   url: '../tutor/',   kind: 'tool' }
+];
+function appsIsFramed() { try { return window.top !== window.self; } catch (e) { return true; } }
+function renderAppsMenu() {
+  var panel = document.getElementById('appsPanel');
+  if (!panel) return;
+  panel.innerHTML = '';
+  var groups = [['subject', 'Your subjects'], ['tool', 'Your tools']];
+  groups.forEach(function (g) {
+    var t = document.createElement('div');
+    t.className = 'appsTitle';
+    t.textContent = g[1];
+    panel.appendChild(t);
+    POLYMATH_APPS.filter(function (a) { return a.kind === g[0]; }).forEach(function (a) {
+      var here = a.key === APP_KEY;
+      var row = document.createElement(here ? 'div' : 'a');
+      row.className = 'appsOpt' + (here ? ' here' : '');
+      row.setAttribute('role', 'menuitem');
+      if (!here) {
+        row.href = a.url;
+        if (appsIsFramed()) row.target = '_top';
+      } else {
+        row.setAttribute('aria-current', 'page');
+      }
+      var ico = document.createElement('span');
+      ico.className = 'appsIco';
+      ico.setAttribute('aria-hidden', 'true');
+      ico.textContent = a.ico;
+      var txt = document.createElement('span');
+      var b = document.createElement('b');
+      b.textContent = a.label;
+      var sm = document.createElement('small');
+      sm.textContent = a.sub;
+      txt.appendChild(b);
+      txt.appendChild(sm);
+      row.appendChild(ico);
+      row.appendChild(txt);
+      panel.appendChild(row);
+    });
+  });
+  var foot = document.createElement('div');
+  foot.className = 'appsFoot';
+  foot.textContent = 'Each app keeps its own worksheets and progress. You stay signed in.';
+  panel.appendChild(foot);
+}
+function appsMenuOpen(open) {
+  var panel = document.getElementById('appsPanel');
+  var btn = document.getElementById('appsBtn');
+  if (!panel || !btn) return;
+  if (open) renderAppsMenu();
+  panel.hidden = !open;
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+(function wireAppsMenu() {
+  var btn = document.getElementById('appsBtn');
+  var panel = document.getElementById('appsPanel');
+  if (!btn || !panel) return;
+  btn.addEventListener('click', function (e) { e.stopPropagation(); appsMenuOpen(panel.hidden); });
+  panel.addEventListener('click', function (e) { e.stopPropagation(); });
+  document.addEventListener('click', function () { appsMenuOpen(false); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') appsMenuOpen(false); });
+})();
+
+/* =====================================================================
+   📖 A WORKSHEET NAMED ON THE URL (v1.13.0)
+   ---------------------------------------------------------------------
+   `?ws=<id>` opens that worksheet the moment the account's list has
+   loaded. The Science portal's "📖 Send to Study Buddy" writes a worksheet
+   here and then opens this page on it, so the id is either one of this
+   account's OWN worksheets (the teacher's, or a copy the student already
+   started) or a worksheet the teacher has SET — in which case the student's
+   own copy is started from it, exactly as pressing "Start it" would. It is
+   read ONCE and taken off the address bar, so a reload does not open it
+   again over whatever the student moved on to.
+   ===================================================================== */
+var OPEN_LINK_ID = '';
+try { OPEN_LINK_ID = new URLSearchParams(location.search).get('ws') || ''; } catch (e) { OPEN_LINK_ID = ''; }
+async function openFromLink() {
+  var id = OPEN_LINK_ID;
+  if (!id || !currentUser) return;
+  OPEN_LINK_ID = '';
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { /* not ours to change */ }
+  try {
+    if (worksheets.some(function (w) { return w.id === id; })) { await openWorksheet(id); return; }
+    var a = assignments.find(function (x) { return x.id === id; });
+    if (a) { await startAssignment(id); return; }
+    toast('That worksheet is not in your list — it may not have been set for you yet.', 6000);
+  } catch (e) {
+    console.warn('open from link', e);
+    toast('That worksheet could not be opened: ' + ((e && e.message) || e), 6000);
+  }
+}
 
 document.getElementById('versionTag').textContent = APP_VERSION;
 
@@ -2803,6 +2938,13 @@ function refreshAiEngineNames() {
 var TEACHING_NOTES_COLL = 'teachingNotes';
 var AI_TRAINING_COLL = 'aiTraining';
 var AI_STYLE_DOC = 'answerStyle';
+/* Document C — the Science portal's OWN corrections (`users/{adminUid}/
+   settings/answerStyle`, written by CER only). It holds the before/after
+   pairs the teacher made on that portal's answer boxes, and the lesson each
+   one taught. Read here and unioned with Ans Key's (document A), so a
+   correction made in ANY app is obeyed by the next answer in EVERY app. */
+var AI_SETTINGS_COLL = 'settings';
+var CER_STYLE_DOC = 'answerStyle';
 /* A student's device has no idea who the teacher is. The Science Learning
    Portal publishes the pointer at config/admin — the same document students
    there resolve the question bank from — so that is what is read, and
@@ -2810,13 +2952,15 @@ var AI_STYLE_DOC = 'answerStyle';
 var NOTES_OWNER_KEY = 'tutorNotesOwnerUid';
 
 var teachingNotes = [];       // [{ id, title, keywords[], markingStandards, keyFacts, guidance, … }]
-var aiStyle = null;           // { samples: [], profile: {}, profileSamples, … } — read only here
+var aiStyle = null;           // document A: { samples, edits, profiles, profile, … } — read only here
+var cerStyle = null;          // document C: { v: 2, edits: [...] } — the Science portal's corrections, read only
 var notesOwnerUid = '';
 var notesLoaded = false;
 var notesLoading = null;      // in-flight load, so ten callers make one read
 var notesBusy = false;
 var _notesUnsub = null;       // the live listener on the shared notebook
 var _styleUnsub = null;       // …and on the style profile Ans Key grows
+var _cerStyleUnsub = null;    // …and on the corrections the Science portal keeps
 var notesWatching = '';       // whose notebook those listeners are on
 var _notesAttachSeq = 0;      // bumped per attach, so a superseded one stands down
 var _notesPending = [];       // first-load waiters, released if the listeners go
@@ -2830,8 +2974,41 @@ var NOTES_FACT_CHARS = 1400;
 /* Standing instructions are typed by hand and meant to be obeyed, so they
    get their own budget and reach EVERY kind of call — marking included. */
 var NOTES_GUIDE_CHARS = 1600;
+var NOTES_COMMENT_CHARS = 300;
+/* THESE ARE POTS TO SHARE OUT, NEVER A LENGTH TO CUT TO. They used to be a
+   `.slice()` over the JOINED text of every relevant note, so with two
+   standing instructions of 1,600 characters each the first lost most of
+   itself and THE SECOND REACHED NO PROMPT AT ALL — while sitting in the
+   notebook looking obeyed. `notesFairShare` gives every note a guaranteed
+   floor, TRIMS a long one rather than letting the next vanish, and names
+   what still would not fit. Restoring the `.slice()` restores the bug. */
+var NOTES_GUIDE_MIN_EACH = 200;   // every standing rule is worth at least this
+var NOTES_FIELD_MIN_EACH = 120;   // per-note floor for standards / key facts
+var NOTES_HARD_CHARS = 12000;     // the ONLY ceiling a note can be lost to
+var NOTES_TRIM_MARK = '\u2026[trimmed]';
 var STYLE_RULE_CHARS = 800;
+/* Four to five demonstrations is where style imitation plateaus — past that
+   the exemplars cost tokens and teach nothing more. Six leaves a little room
+   for a weak match. */
 var STYLE_EX_MAX = 6;
+var STYLE_Q_CHARS = 220;
+/* ---- THE CORRECTIONS ----
+   The gap between what an app wrote and what the teacher kept is the most
+   direct statement there is of what the AI gets wrong about them. They reach
+   a prompt three ways: `fixes` (distilled into the profile at the last
+   rebuild), lessons (one sentence written per correction the moment it was
+   made) and the raw before/after pairs (retrieved for the question in hand,
+   current the moment the teacher saves). */
+var STYLE_PAIRS_MAX = 3;          // raw pairs carried on every call
+var STYLE_LESSONS_MAX = 8;        // lessons served in a prompt
+var STYLE_NOTE_CHARS = 200;       // one lesson, one sentence
+var STYLE_EDIT_CHARS = 420;       // either side of a pair
+/* ---- ONE PROFILE PER CONTEXT ----
+   P3 Maths and Sec 1 Science are not one voice, and averaging them produces
+   a description that fits nobody. Each (level × subject) bucket in Ans Key
+   gets its own profile, and a bucket thinner than this falls back rather
+   than teaching the model noise. */
+var STYLE_BUCKET_MIN = 30;
 
 function notesOwner() {
   if (isAdmin(currentUser)) return currentUser.uid;
@@ -2843,6 +3020,9 @@ function notesCollRef(owner) {
 }
 function styleDocRef(owner) {
   return db.collection('users').doc(owner).collection(AI_TRAINING_COLL).doc(AI_STYLE_DOC);
+}
+function cerStyleDocRef(owner) {
+  return db.collection('users').doc(owner).collection(AI_SETTINGS_COLL).doc(CER_STYLE_DOC);
 }
 
 /* Who the teacher is, for anyone who is not the teacher. The pointer is the
@@ -2961,9 +3141,10 @@ function _notesLiveRepaint() {
    a waiter left holding a promise whose listener has just been unsubscribed
    would never be answered and the hint would simply never arrive. */
 function _notesDetach() {
-  [_notesUnsub, _styleUnsub].forEach(function (u) { if (u) { try { u(); } catch (e) {} } });
+  [_notesUnsub, _styleUnsub, _cerStyleUnsub].forEach(function (u) { if (u) { try { u(); } catch (e) {} } });
   _notesUnsub = null;
   _styleUnsub = null;
+  _cerStyleUnsub = null;
   notesWatching = '';
   var waiting = _notesPending;
   _notesPending = [];
@@ -2977,6 +3158,7 @@ function stopTeachingNotes() {
   notesLoading = null;
   teachingNotes = [];
   aiStyle = null;
+  cerStyle = null;
 }
 
 function loadTeachingNotes(force) {
@@ -2994,11 +3176,11 @@ function loadTeachingNotes(force) {
     _notesDetach();
     notesWatching = owner;
     return new Promise(function (resolve) {
-      var left = 2;
+      var left = 3;
       var finish = function () { resolve(teachingNotes); };
       var done = function () { if (--left <= 0) finish(); };
       _notesPending.push(finish);   // released if these listeners are taken down first
-      var settledNotes = false, settledStyle = false;
+      var settledNotes = false, settledStyle = false, settledCer = false;
       _notesUnsub = notesCollRef(owner).onSnapshot(function (snap) {
         _notesApplySnap(snap);
         if (!settledNotes) { settledNotes = true; done(); }
@@ -3015,6 +3197,17 @@ function loadTeachingNotes(force) {
       }, function (e) {
         console.warn('AI style profile could not be read', e);
         if (!settledStyle) { settledStyle = true; done(); }
+      });
+      // The Science portal keeps its OWN corrections (document C). A denied
+      // read is a warning and nothing more — the block simply carries fewer
+      // corrections, exactly as it did before this listener existed.
+      _cerStyleUnsub = cerStyleDocRef(owner).onSnapshot(function (snap) {
+        cerStyle = snap.exists ? snap.data() : null;
+        _notesLiveRepaint();
+        if (!settledCer) { settledCer = true; done(); }
+      }, function (e) {
+        console.warn("The Science portal's corrections could not be read", e);
+        if (!settledCer) { settledCer = true; done(); }
       });
     });
   }).then(function (v) {
@@ -3058,10 +3251,100 @@ function notesRelevant() {
   var rel = teachingNotes.filter(noteAppliesHere);
   return rel.length ? rel : teachingNotes;
 }
-function notesJoinField(rel, field, cap) {
-  var s = rel.map(function (n) { return String(n[field] || '').trim(); })
-             .filter(Boolean).join('\n').trim();
-  return s.length > cap ? s.slice(0, cap) : s;
+/* What the LAST digest could not fit. Rebuilt on every aiGrounding() call,
+   because a note quietly left out of every prompt is exactly what the
+   fair-share pots exist to stop happening again. */
+var notesLedger = { trimmed: {}, dropped: {} };
+function notesLedgerReset() { notesLedger = { trimmed: {}, dropped: {} }; }
+function notesLedgerFor(id) {
+  var k = String(id || '');
+  if (notesLedger.dropped[k]) return { dropped: true };
+  return notesLedger.trimmed[k] || null;
+}
+function notesLedgerCounts() {
+  return { trimmed: Object.keys(notesLedger.trimmed).length, dropped: Object.keys(notesLedger.dropped).length };
+}
+
+/* Cut on a word boundary and SAY it was cut — a silent truncation reads to
+   the model as a sentence the teacher wrote that way. */
+function notesTrimTo(text, n) {
+  var s = String(text || '');
+  if (s.length <= n) return s;
+  var room = Math.max(1, n - NOTES_TRIM_MARK.length);
+  var cut = s.slice(0, room);
+  var sp = cut.lastIndexOf(' ');
+  if (sp > room * 0.6) cut = cut.slice(0, sp);
+  return cut.replace(/\s+$/, '') + NOTES_TRIM_MARK;
+}
+
+/* The same rule typed in two apps is ONE rule. Left in twice it eats the pot
+   twice and reads to the model as emphasis nobody wrote. */
+function notesDedupe(items) {
+  var seen = {}, out = [];
+  items.forEach(function (it) {
+    var key = String(it.text || '').toLowerCase().replace(/\s+/g, ' ').replace(/[.;,]+$/, '').trim();
+    if (!key || seen[key]) return;
+    seen[key] = 1;
+    out.push(it);
+  });
+  return out;
+}
+
+/* ---- Every note gets a GUARANTEED share ----
+   Water-fill: everybody takes their floor first, then the remainder is handed
+   round to whoever still wants more. So a SHORT note is never trimmed at all,
+   and a long one is trimmed rather than the next note disappearing. When
+   there are more notes than the pot can floor, THE POT GROWS — a house rule
+   the teacher typed outranks a token — bounded by NOTES_HARD_CHARS, which is
+   the only path on which a note is lost, and then it is named. */
+function notesFairShare(items, budget, minEach) {
+  var out = { texts: [], parts: [], dropped: [] };
+  var list = notesDedupe((items || []).filter(function (it) { return it && String(it.text || '').trim(); }));
+  if (!list.length) return out;
+  var n = list.length;
+  var cap = Math.max(budget, Math.min(n * minEach, NOTES_HARD_CHARS));
+  var keepN = n, i;
+  if (n * minEach > cap) {
+    keepN = Math.max(1, Math.floor(cap / minEach));
+    for (i = keepN; i < n; i++) out.dropped.push(list[i]);
+  }
+  var use = list.slice(0, keepN);
+  var want = use.map(function (it) { return String(it.text).trim().length; });
+  var share = use.map(function () { return 0; });
+  var left = cap;
+  for (i = 0; i < use.length; i++) { var g0 = Math.min(want[i], minEach); share[i] = g0; left -= g0; }
+  while (left > 0) {
+    var hungry = [];
+    for (i = 0; i < use.length; i++) if (share[i] < want[i]) hungry.push(i);
+    if (!hungry.length) break;
+    var before = left;
+    var each = Math.max(1, Math.floor(left / hungry.length));
+    for (var h = 0; h < hungry.length; h++) {
+      if (left <= 0) break;
+      var j = hungry[h];
+      var g = Math.min(each, want[j] - share[j], left);
+      share[j] += g; left -= g;
+    }
+    if (left === before) break;
+  }
+  use.forEach(function (it, k) {
+    var text = String(it.text).trim();
+    var kept = share[k] >= text.length ? text : notesTrimTo(text, share[k]);
+    out.texts.push(kept);
+    out.parts.push({ id: it.id, kept: kept.length, wanted: text.length });
+  });
+  return out;
+}
+
+/* Fair-share one field across the notes AND file what would not fit. */
+function notesJoinField(rel, field, cap, sep) {
+  var items = rel.map(function (n) { return { id: n.id, text: String(n[field] || '').trim() }; });
+  var res = notesFairShare(items, cap, field === 'guidance' ? NOTES_GUIDE_MIN_EACH : NOTES_FIELD_MIN_EACH);
+  res.parts.forEach(function (p) {
+    if (p.wanted > p.kept) notesLedger.trimmed[String(p.id)] = { kept: p.kept, wanted: p.wanted };
+  });
+  res.dropped.forEach(function (d) { notesLedger.dropped[String(d.id)] = true; });
+  return res.texts.join(sep || '\n').trim();
 }
 function notesKeywordList(rel) {
   var seen = {}, out = [];
@@ -3075,45 +3358,349 @@ function notesKeywordList(rel) {
   return out;
 }
 
-/* ---- The style profile, in prompt form ---- */
-function styleProfile() { return (aiStyle && aiStyle.profile) || null; }
-function styleSamples() { return (aiStyle && Array.isArray(aiStyle.samples)) ? aiStyle.samples : []; }
-function styleExemplars() {
-  var p = styleProfile();
+/* ---- The style profile, in prompt form ----
+
+   THE WHOLE LOOP IS READ, NOT ONLY ITS FLAT MIRROR. Document A carries one
+   profile per (level × subject) bucket, the corpus of the teacher's own
+   answers, and every correction they have made to an answer Ans Key wrote —
+   with the lesson each one taught; document C carries the Science portal's
+   corrections. Reading `profile` alone, as this app did until the loop was
+   ported, meant a correction the teacher made in Ans Key on Monday reached
+   Ans Key and NO other app, and a P3 Maths profile was averaged into the
+   voice every Sec 1 Science hint was written in.
+
+   THE PROFILE SERVED IS THE ONE FOR THE WORKSHEET IN FRONT OF US.
+   `styleProfilePick` is the ONE place the choice is made, so the prompt, the
+   panel and the summary line can never disagree about which bucket is in
+   force. The fallback chain is the family's (`lvl:sub` → `any:sub` →
+   `_global`), and a bucket under STYLE_BUCKET_MIN answers falls through
+   rather than teaching the model noise. */
+function styleTrim(s, cap) {
+  s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+  return s.length > cap ? s.slice(0, cap) : s;
+}
+function styleSamples() {
+  return (aiStyle && Array.isArray(aiStyle.samples)) ? aiStyle.samples : [];
+}
+/* Kept as the GLOBAL profile, so anything still asking "is there a profile at
+   all" gets the same answer a build from before the buckets got. */
+function styleProfile() {
+  var st = aiStyle;
+  if (!st) return null;
+  return (st.profiles && st.profiles._global) || st.profile || null;
+}
+function styleBucketKey(lvl, sub) {
+  var l = String(lvl || '').toLowerCase().trim();
+  var b = String(sub || '').toLowerCase().trim();
+  if (!l && !b) return '_global';
+  return (l || 'any') + ':' + (b || 'any');
+}
+function styleBucketOfSample(s) {
+  return styleBucketKey(s && s.lvl, s && s.sub);
+}
+function styleSamplesIn(bucket) {
+  var all = styleSamples();
+  if (!bucket || bucket === '_global') return all;
+  return all.filter(function (s) { return styleBucketOfSample(s) === bucket; });
+}
+function styleBucketLabel(bucket) {
+  if (!bucket || bucket === '_global') return 'all';
+  var bits = String(bucket).split(':');
+  var l = bits[0] === 'any' ? '' : levelLabel(bits[0].toUpperCase());
+  var b = bits[1] === 'any' ? '' : subjectLabel(bits[1]);
+  return [l, b].filter(Boolean).join(' ') || bucket;
+}
+/* How many of the teacher's answers stand behind a bucket. Counted off the
+   corpus when it travelled (it does, for this family); a reader holding no
+   samples takes the count the profile recorded about itself. An `any:` half
+   matches every level (or every subject), which is what makes the middle rung
+   of the fallback chain honest about its own size. */
+function _styleCountIn(key, p) {
+  var all = styleSamples();
+  if (all.length) {
+    if (!key || key === '_global') return all.length;
+    var bits = String(key).split(':');
+    return all.filter(function (s) {
+      var l = String((s && s.lvl) || '').toLowerCase().trim();
+      var b = String((s && s.sub) || '').toLowerCase().trim();
+      return (bits[0] === 'any' || l === bits[0]) && (bits[1] === 'any' || b === bits[1]);
+    }).length;
+  }
+  return (p && Number(p.n)) || 0;
+}
+/* Which profile a worksheet gets, and WHY — so the page can say that a Sec 1
+   Science hint is running on the subject-wide or the global fallback
+   rather than leaving the teacher to wonder why it sounds like their P3
+   Maths. The chain is the family's: the exact bucket when it has enough
+   answers behind it, then the subject at any level, then the global one. */
+function styleProfilePick(lvl, sub) {
+  var st = aiStyle;
+  var none = { profile: null, bucket: '_global', fell: false, n: 0 };
+  if (!st) return none;
+  var ps = st.profiles || {};
+  var key = styleBucketKey(lvl, sub);
+  if (key !== '_global' && ps[key]) {
+    var n = _styleCountIn(key, ps[key]);
+    if (n >= STYLE_BUCKET_MIN) return { profile: ps[key], bucket: key, fell: false, n: n };
+  }
+  var b = String(sub || '').toLowerCase().trim();
+  var subKey = b ? 'any:' + b : '';
+  if (subKey && subKey !== key && ps[subKey]) {
+    return { profile: ps[subKey], bucket: subKey, fell: true, n: _styleCountIn(subKey, ps[subKey]) };
+  }
+  var g = ps._global || st.profile || null;
+  return { profile: g, bucket: '_global', fell: key !== '_global', n: _styleCountIn('_global', g) };
+}
+function styleProfileFor(lvl, sub) {
+  return styleProfilePick(lvl, sub).profile;
+}
+
+/* ---- RETRIEVAL ----
+   The exemplars and the raw corrections are RETRIEVED for the question being
+   answered, by token overlap (Jaccard). A handful of real answers to
+   questions LIKE this one teaches more than the same six frozen ones on every
+   call — and matching on the bucket first keeps a Maths answer out of a
+   Science prompt. The tiers are the family's rule for this app: the
+   worksheet's own bucket, then the same subject at any level, then
+   everything. */
+function _styleTokens(s) {
+  var out = {};
+  String(s || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, ' ')
+    .split(' ').forEach(function (w) { if (w.length > 2) out[w] = 1; });
+  return out;
+}
+function _styleOverlap(a, b) {
+  var A = _styleTokens(a), B = _styleTokens(b), hit = 0, all = 0, k;
+  for (k in A) { all++; if (B[k]) hit++; }
+  for (k in B) if (!A[k]) all++;
+  return all ? hit / all : 0;
+}
+/* 0 = this worksheet's bucket, 1 = the same subject at another level, 2 = the
+   rest. A sample or a correction with no level and no subject is `_global`
+   and lands in tier 2 unless the worksheet is untagged too. */
+function _styleTier(item, bucket, sub) {
+  if (styleBucketKey(item && item.lvl, item && item.sub) === bucket) return 0;
+  var b = String(sub || '').toLowerCase().trim();
+  if (b && String((item && item.sub) || '').toLowerCase().trim() === b) return 1;
+  return 2;
+}
+/* Up to `cap` items resembling `q`, best match first, filled tier by tier so
+   a strong match from another subject never displaces a weaker one from this
+   worksheet's own bucket. Newest wins a tie (the later index). */
+function _styleRetrieve(list, q, bucket, sub, cap, textOf) {
+  var out = [];
+  for (var tier = 0; tier < 3 && out.length < cap; tier++) {
+    var scored = [];
+    list.forEach(function (it, i) {
+      if (_styleTier(it, bucket, sub) !== tier) return;
+      var v = _styleOverlap(q, textOf(it));
+      if (v > 0) scored.push({ it: it, v: v, i: i });
+    });
+    scored.sort(function (a, b) { return (b.v - a.v) || (b.i - a.i); });
+    scored.forEach(function (x) { if (out.length < cap) out.push(x.it); });
+  }
+  return out;
+}
+function styleExemplarsFor(q, lvl, sub) {
+  var bucket = styleBucketKey(lvl, sub);
+  var pool = styleSamples().filter(function (s) { return s && s.a && s.q; });
+  if (q && pool.length) {
+    var got = _styleRetrieve(pool, q, bucket, sub, STYLE_EX_MAX, function (s) { return s.q; });
+    if (got.length) return got;
+  }
+  /* Nothing resembles this question (or there is no question to resemble):
+     the profile's own six, chosen at the last rebuild as the most typical. */
+  var p = styleProfileFor(lvl, sub);
   var ex = (p && Array.isArray(p.exemplars)) ? p.exemplars : [];
   return ex.filter(function (e) { return e && e.a; }).slice(0, STYLE_EX_MAX);
 }
-function styleBlock(kind) {
-  var p = styleProfile();
-  if (!p) return '';
-  var bits = [];
-  var rules = String(p.styleRules || '').trim().slice(0, STYLE_RULE_CHARS);
-  var phrasing = String(p.phrasing || '').trim().slice(0, 400);
-  var marking = String(p.markingStandards || '').trim().slice(0, 500);
-  if (rules) bits.push('How this teacher writes answers: ' + rules);
-  if (phrasing) bits.push('Phrasing: ' + phrasing);
-  if ((kind === 'mark' || kind === 'scan') && marking) bits.push('How this teacher marks: ' + marking);
-  var kw = (Array.isArray(p.keywords) ? p.keywords : []).slice(0, 24)
-             .map(function (s) { return String(s).trim(); }).filter(Boolean);
-  if (kw.length) bits.push('Words the teacher uses again and again: ' + kw.join(', ') + '.');
-  // A marker handed the answer stops marking against the paper, so 'mark'
-  // never sees the exemplars. Every other kind — a hint included — does:
-  // they are answers to OTHER questions, and they are what makes a hint
-  // sound like this teacher rather than like a textbook.
-  if (kind !== 'mark') {
-    var ex = styleExemplars();
-    if (ex.length) {
-      bits.push('Real answers this teacher has written on past worksheets — match their length, tone and level of detail:\n' +
-        ex.map(function (e) {
-          var q = String(e.q || '').trim().slice(0, 220);
-          return '• ' + (q ? q + ' → ' : '') + String(e.a).trim().slice(0, 260);
-        }).join('\n'));
-    }
+function styleExemplars() {
+  return styleExemplarsFor('', wsMeta && wsMeta.level, wsMeta && wsMeta.subject);
+}
+
+/* ---- THE CORRECTIONS, from BOTH documents ----
+   Document A's edits are Ans Key's (src defaults to 'anskey'); document C's
+   are the Science portal's, keyed `cer:<slot>` so the two can never collide.
+   Oldest first, so "the newest" is always the last of the list. */
+function _styleAt(e) {
+  var at = e && e.at;
+  if (typeof at === 'number') return at;
+  var t = Date.parse(String(at || ''));
+  return isNaN(t) ? 0 : t;
+}
+function styleEditsAll() {
+  var a = (aiStyle && Array.isArray(aiStyle.edits)) ? aiStyle.edits : [];
+  var c = (cerStyle && Array.isArray(cerStyle.edits)) ? cerStyle.edits : [];
+  var out = [];
+  a.forEach(function (e) { if (e) out.push(Object.assign({ src: 'anskey' }, e)); });
+  c.forEach(function (e, i) {
+    if (!e) return;
+    out.push(Object.assign({}, e, { k: 'cer:' + (e.slot != null ? e.slot : i), src: 'cer' }));
+  });
+  /* A stable sort by time, so a correction made in the portal a minute ago
+     is "the newest" even though it sits in the other document. */
+  return out.map(function (e, i) { return { e: e, i: i, t: _styleAt(e) }; })
+            .sort(function (x, y) { return (x.t - y.t) || (x.i - y.i); })
+            .map(function (x) { return x.e; });
+}
+/* A correction that says something: a real before/after, or a lesson. */
+function styleCorrections() {
+  return styleEditsAll().filter(function (e) {
+    return e && ((e.wrote && e.a) || String(e.note || '').trim());
+  });
+}
+/* The corrections as short RULES, distilled into the bucket's profile at its
+   last rebuild — general, and only ever as current as that rebuild. */
+function styleEditRules(lvl, sub) {
+  var p = styleProfileFor(lvl, sub);
+  var f = (p && Array.isArray(p.fixes)) ? p.fixes : [];
+  return f.map(function (x) { return styleTrim(x, 180); }).filter(Boolean).slice(0, 6);
+}
+/* The lessons the AI drew from the corrections, this bucket's first, then
+   this subject's, then the rest — and NEWEST first inside each. Written per
+   correction the moment it was made, so unlike `fixes` they need no rebuild,
+   and unlike the raw pairs they say what to DO. The same lesson twice is one
+   lesson: a duplicate eats the pot twice and reads as emphasis nobody wrote. */
+function styleLessons(lvl, sub) {
+  var all = styleEditsAll().filter(function (e) { return e && String(e.note || '').trim(); });
+  if (!all.length) return [];
+  var bucket = styleBucketKey(lvl, sub);
+  var tiers = [[], [], []];
+  all.forEach(function (e) { tiers[_styleTier(e, bucket, sub)].push(e); });
+  var out = [], seen = {};
+  tiers.forEach(function (t) {
+    t.slice().reverse().forEach(function (e) {
+      var s = styleTrim(e.note, STYLE_NOTE_CHARS);
+      var k = s.toLowerCase();
+      if (!s || seen[k]) return;
+      seen[k] = 1;
+      out.push(s);
+    });
+  });
+  return out.slice(0, STYLE_LESSONS_MAX);
+}
+/* ---- AND THE CORRECTIONS THEMSELVES, IMMEDIATELY ----
+   `fixes` only exist after a rebuild, and a rebuild waits for answers to
+   pile up. So a teacher who corrected an answer watched the app make the
+   same mistake on the very next one. The raw pairs go in as they are,
+   retrieved for the question in hand — that is what learning from the
+   teacher's edits actually does at generation time; the distilled rules are
+   the long-term memory on top of it, never a substitute. Capped hard: three
+   pairs is enough to change the next answer and small enough to carry on
+   every call. */
+function styleRecentEdits(q, lvl, sub, cap) {
+  var all = styleEditsAll().filter(function (e) { return e && e.wrote && e.a; });
+  if (!all.length) return [];
+  var bucket = styleBucketKey(lvl, sub);
+  var n = cap || STYLE_PAIRS_MAX;
+  if (q) {
+    var got = _styleRetrieve(all, q, bucket, sub, n, function (e) { return e.q || e.a; });
+    if (got.length) return got;
   }
+  /* Nothing resembles this question — the NEWEST corrections still stand,
+     from the nearest tier that has any: a correction the teacher made a
+     minute ago is the one they are watching for. */
+  var tiers = [[], [], []];
+  all.forEach(function (e) { tiers[_styleTier(e, bucket, sub)].push(e); });
+  var pool = tiers[0].length ? tiers[0] : tiers[1].length ? tiers[0].concat(tiers[1]) : all;
+  return pool.slice(-n).reverse();
+}
+
+/* Renders a profile OBJECT into prompt text — the ONE renderer, so what a
+   hint is grounded on and what the panel describes are the same text.
+
+   A NULL PROFILE IS NOT NOTHING TO SAY. The exemplars and the corrections
+   come out of the CORPUS, not the profile, so they are there from the first
+   answer the teacher writes; only the distilled description waits for a
+   rebuild. Bailing out on a missing profile is what made a teacher's very
+   first correction reach nothing at all.
+
+   MARKING GETS THE RULES, THE PHRASING AND THE KEYWORDS, AND NOTHING ELSE.
+   Never the profile's `markingStandards`: that field is INFERRED by a model
+   from the teacher's own answers, and an inference must never decide a mark
+   — the standard a student is held to is the teacher's typed notes and
+   guidance, nothing a machine guessed. And never an exemplar, a fix, a
+   lesson or a pair, because every one of those is an ANSWER, and a marker
+   handed the answer stops marking against the paper. */
+function _styleProfileBits(p, kind, exemplars, fixes, pairs, lessons) {
+  var bits = [];
+  if (p) {
+    var rules = String(p.styleRules || '').trim().slice(0, STYLE_RULE_CHARS);
+    var phrasing = String(p.phrasing || '').trim().slice(0, 400);
+    if (rules) bits.push('How this teacher writes answers: ' + rules);
+    if (phrasing) bits.push('Phrasing: ' + phrasing);
+    var kw = (Array.isArray(p.keywords) ? p.keywords : []).slice(0, 24)
+               .map(function (s) { return String(s).trim(); }).filter(Boolean);
+    if (kw.length) bits.push('Words the teacher uses again and again: ' + kw.join(', ') + '.');
+  }
+  if (kind === 'mark') return bits;
+  var ex = exemplars || (p && Array.isArray(p.exemplars) ? p.exemplars : []);
+  ex = ex.filter(function (e) { return e && e.a; }).slice(0, STYLE_EX_MAX);
+  if (ex.length) {
+    bits.push('Real answers this teacher has written on past worksheets — match their length, tone and level of detail:\n' +
+      ex.map(function (e) {
+        var eq = String(e.q || '').trim().slice(0, STYLE_Q_CHARS);
+        return '• ' + (eq ? eq + ' → ' : '') + String(e.a).trim().slice(0, 260);
+      }).join('\n'));
+  }
+  var fx = fixes || (p && Array.isArray(p.fixes) ? p.fixes : []);
+  fx = fx.map(function (x) { return styleTrim(x, 180); }).filter(Boolean).slice(0, 6);
+  if (fx.length) {
+    bits.push('Corrections this teacher has made to answers the Polymath apps wrote — do not make these mistakes again:\n' +
+      fx.map(function (f) { return '• ' + f; }).join('\n'));
+  }
+  /* What the AI worked out each correction MEANT — written the moment the
+     teacher made it, so like the pairs below it needs no rebuild, and unlike
+     them it says what to do rather than leaving it to be inferred. */
+  var ls = (lessons || []).map(function (x) { return styleTrim(x, STYLE_NOTE_CHARS); }).filter(Boolean).slice(0, STYLE_LESSONS_MAX);
+  if (ls.length) {
+    bits.push('What this teacher\'s corrections have taught \u2014 follow these:\n' +
+      ls.map(function (l) { return '\u2022 ' + l; }).join('\n'));
+  }
+  /* The rawest and most current thing we know, and the one that needs no
+     rebuild to take effect. It goes LAST so it is the nearest instruction to
+     the question. */
+  var pr = (pairs || []).slice(0, STYLE_PAIRS_MAX);
+  if (pr.length) {
+    bits.push('WHAT THIS TEACHER CHANGED, the last time an app answered for them — answer their way from the start:\n' +
+      pr.map(function (e) {
+        return (e.q ? '• Question: ' + String(e.q).slice(0, STYLE_Q_CHARS) + '\n  ' : '• ') +
+          'the app wrote: ' + String(e.wrote).slice(0, STYLE_EDIT_CHARS) +
+          '\n  the teacher rewrote it as: ' + String(e.a).slice(0, STYLE_EDIT_CHARS);
+      }).join('\n'));
+  }
+  return bits;
+}
+/* How many answers the whole corpus holds — what the heading says a global
+   profile was learned from. */
+function styleCorpusCount() {
+  var g = styleProfile();
+  return (aiStyle && Number(aiStyle.profileSamples)) || styleSamples().length || (g && Number(g.n)) || 0;
+}
+/* The block itself. `q` is the question in hand — what the exemplars and the
+   pairs are retrieved for — and omitting it is the old behaviour byte for
+   byte: the profile's own exemplars and the newest corrections. The heading
+   says which bucket the voice was learned from and how many corrections are
+   being followed, because a hint grounded on the global fallback looks
+   exactly like one grounded on this worksheet's own bucket. */
+function styleBlock(kind, q) {
+  var lvl = wsMeta && wsMeta.level, sub = wsMeta && wsMeta.subject;
+  var pick = styleProfilePick(lvl, sub);
+  var isMark = kind === 'mark';
+  /* NO EARLY RETURN ON A MISSING PROFILE — see _styleProfileBits. */
+  var bits = _styleProfileBits(pick.profile, kind,
+                               isMark ? [] : styleExemplarsFor(q, lvl, sub),
+                               isMark ? [] : styleEditRules(lvl, sub),
+                               isMark ? [] : styleRecentEdits(q, lvl, sub),
+                               isMark ? [] : styleLessons(lvl, sub));
   if (!bits.length) return '';
-  return "\n\nTHE TEACHER'S OWN STYLE (learned from " +
-    ((aiStyle && aiStyle.profileSamples) || styleSamples().length) +
-    ' answers they have written on their own worksheets):\n' + bits.join('\n');
+  var total = styleCorpusCount();
+  var from = pick.bucket === '_global'
+    ? (total ? total + ' answers they have written on their own worksheets' : 'the answers they have written on their own worksheets')
+    : pick.n + ' of their own ' + styleBucketLabel(pick.bucket) + ' answers';
+  var fixes = isMark ? 0 : styleCorrections().length;
+  var following = fixes ? ', following ' + fixes + ' correction' + (fixes === 1 ? '' : 's') + ' they have made to answers the Polymath apps wrote' : '';
+  return "\n\nTHE TEACHER'S OWN STYLE (learned from " + from + following + '):\n' + bits.join('\n');
 }
 
 /* ---- The notebook, in prompt form ----
@@ -3132,7 +3719,7 @@ function notesBlock(kind) {
   var kw = notesKeywordList(rel);
   var std = notesJoinField(rel, 'markingStandards', NOTES_STD_CHARS);
   var facts = notesJoinField(rel, 'keyFacts', NOTES_FACT_CHARS);
-  var com = notesJoinField(rel, 'comment', 300);
+  var com = notesJoinField(rel, 'comment', NOTES_COMMENT_CHARS);
   var bits = [];
   if (kw.length) {
     bits.push(kind === 'mark'
@@ -3167,10 +3754,16 @@ function guidanceBlock() {
 /* Everything the AI should know about this teacher, appended to a system
    prompt. ONE call site per AI feature, so nothing can be grounded on the
    notes in one place and not another. */
-function aiGrounding(kind) {
+function aiGrounding(kind, opts) {
+  /* `opts.q` is the question in hand, handed to the style block so the
+     exemplars and the corrections are retrieved for THIS question. Omitting
+     it is the old behaviour byte for byte, so every existing call site is
+     unaffected. */
+  var q = (opts && opts.q) ? String(opts.q) : '';
+  notesLedgerReset();
   var guide = guidanceBlock();
   var notes = notesBlock(kind);
-  var style = styleBlock(kind);
+  var style = styleBlock(kind, q);
   if (!guide && !notes && !style) return '';
   var authority = kind === 'mark'
     ? "\n\nAUTHORITY ORDER: what the worksheet itself prints always wins — never mark against it. Then the general guidance above. Use the notes and the style for the keywords, the phrasing and the standard expected; fall back to ordinary syllabus knowledge only where they say nothing."
@@ -3191,7 +3784,17 @@ function groundingSummary() {
   if (guide) bits.push(guide + ' standing note' + (guide === 1 ? '' : 's'));
   if (rel.length - guide > 0) bits.push((rel.length - guide) + ' set' + (rel.length - guide === 1 ? '' : 's') + ' of notes');
   if (kw) bits.push(kw + ' keyword' + (kw === 1 ? '' : 's'));
-  if (styleProfile()) bits.push("the teacher's learned style");
+  /* The style is in force when there is a profile, OR a corpus to retrieve
+     exemplars from, OR a correction to follow — the block no longer waits
+     for the profile. The bucket is named, because a Sec 1 hint running on
+     the global fallback looks exactly like one on its own bucket. */
+  var pick = styleProfilePick(wsMeta && wsMeta.level, wsMeta && wsMeta.subject);
+  var fixes = styleCorrections().length;
+  var corpus = styleSamples().some(function (s) { return s && s.a && s.q; });
+  if (pick.profile || corpus || fixes) {
+    bits.push("the teacher's learned style" + (pick.bucket !== '_global' ? ' (' + styleBucketLabel(pick.bucket) + ')' : ''));
+  }
+  if (fixes) bits.push(fixes + ' correction' + (fixes === 1 ? '' : 's'));
   return bits;
 }
 
@@ -5814,6 +6417,31 @@ function hintImagesFor(p, pt) {
   return imgs;
 }
 
+/* WHAT THE TEACHER'S EXEMPLARS AND CORRECTIONS ARE RETRIEVED FOR. A hint is
+   asked about a spot on a PICTURE: the question's own wording is not known
+   until the model has read the page, and the answer key (`keyContext`) holds
+   numbers, answers and working — never the question. So the best text in
+   hand is an EARLIER hint on this same spot: a student who raises the help
+   level and taps the same question again is the common re-ask, and that hint
+   already carries the printed wording the model transcribed. Failing that
+   the level/subject line goes, which resembles nothing and so hands back the
+   profile's own exemplars and the NEWEST corrections — which is the old
+   behaviour, and the right fallback: a correction the teacher made a minute
+   ago is the one they are watching for. */
+var HINT_SAME_SPOT = 160;   // page units — inside the close-up band either way
+function hintRetrievalQuery(p, pt) {
+  var best = null, bestD = HINT_SAME_SPOT;
+  hints.forEach(function (h) {
+    if (!h || h.page !== p.num || !String(h.question || '').trim()) return;
+    var d = Math.hypot((h.x || 0) - pt.x, (h.y || 0) - pt.y);
+    if (d < bestD) { bestD = d; best = h; }
+  });
+  if (best) return String(best.question).trim();
+  var subj = wsMeta.subject ? subjectLabel(wsMeta.subject) : '';
+  var lvl = wsMeta.level ? levelLabel(wsMeta.level) : '';
+  return [lvl, subj].filter(Boolean).join(' ');
+}
+
 /* THE CEILING IS APPLIED HERE, and this is what makes it real rather than
    cosmetic: the rungs above the help level are never ASKED FOR, so on
    "Nudges only" the answer did not come back and is not sitting in the page
@@ -5821,6 +6449,7 @@ function hintImagesFor(p, pt) {
 async function hintLadderFor(p, pt) {
   var allowed = rungsAllowed(wsMeta.guidance);
   var imgs = hintImagesFor(p, pt);
+  var q = hintRetrievalQuery(p, pt);
   var lines = [];
   var subj = wsMeta.subject ? subjectLabel(wsMeta.subject) : '';
   var lvl = wsMeta.level ? levelLabel(wsMeta.level) : '';
@@ -5840,7 +6469,7 @@ async function hintLadderFor(p, pt) {
     // The key goes in BESIDE the grounding, and `keyRuleBlock` restates the
     // ceiling with it: a model handed the answers and then asked for "a
     // nudge" is exactly the door the ladder exists to shut.
-    system: HINT_SYS + aiGrounding('hint') + keyRuleBlock() + tutorMethodRule(),
+    system: HINT_SYS + aiGrounding('hint', { q: q }) + keyRuleBlock() + tutorMethodRule(),
     maxOutputTokens: 1600, temperature: 0.4, json: true, thinkingLevel: 'high',
     images: imgs.map(function (im) { return { mimeType: im.mimeType, data: im.data }; })
   });
@@ -9740,7 +10369,9 @@ async function sendChat(text) {
       // buddyCeilingRule() comes FIRST and keyRuleBlock(text) restates it, so
       // the one place a student can ask in their own words for the answer is
       // also the one place the key is most tempting to hand over.
-      system: CHAT_SYS + buddyCeilingRule() + aiGrounding('teach') + keyRuleBlock(text) + tutorMethodRule() + worksheetContextRule(),
+      // The student's own message is the question the teacher's exemplars
+      // and corrections are retrieved for.
+      system: CHAT_SYS + buddyCeilingRule() + aiGrounding('teach', { q: text }) + keyRuleBlock(text) + tutorMethodRule() + worksheetContextRule(),
       maxOutputTokens: 1200, temperature: 0.5, images: imgs
     });
     if (epoch !== wsEpoch) return;
@@ -13026,6 +13657,9 @@ function wsCardNode(w) {
     if (w.topic) meta.appendChild(chipNode('📖 ' + w.topic, 'chip chipTopic'));
     if (w.school) meta.appendChild(chipNode('🏫 ' + w.school, 'chip chipSchool'));
     var grule = guidanceRule(w);
+    // 🔬 Sent across from the Science portal — the card says where it came from,
+    // because a worksheet nobody uploaded reads as one that appeared by itself.
+    if (w.source === 'cer') meta.appendChild(chipNode('🔬 From the Science portal', 'chip'));
     meta.appendChild(chipNode((grule.locked ? '🔒 ' : '💡 ') + guidanceLabel(grule.level), 'chip chipGrade'));
     if (w.score && w.score.attempted) {
       meta.appendChild(chipNode('✅ ' + w.score.correct + '/' + w.score.attempted, 'chip chipScore'));
@@ -14300,10 +14934,6 @@ async function saveGrade() {
    AI simply carries on ungrounded, exactly as it did before any of this
    existed.
    ===================================================================== */
-function styleTrim(s, cap) {
-  s = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
-  return s.length > cap ? s.slice(0, cap) : s;
-}
 function applyNotesVisibility() {
   var on = isAdmin(currentUser);
   $('notesBtn').classList.toggle('hidden', !on);
@@ -14345,7 +14975,10 @@ function renderNotesBody() {
   [[teachingNotes.length, 'notes in the book'],
    [rel.length, 'apply to this worksheet'],
    [notesKeywordList(rel).length, 'keywords in play'],
-   [styleProfile() ? ((aiStyle && aiStyle.profileSamples) || styleSamples().length) : 0, 'answers learned from']]
+   [styleCorpusCount(), 'answers learned from'],
+   [styleCorrections().length, 'corrections followed' +
+     (styleProfilePick(wsMeta.level, wsMeta.subject).bucket !== '_global'
+       ? ' (' + styleBucketLabel(styleProfilePick(wsMeta.level, wsMeta.subject).bucket) + ' voice)' : '')]]
     .forEach(function (s) {
       var d = document.createElement('div');
       d.className = 'tnStat';
@@ -15790,7 +16423,9 @@ if (auth) auth.onAuthStateChanged(function (user) {
     // covers the screen and cannot be dismissed.
     loadTeachingNotes(true);
     aiEngineWatchShared();
-    loadWorksheets();
+    // The linked worksheet (?ws=) opens once the list it is looked up in has
+    // arrived — and only once, whatever else the sign-in does.
+    loadWorksheets().then(openFromLink);
     loadMistakes();
     usageStart(user);
     usageNote('signin');

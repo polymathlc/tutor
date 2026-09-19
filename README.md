@@ -12,6 +12,39 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.24.0 — All the apps under one roof, a worksheet sent from the Science portal, and the teacher's corrections reach the buddy
+
+Two features that had shipped on a side branch and never reached the live app, now on it.
+
+**🧭 All the apps under one roof.** **Apps** in the header lists every Polymath app — the four
+subject portals and the two tools (Ans Key and this one) — from ONE table (`POLYMATH_APPS`) that
+every app carries byte for byte. You stay signed in. Inside the Science portal this app is embedded
+on a page of its own; a link followed from in there moves the whole portal, never a portal inside
+a portal.
+
+**📖 A worksheet sent from the Science portal.** `?ws=<id>` opens a worksheet the moment your list
+has loaded: one of your own, or one the teacher has set (your copy is started, exactly as "Start it"
+would). The Science portal's **Send to Study Buddy** files a printed worksheet here in this app's
+own shape, with the answer key already read and its pages hidden, then opens this page on it. The
+link is read once and taken off the address bar. A worksheet that came across wears a **🔬 From the
+Science portal** chip.
+
+**🧠 The teacher's corrections reach the buddy.**
+- Every hint, every chat reply and every mark is written against the WHOLE of what Mr Chung has
+  taught the apps, not the flat summary it used to read: one voice per level and subject, the
+  corpus of the teacher's own answers, and every correction he has made to an answer an app wrote,
+  with the lesson each one taught. The Science portal's own corrections are read beside them, live,
+  so a correction made in either app is obeyed by the very next hint here.
+- The voice is the worksheet's own: a P5 Science worksheet is hinted in the P5 Science voice once
+  there are 30 answers behind it, then the Science-at-any-level one, then the overall one, and the
+  hints tab says which.
+- The example answers are chosen for the question in hand: the chat retrieves them for the
+  student's own message, a hint for the question an earlier hint on the same spot already read.
+- Marking is held to the teacher's TYPED standard and never to a guess. The profile's inferred
+  marking standard, the example answers and the corrections never reach a mark.
+- Two long standing notes both reach the buddy now. Every note is guaranteed its share of the
+  budget; a long one is trimmed (and says so) rather than the next one vanishing.
+
 ## v1.23.1 — A set worksheet shows only on the accounts it was set for, and deleting your copy keeps the class's PDF
 
 **Two bugs on the "📌 Set for you" list, one behind the other.**
