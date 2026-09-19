@@ -12,6 +12,152 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.29.0 — 📌 You can SEE which papers your class has, and give them the rest in one press
+
+A shelf of P5 papers sat uploaded and set for nobody, and **nothing on any screen said so**. The
+only signal a paper had reached the class was whether its button read *"📌 Set for my students"* or
+*"📌 Set — take it off"* — two words apart, on a shelf of thirty cards, read as decoration rather
+than as state. So a paper no child was ever given looked exactly like one every child has.
+
+**Every card now says which it is.** 📌 *Set for the class* in green, *Not set for the class* in
+grey, and ⚠ *Set — but on nobody's shelf* for the one case that used to be invisible: a paper that
+really was set, with no level or no subject on it, so it went out to nobody at all. Drawn for the
+teacher only — a student's shelf holds the papers they were given, so the ones they were not given
+are exactly the ones that are not there to be marked.
+
+**📌 Set N papers for my class** appears at the top of the home screen the moment any of them is
+waiting, and says how many. One press, one confirm naming every paper and the shelf it will land
+on, and they go out one at a time. It never touches a paper that is already set — the help level,
+the lock and the answer key it went out with are the teacher's, not something a button labelled
+"set the rest" quietly rewrites — and **every paper it could not set is named with the reason**:
+no PDF, no level, no subject, or a write the Firestore rules refused.
+
+Two quiet faults went with it:
+
+- **A push that FAILED was counted as one that went out.** The upload set `pushed = true` the
+  moment `pushWorksheet` had been *called*, so a refused write — the rules not allowing it yet,
+  which is the commonest failure there is — was reported to the teacher as a paper the class had
+  been given. A pile of ten could say *"9 set for the class"* over nine papers no child could see.
+- **In a batch, a paper that could not be set was completely silent.** The explanation was shown
+  only on a single upload, so in a pile of ten the count was the only clue that anything had been
+  left behind, and it never said which one or why.
+
+---
+
+## v1.28.0 — 📚 A whole pile of worksheets at once
+
+A teacher does not have one worksheet, they have a term's worth — and uploading them was one PDF,
+wait for it to be read and filed, open the dialog again, one more PDF. **The picker now takes as
+many as you like.** Hold Ctrl (⌘ on a Mac) in the file dialog, pick the lot, and they go up one
+after another: each one read, its answer-key pages found and put away, its cover made, and — for
+the teacher — set on the shelf of the level and subject it is for.
+
+The bar at the bottom counts them off as it goes (**📚 3 of 12 · Uploading “P5 Heat revision”…**),
+and when the last one lands you are back on the shelf with all of them on it, with a line saying
+what went up and what was set for the class.
+
+**Choosing several changes three small things, and each says so on the dialog.**
+
+* **The name box is for a single paper.** With several PDFs chosen, each one takes its own file
+  name — and Chung GPT still reads the cover and renames it properly. Ten worksheets sharing one
+  typed name is a shelf nobody can search.
+* **An answer key belongs to one paper**, so it goes on the first of them and the finishing line
+  says which one got it. Attach the others from the 🔑 button on each worksheet.
+* Everything else on the dialog — the level, the subject, how much help, and **📌 Put it on my
+  students' shelves** — applies to the whole pile.
+
+**Nothing in a pile is lost quietly.** A paper that could not be read is named at the end so it
+can be tried again on its own, and the ones after it still go up. Anything that is not a PDF is
+skipped and named rather than stopping the upload. Forty papers is the most in one go; past that
+the rest are counted and left, never dropped in silence.
+
+**A single upload is exactly what it always was** — it opens the worksheet, opens the buddy and
+says *Ready — write your answers on it*.
+
+---
+
+## v1.27.0 — ✏️ The working line and 📐 the model, on a maths worksheet
+
+A keyword check asks a student to fill in the words a science answer needs. On a **maths**
+worksheet that is the wrong question: what a child is stuck on is not the word *evaporation*, it
+is what to write on the next line. So on a maths worksheet the keyword check stands down and two
+things take its place.
+
+**✏️ Try the next step.** A line to write the next step of the working on, with the symbols a
+school keyboard cannot easily reach printed above it — **× ÷ + − = ( )**, then **< > ≤ ≥ ≈ ≠**,
+then **½ ⅓ ⅔ ¼ ¾ ² ³ √ π % :**, then **° ∠ △ ∥ ⊥ →**. Tap one and it goes in where the caret is.
+Press Check and the step is marked as a STEP — *right*, *close*, or *not yet* — with a sentence
+saying what to look at, never the answer. Get it right and the line is kept and the pad asks for
+the one after it, so the working builds up a line at a time the way it is written on paper.
+
+- **It costs nothing to open**, because the ask is already in hand: on a hint it is the rung the
+  student has just been shown, and in live mode it is what the tutor has just said.
+- **It is offered at EVERY help level.** Asking a child to attempt the next step tells them
+  nothing they did not already have, so there is nothing for the ceiling to protect. Only the
+  marking spends a call.
+- **The app checks the sum itself where it can.** `12 × 4 = 46` is not marked right whatever the
+  model says — a number that does not add up is a number that does not add up, and that check is
+  free, instant and always the same. It can only ever overrule a *right*.
+- **The tutor is told what the student wrote and how it went**, as context rather than speech, so
+  the live lesson carries on from the step rather than repeating itself.
+
+**📐 Draw the model.** On a worksheet where a bar model is the way in, the pad draws one — the
+bars, the parts, the labels and the bracket showing what is being asked for — and then offers two
+things: **Show me the model**, which puts it on the page as ordinary ink to copy and work from,
+and **Label it yourself**, which prints the model with the numbers taken out and asks the student
+to type what goes in each part.
+
+- **It sits on the "how to do it" rung**, because a model of the question IS the method set out.
+  Below that level it is shown 🔒 locked and says so — and the handler refuses as well as the
+  button, because a hidden button has never been the lock in this app.
+- **The unknown is never filled in below the top rung.** The part the question is asking for comes
+  out as **?**, on the drawing and on the page, so the model shows the shape of the question and
+  never its answer. The specification the model returns does not carry the final answer at all, so
+  there is nothing sitting in the page for anybody curious enough to open the developer tools.
+- **What lands on the page is ordinary ink** — rectangles, lines and text boxes, exactly the
+  shapes the rest of the app already draws — so it moves, it is erased, it undoes, it saves, it is
+  composited onto the page for the marking run, and it prints. It goes down as ONE undo step, so a
+  model dropped in the wrong place is one Ctrl+Z away from gone.
+- **Labelling is checked locally.** *"3 units"*, *"3units"* and *"3 UNITS"* are the same answer to
+  a child who has understood it; a different number is not, and nothing is sent anywhere to decide
+  that.
+
+**The switch is a preference, per device**, on the Live card and the Hints tab, exactly where the
+keyword check's was — and on a maths worksheet it is that switch. A subtitle bar is lifted clear of
+whichever box is open, and only one of the two is ever on screen at a time.
+
+---
+
+## v1.26.0 — The live tutor answers sooner
+
+Asking the tutor a question out loud took longer than it should have, and the wait was almost all
+plumbing rather than thinking. Four changes, none of which alters a word of what is said.
+
+**The reply is spoken as it is written.** The tutor used to wait for the last word of the last
+sentence before saying the first. Now the first finished sentence goes out while the rest is still
+being written, and the remainder follows as one more piece. Every word is still said exactly once,
+and the "let me check the worksheet" opening is still removed — wherever it sits, so the reply is
+the same whether it streams or not. A reply whose question the student has already moved on from
+stops mid-answer rather than talking over the new one.
+
+**One page goes up, not three, and a smaller picture.** A live question is nearly always about the
+page under the student's eye, and every extra page was another quarter-megabyte uploaded and
+another page of reading before a word was spoken. When the top page is most of what is on screen it
+goes alone; when the student is straddling two, both still go. Nothing else in the app changed —
+Ask and the hints read the same three pages they always did.
+
+**The notes, the answer key and the picture are prepared side by side** rather than one after the
+other. None of them needs anything the others produce, so waiting for them in turn was pure
+waiting.
+
+**The answer key is read while the microphone is still being granted.** Allowing the microphone and
+opening the connection is several seconds the key could be transcribed in for free, instead of the
+first question of every session wearing that whole pass with nothing on screen but "Thinking…". If
+it cannot be read, nothing is shown — the check that actually needs it says so, properly, when it
+is asked.
+
+---
+
 ## v1.25.2 — A P5 account stops seeing the P6 and P4 papers
 
 **The bug.** Signing in fired the worksheet list and the roster read **side by side**, with the

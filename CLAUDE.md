@@ -136,13 +136,149 @@ it is handed to the speaker** (`liveStripFiller` on `spokenReply`).
 - Run **`node --test tools/live-tutor-tests.mjs`**, **`node tools/tutor-tests.mjs`** and
   **`cd functions && node --test test/*.test.js`** after touching any of it.
 
+## ✏️ THE MATHS PAD — the working line and the drawn model (v1.27.0)
+
+`mathWorksheet` / `MTH_KEY` / `MTH_MODEL_RUNG` / `MTH_SYMBOLS` / `MTH_WORK_MAX` /
+`MTH_STEPS_MAX` / `MTH_LIVE_GAP_MS` / `MTH_BARS_MAX` / `MTH_SEGS_MAX` /
+`mthPref` / `toggleMthPref` / `mthPad` / **`mthAllowed`** / **`mthModelAllowed`** /
+`mthModelLockedNote` / `mthAnswerAllowed` / **`mthArith`** / `mthInsert` /
+`mthShow` / `mthClose` / `mthRender` / `mthRenderWork` / `MTH_WORK_SYS` /
+`mthWorkPrompt` / **`mthWorkCheck`** / **`mthWorkClean`** / `mthTellTutor` /
+`MTH_MODEL_SYS` / `mthModelCeilingRule` / **`mthModelBuild`** /
+**`mthModelClean`** / `mthModelBlanks` / `mthRenderModel` / `mthLabelNorm` /
+`mthModelCheck` / **`mthModelLayout`** / **`mthModelPlace`** / `mthArmPlace` /
+`mthAfterHint` / `mthAfterLive` / `mthOpenForHint` (search `THE MATHS PAD`),
+plus `kwQuizOffReason`, **`floatBoxLayout`**, the one-shot `model` tool in the
+pointer handler, `#mthPad`, the `.mth*` / `.hintMathLine` CSS, and the
+`mathpad` / `mathstep` / `mathmodel` / `mathmodelput` rows of `USAGE_EVENTS`.
+
+A 🧩 keyword check asks for the WORDS an answer needs. On a maths worksheet
+that is the wrong question — a child stuck on question 7 does not need the word
+*fraction*, they need to know what to write on the next line — so on a maths
+worksheet the keyword check stands down and this takes its place: a **working
+line** with the symbols a school keyboard cannot reach, and a **drawn bar
+model**.
+
+- **`mathWorksheet()` IS THE ONE PLACE "is this maths" IS DECIDED**, and every
+  door asks it: `mthAllowed`, `kwQuizOffReason`, the hint card's buttons, the
+  hints tab's helper line, the Live card's switch and the 🧩 button's handler.
+  A second test is how the pad appears on a science worksheet or the keyword
+  check on a maths one, with nothing on any screen saying which. **`'both'` is
+  NOT maths**: it is Ans Key's legacy maths-and-science pairing, so a worksheet
+  wearing it is as much science as maths and keeps the keyword check.
+- **THE TWO ARE NEVER BOTH OFFERED.** `kwQuizOffReason()` returns `'maths'`
+  before it asks the ladder at all, and it is what the locked note reads, so a
+  maths worksheet says the keyword check is off *because it is maths* and names
+  what it has instead — rather than the level note, which would be true of a
+  different worksheet and wrong here.
+
+### The working line is offered at EVERY help level, and that is deliberate
+
+- **ASKING A CHILD TO TRY THE NEXT STEP TELLS THEM NOTHING**, so there is no
+  rung for the ceiling to protect: `mthAllowed()` is `mathWorksheet()` and
+  nothing else, and `mthShow` / `mthAfterHint` / `mthAfterLive` ask only that.
+  A ladder test here would switch the pad off for the children on *Nudges
+  only*, who are exactly the ones who need somewhere to attempt a step.
+- **IT COSTS NOTHING TO OPEN**, because the ask is already in hand: on a hint
+  it is the LAST RUNG THE STUDENT HAS BEEN SHOWN, and in live mode it is what
+  the tutor has just said. Only ✅ Check and 📐 the model spend a call.
+- **`mthWorkCheck` IS GROUNDED AS `'hint'`**, carries `keyRuleBlock` (so the
+  key says what the answer is and never lifts the ceiling), carries
+  `tutorMethodRule()` (arithmetic and the unitary method, no algebra, one step
+  at a time) and is **NEVER `'mark'`** — a marker handed the answer stops
+  marking against the paper, and this is teaching rather than marking. The
+  harness pins all four against the file.
+- **THE APP'S OWN ARITHMETIC OVERRULES A "right", AND ONLY IN THAT DIRECTION**
+  (`mthArith`). `12 × 4 = 46` is not right whatever a model says, and that
+  check is free, instant and always the same answer. It is deliberately NARROW
+  — `number op number = number`, nothing else — because a parser that tries to
+  read real working would fail on the working that is correct, and it may
+  never turn a *close* or a *not yet* into something better: a model that read
+  the question is a better judge of a step than a regular expression that did
+  not.
+- **A RIGHT STEP IS KEPT AND THE PAD ASKS FOR THE NEXT ONE**, up to
+  `MTH_STEPS_MAX` — a chain longer than that is not a step, it is the whole
+  answer being typed in one box.
+- **THE TUTOR IS TOLD, AS CONTEXT AND NEVER AS SPEECH** (`mthTellTutor` → the
+  general `session.thinking.append` with `delegation_id: null`), so a live
+  lesson carries on from the step rather than repeating the sentence before it.
+
+### The model sits on the method rung, and the unknown is never filled in
+
+- **A MODEL OF THE QUESTION *IS* THE METHOD SET OUT**, so `mthModelAllowed()`
+  asks the LADDER for `MTH_MODEL_RUNG` (`'method'`) and nowhere decides it a
+  second time — and `mthModelBuild` **REFUSES IN THE HANDLER** as well, because
+  a hidden button has never been the lock in this app.
+- **THE UNKNOWN COMES OUT AS `?` BELOW THE ANSWER RUNG**, on the drawing and on
+  the page alike (`mthModelBlanks`, `mthRenderModel`, `mthModelPlace`). A model
+  with the answer written in one of its bars is the answer with a rectangle
+  round it, which is the same hole `kwQuizGivesAnswer` exists to shut.
+- **THE SPECIFICATION NEVER CARRIES THE FINAL ANSWER AT ALL.** `MTH_MODEL_SYS`
+  does not ask for it and `mthModelClean` would drop it, so below the top rung
+  there is nothing sitting in the page for anybody curious enough to open the
+  developer tools — the rule `hintLadderFor` already follows for the rungs.
+- **`mthModelCeilingRule()` goes LAST in the system prompt**, where the bars
+  are decided, beside the grounding and the key. A hard constraint carried in
+  the user message is one the next sentence can talk over.
+
+### What lands on the page is ORDINARY INK
+
+- **IT IS `rect` / `line` / `text` AND NOTHING NEW** (`mthModelPlace`). A new
+  annotation type would have to be taught to both renderers, `annBounds`, the
+  hit test, the eraser, the resize handles and the print path — six places, and
+  the one that gets missed is silent. As ordinary shapes it moves, it is
+  erased, it undoes, it saves, it is composited onto the page for the marking
+  run and it prints, with nothing told about it.
+- **ONE `pushUndo` BEFORE THE GROUP**, so one Ctrl+Z takes the whole model off
+  again. The pieces move individually afterwards, which is the accepted trade
+  for not adding a type.
+- **THE PLACE TOOL IS ONE-SHOT.** It arms, the next tap on a page drops the
+  model, and the tool goes straight back to what it was (`mthPad.prevTool`) — a
+  mode left armed is a mode that drops a second model the next time a child
+  taps the page.
+- **`mthModelLayout` IS THE ONE LAYOUT AND BOTH RENDERERS READ IT**, so the
+  drawing in the pad and the ink on the page cannot disagree about a model the
+  student is copying. **The LAST segment takes whatever is left** rather than
+  its own rounded width, or three equal parts of 268 leave a hairline gap at
+  the end of the bar that reads as a fourth part.
+- **A LABEL IS CHECKED LOCALLY** (`mthLabelNorm`): *"3 units"*, *"3units"* and
+  *"3 UNITS"* are one answer to a child who has understood it, a different
+  number is not, and nothing is sent anywhere to decide it.
+
+### The box
+
+- **IT IS A FLOATING BOX, NOT A MODAL**, the rule 🧩 already carries: the page
+  can still be written on and the tutor still heard while it is open. It closes
+  on Escape, on ✕, on a new worksheet (`loadPdf`) and on leaving the worksheet
+  (`showView`), and `mthRender` refuses to paint a pad whose `epoch` is not the
+  open worksheet's.
+- **ONE FLOATING BOX AT A TIME**: `mthShow` closes the quiz and `kwQuizShow`
+  closes the pad. They can never both be offered on one worksheet, but a
+  worksheet's subject can change under an open box.
+- **`floatBoxLayout` READS BOTH BOXES** (it was `kwQuizLayout`), so the
+  subtitle bar is lifted clear of whichever one is up. Reading one is a spoken
+  answer captioned underneath the box it just set.
+- **MODEL OUTPUT IS PAINTED AS TEXT, never as markup** — the ask, the verdict,
+  the note, every label — exactly like the quiz, the transcript rows and the
+  hint cards.
+- **In live mode the pad is raised AFTER the spoken reply is on its way**,
+  at most one per reply, never while one is being done, and never more often
+  than `MTH_LIVE_GAP_MS`. A box that popped on every "yes" is a box that gets
+  closed unread.
+- **`mthBusyHints` is kept OFF the hint object**, the reason `kwQuizBusyHints`
+  is: a busy flag saved mid-flight comes back true for ever on the next open.
+- **The switch is a PREFERENCE, per device**, and a device that refuses storage
+  still gets the pad: it is the default.
+- Run **`node --test tools/live-tutor-tests.mjs`** and
+  **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 🧩 KEYWORD CHECKS — the concepts rung asked as a question (v1.17.0)
 
 `KWQ_KEY` / `KWQ_RUNG` / `KWQ_MAX_BLANKS` / `KWQ_LIVE_GAP_MS` / `kwQuizPref` /
 `kwQuiz` / `kwQuizBusyHints` / **`kwQuizAllowed`** / `kwQuizLockedNote` /
 `KWQ_SYS` / `kwQuizCeilingRule` / `kwQuizNorm` / `kwQuizKeyAnswers` /
 **`kwQuizGivesAnswer`** / **`kwQuizClean`** / `kwQuizMatch` / **`kwQuizBuild`**
-/ `kwQuizShow` / `kwQuizClose` / `kwQuizLayout` / `kwQuizRender` /
+/ `kwQuizShow` / `kwQuizClose` / **`floatBoxLayout`** / `kwQuizRender` /
 `kwQuizCheck` / `kwQuizSolved` / `kwQuizReveal` / `kwQuizTellTutor` /
 `kwQuizAfterHint` / `kwQuizForHint` / `kwQuizForLive` (search `THE KEYWORD
 QUIZ`), the syllabus it reads — `SYLLABUS_TOPICS` / `sylLevelNum` / `sylNorm` /
@@ -160,7 +296,11 @@ ladder asked as a question rather than read out.
 - **IT SITS ON A RUNG, SO THE CEILING GATES IT.** A quiz hands over exactly
   what the concepts rung hands over, so `kwQuizAllowed` asks the LADDER
   (`rungsAllowed`) whether that rung is allowed and nowhere decides it a second
-  time. Below that level it is shown 🔒 locked on the card and on the hints
+  time. **`kwQuizOffReason` is what it reads** (v1.27.0): the ladder, and
+  before it `mathWorksheet()` — on a maths worksheet the keyword check stands
+  down entirely and the ✏️ maths pad takes its place, and the locked note says
+  which of the two reasons it is, because the level note would be true of a
+  different worksheet and wrong here. Below that level it is shown 🔒 locked on the card and on the hints
   tab, like any other locked rung — and `kwQuizClean` refuses a reply outright
   when the level has changed under it, which is the belt to that brace.
 - **THE KEY NEVER LIFTS THE CEILING**, and this is the one that matters:
@@ -222,8 +362,9 @@ ladder asked as a question rather than read out.
   carries the forms a suffix rule cannot reach.
 - **IT IS A FLOATING BOX, NOT A MODAL.** No backdrop, so the rest of the page
   can still be written on — and in live mode the tutor still heard — while it
-  is open. It lifts `#liveSubs` clear of itself (`kwQuizLayout`), so a spoken
-  answer is never captioned underneath the quiz it just set. Escape and ✕
+  is open. It lifts `#liveSubs` clear of itself (`floatBoxLayout`, which since
+  v1.27.0 reads the ✏️ maths pad too), so a spoken answer is never captioned
+  underneath the box it just set. Escape and ✕
   close it; a new worksheet (`loadPdf`) and leaving the worksheet (`showView`)
   close it too, and `kwQuizRender` refuses to paint a quiz whose `epoch` is
   not the open worksheet's.
@@ -287,6 +428,110 @@ being spoken — translucent grey, black text, centred over the worksheet.
   microphone.
 - Run **`node --test tools/live-tutor-tests.mjs`** after touching any of it.
 
+## ⚡ THE ANSWER ARRIVES SOONER — four changes on one critical path (v1.26.0)
+
+`LIVE_CONTEXT_MAX` / `LIVE_CONTEXT_DOMINANT` / `LIVE_PAGE_PX` / `LIVE_PAGE_QUALITY` /
+`LIVE_STREAM_ON` / `LIVE_STREAM_MAX_APPENDS` / `LIVE_STREAM_MIN_CHARS` /
+`liveWarmContext` / `liveSentenceEnd` / `liveMaySpeak` / **`liveFlush`** and the
+`Promise.all` prep inside `runLiveDelegation` (search `THE ANSWER ARRIVES
+SOONER`), plus the `opts` arm of `worksheetContextPages`, and the two halves of
+the door the live section cannot reach: `onStream` in **`askGeminiDirect`** and
+the `emitted` guard in **`aiAskRoutes`**.
+
+A spoken question used to be answered like this, one after the other: read the
+teaching notes, transcribe the answer key, rasterise up to three pages,
+composite and encode three full-size JPEGs, upload them, and then wait for the
+model to write the LAST word of the LAST sentence before the student heard the
+first. Four things now overlap or shrink, and none of them changes what is
+said.
+
+**Every one of these fails silently.** The tutor still answers — just as slowly
+as before, or (worse) saying something twice — so each is pinned in
+`tools/live-tutor-tests.mjs`, and the two door-level halves in
+`tools/tutor-tests.mjs`.
+
+### ① The reply STREAMS, and `liveFlush` is the ONE place anything is spoken
+
+- **`askGemini` still RETURNS the complete reply.** `onStream` is an optional
+  early-delivery side channel, never the answer, which is what makes a route
+  with no stream behind it — either backup engine, reached through a Cloud
+  Function callable — completely unaffected and simply never call it. **A reply
+  that never streams is spoken through the very same `liveFlush(true)`**: two
+  paths here would be two places for the filler scrub, the fallback line and
+  the 🧩 quiz hand-off to drift.
+- **`raw` and `cursor` are deliberately two different numbers.** `cursor` is
+  how much of the reply has been DEALT WITH — spoken, *or* dropped as filler —
+  so a first chunk that is nothing but "Let me check the worksheet." is
+  consumed without being said and can never come back as part of the tail.
+- **A stop is the end of a sentence only when whitespace AND a capital follow
+  it** (`liveSentenceEnd`). Without that, "e.g." and "2.5 kg" read as
+  boundaries and half a clause is spoken; and a reply still mid-word simply
+  waits for the final flush, which is the safe way to be wrong.
+- **EVERY chunk is scrubbed, not just the first.** A reply spoken whole has
+  always had its filler removed wherever it sat — `liveStripFiller` drops a
+  filler SENTENCE in the middle as well as a leading clause — so scrubbing only
+  the opening would mean streaming and not streaming said different things,
+  which is the one difference this split must not introduce.
+- **`LIVE_STREAM_MAX_APPENDS` (2) reserves its LAST append for the remainder**,
+  so a long reply is never left half-spoken because the budget ran out
+  mid-answer. `LIVE_STREAM_MIN_CHARS` (24) holds a short opening back — the one
+  early append is worth spending on teaching rather than on "Good try." — and
+  it is deliberately low enough to let a real sentence through, because the
+  cost of holding one back is the whole latency win.
+- **`liveMaySpeak()` is asked before every flush**, and the `pendingDelegation`
+  half of it is the one that is easy to lose: once the student has asked
+  something newer, everything still to come answers a question they have moved
+  on from. **Interrupting LATE is stopped by the append budget anyway**, so a
+  test that interrupts after the first sentence passes with the guard removed —
+  it has to interrupt *before* it.
+- **NO ROUTE FALLS BACK ONCE ONE HAS EMITTED** (`aiAskRoutes`), and the
+  thinking-level retry inside `askGeminiDirect` stands down for the same
+  reason. Otherwise a route that streams two sentences and then drops is
+  followed by a backup engine's complete and quite different answer — half of
+  one explanation welded to the whole of another, read aloud to a child.
+- **A reply asked for as `json` is NEVER streamed.** Half an object parses as
+  nothing, and the tolerant parser is the one thing that makes a truncated one
+  survivable.
+- **`LIVE_STREAM_ON` is a kill switch.** False and the reply is assembled whole
+  and spoken in one append exactly as before, with the rest of the file
+  behaving identically — which is what makes it safe to flip. Raising
+  `LIVE_STREAM_MAX_APPENDS` past 2 is a different matter: watch the live
+  model's behaviour on a second commentary append in a real lesson first.
+
+### ② One page, not three, and a smaller picture
+
+`worksheetContextPages({ max, dominant })`. `dominant` is the share of the
+visible area the top page must hold before the rest are dropped: below it the
+student is straddling a boundary and the question may well be about the half
+they can also see. **Called with nothing it is byte-for-byte what it always
+was**, which is what the chat, the hints and `visiblePage()` all get.
+`LIVE_PAGE_PX` came down from 1300 because bytes scale with the square of it;
+`LIVE_PAGE_QUALITY` deliberately did not, because JPEG artefacts on
+handwriting are read as strokes.
+
+### ③ The prep runs side by side
+
+The notes, the key and the rasters are one `Promise.all`. Neither branch needs
+anything the other produces, so serially the shorter one is pure waiting. Two
+orderings are still load-bearing: **the viewport is read FIRST**, before
+anything is awaited (the student asked about what was on screen when they
+spoke), and **the pages are composited LAST**, so the picture carries whatever
+they have typed up to this moment.
+
+### ④ The key and the notes are warmed at session start
+
+`liveWarmContext()`, called before the microphone prompt — granting permission
+and exchanging SDP is several seconds the answer key can be transcribed in for
+free, instead of the first question of every session wearing that whole pass
+with nothing on screen but "Thinking…". **Nothing waits on it and nothing fails
+because of it**: both calls cache, and a refusal is swallowed because it will
+be met again, and REPORTED properly, by `keyEnsureReady` inside the check that
+depends on it. Reporting it here would put an error on screen about a question
+nobody has asked yet.
+
+Run **`node --test tools/live-tutor-tests.mjs`** and **`node
+tools/tutor-tests.mjs`** after touching any of it.
+
 ## Visible answers and quiet Live checks (v1.15.4)
 
 `syncActiveTextEditValue` reads the current contenteditable without committing it,
@@ -298,15 +543,18 @@ exact typed text with page/position and active/selected markers, as untrusted da
 `worksheetContextPages` uses screen-rectangle intersections, orders by visible
 area and includes at most three student-visible pages. Do not fall back to hidden
 key pages or choose a previous-page sliver by offset coordinates. Live and Ask use
-the same context. Keep the answer-key readiness gate and the help ceiling.
+the same context. Keep the answer-key readiness gate and the help ceiling. Called
+with `{max, dominant}` it NARROWS that, for the one caller a student sits waiting
+on — see ⚡ THE ANSWER ARRIVES SOONER.
 
 `liveShareWorksheetContext` sends initial and changed view summaries through
 `session.thinking.append`, with `delegation_id: null` for general context and the
 delegation ID for a check. Appends allow 500 tokens: the silent summary carries
 only page/count metadata and a 60-codepoint text preview; full typed answers stay
 in the delegated check. It does not speak. Progress stays **Thinking…**; only
-the completed teaching result or a useful terminal failure is sent through
-`session.commentary.append`. Do not add spoken acknowledgements or check narration.
+the teaching result — whole, or streamed sentence by sentence as it is written —
+or a useful terminal failure is sent through `session.commentary.append`. Do not
+add spoken acknowledgements or check narration.
 
 Run `node --test tools/live-tutor-tests.mjs tools/check-latency-tests.mjs
 tools/writing-tests.mjs` and `node tools/tutor-tests.mjs` after changing these paths.
@@ -928,6 +1176,130 @@ written into a text box exactly where they tapped.
 - **The bar is FIXED to the viewport, not to the worksheet.** The page under it
   scrolls while a student is speaking, and a ⏹ Done button that scrolls away is
   one they cannot find.
+
+## 📌 WHETHER THE CLASS HAS IT, SAID ON THE CARD (v1.29.0)
+
+**`worksheetSetState`** / `worksheetSetChip` / `worksheetSetBlocker` (beside
+`assignmentUntaggedNote`), **`setAllWorksheets`** / `blockedList` (just above
+`unpushWorksheet`), `unsetWorksheetCount` / `syncSetAllBtn` (just above
+`wsCardNode`), `pushWorksheet`'s `opts.quiet` and its RETURNED outcome, the
+`setSkip` on `uploadOne`'s answer and the `notSet` list in `handleUpload`,
+plus `#setAllBtn` and the `.chip.chipSetOut` / `.chip.chipSetNone` CSS.
+
+A teacher uploaded a term's worth of P5 papers and **not one of them reached a
+student**, because the upload's auto-set had quietly skipped them and nothing
+anywhere said so. The only signal a paper had reached the class was whether its
+button read *"📌 Set for my students"* or *"📌 Set — take it off"* — two words
+apart, on a shelf of thirty cards, and read as decoration rather than as state.
+So a paper nobody was ever given looked EXACTLY like one every student has.
+
+- **`worksheetSetState(w)` IS THE ONE PLACE IT IS DECIDED**, and it is read
+  LIVE off the assignment list the way the locked help level already is
+  (`guidanceRule`). `w.pushed` is a flag on the teacher's OWN copy and it is
+  written SECOND — `unpushWorksheet` clears the assignment first — so a refused
+  second write leaves a paper whose flag says set when it is not.
+  **`assignmentsLoaded` is what tells "not arrived yet" from "taken off the
+  list"**, which want opposite answers: until the list is in, the copy's own
+  flag stands. Four answers, and the two in the middle are the ones worth
+  having: `''` (not the teacher's to set), `'off'`, **`'nobody'`** (SET, and
+  with no level or subject, so on NO shelf) and `'set'`.
+- **`'nobody'` IS NOT A SUCCESS.** The write landed and no child can see it,
+  and those are not the same thing — `pushWorksheet` returns it as a refusal
+  for exactly that reason.
+- **THE CHIP IS THE TEACHER'S ALONE.** A student's shelf holds the papers they
+  were given, so the ones they were NOT given are exactly the ones that are not
+  there to be marked; the word carries it and the colour only reinforces it,
+  the rule the marking's own verdicts follow.
+- **IT IS NOT `.chipSet`, AND IT IS DECLARED AT TWO CLASSES.** `.chipSet`
+  already means *"📌 Set by Mr Chung"* on a student's copy and is written
+  `.chip.chipSet`, so a class-state chip borrowing that name — or written at
+  one class — LOSES to it and comes out in the setter's blue on a card that
+  otherwise looks perfectly right. Same trap as `.shelfHead .shelfBtn`, one
+  rule further down the same stylesheet.
+- **📌 SET THEM ALL, and four rules keep it honest.** It only ever sets what is
+  NOT set (`worksheetSetState`, so a paper already on a shelf keeps the help
+  level, the lock and the key it went out with); **ONE AT A TIME, NEVER IN
+  PARALLEL** — `pushWorksheet` reads and writes the module's own globals and
+  calls `performSave`, so two in flight interleave exactly as two uploads do,
+  and a `Promise.all` in that loop is the one change that must never be made;
+  it ASKS first, naming the count; and **every paper it could not set is NAMED
+  with the reason** (`blockedList`, one wording shared with the batch upload's
+  summary). A refused write says so and carries `assignRulesHint()`.
+- **`opts.quiet` MUST NEVER MEAN A FAILURE NOBODY HEARS ABOUT.** It suppresses
+  the per-paper toast so ten papers are one sentence, and every exit hands the
+  outcome BACK instead; the caller is what names it.
+- **A PUSH THAT FAILED IS NEVER COUNTED AS ONE THAT WENT OUT.** `uploadOne` set
+  `pushed = true` the moment `pushWorksheet` had been CALLED, so a refused
+  write was reported as a paper the class had been given and a batch of ten
+  said *"9 set for the class"* over nine papers no child could see.
+- **AND A SKIP IS NAMED IN A BATCH TOO.** The "could not be set" explanation
+  was `solo`-only, so in a pile of ten it was completely silent and the count
+  was the only clue anything had been left behind — which is the rule
+  📚 UPLOADING is built on, broken in its own section.
+- **`syncSetAllBtn` is painted from `renderWorksheets`**, the one function every
+  path that changes the list already goes through — the reasoning `syncSizeCtl`
+  carries. It SAYS how many are waiting, so the teacher never presses it to
+  find out whether it had anything to do.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
+## 📚 A WHOLE PILE OF PDFs AT ONCE (v1.28.0)
+
+`UPLOAD_MAX_FILES` / `isPdfFile` / `pdfBaseName` / **`uploadName`** /
+**`uploadSettings`** / **`uploadOne`** / **`handleUpload`** (in `index.html`,
+search `📚 UPLOADING — ONE PAPER, OR A WHOLE PILE OF THEM`), plus `multiple` on
+`#fileInput`, its `change` handler, and the three lines of dialog copy that say
+what choosing several changes.
+
+A teacher does not have one worksheet, they have a term's worth, and the picker
+took exactly one. Now it takes as many as they like.
+
+- **`handleUpload(files)` IS THE ONE DOOR and it takes a LIST.** Every route
+  hands its files here — the picker, and anything added later. A route with a
+  pipeline of its own is a route that drifts, and the drift reads as "it works
+  when I drop them and not when I pick them".
+- **THE PAPERS GO UP ONE AT A TIME, NEVER IN PARALLEL, and everything else here
+  rests on that.** The whole pipeline is module globals — `pdfBytes`, `pdfDoc`,
+  `pages`, `wsMeta`, `currentDocId`, `annotations`, `wsKey` — so two in flight
+  interleave and each corrupts the other: paper 3's key pages hidden on paper 7,
+  paper 5's bytes inside paper 2's Storage object. **And the upload still
+  reports success**, which is what makes it the worst failure here. `Promise.all`
+  in that loop is the one change that must never be made.
+- **THE DIALOG IS READ ONCE, BEFORE THE LOOP** (`uploadSettings`), and shut in
+  the same breath — both before the first `await`. Its fields are cleared the
+  next time it opens and the loop has dozens of awaits in it, so a setting read
+  per file hands paper 2 a blank level, on two worksheets that look perfectly
+  right on the shelf.
+- **A NAME BELONGS TO ONE PAPER, and `uploadName` is the ONE place that is
+  decided.** With several files each takes its own file name and the read at
+  upload may improve it; ten worksheets sharing one typed name is a shelf nobody
+  can search. **`typed` comes back from the same call as `name`** because it is
+  what tells `paperApplyRead` whether it may replace the name — computed
+  separately, the two disagree and either a typed name is silently overwritten
+  or a file name is left on a paper the read could have named properly.
+- **THE ATTACHED KEY BELONGS TO ONE PAPER TOO**, so in a batch it goes on the
+  FIRST and the summary names which paper got it. One marking scheme spread over
+  ten papers keys nine of them wrongly, and every one of those nine looks
+  finished.
+- **A FAILURE NEVER SINKS THE BATCH, AND IT IS NAMED.** Each paper is caught on
+  its own and the ones after it still go up; "upload failed" over a pile of ten
+  leaves the teacher with no idea which one to do again. A file that is not a
+  PDF is skipped and named rather than stopping the upload, and past
+  `UPLOAD_MAX_FILES` the rest are COUNTED and left, never dropped in silence.
+- **EVERY PAPER IS OPENED, batch or not** (`showView('ws')` outside the `solo`
+  branch). `paperReadEnds` rasterises the pages and `loadPdf` fits them to a
+  width a hidden view reports as nothing — so the flicker through the pile is
+  the price of the read working at all.
+- **A SINGLE UPLOAD IS BYTE-FOR-BYTE WHAT IT ALWAYS WAS**: it opens the buddy,
+  says *Ready*, names what the read filled in, and explains a paper that could
+  not be set for the class. `if (solo) return;` is what keeps the batch summary
+  off it. **A BATCH ENDS ON THE SHELF** with everything it just filed on it,
+  because the teacher was filing rather than starting work.
+- **PROGRESS IS VISIBLE** (`s.step`). Ten papers behind one toast at the start
+  is an app that looks hung.
+- Run **`node tools/upload-batch-tests.mjs`** after touching any of it. It
+  replaces `uploadOne` with a recorder and runs the REAL door, so what it pins
+  is the door's own rules — including a concurrency counter that goes red the
+  moment two papers are in flight at once.
 
 ## 📖 THE PAPER, READ AT UPLOAD — subject, level, name and key pages off its first and last pages (v1.22.0)
 
@@ -2231,6 +2603,50 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📌 whether the class has it** (`worksheetSetState`,
+  `worksheetSetChip`, `worksheetSetBlocker`, `setAllWorksheets`, `blockedList`,
+  `unsetWorksheetCount`, `syncSetAllBtn`, `pushWorksheet`'s `opts.quiet` or its
+  returned outcome, the `setSkip` on `uploadOne`, the `notSet` list in
+  `handleUpload`, `#setAllBtn` or the `.chip.chipSetOut` /
+  `.chip.chipSetNone` CSS), run
+  `node tools/tutor-tests.mjs` **and** `node tools/upload-batch-tests.mjs`.
+  Every failure here is silent and the shelf still paints — which is the whole
+  fault this answers: a term's worth of papers set for nobody, on a home screen
+  that looked perfectly ordinary. Read `w.pushed` instead of the live
+  assignment and a refused take-off leaves a paper claiming to be set; drop
+  `assignmentsLoaded` and every paper reads as unset for the moment before the
+  list arrives, so the button offers to set the whole shelf again. Fold
+  `'nobody'` into `'set'` and the one case that was already invisible — a paper
+  set with no level or subject, on NO shelf — goes back to being invisible.
+  Draw the chip for a student and their shelf is captioned with a state that
+  can only ever say "not set" about papers they were simply not given. Let
+  `setAllWorksheets` touch a paper that is already set and the help level, the
+  lock and the answer key it went out with are quietly rewritten; `Promise.all`
+  that loop and two papers interleave through the module globals exactly as two
+  uploads do. Let `opts.quiet` swallow the refusal as well as the noise, or
+  stop NAMING what was skipped, and this is the original bug wearing its own
+  fix. And put `pushed = true` back after the call rather than after the
+  ANSWER, and a batch of ten reports nine papers set that no child can see.
+- After touching **📚 uploading a pile of PDFs** (`handleUpload`, `uploadSettings`,
+  `uploadOne`, `uploadName`, `isPdfFile`, `pdfBaseName`, `UPLOAD_MAX_FILES`, the
+  `multiple` on `#fileInput` or its `change` handler), run
+  `node tools/upload-batch-tests.mjs` **and** `node tools/tutor-tests.mjs`. Every
+  failure here is silent and the upload still reports success. **A `Promise.all`
+  in that loop is the worst of them**: the whole pipeline is module globals, so
+  two papers in flight interleave and each corrupts the other — paper 3's key
+  pages hidden on paper 7, paper 5's bytes inside paper 2's Storage object — and
+  nothing on any screen says so. Read the dialog inside the loop and paper 2
+  takes a blank level; close the dialog or clear `upKeyFile` after the loop and
+  the second paper is uploaded against a form the teacher may already have
+  reopened. Use the typed name for every paper and the shelf is ten worksheets
+  with one name; compute `nameTyped` apart from the name and a file name is
+  flagged as one somebody typed, so the read never improves it. Give the
+  attached key to every paper and nine of ten are keyed against a scheme that
+  is not theirs. Let one paper's failure escape the loop and the nine after it
+  are lost; stop NAMING it and the teacher has no idea which one to do again.
+  Move `showView('ws')` inside the `solo` branch and the read fits a hidden
+  page to a width of nothing. And drop `if (solo) return;` and a single upload
+  is buried under a batch summary it was never part of.
 - After touching **👤 the roster promise** (`rosterReset`, `rosterSettled`, `rosterReady`,
   `ROSTER_WAIT_MS`, the `await rosterReady()` in `loadWorksheets`, the `rosterSettled()` in
   `adoptStudents` / `onboardSave` / the sign-in's `.then(rosterSettled, rosterSettled)` / the
@@ -2326,6 +2742,33 @@ the two in step; a fix to either belongs in both.
   Hand an all-filler reply to the speaker and the tutor says "Let me check." and stops. And
   let the frame loop ignore `liveOrbMotionOk` and the sand swirls for a child who asked it not
   to.
+- After touching **✏️ the maths pad** (`mathWorksheet`, `mthAllowed`,
+  `mthModelAllowed`, `mthAnswerAllowed`, `mthArith`, `mthShow`, `mthRender`,
+  `mthWorkCheck`, `mthWorkClean`, `mthTellTutor`, `MTH_MODEL_SYS`,
+  `mthModelCeilingRule`, `mthModelBuild`, `mthModelClean`, `mthModelBlanks`,
+  `mthModelLayout`, `mthModelPlace`, `mthArmPlace`, `mthLabelNorm`,
+  `mthModelCheck`, `mthAfterHint`, `mthAfterLive`, `kwQuizOffReason`,
+  `floatBoxLayout`, the one-shot `model` tool, or the hooks in `askHintAt` /
+  `runLiveDelegation` / `loadPdf` / `showView`), run
+  `node --test tools/live-tutor-tests.mjs` **and** `node tools/tutor-tests.mjs`.
+  Every failure here is silent and the pad still opens looking helpful. Test
+  the subject a second time anywhere and the pad appears on a science worksheet
+  — or the keyword check on a maths one — with nothing on any screen saying
+  which. Put a LADDER test on the working line and the children on *Nudges
+  only* lose the one box in the app that asks them to try something, which is
+  exactly backwards. Take the ladder OFF the model, or refuse it only on the
+  button and not in the handler, and a child on *Nudges only* is handed the
+  method drawn out. Let the unknown be filled in below the top rung — on the
+  drawing or on the page — and the model is the answer with a rectangle round
+  it. Let `mthArith` overrule a *close* as well as a *right* and a regular
+  expression that cannot read working is overruling a model that read the
+  question. Drop the last segment's remainder and three equal parts leave a
+  hairline gap that reads as a fourth. Let the placed model become a new
+  annotation type and it has to be taught to six places, the one that is
+  missed being silent; drop the single `pushUndo` and a model dropped in the
+  wrong place takes forty taps to remove. Leave the place tool armed and the
+  next tap on the page drops a second model. And let `floatBoxLayout` read one
+  box and a spoken answer is captioned underneath the box it just set.
 - After touching **🧩 the keyword check or the syllabus** (`kwQuizAllowed`,
   `kwQuizClean`, `kwQuizGivesAnswer`, `kwQuizKeyAnswers`, `kwQuizMatch`,
   `kwQuizBuild`, `KWQ_SYS`, `kwQuizCeilingRule`, `kwQuizShow`, `kwQuizRender`,
