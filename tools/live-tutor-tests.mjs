@@ -958,6 +958,346 @@ test('failure of an obsolete teaching request stays silent while the latest ques
   h.c.stopLiveTutor();
 });
 
+/* ---------------------------------------------------------------------------
+   THE ANSWER ARRIVES SOONER
+   Four changes, one aim: shorten the wall-clock between a spoken question and
+   the first word of the reply. Every one of them fails SILENTLY — the tutor
+   still answers, just as slowly as before, or (worse) says something twice —
+   so each is pinned here.
+   ------------------------------------------------------------------------ */
+
+/* A stream the test drives by hand. `chunk(text)` is the model having written
+   `text` SO FAR, which is exactly the shape `askGeminiDirect` hands to
+   `onStream`: the whole reply to date, never a delta. `end()` resolves the
+   call with the last thing streamed, as the real route does. */
+function stream() {
+  const done = deferred();
+  let last = '', push = null, calls = 0;
+  return {
+    ai: (prompt, config) => {
+      // Only the FIRST question is this stream. A question asked after it gets
+      // a call of its own that stays open, so anything spoken afterwards is
+      // provably the obsolete answer leaking rather than the new one arriving.
+      if (++calls > 1) return new Promise(() => {});
+      push = config.onStream;
+      return done.promise;
+    },
+    chunk(text) { last = text; if (push) push(text); },
+    end(text) { if (text !== undefined) this.chunk(text); done.resolve(last.trim()); return flush(); },
+    get onStream() { return push; }
+  };
+}
+
+test('the first finished sentence is spoken while the rest is still being written, and is never said twice', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+
+  s.chunk('Look at the arrow on the diagram.');
+  assert.equal(comments(channel).length, 0,
+    'a stop with nothing after it is where the reply has got to, not the end of a sentence');
+  s.chunk('Look at the arrow on the diagram. What');
+  assert.equal(comments(channel).length, 1, 'the first finished sentence goes before the reply is complete');
+  assert.equal(comments(channel)[0].content, 'Look at the arrow on the diagram.');
+  assert.equal(comments(channel)[0].delegation_id, 'teach-a');
+
+  await s.end('Look at the arrow on the diagram. What does it point to?');
+  await work;
+  assert.equal(comments(channel).length, 2, 'the remainder is one further append, never the whole reply again');
+  assert.equal(comments(channel)[1].content, 'What does it point to?');
+  assert.equal(comments(channel).map(e => e.content).join(' '),
+    'Look at the arrow on the diagram. What does it point to?',
+    'every word of the reply is spoken exactly once');
+  h.c.stopLiveTutor();
+});
+
+test('a reply that never streams is still spoken whole, in one append, filler and all removed', async () => {
+  // Either backup engine goes through a Cloud Function callable that cannot
+  // carry a stream, so `onStream` is simply never called. That path must be
+  // byte-for-byte what it was before streaming existed.
+  const h = await connected({ ai: () => 'Okay, let me check the worksheet. Water evaporates in the heat.' });
+  const channel = h.c.liveTutor.channel;
+  await h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  assert.equal(comments(channel).length, 1);
+  assert.equal(comments(channel)[0].content, 'Water evaporates in the heat.');
+  assert.ok(typeof h.calls.ai[0].config.onStream === 'function',
+    'the door is always offered the stream; a route without one just never calls it');
+  h.c.stopLiveTutor();
+});
+
+test('opening filler is consumed rather than spoken, and is not re-sent as part of the remainder', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+
+  s.chunk('Let me check the worksheet. Look');
+  assert.equal(comments(channel).length, 0, 'a first chunk that is nothing but filler says nothing');
+  s.chunk('Let me check the worksheet. Look at the arrow on the diagram. What');
+  assert.equal(comments(channel).length, 1);
+  assert.equal(comments(channel)[0].content, 'Look at the arrow on the diagram.');
+
+  await s.end('Let me check the worksheet. Look at the arrow on the diagram. What does it point to?');
+  await work;
+  assert.equal(comments(channel).length, 2);
+  assert.doesNotMatch(JSON.stringify(comments(channel)), /Let me check/,
+    'filler consumed early must not come back in the tail');
+  h.c.stopLiveTutor();
+});
+
+test('every chunk is scrubbed, so streaming and not streaming say the same thing', async () => {
+  const reply = 'Water evaporates in the heat. Let me check the answer key. The vapour rises.';
+  const whole = await connected({ ai: () => reply });
+  await whole.c.runLiveDelegation('teach-a', whole.c.liveTutor.generation);
+  const spokenWhole = comments(whole.c.liveTutor.channel).map(e => e.content).join(' ');
+  whole.c.stopLiveTutor();
+
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('Water evaporates in the heat. Let');
+  await s.end(reply);
+  await work;
+  const spokenStream = comments(h.c.liveTutor.channel).map(e => e.content).join(' ');
+  assert.doesNotMatch(spokenWhole, /Let me check/);
+  assert.doesNotMatch(spokenStream, /Let me check/,
+    'a filler sentence in the TAIL is dropped too, or the split changes what the tutor says');
+  assert.equal(spokenStream, spokenWhole);
+  h.c.stopLiveTutor();
+});
+
+test('a short opening is held back so the one early append is spent on teaching', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('Good try. Now count the squares along the base.');
+  assert.equal(comments(channel).length, 0, '"Good try." alone is not worth the early append');
+  await s.end('Good try. Now count the squares along the base. How many are there?');
+  await work;
+  assert.match(comments(channel)[0].content, /^Good try\. Now count the squares along the base\.$/,
+    'what was held back is spoken with the teaching that follows it, never dropped');
+  assert.equal(comments(channel).map(e => e.content).join(' '),
+    'Good try. Now count the squares along the base. How many are there?');
+  h.c.stopLiveTutor();
+});
+
+test('a reply is split across at most LIVE_STREAM_MAX_APPENDS, with the last reserved for the remainder', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  const sentences = ['Look at the arrow on the diagram.', 'It points at the water surface.',
+    'That is where evaporation happens.', 'What do you think the arrow shows?'];
+  let so_far = '';
+  for (const part of sentences) {
+    so_far = so_far ? so_far + ' ' + part : part;
+    s.chunk(so_far + ' X');
+  }
+  await s.end(so_far);
+  await work;
+  assert.equal(comments(channel).length, h.c.LIVE_STREAM_MAX_APPENDS);
+  assert.equal(comments(channel).map(e => e.content).join(' ').replace(/ X$/, ''), so_far,
+    'holding the last append back is what stops a long reply being left half-spoken');
+  h.c.stopLiveTutor();
+});
+
+test('a newer question silences the old answer even with an append still to spend', async () => {
+  /* The interruption lands BEFORE the first sentence has finished, so there is
+     budget left and the ONLY thing that can stop the stale answer being spoken
+     is the check that the student has moved on. Interrupt later and the append
+     budget stops it anyway, which would make this test pass with that check
+     removed — a guard nothing pins is a guard that quietly goes. */
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('Look at the arrow');
+  assert.equal(comments(channel).length, 0, 'nothing has finished yet');
+  channel.receive({ type: 'session.delegation.created', delegation: { id: 'teach-b', target: 'client' } });
+  s.chunk('Look at the arrow on the diagram. What does it point to? The water surface.');
+  assert.equal(comments(channel).length, 0,
+    'a finished sentence is not spoken once the question it answers is stale');
+  await s.end();
+  await work;
+  await flush();
+  assert.equal(comments(channel).filter(event => event.delegation_id === 'teach-a').length, 0);
+  assert.doesNotMatch(JSON.stringify(comments(channel)), /water surface/i);
+  assert.equal(h.calls.ai.length, 2, 'the newer question is asked, not swallowed');
+  assert.equal(h.c.liveTutor.phase, 'live', 'a superseded answer is not a lost connection');
+  h.c.stopLiveTutor();
+});
+
+test('an answer already part-spoken stops where it is, and its tail is never said', async () => {
+  // Streaming means a first sentence can be out of the door before the student
+  // interrupts. That much is unavoidable; everything after it is not.
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('Look at the arrow on the diagram. What');
+  assert.equal(comments(channel).length, 1);
+  channel.receive({ type: 'session.delegation.created', delegation: { id: 'teach-b', target: 'client' } });
+  s.chunk('Look at the arrow on the diagram. What does it point to? The water surface.');
+  await s.end();
+  await work;
+  await flush();
+  const stale = comments(channel).filter(event => event.delegation_id === 'teach-a');
+  assert.equal(stale.length, 1, 'the obsolete answer is spoken as far as it got and no further');
+  assert.equal(stale[0].content, 'Look at the arrow on the diagram.');
+  assert.doesNotMatch(JSON.stringify(comments(channel)), /water surface/i);
+  h.c.stopLiveTutor();
+});
+
+test('ending mid-stream speaks nothing further and does not revive the session', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('Look at the arrow on the diagram. What');
+  assert.equal(comments(channel).length, 1);
+  h.c.stopLiveTutor();
+  await flush();
+  s.chunk('Look at the arrow on the diagram. What does it point to? Try it now.');
+  await s.end();
+  await work;
+  assert.equal(comments(channel).length, 1);
+  assert.equal(h.c.liveTutor.phase, 'idle');
+});
+
+test('a route that returns more than it streamed still has its tail spoken', async () => {
+  // The streaming route returns exactly what it last streamed, so this never
+  // fires today. It is pinned because the failure it guards against — the end
+  // of an answer silently never said — shows on no screen.
+  const done = deferred();
+  const h = await connected({
+    ai: (prompt, config) => { config.onStream('Look at the arrow on the diagram. What'); return done.promise; }
+  });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  done.resolve('Look at the arrow on the diagram. What does it point to?');
+  await work;
+  assert.equal(comments(channel).map(e => e.content).join(' '),
+    'Look at the arrow on the diagram. What does it point to?');
+  h.c.stopLiveTutor();
+});
+
+test('a streamed reply that is nothing but filler falls back to asking the question again', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  await s.end('Okay, let me check the worksheet for you.');
+  await work;
+  assert.equal(comments(channel).length, 1);
+  assert.match(comments(channel)[0].content, /say the question again/);
+  h.c.stopLiveTutor();
+});
+
+test('the keyword check is built from what was actually spoken, once, after the reply', async () => {
+  const s = stream();
+  const quizzes = [];
+  const h = await connected({ ai: s.ai, globals: { kwQuizForLive: (gen, question, reply) => quizzes.push(reply) } });
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('Look at the arrow on the diagram. What');
+  assert.equal(quizzes.length, 0, 'a box mid-answer would arrive before the tutor had finished speaking');
+  await s.end('Look at the arrow on the diagram. What does it point to?');
+  await work;
+  assert.deepEqual(quizzes, ['Look at the arrow on the diagram. What does it point to?']);
+  h.c.stopLiveTutor();
+});
+
+test('a live check sends the page under the student’s eye, not three, and a smaller picture', async () => {
+  const shots = [];
+  const h = await connected({ globals: { compositeJpeg: (page, px, quality) => { shots.push({ page: page.num, px, quality }); return 'PAGE_' + page.num; } } });
+  h.element('viewerArea').rect = { top: 100, bottom: 900, left: 50, right: 650 };
+  const page = (num, top, bottom) => ({ num, wrap: { getBoundingClientRect: () => ({ top, bottom, left: 50, right: 650 }) } });
+  const sliver = page(1, -890, 110), reading = page(2, 130, 1130);
+  h.c.pages = [sliver, reading];
+  h.c.studentPages = () => h.c.pages;
+  await h.c.runLiveDelegation('one-page', h.c.liveTutor.generation);
+  assert.deepEqual(shots.map(s => s.page), [2], 'a sliver of the page above is not what the question is about');
+  assert.equal(shots[0].px, h.c.LIVE_PAGE_PX);
+  assert.equal(shots[0].quality, h.c.LIVE_PAGE_QUALITY);
+  assert.ok(h.c.LIVE_PAGE_PX < 1300, 'the picture is smaller than it was, because bytes are seconds');
+  h.c.stopLiveTutor();
+});
+
+test('a student straddling two pages is still sent both, and never more than two', () => {
+  const h = harness();
+  h.element('viewerArea').rect = { top: 0, bottom: 900, left: 50, right: 650 };
+  const page = (num, top, bottom) => ({ num, wrap: { getBoundingClientRect: () => ({ top, bottom, left: 50, right: 650 }) } });
+  const a = page(1, 0, 300), b = page(2, 300, 600), c = page(3, 600, 900);
+  h.c.pages = [a, b, c];
+  h.c.studentPages = () => h.c.pages;
+  const live = { max: h.c.LIVE_CONTEXT_MAX, dominant: h.c.LIVE_CONTEXT_DOMINANT };
+  assert.equal(h.c.worksheetContextPages(live).length, 2,
+    'no page dominates, so the question may be about either — but three is a third of a megabyte for nothing');
+  assert.equal(h.c.worksheetContextPages().length, 3,
+    'called with nothing this is byte-for-byte what every other caller has always had');
+  h.c.pages = [page(1, 0, 860), page(2, 860, 1200)];
+  h.c.studentPages = () => h.c.pages;
+  assert.deepEqual(h.c.worksheetContextPages(live).map(p => p.num), [1]);
+});
+
+test('the notes, the key and the worksheet picture are prepared side by side, not one after the other', async () => {
+  const key = deferred();
+  const rastered = [];
+  const h = await connected({ globals: {
+    keyEnsureReady: () => key.promise,
+    ensurePageRaster: async page => { rastered.push(page.num); }
+  } });
+  const work = h.c.runLiveDelegation('parallel', h.c.liveTutor.generation);
+  await flush();
+  assert.deepEqual(rastered, [1], 'the page is drawn while the key is still being read, not afterwards');
+  assert.equal(h.calls.ai.length, 0, 'the teaching request still waits for the key');
+  key.resolve();
+  await work;
+  assert.equal(h.calls.ai.length, 1);
+  h.c.stopLiveTutor();
+});
+
+test('the key and the notes are read while the microphone is still being granted', async () => {
+  const permission = deferred();
+  let notes = 0, keys = 0;
+  const h = harness({
+    media: () => permission.promise,
+    globals: { loadTeachingNotes: async () => { notes++; }, keyEnsureReady: async () => { keys++; } }
+  });
+  const started = h.c.startLiveTutor();
+  await flush();
+  assert.equal(h.calls.media.length, 1, 'the microphone has been asked for and not yet granted');
+  assert.equal(notes, 1, 'the first question used to wear the whole answer-key pass');
+  assert.equal(keys, 1);
+  permission.resolve(h.stream);
+  await started;
+  h.c.stopLiveTutor();
+});
+
+test('warming the key cannot put an error on screen about a question nobody has asked', async () => {
+  const h = harness({ globals: {
+    loadTeachingNotes: async () => { throw new Error('notes are unreachable'); },
+    keyEnsureReady: () => { throw new Error('the key cannot be read'); }
+  } });
+  await h.c.startLiveTutor();
+  await flush();
+  assert.equal(h.c.liveTutor.phase, 'connecting', 'a warm-up refusal is met again, and reported, by the check that needs it');
+  assert.doesNotMatch(h.c.liveTutor.message + JSON.stringify(h.calls.toast), /unreachable|cannot be read/);
+  h.c.stopLiveTutor();
+});
+
 test('autoplay failure exposes Enable sound and a successful retry removes it', async () => {
   const h = await connected();
   h.c.liveTutor.audio.play = async () => { throw new Error('autoplay blocked'); };

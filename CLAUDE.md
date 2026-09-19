@@ -287,6 +287,110 @@ being spoken — translucent grey, black text, centred over the worksheet.
   microphone.
 - Run **`node --test tools/live-tutor-tests.mjs`** after touching any of it.
 
+## ⚡ THE ANSWER ARRIVES SOONER — four changes on one critical path (v1.26.0)
+
+`LIVE_CONTEXT_MAX` / `LIVE_CONTEXT_DOMINANT` / `LIVE_PAGE_PX` / `LIVE_PAGE_QUALITY` /
+`LIVE_STREAM_ON` / `LIVE_STREAM_MAX_APPENDS` / `LIVE_STREAM_MIN_CHARS` /
+`liveWarmContext` / `liveSentenceEnd` / `liveMaySpeak` / **`liveFlush`** and the
+`Promise.all` prep inside `runLiveDelegation` (search `THE ANSWER ARRIVES
+SOONER`), plus the `opts` arm of `worksheetContextPages`, and the two halves of
+the door the live section cannot reach: `onStream` in **`askGeminiDirect`** and
+the `emitted` guard in **`aiAskRoutes`**.
+
+A spoken question used to be answered like this, one after the other: read the
+teaching notes, transcribe the answer key, rasterise up to three pages,
+composite and encode three full-size JPEGs, upload them, and then wait for the
+model to write the LAST word of the LAST sentence before the student heard the
+first. Four things now overlap or shrink, and none of them changes what is
+said.
+
+**Every one of these fails silently.** The tutor still answers — just as slowly
+as before, or (worse) saying something twice — so each is pinned in
+`tools/live-tutor-tests.mjs`, and the two door-level halves in
+`tools/tutor-tests.mjs`.
+
+### ① The reply STREAMS, and `liveFlush` is the ONE place anything is spoken
+
+- **`askGemini` still RETURNS the complete reply.** `onStream` is an optional
+  early-delivery side channel, never the answer, which is what makes a route
+  with no stream behind it — either backup engine, reached through a Cloud
+  Function callable — completely unaffected and simply never call it. **A reply
+  that never streams is spoken through the very same `liveFlush(true)`**: two
+  paths here would be two places for the filler scrub, the fallback line and
+  the 🧩 quiz hand-off to drift.
+- **`raw` and `cursor` are deliberately two different numbers.** `cursor` is
+  how much of the reply has been DEALT WITH — spoken, *or* dropped as filler —
+  so a first chunk that is nothing but "Let me check the worksheet." is
+  consumed without being said and can never come back as part of the tail.
+- **A stop is the end of a sentence only when whitespace AND a capital follow
+  it** (`liveSentenceEnd`). Without that, "e.g." and "2.5 kg" read as
+  boundaries and half a clause is spoken; and a reply still mid-word simply
+  waits for the final flush, which is the safe way to be wrong.
+- **EVERY chunk is scrubbed, not just the first.** A reply spoken whole has
+  always had its filler removed wherever it sat — `liveStripFiller` drops a
+  filler SENTENCE in the middle as well as a leading clause — so scrubbing only
+  the opening would mean streaming and not streaming said different things,
+  which is the one difference this split must not introduce.
+- **`LIVE_STREAM_MAX_APPENDS` (2) reserves its LAST append for the remainder**,
+  so a long reply is never left half-spoken because the budget ran out
+  mid-answer. `LIVE_STREAM_MIN_CHARS` (24) holds a short opening back — the one
+  early append is worth spending on teaching rather than on "Good try." — and
+  it is deliberately low enough to let a real sentence through, because the
+  cost of holding one back is the whole latency win.
+- **`liveMaySpeak()` is asked before every flush**, and the `pendingDelegation`
+  half of it is the one that is easy to lose: once the student has asked
+  something newer, everything still to come answers a question they have moved
+  on from. **Interrupting LATE is stopped by the append budget anyway**, so a
+  test that interrupts after the first sentence passes with the guard removed —
+  it has to interrupt *before* it.
+- **NO ROUTE FALLS BACK ONCE ONE HAS EMITTED** (`aiAskRoutes`), and the
+  thinking-level retry inside `askGeminiDirect` stands down for the same
+  reason. Otherwise a route that streams two sentences and then drops is
+  followed by a backup engine's complete and quite different answer — half of
+  one explanation welded to the whole of another, read aloud to a child.
+- **A reply asked for as `json` is NEVER streamed.** Half an object parses as
+  nothing, and the tolerant parser is the one thing that makes a truncated one
+  survivable.
+- **`LIVE_STREAM_ON` is a kill switch.** False and the reply is assembled whole
+  and spoken in one append exactly as before, with the rest of the file
+  behaving identically — which is what makes it safe to flip. Raising
+  `LIVE_STREAM_MAX_APPENDS` past 2 is a different matter: watch the live
+  model's behaviour on a second commentary append in a real lesson first.
+
+### ② One page, not three, and a smaller picture
+
+`worksheetContextPages({ max, dominant })`. `dominant` is the share of the
+visible area the top page must hold before the rest are dropped: below it the
+student is straddling a boundary and the question may well be about the half
+they can also see. **Called with nothing it is byte-for-byte what it always
+was**, which is what the chat, the hints and `visiblePage()` all get.
+`LIVE_PAGE_PX` came down from 1300 because bytes scale with the square of it;
+`LIVE_PAGE_QUALITY` deliberately did not, because JPEG artefacts on
+handwriting are read as strokes.
+
+### ③ The prep runs side by side
+
+The notes, the key and the rasters are one `Promise.all`. Neither branch needs
+anything the other produces, so serially the shorter one is pure waiting. Two
+orderings are still load-bearing: **the viewport is read FIRST**, before
+anything is awaited (the student asked about what was on screen when they
+spoke), and **the pages are composited LAST**, so the picture carries whatever
+they have typed up to this moment.
+
+### ④ The key and the notes are warmed at session start
+
+`liveWarmContext()`, called before the microphone prompt — granting permission
+and exchanging SDP is several seconds the answer key can be transcribed in for
+free, instead of the first question of every session wearing that whole pass
+with nothing on screen but "Thinking…". **Nothing waits on it and nothing fails
+because of it**: both calls cache, and a refusal is swallowed because it will
+be met again, and REPORTED properly, by `keyEnsureReady` inside the check that
+depends on it. Reporting it here would put an error on screen about a question
+nobody has asked yet.
+
+Run **`node --test tools/live-tutor-tests.mjs`** and **`node
+tools/tutor-tests.mjs`** after touching any of it.
+
 ## Visible answers and quiet Live checks (v1.15.4)
 
 `syncActiveTextEditValue` reads the current contenteditable without committing it,
@@ -298,15 +402,18 @@ exact typed text with page/position and active/selected markers, as untrusted da
 `worksheetContextPages` uses screen-rectangle intersections, orders by visible
 area and includes at most three student-visible pages. Do not fall back to hidden
 key pages or choose a previous-page sliver by offset coordinates. Live and Ask use
-the same context. Keep the answer-key readiness gate and the help ceiling.
+the same context. Keep the answer-key readiness gate and the help ceiling. Called
+with `{max, dominant}` it NARROWS that, for the one caller a student sits waiting
+on — see ⚡ THE ANSWER ARRIVES SOONER.
 
 `liveShareWorksheetContext` sends initial and changed view summaries through
 `session.thinking.append`, with `delegation_id: null` for general context and the
 delegation ID for a check. Appends allow 500 tokens: the silent summary carries
 only page/count metadata and a 60-codepoint text preview; full typed answers stay
 in the delegated check. It does not speak. Progress stays **Thinking…**; only
-the completed teaching result or a useful terminal failure is sent through
-`session.commentary.append`. Do not add spoken acknowledgements or check narration.
+the teaching result — whole, or streamed sentence by sentence as it is written —
+or a useful terminal failure is sent through `session.commentary.append`. Do not
+add spoken acknowledgements or check narration.
 
 Run `node --test tools/live-tutor-tests.mjs tools/check-latency-tests.mjs
 tools/writing-tests.mjs` and `node tools/tutor-tests.mjs` after changing these paths.
