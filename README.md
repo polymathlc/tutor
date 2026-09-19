@@ -12,6 +12,26 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.14.1 — Deleting your copy of a set worksheet no longer deletes the class's PDF
+
+- **The bug**: a worksheet set for the class shares ONE PDF in Storage — every student's copy
+  points at the teacher's own file. Deleting a student's copy has always left that file alone,
+  but deleting the **teacher's** original took it with it. The assignment stayed on every home
+  screen and every *Start it* / *Carry on* came back *"Object 'tutor-worksheets/…pdf' does not
+  exist"*. The students' work on their copies was untouched — and unreachable.
+- **Now** the delete asks, live off the assignment, whether the class reads the file, and keeps
+  the PDF and the key file when it does. The confirm says so: only your own marks and hints go,
+  the class keeps the worksheet, and withdrawing it is *Take off the list*.
+- **A set worksheet whose PDF has already gone** is caught before a copy is made: *Start it*
+  checks the file first and says, in words, to ask Mr Chung to upload and set it again — instead
+  of leaving a copy that can never be opened. A copy that is already stuck says the same, and
+  that the work on it is kept.
+- **The teacher's home screen flags it.** Every set worksheet is checked against Storage once
+  per sitting, and one whose file has gone wears a warning on its card with Start disabled:
+  take it off the list, upload the worksheet, set it again.
+- **To fix the one already broken**: take that worksheet off the list, upload the PDF again and
+  set it again. Students start a fresh copy of the new one.
+
 ## v1.14.0 — The teacher's corrections reach the buddy
 
 - **Every hint, every chat reply and every mark is now written against the WHOLE of what Mr Chung

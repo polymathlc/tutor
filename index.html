@@ -282,6 +282,7 @@
   .chipGrade { background: #FDF4E3; border-color: #E7BD72; color: #7A5410; }
   .chipScore { background: #EFF8EF; border-color: #CFE7D0; color: #1F5F23; }
   .wsCardFoot { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+  .assignWarn { color: #B4531E; background: #FFF4EC; border: 1px solid #F3D2BC; border-radius: 10px; padding: 8px 10px; line-height: 1.45; }
   .emptyPad { text-align: center; padding: 54px 24px; color: var(--ink-faint); }
   .emptyPad .padIcon { font-size: 42px; }
   .emptyPad .padTitle { font-weight: 700; color: var(--ink); margin-top: 14px; font-size: 1.02rem; }
@@ -1632,7 +1633,7 @@
    ===================================================================== */
 
 /* ================= Constants ================= */
-var APP_VERSION = 'v1.14.0';
+var APP_VERSION = 'v1.14.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -8580,6 +8581,21 @@ async function startAssignment(id) {
   if (mine) { openWorksheet(mine.id); return; }
   toast('Getting “' + (a.name || 'the worksheet') + '” ready…', 15000);
   try {
+    // THE FILE IS CHECKED BEFORE THE COPY IS WRITTEN. `openWorksheet` makes
+    // this same request a moment later anyway; making it first means a
+    // worksheet whose PDF has gone leaves the student with a sentence
+    // rather than a copy that can never be opened — and a copy that, being
+    // there, would make "Carry on" fail for ever instead of "Start it" once.
+    try {
+      await storage.ref(a.storagePath).getDownloadURL();
+    } catch (e) {
+      if (pdfMissingError(e)) {
+        toast('“' + (a.name || 'This worksheet') + '” cannot be started: its PDF is no longer in Storage. ' +
+              'Ask ' + setterName() + ' to upload it and set it again.', 8000);
+        return;
+      }
+      // Any other refusal is left to openWorksheet to report in its own words.
+    }
     var body = JSON.stringify({
       annotations: [], hints: [], marking: { items: [] }, chat: [],
       // The key comes across ALREADY READ, so a class of thirty costs one
@@ -8810,11 +8826,19 @@ function renderAssignments() {
     when.textContent = (a.pageCount ? a.pageCount + ' page' + (a.pageCount === 1 ? '' : 's') + ' · ' : '') +
       (mine ? 'You have started this' : 'Not started yet');
     card.appendChild(when);
+    if (a.pdfMissing) {
+      var warn = document.createElement('div');
+      warn.className = 'hint assignWarn';
+      warn.textContent = '⚠ Its PDF is no longer in Storage, so nobody can open it. ' +
+        'Take it off the list, then upload the worksheet and set it again.';
+      card.appendChild(warn);
+    }
     var foot = document.createElement('div');
     foot.className = 'wsCardFoot';
     var go = document.createElement('button');
     go.className = 'btn btnSm btnPrimary';
     go.textContent = mine ? 'Carry on' : 'Start it';
+    go.disabled = !!a.pdfMissing;
     go.addEventListener('click', function () { startAssignment(a.id); });
     foot.appendChild(go);
     if (isAdmin(currentUser)) {
@@ -8828,6 +8852,30 @@ function renderAssignments() {
     grid.appendChild(card);
   });
   box.appendChild(grid);
+  checkAssignmentPdfs();
+}
+
+/* THE TEACHER IS TOLD WHICH SET WORKSHEETS HAVE LOST THEIR FILE. A set
+   worksheet whose PDF has gone looks, on every home screen, exactly like
+   one that works — until a child presses Start. The teacher is the one
+   person who can put it right, so their own home screen asks Storage
+   whether each set worksheet's file is still there (one metadata request
+   each, once per sitting) and says so on the card. Only the teacher: a
+   student's device may not be allowed to read metadata at all, and a
+   refused read would flag a worksheet that opens perfectly well. */
+function checkAssignmentPdfs() {
+  if (!isAdmin(currentUser) || !assignments.length) return;
+  var pending = assignments.filter(function (a) { return !a.pdfChecked && a.storagePath; });
+  if (!pending.length) return;
+  pending.forEach(function (a) { a.pdfChecked = true; });
+  var flagged = false;
+  Promise.all(pending.map(function (a) {
+    return storage.ref(a.storagePath).getMetadata().then(function () {
+      a.pdfMissing = false;
+    }, function (e) {
+      if (pdfMissingError(e)) { a.pdfMissing = true; flagged = true; }
+    });
+  })).then(function () { if (flagged) renderAssignments(); });
 }
 function chipNode(text, cls) {
   var c = document.createElement('span');
@@ -9236,8 +9284,32 @@ async function openWorksheet(id) {
     ensureCover(id, w.cover).then(function (u) { if (u) renderWorksheets(); });
   } catch (e) {
     console.error(e);
-    toast('Could not open it: ' + ((e && e.message) || e), 6000);
+    toast(openFailureText(e, w), 8000);
   }
+}
+
+/* "Object 'tutor-worksheets/…pdf' does not exist" is true and no use to a
+   student. It means the file behind the worksheet is gone — on a set
+   worksheet, that the teacher's own copy was deleted (which v1.14.1 stops
+   taking the file with it). Say that, and say the work is kept: the copy's
+   ink, hints and marking are in the document and are untouched. */
+function pdfMissingError(e) {
+  var code = (e && e.code) || '';
+  var msg = (e && e.message) || String(e || '');
+  return /object-not-found/.test(code + ' ' + msg);
+}
+function openFailureText(e, w) {
+  var msg = (e && e.message) || String(e);
+  if (pdfMissingError(e)) {
+    if (w && (w.sharedPdf || w.assignmentId)) {
+      return 'The PDF behind this worksheet is no longer in Storage — ' + setterName() +
+             '’s own copy of it was deleted. Ask for it to be uploaded and set again. ' +
+             'Your work on this copy is kept.';
+    }
+    return 'The PDF behind this worksheet is no longer in Storage, so it cannot be opened. ' +
+           'Upload it again to carry on.';
+  }
+  return 'Could not open it: ' + msg;
 }
 
 /* A Firestore timestamp, a Date, a number or nothing — all of which turn up
@@ -9254,22 +9326,61 @@ function stampOf(t) {
   return 0;
 }
 
+/* THE CLASS READS THIS FILE — v1.14.1.
+   A push is a COPY, and what the copies share is the PDF in Storage: every
+   student's copy carries the TEACHER'S `storagePath`, and `sharedPdf` on
+   the copy is what stops a student tidying up from deleting it. The
+   teacher's own original never carried that flag — so the teacher deleting
+   their copy after setting it deleted the ONE file thirty copies read, the
+   assignment stayed on every home screen, and each "Start it" / "Carry on"
+   came back "Object 'tutor-worksheets/…pdf' does not exist". The work on
+   those copies was untouched and unreachable.
+
+   So a worksheet is asked whether the class reads it BEFORE anything is
+   deleted, and the answer is read LIVE off the assignment document rather
+   than off `w.pushed` — that flag is cleared by "Take off the list", and
+   the copies started before it came off the list still read the file. A
+   read that fails keeps the file: a stray PDF costs a few hundred
+   kilobytes, and the other mistake costs a class its worksheet. */
+async function worksheetReadByClass(w) {
+  if (!w) return false;
+  if (w.sharedPdf) return true;              // a student's copy: never theirs to delete
+  if (!isAdmin(currentUser)) return false;   // only the teacher can have set it
+  if (w.pushed) return true;
+  try {
+    var a = await db.collection(ASSIGN_COLLECTION).doc(w.id).get();
+    return a.exists;
+  } catch (e) {
+    console.warn('Could not tell whether the class reads this worksheet', e);
+    return true;
+  }
+}
+
 async function deleteWorksheet(id) {
   var w = worksheets.find(function (x) { return x.id === id; });
   if (!w) return;
-  if (!confirm('Delete “' + (w.name || 'Untitled') + '”? Your marks and hints on it go too. ' +
-               'Anything already in your mistake book stays.')) return;
+  var classReads = await worksheetReadByClass(w);
+  var msg = 'Delete “' + (w.name || 'Untitled') + '”? Your marks and hints on it go too. ' +
+            'Anything already in your mistake book stays.';
+  if (classReads && !w.sharedPdf) {
+    msg = 'Delete your copy of “' + (w.name || 'Untitled') + '”? It is set for your students, ' +
+          'so its PDF stays where the class reads it and anyone who has started it keeps their copy. ' +
+          'Only your own marks and hints on it go. To withdraw it from the class, use ' +
+          '“Take off the list” in 📌 Set for you.';
+  }
+  if (!confirm(msg)) return;
   try {
     // A worksheet SET BY THE TEACHER shares the teacher's PDF rather than
     // holding a copy of it, so deleting a student's own copy must not delete
-    // the file every other student in the class is reading.
-    if (w.storagePath && !w.sharedPdf) { try { await storage.ref(w.storagePath).delete(); } catch (e) {} }
-    if (w.keyPath && !w.sharedPdf) { try { await storage.ref(w.keyPath).delete(); } catch (e) {} }
+    // the file every other student in the class is reading — and neither
+    // must deleting the TEACHER'S copy, which is the one the file belongs to.
+    if (w.storagePath && !w.sharedPdf && !classReads) { try { await storage.ref(w.storagePath).delete(); } catch (e) {} }
+    if (w.keyPath && !w.sharedPdf && !classReads) { try { await storage.ref(w.keyPath).delete(); } catch (e) {} }
     if (w.bodyPath) { try { await storage.ref(w.bodyPath).delete(); } catch (e) {} }
     await db.collection(COLLECTION).doc(id).delete();
     if (currentDocId === id) { currentDocId = null; showView('home'); }
     await loadWorksheets();
-    toast('Deleted.');
+    toast(classReads && !w.sharedPdf ? 'Deleted your copy. The class still has it.' : 'Deleted.');
   } catch (e) { toast('Could not delete it: ' + ((e && e.message) || e), 6000); }
 }
 

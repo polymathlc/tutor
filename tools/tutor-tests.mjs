@@ -815,6 +815,65 @@ const del = html.slice(html.indexOf('async function deleteWorksheet'),
 ok('deleting a copy never deletes the class\'s shared PDF',
    /w\.storagePath && !w\.sharedPdf/.test(del), del.replace(/\s+/g, ' ').slice(0, 300));
 
+/* …AND NEITHER DOES DELETING THE TEACHER'S OWN COPY (v1.14.1). The
+   teacher's original is the one the file BELONGS to and it never carries
+   `sharedPdf`, so before this the teacher tidying up after setting a
+   worksheet deleted the one PDF every student's copy read — the assignment
+   stayed on every home screen and every Start / Carry on came back
+   "Object 'tutor-worksheets/…pdf' does not exist". */
+const delFull = html.slice(html.indexOf('async function deleteWorksheet'),
+                           html.indexOf('/* ---- Uploading ---- */'));
+ok('deleting the TEACHER\'s copy asks whether the class reads it first',
+   /var classReads = await worksheetReadByClass\(w\);/.test(delFull) &&
+   delFull.indexOf('worksheetReadByClass') < delFull.indexOf('storage.ref(w.storagePath).delete()'),
+   'the class check has to come before the file goes');
+ok('…and keeps the PDF and the key file when it does',
+   /w\.storagePath && !w\.sharedPdf && !classReads/.test(delFull) &&
+   /w\.keyPath && !w\.sharedPdf && !classReads/.test(delFull));
+const readByClass = html.slice(html.indexOf('async function worksheetReadByClass'),
+                               html.indexOf('async function deleteWorksheet'));
+ok('the answer is read LIVE off the assignment, not only off `pushed`',
+   /db\.collection\(ASSIGN_COLLECTION\)\.doc\(w\.id\)\.get\(\)/.test(readByClass) &&
+   /return a\.exists;/.test(readByClass),
+   '`pushed` is cleared by Take off the list, and the copies started before that still read the file');
+ok('…and a read that FAILS keeps the file',
+   /catch \(e\) \{[\s\S]{0,200}return true;[\s\S]{0,20}\}/.test(readByClass));
+ok('a student\'s copy never asks — it is never theirs to delete',
+   /if \(w\.sharedPdf\) return true;/.test(readByClass));
+
+/* A set worksheet whose file has gone must not leave a copy behind that can
+   never be opened: the file is checked BEFORE the copy is written. */
+const startA = html.slice(html.indexOf('async function startAssignment'),
+                          html.indexOf('async function startAssignment') + 2600);
+ok('Start it checks the PDF exists before a copy is written',
+   /getDownloadURL\(\)/.test(startA) &&
+   startA.indexOf('getDownloadURL()') < startA.indexOf('db.collection(COLLECTION).doc(docId).set('),
+   'the check has to come before the write');
+ok('…and a missing file is said in words, naming the teacher',
+   /pdfMissingError\(e\)[\s\S]{0,400}setterName\(\)[\s\S]{0,200}return;/.test(startA));
+
+/* "Object … does not exist" is true and no use to a child. */
+const openFail = html.slice(html.indexOf('function openFailureText'), html.indexOf('function openFailureText') + 900);
+ok('a missing PDF on a set worksheet is explained, and the work is said to be kept',
+   /pdfMissingError\(e\)/.test(openFail) && /sharedPdf \|\| w\.assignmentId/.test(openFail) &&
+   /Your work on this copy is kept/.test(openFail));
+ok('…and any other failure still reads as it always did',
+   /return 'Could not open it: ' \+ msg;/.test(openFail));
+ok('openWorksheet reports through it', /toast\(openFailureText\(e, w\)/.test(html));
+
+/* The teacher is told which set worksheets have lost their file — and only
+   the teacher, because a student's device may not be allowed to read
+   metadata at all. */
+const chk = html.slice(html.indexOf('function checkAssignmentPdfs'), html.indexOf('function chipNode'));
+ok('the set-worksheet file check is the teacher\'s only',
+   /if \(!isAdmin\(currentUser\) \|\| !assignments\.length\) return;/.test(chk));
+ok('…asks Storage once per assignment per sitting',
+   /a\.pdfChecked = true/.test(chk) && /getMetadata\(\)/.test(chk));
+ok('…flags only a file that is GONE, never a refused read',
+   /if \(pdfMissingError\(e\)\) \{ a\.pdfMissing = true;/.test(chk));
+ok('…and the card says so and disables Start',
+   /a\.pdfMissing[\s\S]{0,200}assignWarn/.test(html) && /go\.disabled = !!a\.pdfMissing;/.test(html));
+
 /* Setting work for the class writes to a collection every student reads, so
    hiding the button is not the lock. */
 ok('only the teacher can set a worksheet, checked in the handler',
