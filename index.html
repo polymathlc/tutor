@@ -16604,7 +16604,7 @@ async function handleUpload(files) {
   upKeyFile = null;
   $('uploadModal').classList.remove('open');
   var solo = pdfs.length === 1;
-  var done = [], failed = [], pushed = 0;
+  var done = [], failed = [], pushed = 0, keyOn = '';
   for (var n = 0; n < pdfs.length; n++) {
     s.step = solo ? '' : '📚 ' + (n + 1) + ' of ' + pdfs.length + ' · ';
     try {
@@ -16614,6 +16614,10 @@ async function handleUpload(files) {
       var out = await uploadOne(pdfs[n], s, n === 0 ? s.keyFile : null, solo);
       done.push(out);
       if (out.pushed) pushed++;
+      // Which paper the key really landed on — `done[0]` is the first paper
+      // that SUCCEEDED, so with the first one failed it would name a paper
+      // that has no key on it at all.
+      if (n === 0 && s.keyFile) keyOn = out.name;
     } catch (e) {
       console.error(e);
       failed.push(pdfBaseName(pdfs[n]));
@@ -16628,12 +16632,14 @@ async function handleUpload(files) {
   if (done.length) parts.push('📚 ' + done.length + ' worksheet' + (done.length === 1 ? '' : 's') + ' uploaded');
   if (pushed) parts.push(pushed + ' set for the class');
   var msg = parts.length ? parts.join(' · ') + '.' : '';
-  if (s.keyFile && done.length) msg += ' The answer key went on “' + done[0].name + '”.';
+  if (keyOn) msg += ' The answer key went on “' + keyOn + '”.';
+  else if (s.keyFile) msg += ' The answer key went nowhere — the paper it was for could not be read.';
   if (failed.length) msg += ' Could not be read: ' + failed.join(', ') + ' — try those again on their own.';
   if (skipped.length) msg += ' Not PDFs, so skipped: ' + skipped.join(', ') + '.';
   if (over.length) msg += ' ' + over.length + ' more were left out — ' + UPLOAD_MAX_FILES + ' papers is the most in one go.';
   toast(msg.trim() || 'Nothing was uploaded.', 14000);
 }
+
 /* ---- Changing the help level ---- */
 var gradeTarget = null;   // a worksheet id, or null for the open one
 var gradePick = HINT_DEFAULT;

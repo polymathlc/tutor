@@ -185,6 +185,15 @@ section('🔑 A key belongs to ONE paper too');
      lastToast(ctx));
   eq('the held key is cleared before the first paper starts', ctx._state.calls[0].upKeyFile, null);
 }
+{
+  const ctx = makeCtx();
+  ctx.upKeyFile = { name: 'scheme.pdf' };
+  ctx._state.fail = 'one.pdf';
+  await ctx.handleUpload([f('one.pdf'), f('two.pdf')]);
+  ok('a key whose paper FAILED is never claimed to be on another one',
+     !/answer key went on/.test(lastToast(ctx)) && /answer key went nowhere/.test(lastToast(ctx)),
+     lastToast(ctx));
+}
 
 section('⚙️ The dialog is read ONCE, before the loop');
 {
@@ -293,8 +302,11 @@ ok('the papers are awaited ONE AT A TIME',
    'Promise.all here interleaves the module globals and each paper corrupts the other');
 ok('the dialog is read and shut BEFORE the first await',
    /var s = uploadSettings\(\);\n\s*upKeyFile = null;\n\s*\$\('uploadModal'\)\.classList\.remove\('open'\);/.test(html));
+ok('the key is reported against the paper it really landed on',
+   /if \(n === 0 && s\.keyFile\) keyOn = out\.name;/.test(html) && /if \(keyOn\) msg \+=/.test(html),
+   'done[0] is the first paper that SUCCEEDED — with the first one failed it names a paper that has no key');
 ok('every paper is caught on its own',
-   /try \{[\s\S]{0,420}\} catch \(e\) \{[\s\S]{0,200}failed\.push\(pdfBaseName\(pdfs\[n\]\)\);/.test(html),
+   /try \{[\s\S]{0,700}\} catch \(e\) \{[\s\S]{0,200}failed\.push\(pdfBaseName\(pdfs\[n\]\)\);/.test(html),
    'one failure that escapes the loop loses every paper after it');
 ok('a batch goes back to the shelf',
    /if \(solo\) return;[\s\S]{0,120}await loadWorksheets\(\);\n\s*showView\('home'\);/.test(html));
