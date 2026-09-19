@@ -136,6 +136,108 @@ it is handed to the speaker** (`liveStripFiller` on `spokenReply`).
 - Run **`node --test tools/live-tutor-tests.mjs`**, **`node tools/tutor-tests.mjs`** and
   **`cd functions && node --test test/*.test.js`** after touching any of it.
 
+## 👉 THE TUTOR POINTS AT THE PAGE (v1.30.0)
+
+`POINT_SHAPES` / `POINT_DEFAULT_SHAPE` / `POINT_SPAN` / `POINT_R` / `POINT_TAIL` / `POINT_INK` /
+`tutorPoint` / `tutorPointShape` / **`tutorPointMake`** / **`tutorPointGeom`** /
+`tutorPointPaths` / **`tutorPointShow`** / **`tutorPointClear`** / `syncTutorPoint` /
+**`renderTutorPointOn`** (search `THE TUTOR POINTS AT THE PAGE`), the live half —
+`LIVE_POINT_RE` / **`livePointSpec`** / **`livePointStrip`** and the `pointPage` / marker arm of
+`liveFlush` (search `THE POINTER MARKER`) — the `point` field of `HINT_SYS` / `hintLadderFor` /
+`askHintAt` and the 👉 button on `hintCard`, plus `.tutorPoint` / `.tpInk` in the stylesheet and
+`renderTutorPointOn(p)` inside `renderOverlay`.
+
+A human tutor does not only talk: they put a FINGER on the page. *"Look at THIS number"* is a
+sentence AND a gesture, and a child handed only the sentence has to find the number first — which
+is most of what being stuck is. So the tutor circles, underlines, boxes or points an arrow at the
+spot it is talking about, in live mode and on a hint alike.
+
+- **IT IS NEVER INK, and that is the load-bearing part.** The gesture is a `g[data-point]` inside
+  the page's own SVG, exactly like the marking's ticks — NOT in `annotations`. So it cannot be
+  dragged, erased or undone, it is not saved into the body, it never prints, and `drawAnnsOnCtx`
+  never draws it. **Put a tutor's circle in `annotations` and the next marking run reads it as the
+  student's own work**, agrees with a page the tutor wrote on, and no screen anywhere says why the
+  paper marked itself so kindly — the same fault the ticks' own section documents.
+- **IT IS TEMPORARY AND NOTHING HERE SETS A TIMER.** It goes up when the tutor says something
+  about a spot and comes down when the tutor MOVES ON: a new spoken question (`runLiveDelegation`,
+  at `Thinking…` rather than when the reply lands), a new hint (`askHintAt`, BEFORE the pin is
+  pushed), the session ending (beside `liveSubsClear`, where the phase becomes `closing`), a new
+  worksheet (`loadPdf`) and leaving the worksheet (`showView`). That is what a real finger does,
+  it is what the harness's `timers.size === 0` rule requires, and it is why a gesture left
+  standing costs nothing: **`pointer-events: none` is load-bearing**, the rule `#liveSubs`
+  already carries — this sits over a page a child writes on with a stylus.
+- **`_markAt` IS THE ONE READER OF A POSITION** and `tutorPointMake` reuses it rather than parsing
+  `[y, x]` a second time: a point the marking would refuse is a point this refuses, and neither is
+  ever CLAMPED into the page. A clamped point is a guess, and **a finger on the wrong question is
+  worse than no finger at all** — which both prompts say in those words, and the harness counts.
+- **THE MAKER CARRIES NO EPOCH; `tutorPointShow` STAMPS IT.** That split is what lets a hint keep
+  its own gesture on `h.point`, saved into the body with the hints, and put the same finger back
+  months later through the card's 👉 button — a gesture with the epoch baked in would be stale
+  the next time the worksheet opened. `renderTutorPointOn` checks the epoch, the rule every
+  floating box here carries.
+- **ONLY THE 👉 BUTTON SCROLLS** (`tutorPointReveal`, one declaration and exactly one caller). A
+  live reply points at the page the student is ALREADY looking at — `worksheetContextPages` orders
+  by visible area — and a hint is about the spot they just tapped, so neither needs it; a
+  worksheet that scrolled itself while a child was writing on it would be the app taking the page
+  away from them. Somebody pressing *show me where to look* has asked for exactly that.
+- **ONE POINT STILL HAS TO LOOK DELIBERATE** (`tutorPointGeom`, pure). A model that names a spot
+  and no second point is the ORDINARY case — it knows where the question is, not how wide the
+  words are — so every shape has a fallback size. An arrow's HEAD is always the spot (a tail that
+  had to be supplied would make every one-point arrow useless); an underline always runs LEVEL on
+  the first point's line even when handed the far corner of a box, or a rule that sloped down the
+  page reads as a line struck THROUGH the words; a box given its corners backwards still has
+  positive sides; and the circle is an ELLIPSE, because what it goes round is a line of words.
+- **AN UNKNOWN SHAPE BECOMES THE CIRCLE**, which claims the least: it says *here*, where every
+  other shape also says what KIND of thing is here and can be wrong about it.
+- **A GESTURE ALREADY ON THE PAGE IS LEFT ALONE, AND IT IS NEVER DETACHED.** `renderOverlay`
+  rebuilds the whole layer on EVERY committed stroke, so a node rebuilt with it restarts its
+  fade-in and the finger FLASHES each time the child writes a word. Two things stop that and both
+  are needed: `want` (the node's own `data-point`, which is the gesture's identity AND the zoom,
+  because the stroke width is baked into the path) makes `renderTutorPointOn` leave a node that is
+  still right; and the WIPE STEPS OVER IT (`pointNode`) rather than removing it, because taking a
+  node out of the document CANCELS its CSS animation — lifting it out and putting it back, the way
+  the box being typed in is handled, flashes exactly as a rebuild does. That is why the finger is
+  `insertBefore`d as the FIRST child: it sits UNDER the student's own ink, so their work is never
+  covered and the z-order is the same whether it was just drawn or has survived a wipe. The stroke
+  width is screen pixels over the zoom, like the pins, so the finger is the same weight at
+  fit-width and at 400%.
+- **THE BREATHE SETTLES** (`3 both`, never `infinite`). A shape pulsing for ever beside the
+  question a child is working on is one they stop being able to ignore, and it needed an iteration
+  count rather than a timer to stop. `prefers-reduced-motion` drops both animations.
+- **A WHITE HALO UNDER THE INK, NOT A DROP-SHADOW.** This is drawn over printed text, and magenta
+  on black serifs is a line nobody can see. It costs one more path and no filter.
+
+### The two producers
+
+- **A HINT CARRIES ITS GESTURE IN THE JSON IT ALREADY ASKS FOR** — one more field on `HINT_SYS`'s
+  shape, read back through `tutorPointMake(res.point, p.num)` and nowhere else. It is measured on
+  the WHOLE-PAGE picture `hintImagesFor` builds, which is why the page number is this page's. The
+  prompt says **point at the QUESTION, never at the answer**: a finger on where the answer goes is
+  the ladder's own hole through a side door.
+- **A SPOKEN REPLY IS TEXT, STREAMED, so there is no second field to put a gesture in** — a reply
+  asked for as `json` is never streamed at all, and the tolerant parser is the one thing that
+  makes a truncated one survivable. So the tutor opens with ONE marker, `[[point p3 412,300
+  underline]]`, and **it is consumed off the FRONT through the very same `cursor` the opening
+  filler is**: dealt with without being spoken, and unable to come back as part of the remainder.
+- **AN OPEN `[[` WITH NO CLOSE YET WAITS**, before a single character is taken. Without it a
+  half-written marker that happens to contain what reads as a sentence end is CONSUMED, the rest
+  of it is then no longer at the front, and the closing brackets are read aloud to a child while
+  the gesture never goes up at all. Both halves of that are silent in the source.
+- **THE PARSE IS FORGIVING AND THE STRIP IS NOT.** `livePointSpec` takes the numbers and the shape
+  however they were written — and takes the `p3` OUT of the string first, or its own digits are
+  read as the first coordinate and the finger lands at the top of the page. `livePointStrip` then
+  removes ANY `[[…]]` anywhere in a chunk, and an unclosed one at the end, before the speaker sees
+  it: **"open bracket open bracket point four one two" read to a child is the one thing this must
+  never do.** A single `[` is prose and survives — a child reading "[3]" out of a question would
+  lose it otherwise.
+- **A MARKER THAT NAMES NO PAGE MEANS THE DOMINANT ONE.** `pointPage` is `imagePages[0]`, and
+  `worksheetContextPages` orders by VISIBLE AREA, so that is the page the student is looking at.
+  It is assigned before the request starts, which is the only moment `onStream` could fire. With
+  no page to fall back on the marker is REFUSED rather than drawn on page one.
+- Run **`node tools/tutor-tests.mjs`**, **`node --test tools/live-tutor-tests.mjs`** and
+  **`node --test tools/writing-tests.mjs`** after touching any of it — **and watch one live
+  session**: where a finger lands on a real page is the one thing reading the source cannot check.
+
 ## ✏️ THE MATHS PAD — the working line and the drawn model (v1.27.0)
 
 `mathWorksheet` / `MTH_KEY` / `MTH_MODEL_RUNG` / `MTH_SYMBOLS` / `MTH_WORK_MAX` /
@@ -2761,6 +2863,30 @@ the two in step; a fix to either belongs in both.
   Hand an all-filler reply to the speaker and the tutor says "Let me check." and stops. And
   let the frame loop ignore `liveOrbMotionOk` and the sand swirls for a child who asked it not
   to.
+- After touching **👉 the tutor's finger** (`POINT_SHAPES`, `POINT_INK`, `tutorPoint`,
+  `tutorPointShape`, `tutorPointMake`, `tutorPointGeom`, `tutorPointPaths`, `tutorPointShow`,
+  `tutorPointClear`, `syncTutorPoint`, `renderTutorPointOn`, the `renderTutorPointOn(p)` line in
+  `renderOverlay`, `LIVE_POINT_RE`, `livePointSpec`, `livePointStrip`, `pointPage`, the marker arm
+  of `liveFlush`, the `point` field of `HINT_SYS` / `hintLadderFor` / `askHintAt`, the 👉 button on
+  `hintCard`, or the `.tutorPoint` / `.tpInk` CSS), run `node tools/tutor-tests.mjs`,
+  `node --test tools/live-tutor-tests.mjs` and `node --test tools/writing-tests.mjs` **and watch
+  one live session** — where a finger lands on a real page is the one thing reading the source
+  cannot check. **The worst failure here is loud and it is heard by a child**: a marker that stops
+  being consumed is read aloud as "open bracket open bracket point four one two", and one that is
+  half-consumed leaves the closing brackets in the middle of a sentence while the gesture never
+  goes up. The rest are silent. Let the gesture into `annotations` and the next marking run reads
+  the tutor's circle as the student's own work, on a paper that simply marks itself kinder.
+  Take `pointer-events: none` off and it swallows a stroke from the stylus, which reads as the pen
+  having stopped working. Clamp a point into the page instead of refusing it and the finger lands
+  on the wrong question, confidently. Drop the epoch check and a gesture about the last worksheet
+  stands over this one. Miss ONE of the five clears — a new spoken question, a new hint, the
+  session ending, a new worksheet, leaving the worksheet — and a finger points at a question
+  nobody is on any more. Rebuild the node on every overlay pass and the finger flashes each time
+  the child writes a word — and note that lifting it OUT of the wipe and putting it back is the
+  same flash, because detaching a node cancels its animation; let the breathe run `infinite` and
+  it pulses beside the question for ever; `appendChild` it instead of `insertBefore` and it is
+  drawn over the answer it is meant to be helping with. And stop taking the `p3` out of the marker before the numbers are read and its own digits
+  become the first coordinate, so every gesture lands at the top of the page.
 - After touching **✏️ the maths pad** (`MTH_SYMBOLS` or the `.mthKey` size,
   `mathWorksheet`, `mthAllowed`,
   `mthModelAllowed`, `mthAnswerAllowed`, `mthArith`, `mthShow`, `mthRender`,

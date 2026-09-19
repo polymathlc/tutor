@@ -1407,9 +1407,9 @@ ok('the live quiz is built AFTER the spoken reply is on its way, never before it
    'a box that delayed the tutor\'s answer would be a box that made the tutor slow');
 ok('the hint hook builds the quiz in the background, off the hint that just landed', /kwQuizAfterHint\(h, epoch\);/.test(html));
 ok('a new worksheet closes the box', /wsEpoch\+\+;\n\s*kwQuizClose\(\);/.test(html));
-ok('leaving the worksheet closes BOTH floating boxes',
-   /if \(v !== 'ws'\) \{ stopLiveTutor\(\); liveTutor\.transcript = \[\]; kwQuizClose\(\); mthClose\(\); \}/.test(html),
-   'a quiz — or a working line — about a worksheet nobody has open is a box over the wrong page');
+ok('leaving the worksheet closes BOTH floating boxes — and takes the tutor\'s finger with them',
+   /if \(v !== 'ws'\) \{ stopLiveTutor\(\); liveTutor\.transcript = \[\]; kwQuizClose\(\); mthClose\(\); tutorPointClear\(\); \}/.test(html),
+   'a quiz — or a working line, or a gesture — about a worksheet nobody has open is drawn over the wrong page');
 ok('Escape closes the box', /if \(e\.key === 'Escape'\) \{\n\s*kwQuizClose\(\);/.test(html));
 ok('the box paints model output as TEXT, never as markup', !/\.innerHTML\s*=/.test(kqSrc) && /textContent = q\.concept/.test(kqSrc));
 ok('the box is a floating card with no backdrop, and it never prints',
@@ -2327,6 +2327,211 @@ ok('the print rules key off .printMe, never the report\'s id',
    /\.modalBack\.printMe \.modalFoot \{ display: none !important; \}/.test(html));
 ok('there is still no second AI call anywhere in the diagnostic',
    !/askGemini/.test(html.slice(html.indexOf('THE DIAGNOSTIC — every question filed'), html.indexOf('/* ================= The mistake book'))));
+
+/* =====================================================================
+   👉 THE TUTOR POINTS AT THE PAGE
+   ===================================================================== */
+section('The tutor\'s finger');
+
+/* THE ONE READER OF A POSITION. A gesture goes through the marking's own
+   `_markAt`, so a point the tick would refuse this refuses too — and neither
+   is ever clamped, because a clamped point is a guess and a finger on the
+   wrong question is worse than no finger at all. */
+eq('a good point becomes a gesture',
+   S.tutorPointMake({ at: [400, 300], shape: 'underline' }, 2),
+   { page: 2, shape: 'underline', at: { y: 400, x: 300 }, to: null });
+eq('…and a second point rides with it',
+   S.tutorPointMake({ at: [400, 300], to: [400, 700], shape: 'box' }, 1).to, { y: 400, x: 700 });
+ok('a point off the page is REFUSED, never clamped onto it',
+   S.tutorPointMake({ at: [400, 1400] }, 1) === null &&
+   S.tutorPointMake({ at: [-1, 300] }, 1) === null,
+   'a finger on the wrong question is worse than no finger');
+ok('a malformed point is refused',
+   S.tutorPointMake({ at: 'somewhere' }, 1) === null &&
+   S.tutorPointMake({}, 1) === null &&
+   S.tutorPointMake(null, 1) === null);
+ok('a gesture with no page is refused',
+   S.tutorPointMake({ at: [400, 300] }, 0) === null &&
+   S.tutorPointMake({ at: [400, 300] }, undefined) === null,
+   'a page nobody named is a gesture that would be drawn on every page or none');
+eq('an invented shape becomes the circle, which claims the least',
+   S.tutorPointShape('spiral'), 'circle');
+eq('…and so does a missing one', S.tutorPointShape(undefined), 'circle');
+eq('…while a real one survives, however it was written',
+   ['CIRCLE', ' Underline ', 'arrow', 'box'].map(S.tutorPointShape),
+   ['circle', 'underline', 'arrow', 'box']);
+
+/* ONE POINT STILL HAS TO LOOK DELIBERATE. A model that names a spot and no
+   second point is the ordinary case — it knows where the question is, not
+   how wide the words are — so every shape has a fallback size, and a shape
+   that came out as a dot would read as one that failed. */
+const tpW = 1000, tpH = 1400;
+const geom = (spec, page) => S.tutorPointGeom(S.tutorPointMake(spec, page || 1), tpW, tpH);
+
+const uOne = geom({ at: [500, 100], shape: 'underline' });
+ok('a one-point underline is a rule of real width', uOne.x2 - uOne.x1 > tpW * 0.1, JSON.stringify(uOne));
+ok('…and it is LEVEL', uOne.y1 === uOne.y2);
+const uBox = geom({ at: [500, 100], to: [560, 600], shape: 'underline' });
+ok('an underline handed the far corner of a BOX still runs level, on the first point\'s line',
+   uBox.y1 === uBox.y2 && uBox.y1 === tpH * 0.5 && uBox.x2 === tpW * 0.6,
+   'a rule that sloped down the page reads as a line struck THROUGH the words');
+const uBack = geom({ at: [500, 600], to: [500, 100], shape: 'underline' });
+ok('…and one given back-to-front is turned round rather than drawn backwards',
+   uBack.x1 < uBack.x2 && uBack.x1 === tpW * 0.1);
+
+const aOne = geom({ at: [500, 500], shape: 'arrow' });
+ok('an arrow\'s HEAD is the spot, always', aOne.x2 === tpW * 0.5 && aOne.y2 === tpH * 0.5,
+   'an arrow points AT the thing; a tail that had to be supplied would make every one-point arrow useless');
+ok('…and its tail is somewhere else', Math.abs(aOne.x1 - aOne.x2) > tpW * 0.05);
+const aFlat = geom({ at: [500, 500], to: [500, 501], shape: 'arrow' });
+ok('an arrow whose two points are the same point is still an arrow',
+   Math.abs(aFlat.x1 - aFlat.x2) > tpW * 0.05, JSON.stringify(aFlat));
+
+const bOne = geom({ at: [500, 500], shape: 'box' });
+ok('a one-point box is centred on the spot',
+   Math.abs((bOne.x + bOne.w / 2) - tpW * 0.5) < 0.001 && Math.abs((bOne.y + bOne.h / 2) - tpH * 0.5) < 0.001);
+ok('…and has a real size', bOne.w > tpW * 0.1 && bOne.h > tpH * 0.01);
+const bTwo = geom({ at: [400, 700], to: [300, 200], shape: 'box' });
+ok('a box given its corners the wrong way round still has positive sides',
+   bTwo.w > 0 && bTwo.h > 0 && bTwo.x === tpW * 0.2 && bTwo.y === tpH * 0.3, JSON.stringify(bTwo));
+
+const cOne = geom({ at: [500, 500], shape: 'circle' });
+ok('the circle is an ELLIPSE, wider than it is tall', cOne.rx > cOne.ry,
+   'what it goes round is a line of words, not a dot');
+ok('…centred on the spot', cOne.cx === tpW * 0.5 && cOne.cy === tpH * 0.5);
+
+ok('a gesture on a page of no size is refused rather than drawn at the origin',
+   S.tutorPointGeom(S.tutorPointMake({ at: [500, 500] }, 1), 0, 0) === null);
+ok('every shape yields a path', ['circle', 'underline', 'arrow', 'box']
+   .every(k => { const d = S.tutorPointPaths(geom({ at: [500, 500], shape: k })); return d && d.shaft.length > 8; }));
+ok('…and only the arrow grows a head',
+   !!S.tutorPointPaths(geom({ at: [500, 500], shape: 'arrow' })).head &&
+   !S.tutorPointPaths(geom({ at: [500, 500], shape: 'circle' })).head);
+
+/* THE ONE WRITER. The epoch stamp is what stops a gesture about the last
+   worksheet standing over this one — the rule the quiz and the maths pad
+   already carry — and it is stamped on SHOW rather than on MAKE, so a
+   gesture saved on a hint can be put back up months later. */
+S.wsEpoch = 7;
+ok('showing a gesture stamps it with the worksheet it is on',
+   S.tutorPointShow(S.tutorPointMake({ at: [100, 100] }, 1)) === true && S.tutorPoint.epoch === 7);
+ok('…and the maker itself carries no epoch at all',
+   S.tutorPointMake({ at: [100, 100] }, 1).epoch === undefined,
+   'a hint keeps its gesture for months; an epoch baked in would be stale the next time it opened');
+ok('a gesture that could not be read leaves the one on the page alone',
+   S.tutorPointShow(null) === false && S.tutorPoint !== null,
+   'a marker nobody could parse must not take down the finger already pointing');
+S.tutorPointClear();
+ok('…and clearing takes it down', S.tutorPoint === null);
+
+/* =====================================================================
+   …and against index.html itself
+   ===================================================================== */
+section('The tutor\'s finger, against index.html itself');
+
+const POINT_SRC = between('\n   \u{1F449} THE TUTOR POINTS AT THE PAGE',
+                          '/* ================= End the tutor\'s finger', 'the tutor\'s finger');
+
+/* THE ONE THAT MATTERS. A gesture in `annotations` is read by the NEXT
+   marking run as the student's own work — the paper marks itself against a
+   circle the tutor drew, and no screen anywhere says why. */
+ok('the gesture is NEVER pushed into annotations',
+   !/annotations\.push|annotations\s*=/.test(POINT_SRC),
+   'a tutor\'s circle in `annotations` is marked as the student\'s own answer');
+ok('…and the flatten the marking reads never draws it',
+   !/data-point|tutorPoint/.test(html.slice(html.indexOf('function drawAnnsOnCtx('),
+                                            html.indexOf('/* A full-width band of the page'))),
+   'drawAnnsOnCtx is what the marking run and the mistake book see');
+ok('…and it is not in what gets SAVED',
+   !/tutorPoint/.test(html.slice(html.indexOf('function worksheetBody('),
+                                 html.indexOf('function worksheetBody(') + 1600)));
+ok('it lives in the page SVG as its own node, beside the marking\'s ticks',
+   /g\[data-point\]/.test(POINT_SRC) && /'data-point': want/.test(POINT_SRC));
+/* `renderOverlay` rebuilds the whole layer on EVERY committed stroke. A node
+   rebuilt with it restarts its fade-in, so the finger flashes each time the
+   child writes a word — which reads as the app blinking at them. */
+ok('a gesture already on the page is left alone when the overlay rebuilds',
+   /had\[0\]\.getAttribute\('data-point'\) === want\) return;/.test(POINT_SRC));
+/* …and being left alone is only worth anything if the node was never
+   DETACHED: taking one out of the document cancels its CSS animation, so
+   lifting it out and putting it back flashes exactly as a rebuild does. */
+ok('…and the overlay\'s wipe steps over it rather than detaching it',
+   /var pointNode = svg\.querySelector\('g\[data-point\]'\);/.test(html) &&
+   /if \(n !== pointNode\) svg\.removeChild\(n\);/.test(html) &&
+   !/while \(svg\.firstChild\) svg\.removeChild\(svg\.firstChild\);/.test(html),
+   'a detached node flashes its way back in every time the child commits a stroke');
+ok('…and it is drawn UNDER the student\'s own ink',
+   /svg\.insertBefore\(g, svg\.firstChild\);/.test(POINT_SRC) && !/svg\.appendChild\(g\);/.test(POINT_SRC),
+   'a finger over a child\'s answer covers the work it is meant to be helping with');
+ok('…and the zoom is part of what it is, because the stroke width is baked in',
+   /pt\.made \+ ':' \+ Math\.round\(Math\.max\(0\.25, scale\) \* 100\)/.test(POINT_SRC));
+ok('…and the breathe SETTLES rather than pulsing for ever',
+   /animation: tpBreathe [\d.]+s ease-in-out 3 both;/.test(html),
+   'a shape pulsing beside the question a child is working on is one they stop being able to ignore');
+
+/* `pointer-events: none` is the rule `#liveSubs` carries, and for the same
+   reason: this sits over a page a child writes on with a stylus. */
+ok('it can never swallow a stroke',
+   /'pointer-events': 'none'/.test(POINT_SRC) && /\.tutorPoint \{ pointer-events: none;/.test(html));
+ok('NOTHING here sets a timer',
+   !/setTimeout|setInterval/.test(POINT_SRC),
+   'it comes down when the tutor MOVES ON, which is what a real finger does');
+ok('the epoch is checked before it is painted',
+   /pt\.epoch === wsEpoch && pt\.page === p\.num/.test(POINT_SRC),
+   'a gesture about the last worksheet standing over this one is the fault every floating box here guards against');
+ok('the ink is sized in screen pixels over the zoom, like the pins',
+   /3\.6 \/ Math\.max\(0\.25, scale\)/.test(POINT_SRC),
+   'a finger that grew with the zoom would cover the question at 400%');
+ok('it is painted from renderOverlay, the one function every rebuild goes through',
+   /renderPinsOn\(p\);\n\s*renderMarksOn\(p\);\n\s*renderTutorPointOn\(p\);/.test(html));
+
+/* IT COMES DOWN WHEN THE TUTOR MOVES ON, and every one of these is a moment
+   it has. Miss one and a finger points at a question nobody is on. */
+ok('a new worksheet takes it off', /wsEpoch\+\+;[\s\S]{0,400}?tutorPointClear\(\);/.test(html));
+ok('leaving the worksheet takes it off', /if \(v !== 'ws'\)[^\n]*tutorPointClear\(\);/.test(html));
+ok('the session ending takes it off',
+   /liveTutor\.phase = 'closing';\n\s*liveSubsClear\(\);\n\s*tutorPointClear\(\);/.test(html));
+ok('asking for a new hint takes it off BEFORE the new one is built',
+   html.indexOf('tutorPointClear();', html.indexOf('async function askHintAt')) <
+   html.indexOf('hints.push(h);', html.indexOf('async function askHintAt')),
+   'a finger on the last question while "Thinking…" is up points at the wrong thing');
+ok('and a new spoken question takes it off too',
+   /liveStatus\('Thinking…'\);[\s\S]{0,400}?tutorPointClear\(\);/.test(html));
+
+/* THE TWO PRODUCERS. A hint carries its gesture in the JSON it already asks
+   for; the live tutor opens its spoken reply with a marker. Both are told
+   the same thing about being sure. */
+ok('the hint ladder asks for a point',
+   /"point":\{"at":\[412,300\]/.test(html) && /POINTING AT THE PAGE/.test(html));
+ok('…and reads it back through the ONE maker',
+   /point: tutorPointMake\(res\.point, p\.num\)/.test(html));
+ok('…and keeps it ON the hint, so it is saved and can be shown again',
+   /h\.point = out\.point; tutorPointShow\(out\.point\);/.test(html) &&
+   /\u{1F449} Show me where to look/u.test(html));
+ok('…and the hints are saved WHOLE, so the gesture travels with them',
+   /hints: hints,/.test(html.slice(html.indexOf('function worksheetBody()'),
+                                   html.indexOf('function bodyByteLength'))));
+/* Only the BUTTON scrolls. A live reply points at the page the student is
+   already looking at, and a worksheet that scrolled itself while a child was
+   writing on it would be the app taking the page away from them. */
+ok('only an explicit "show me where" brings the page into view',
+   /if \(tutorPointShow\(h\.point\)\) tutorPointReveal\(\);/.test(html) &&
+   (html.match(/tutorPointReveal\(\)/g) || []).length === 2,
+   'tutorPointReveal is its own declaration plus exactly one caller');
+const HINT_SYS_SRC = between('var HINT_SYS =', 'function hintPromptFor(', 'the hint system prompt');
+const LIVE_SYS_SRC = between('You support a live voice tutor.', 'onProgress: function ()', 'the live system prompt');
+ok('BOTH prompts refuse to guess',
+   /a finger on the wrong question is worse/.test(HINT_SYS_SRC) &&
+   /a finger on the wrong question is worse/.test(LIVE_SYS_SRC),
+   'a gesture placed on a guess teaches the wrong question with a straight face');
+ok('\u2026and both measure on the same 0\u20131000 grid the marking\'s ticks use',
+   /0 to 1000/.test(HINT_SYS_SRC) && /0\u20131000 grid/.test(LIVE_SYS_SRC) && /0 to 1000/.test(html.slice(html.indexOf('var MARK_WHERE_RULE'), html.indexOf('var MARK_SYS'))),
+   'two grids is a finger that lands somewhere else on one of the two paths');
+ok('\u2026and both offer the same four shapes',
+   /"circle", "underline", "arrow" or "box"/.test(HINT_SYS_SRC) &&
+   /circle, underline, arrow or box/.test(LIVE_SYS_SRC));
+ok('the hint is told to point at the QUESTION, never the answer',
+   /Point at the QUESTION, never at the answer/.test(html));
 
 /* =====================================================================
    CHUNG GPT

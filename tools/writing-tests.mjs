@@ -31,6 +31,16 @@ function setup(savedMode) {
   class Node {
     constructor(tag) { this.tagName = tag; this.children = []; this.attrs = {}; this.listeners = {}; this.style = {}; this.captures = new Set(); metrics.nodes++; }
     get firstChild() { return this.children[0] || null; }
+    /* A live list in a real DOM; a copy here is enough, because every caller
+       slices it before it removes anything. */
+    get childNodes() { return this.children.slice(); }
+    insertBefore(n, ref) {
+      if (n.parentNode) n.parentNode.removeChild(n);
+      const i = ref ? this.children.indexOf(ref) : -1;
+      if (i >= 0) this.children.splice(i, 0, n); else this.children.push(n);
+      n.parentNode = this;
+      return n;
+    }
     appendChild(n) { if (n.parentNode) n.parentNode.removeChild(n); this.children.push(n); n.parentNode = this; return n; }
     removeChild(n) { this.children.splice(this.children.indexOf(n), 1); n.parentNode = null; }
     replaceChild(n, old) { const i = this.children.indexOf(old); assert(i >= 0); this.children[i] = n; old.parentNode = null; n.parentNode = this; }
@@ -67,7 +77,8 @@ function setup(savedMode) {
     tool: 'pen', color: '#000', strokeW: 3, lineHeads: 'single', lineDash: 'solid', scale: 1,
     newAnnId: () => 'test-' + (++annId), round2: x => Math.round(x * 100) / 100,
     highlightWidthFor: x => x * 4,
-    renderPinsOn: () => {}, renderMarksOn: () => {}, commitActiveTextEdit: () => {},
+    renderPinsOn: () => {}, renderMarksOn: () => {}, renderTutorPointOn: () => {},
+    commitActiveTextEdit: () => {},
     scheduleRaster: () => {}, applyScale: () => {}, toast: () => {},
     askHintAt: () => S.hints++, startVoice: () => S.voices++, startTextBox: () => S.texts++,
     hints: 0, voices: 0, texts: 0, dirtyCalls: 0,

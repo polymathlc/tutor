@@ -83,7 +83,7 @@ function node(tagName = 'div') {
 
 function harness(options = {}) {
   const nodes = new Map();
-  const calls = { media: [], fetch: [], ai: [], toast: [], timers: new Map(), peers: [], audio: [], usage: [], undo: [], tools: [] };
+  const calls = { media: [], fetch: [], ai: [], toast: [], timers: new Map(), peers: [], audio: [], usage: [], undo: [], tools: [], points: [] };
   let nextTimer = 0;
   let annSeq = 0;
   const store = Object.assign({}, options.storage || {});
@@ -201,7 +201,16 @@ function harness(options = {}) {
     },
     escHtml: value => String(value).replace(/[&<>"']/g, ch => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[ch]))
+    }[ch])),
+    /* 👉 The tutor's finger lives outside the live section, so it is stubbed
+       here — RECORDING, not swallowing, because what these checks are about is
+       whether a \`[[point …]]\` marker really raises a gesture and is really
+       never spoken. The MAKER itself (and its refusal to clamp a point into
+       the page) is pinned for real in \`tools/tutor-tests.mjs\`, which has the
+       marking's own \`_markAt\` beside it. */
+    tutorPointMake: (spec, page) => (spec && spec.at ? { page, shape: spec.shape || 'circle', at: spec.at, to: spec.to || null } : null),
+    tutorPointShow(pt) { if (pt) calls.points.push(pt); return !!pt; },
+    tutorPointClear() { calls.points.push(null); }
   };
   c.window = {
     isSecureContext: true, RTCPeerConnection: PeerConnection, addEventListener() {},
@@ -1212,6 +1221,162 @@ test('a route that returns more than it streamed still has its tail spoken', asy
   assert.equal(comments(channel).map(e => e.content).join(' '),
     'Look at the arrow on the diagram. What does it point to?');
   h.c.stopLiveTutor();
+});
+
+/* ------------------------------------------------------------------------
+   👉 THE TUTOR POINTS AT THE PAGE
+
+   A spoken reply is TEXT, streamed, so there is no second field to put a
+   gesture in — a reply asked for as JSON is never streamed at all. So the
+   tutor opens with ONE marker and the marker is consumed off the FRONT of
+   the reply through the very same `cursor` the opening filler is.
+
+   EVERY FAILURE HERE IS HEARD BY A CHILD. A marker that is not consumed is
+   read aloud as "open bracket open bracket point four one two"; one that is
+   consumed twice points at the wrong thing; one that holds the reply up is a
+   tutor that has gone quiet.
+   ------------------------------------------------------------------------ */
+
+test('the pointer marker is read, raises a gesture, and is never spoken', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('[[point p2 412,300 underline]] Look at the arrow on the diagram. What');
+  assert.equal(comments(channel).length, 1);
+  assert.equal(comments(channel)[0].content, 'Look at the arrow on the diagram.',
+    'not one character of the marker reaches the speaker');
+  const raised = h.calls.points.filter(Boolean);
+  assert.equal(raised.length, 1, 'one marker is one gesture');
+  assert.equal(JSON.stringify(raised[0]),
+    JSON.stringify({ page: 2, shape: 'underline', at: [412, 300], to: null }));
+
+  await s.end('[[point p2 412,300 underline]] Look at the arrow on the diagram. What does it point to?');
+  await work;
+  assert.equal(comments(channel).map(e => e.content).join(' '),
+    'Look at the arrow on the diagram. What does it point to?',
+    'the marker cannot come back as part of the remainder either');
+  assert.equal(h.calls.points.filter(Boolean).length, 1, 'and it is never raised twice');
+  h.c.stopLiveTutor();
+});
+
+test('a marker still being written holds the reply back rather than speaking half of it', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('[[point p1 412,3');
+  assert.equal(comments(channel).length, 0, 'an OPEN marker waits for its close');
+  assert.equal(h.calls.points.filter(Boolean).length, 0);
+  s.chunk('[[point p1 412,300 circle]] Look at the arrow on the diagram. What');
+  assert.equal(comments(channel).length, 1, 'and the next chunk finishes it');
+  assert.equal(comments(channel)[0].content, 'Look at the arrow on the diagram.');
+  await s.end('[[point p1 412,300 circle]] Look at the arrow on the diagram. What does it point to?');
+  await work;
+  h.c.stopLiveTutor();
+});
+
+test('\u2026and an unfinished marker is never half-CONSUMED, which is how the closing brackets get spoken', async () => {
+  /* The guard bites when the half-written marker happens to contain what
+     reads as the end of a sentence — a model correcting itself mid-marker.
+     Flushed, that half is consumed (the cursor moves past it) and nothing is
+     said; the REST of the marker is then no longer at the front, so the next
+     flush speaks "…underline]] Look at the arrow." aloud and the gesture is
+     never raised at all. Both halves of that are silent in the source. */
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('[[point p1 412,300 circle. Actually ');
+  s.chunk('[[point p1 412,300 circle. Actually underline]] Look at the arrow. What');
+  await s.end('[[point p1 412,300 circle. Actually underline]] Look at the arrow. What next?');
+  await work;
+  const said = comments(channel).map(e => e.content).join(' ');
+  assert.ok(!/\]\]|\[\[/.test(said), 'a bracket read to a child is the one thing this must never do: ' + said);
+  assert.equal(said, 'Look at the arrow. What next?');
+  assert.equal(h.calls.points.filter(Boolean).length, 1, 'and the gesture still goes up');
+  h.c.stopLiveTutor();
+});
+
+test('a second position rides with the marker', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  await s.end('[[point p3 412,300 412,700 underline]] Read the two numbers again.');
+  await work;
+  assert.equal(JSON.stringify(h.calls.points.filter(Boolean)[0]),
+    JSON.stringify({ page: 3, shape: 'underline', at: [412, 300], to: [412, 700] }));
+  h.c.stopLiveTutor();
+});
+
+test('a marker nobody could read is DROPPED, never spoken and never guessed at', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  await s.end('[[point somewhere near the top]] Look at the arrow on the diagram.');
+  await work;
+  assert.equal(h.calls.points.filter(Boolean).length, 0,
+    'a gesture placed on a guess teaches the wrong question with a straight face');
+  assert.equal(comments(channel).map(e => e.content).join(' '), 'Look at the arrow on the diagram.',
+    'and the teaching is still spoken, without the brackets');
+  h.c.stopLiveTutor();
+});
+
+test('a stray bracket anywhere in the reply is never read aloud', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  await s.end('Look at the diagram. [[point 1,2 box]] What does the arrow point to?');
+  await work;
+  assert.equal(comments(channel).map(e => e.content).join(' '),
+    'Look at the diagram. What does the arrow point to?',
+    '"open bracket open bracket point one comma two box" read to a child is the one thing this must never do');
+  h.c.stopLiveTutor();
+});
+
+test('asking a NEW question takes the last gesture off the page before the answer is written', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  assert.deepEqual(h.calls.points, [null],
+    'the finger comes down the moment the tutor moves on, not when the new reply lands');
+  await s.end('Look at the arrow on the diagram.');
+  await work;
+  h.c.stopLiveTutor();
+});
+
+test('the marker names its own page, and its digits are never read as a position', () => {
+  const c = harness().c;
+  assert.equal(JSON.stringify(c.livePointSpec(' p12 412,300 underline ', 1)),
+    JSON.stringify({ page: 12, shape: 'underline', at: [412, 300] }),
+    'left in, "p12" would be read as the first coordinate and the finger would land at the top of the page');
+  assert.deepEqual(c.livePointSpec(' 412,300 circle ', 4).page, 4,
+    'a marker that names no page means the page the student is looking at');
+  assert.equal(c.livePointSpec(' 412,300 circle ', 0), null,
+    'and with no page to fall back on it is refused rather than drawn on page one');
+  assert.equal(c.livePointSpec(' 412 ', 1), null, 'one number is not a position');
+  assert.equal(c.livePointSpec('', 1), null);
+  assert.equal(c.livePointSpec(' 412,300 ', 1).shape, '',
+    'an unnamed shape is left for tutorPointMake to default, not guessed here');
+});
+
+test('the strip removes a whole marker and an unclosed one, and nothing else', () => {
+  const c = harness().c;
+  assert.equal(c.livePointStrip('[[point 1,2 box]] Say this.'), 'Say this.');
+  assert.equal(c.livePointStrip('Say this. [[oops'), 'Say this.');
+  assert.equal(c.livePointStrip('Say this.'), 'Say this.');
+  assert.equal(c.livePointStrip('The bracket [ and ] on their own survive.'),
+    'The bracket [ and ] on their own survive.',
+    'a single bracket is prose — a child reading "[3]" out of a question would lose it');
 });
 
 test('a streamed reply that is nothing but filler falls back to asking the question again', async () => {
