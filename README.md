@@ -12,6 +12,15 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.25.1 — The stylus harness runs green again
+
+No change to the app. The CI check `node --test tools/*-tests.mjs` had been red on five stylus
+cases since before v1.25.0: the harness cut the overlay renderer out of `index.html` one line
+below the rebuild counter it reads, so the vm threw `overlayRebuilding is not defined`. The cut now
+starts at the counter and the sandbox carries a `setTimeout`, and all 21 cases pass.
+
+---
+
 ## v1.25.0 — Wooden bookshelves, every paper on its shelf, and a posted PDF files itself
 
 **📚 The bookshelves are wooden, and the papers are booklets.** Each shelf is now a plank of timber in

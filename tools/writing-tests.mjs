@@ -13,7 +13,11 @@ function section(start, end) {
 }
 const source = [
   section('/* Unrotated frame of an x/y/w/h annotation.', '/* ================= Undo / redo'),
-  section('function renderOverlay(p) {', '/* ================= Flattening a page'),
+  // From the rebuild COUNTER, not the function under it: `renderOverlay`
+  // reads `overlayRebuilding`, which is declared a few lines above it, and a
+  // cut that starts at the function leaves the vm with a renderer that throws
+  // on its first line.
+  section('var overlayRebuilding = 0;', '/* ================= Flattening a page'),
   section('function drawAnnsOnCtx(ctx, kx, ky, anns, pageNum)', '/* The whole page, with every annotation'),
   section('function eventPoint(e, p, rect)', 'function setTool(t)'),
   section('var stylusOnly = (function () {', 'function translateAnn(a, dx, dy)'),
@@ -55,6 +59,9 @@ function setup(savedMode) {
     $: id => id === 'viewerArea' ? area : null,
     el: (tag, attrs = {}) => { const n = new Node(tag); Object.entries(attrs).forEach(([k, v]) => n.setAttribute(k, v)); return n; },
     requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId; },
+    // The rebuild counter is released on the next turn; a timer that never
+    // fires is enough here, because nothing in these tests reads it back.
+    setTimeout: () => 0, clearTimeout: () => {},
     cancelAnimationFrame: id => frames.delete(id),
     pages: [p], annotations: [], undoStack: [], redoStack: [], selectedId: null, editingId: null,
     tool: 'pen', color: '#000', strokeW: 3, lineHeads: 'single', lineDash: 'solid', scale: 1,
