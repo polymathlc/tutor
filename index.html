@@ -400,19 +400,61 @@
   .wsCard.setCard { border-color: var(--accent-deep, #1E88E5); }
 
   /* ---------- 📚 THE BOOKSHELF ---------- */
-  .shelf { margin: 0 0 30px; }
-  .shelfHead { display: flex; align-items: center; gap: 10px; margin: 0 6px 10px; }
-  .shelfHead h3 { font-size: 1.02rem; font-weight: 800; letter-spacing: .01em; }
-  .shelfCount { font-size: 0.8rem; color: var(--ink-faint); }
-  .shelfBtn { width: 34px; height: 34px; font-size: 1.3rem; line-height: 1; border-radius: 50%; }
+  /* THE WOOD IS DRAWN, NOT DOWNLOADED. A picture of wood grain is one more
+     request on a school wifi that blocks half of them, and a shelf with a
+     broken-image tile behind it is worse than a plain one — so the grain is
+     layered gradients: a warm base, a fine repeating grain, a few wider
+     darker bands so no two rows of the pattern look the same, and a soft
+     light from the top left. The variables are the ONE place the timber's
+     colours live; the plank, the back board and the shelf's sides all
+     read them, so the whole case is one piece of wood. */
+  .shelf {
+    --wood: #A9743F; --wood-dark: #7B4E24; --wood-light: #C89762; --wood-edge: #5E3717;
+    position: relative; margin: 0 0 32px; padding: 16px 12px 22px;
+    border-radius: 14px; color: #FFF7E9;
+    background:
+      radial-gradient(120% 80% at 20% 0%, rgba(255,241,214,.28), rgba(255,241,214,0) 60%),
+      repeating-linear-gradient(90deg,
+        rgba(90,50,20,.22) 0 2px, rgba(0,0,0,0) 2px 7px,
+        rgba(120,72,34,.18) 7px 9px, rgba(0,0,0,0) 9px 23px),
+      repeating-linear-gradient(88deg,
+        rgba(255,214,160,.10) 0 41px, rgba(70,38,12,.16) 41px 55px,
+        rgba(255,226,180,.08) 55px 96px, rgba(60,32,10,.13) 96px 118px),
+      linear-gradient(180deg, var(--wood-light) 0%, var(--wood) 42%, var(--wood-dark) 100%);
+    box-shadow: inset 0 0 0 1px rgba(255,226,180,.18), inset 0 -10px 22px rgba(46,24,6,.35),
+                0 10px 26px rgba(70,40,12,.28);
+  }
+  /* The two uprights of the bookcase, so a row of shelves reads as one
+     case rather than as a stack of planks floating on the page. */
+  .shelf::before, .shelf::after {
+    content: ''; position: absolute; top: 0; bottom: 0; width: 10px; border-radius: 14px 0 0 14px;
+    background: linear-gradient(90deg, var(--wood-edge), var(--wood-dark) 60%, rgba(123,78,36,0));
+    pointer-events: none;
+  }
+  .shelf::before { left: 0; }
+  .shelf::after { right: 0; transform: scaleX(-1); }
+  .shelfHead { display: flex; align-items: center; gap: 10px; margin: 0 8px 12px; }
+  /* The label on the shelf's front: a small brass plate, so the level and
+     subject read in white-on-wood from across a room. */
+  .shelfHead h3 {
+    font-size: 0.98rem; font-weight: 800; letter-spacing: .02em; white-space: nowrap;
+    padding: 5px 13px; border-radius: 8px; color: #3E2711;
+    background: linear-gradient(180deg, #F3DDA3, #D6B36A 55%, #C7A055);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.55), 0 2px 4px rgba(46,24,6,.35);
+  }
+  .shelfCount { font-size: 0.8rem; color: #FFEBC9; text-shadow: 0 1px 1px rgba(46,24,6,.5); }
+  .shelfBtn {
+    width: 34px; height: 34px; font-size: 1.3rem; line-height: 1; border-radius: 50%;
+    background: rgba(255,244,224,.9); color: #4E2E12; border-color: rgba(94,55,23,.4);
+  }
   /* The row is the scroller and the wheel: perspective on the row, the
      cards posed by JS off where the row is scrolled to. Scroll-snap so a
      flick lands ON a paper rather than between two. The horizontal padding
      is what lets the first and last cards reach the middle of the shelf. */
   .shelfRow {
-    display: flex; gap: 18px; overflow-x: auto; overflow-y: visible;
+    display: flex; gap: 22px; overflow-x: auto; overflow-y: visible;
     scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
-    padding: 14px calc(50% - 150px) 26px; scrollbar-width: none;
+    padding: 14px calc(50% - 150px) 18px; scrollbar-width: none;
     perspective: 900px; perspective-origin: 50% 40%;
   }
   .shelfRow::-webkit-scrollbar { display: none; }
@@ -422,19 +464,71 @@
     transition: transform .18s ease-out, opacity .18s ease-out;
   }
   .shelfItem .wsCard { height: 100%; }
-  /* The plank the papers stand on: a warm strip with a shadow under it,
-     which is what makes a row of cards read as a shelf and not a carousel. */
+  /* THE BOOKLET. On a shelf a card is drawn as a stapled booklet standing
+     on the plank: a dark spine down its left edge with two staples in it,
+     the sheets fanning out at the right edge, cream paper, and a shadow on
+     the wood behind it. It is the SAME `.wsCard` — the cover, the chips,
+     every button and every handler — wearing a class the shelf adds, so
+     the booklet changes how a paper looks and never what it does. */
+  .wsCard.booklet {
+    position: relative; background: #FFFDF7; color: var(--ink);
+    border: 1px solid #E2D6C2; border-left: 0; border-radius: 3px 10px 10px 3px;
+    padding-left: 30px;
+    box-shadow:
+      1px 0 0 #F2ECDD, 2px 0 0 #E4DCCB, 3px 0 0 #F2ECDD, 4px 0 0 #DDD3BF,
+      6px 8px 18px rgba(46,24,6,.38);
+  }
+  /* The spine: a strip of darker card with two staples through it. */
+  .wsCard.booklet::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 16px;
+    border-radius: 3px 0 0 3px;
+    background:
+      linear-gradient(180deg, transparent 22%, #8C8C8C 22%, #B9B9B9 23%, #8C8C8C 26%, transparent 26%,
+                      transparent 74%, #8C8C8C 74%, #B9B9B9 75%, #8C8C8C 78%, transparent 78%),
+      linear-gradient(90deg, #2F4858, #4A6377 55%, #3A5265);
+    background-size: 5px 100%, 100% 100%; background-position: 6px 0, 0 0; background-repeat: no-repeat;
+    box-shadow: inset -1px 0 0 rgba(0,0,0,.25);
+  }
+  /* The fold: a soft shadow where the pages meet the spine. */
+  .wsCard.booklet::after {
+    content: ''; position: absolute; left: 16px; top: 0; bottom: 0; width: 14px; pointer-events: none;
+    background: linear-gradient(90deg, rgba(0,0,0,.14), rgba(0,0,0,0));
+  }
+  .wsCard.booklet h3 { color: #2B2118; }
+  /* A set worksheet's booklet has the class's blue spine, and a "not
+     opened yet" chip on its cover, so the ones still to be read stand out
+     from the ones the student has begun. */
+  .wsCard.booklet.setCard { border-color: #BFD3EA; }
+  .wsCard.booklet.setCard::before {
+    background:
+      linear-gradient(180deg, transparent 22%, #8C8C8C 22%, #B9B9B9 23%, #8C8C8C 26%, transparent 26%,
+                      transparent 74%, #8C8C8C 74%, #B9B9B9 75%, #8C8C8C 78%, transparent 78%),
+      linear-gradient(90deg, #1565C0, #1E88E5 55%, #1976D2);
+    background-size: 5px 100%, 100% 100%; background-position: 6px 0, 0 0; background-repeat: no-repeat;
+  }
+  .chip.chipNew { background: #FFF3D6; border-color: #F0C878; color: #7A4E00; font-weight: 700; }
+  /* The plank the booklets stand on: the shelf's own timber, with its
+     front edge lit and a shadow thrown down onto the board below — which
+     is what makes a row of booklets read as standing on a shelf. */
   .shelfPlank {
-    height: 12px; margin: -18px 2px 0; border-radius: 4px;
-    background: linear-gradient(#E8D9C3, #CBB393);
-    box-shadow: 0 6px 12px rgba(0,0,0,.14), inset 0 1px 0 rgba(255,255,255,.55);
+    height: 18px; margin: -12px 4px 0; border-radius: 3px; position: relative; z-index: 2;
+    background:
+      repeating-linear-gradient(90deg, rgba(90,50,20,.16) 0 3px, rgba(0,0,0,0) 3px 9px),
+      linear-gradient(180deg, var(--wood-light) 0%, var(--wood) 45%, var(--wood-edge) 100%);
+    box-shadow: 0 8px 14px rgba(46,24,6,.45), inset 0 1px 0 rgba(255,235,200,.6), inset 0 -2px 0 rgba(46,24,6,.4);
   }
   .chip.chipTopic { background: rgba(0,150,136,.12); color: #00695C; font-weight: 700; }
   .chip.chipSchool { background: rgba(94,53,177,.10); color: #4527A0; }
   @media (max-width: 640px) {
+    .shelf { padding: 12px 8px 18px; }
+    .shelfHead h3 { font-size: 0.9rem; padding: 4px 10px; }
     .shelfItem { flex-basis: 250px; width: 250px; }
     .shelfRow { padding-left: calc(50% - 125px); padding-right: calc(50% - 125px); }
-    .shelfBtn { display: none; }
+    /* `.shelfHead .shelfBtn`, not `.shelfBtn`: the generic `.iconBtn` rule
+       is declared LATER in the sheet and sets `display`, so a bare
+       `.shelfBtn { display: none }` here loses to it and the buttons the
+       row was meant to lose on a phone stay. Two classes outrank one. */
+    .shelfHead .shelfBtn { display: none; }
   }
   @media (prefers-reduced-motion: reduce) { .shelfItem { transition: none; } }
   .chip.chipSet { background: rgba(30,136,229,.12); color: var(--accent-deep, #1E88E5); font-weight: 700; }
@@ -1400,11 +1494,12 @@
         <div id="homeSignedIn" class="hidden">
           <div id="assignSection" class="hidden">
             <div class="sectionHead">
-              <h2>📌 Set for you</h2>
+              <h2>📌 Set for the class</h2>
             </div>
             <p class="sub" style="margin:0 4px 16px">
-              Worksheets your teacher has set. Start one and you get your own copy to write on — Chung GPT
-              already has its answer key, so it can mark you against the real thing.
+              Every worksheet set for your students, at every level. Each one stands on the shelf of the level
+              and subject it is for; a student starts it there and gets their own copy to write on — Chung GPT
+              already has its answer key, so it can mark them against the real thing.
             </p>
             <div id="assignList"></div>
             <div style="height:34px"></div>
@@ -1631,8 +1726,10 @@
       <div id="upPushWrap" class="hidden" style="margin-top:22px">
         <label class="keyRow" for="upPush" style="cursor:pointer">
           <input type="checkbox" id="upPush">
-          <span><b>📌 Set this for my students</b>
-            <span class="dim">— everyone signed in gets their own copy to write on, with this key behind it.</span>
+          <span><b>📌 Put it on my students’ shelves</b>
+            <span class="dim">— it goes straight onto the shelf of the level and subject it is for (read off the
+            paper when the pickers above are left blank), and every student in that class gets their own copy
+            to write on, with this key behind it. Untick it for a paper of your own.</span>
           </span>
         </label>
       </div>
@@ -2012,7 +2109,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.24.0';
+var APP_VERSION = 'v1.25.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -13668,6 +13765,43 @@ function shelfNudge(row, dir) {
   catch (e) { row.scrollLeft += dir * step; }
 }
 
+/* EVERY PAPER A STUDENT HAS IS ON A SHELF, opened or not (v1.25.0). A set
+   worksheet used to wait in its own "📌 Set for you" section until it was
+   started, so a shelf showed only what a child had already begun — the
+   opposite of a bookshelf, which is where you go to find the one you have
+   NOT read yet. `shelfEntries` is the ONE place the two lists become one:
+   every worksheet of the student's own, plus every set worksheet for them
+   that they have not started, standing on the shelf its level and subject
+   file it under with "Start it" on its spine. It is PURE — a set worksheet
+   is counted as started when any own worksheet is its copy
+   (`assignmentId`) or IS it (the teacher's own upload carries the
+   assignment's id), so the same paper is never on a shelf twice — and a set
+   entry wears the fields `shelfGroups` files by (level, subject, topic, the
+   set date as its stamp) so a paper the class has not opened is filed by
+   topic beside the ones it has. Nothing is filtered here: `sets` arrives
+   already narrowed by `assignmentsForMe`. */
+function shelfEntries(own, sets) {
+  var out = (own || []).filter(Boolean).slice();
+  var have = {};
+  out.forEach(function (w) {
+    if (w.id) have[w.id] = true;
+    if (w.assignmentId) have[w.assignmentId] = true;
+  });
+  (sets || []).forEach(function (a) {
+    if (!a || !a.id || have[a.id]) return;
+    have[a.id] = true;
+    out.push({
+      id: 'set:' + a.id, set: a,
+      name: a.name || 'Worksheet',
+      level: a.level || '', subject: a.subject || '',
+      topic: a.topic || '', school: a.school || '',
+      pageCount: a.pageCount || 0,
+      updatedAt: a.createdAt || 0
+    });
+  });
+  return out;
+}
+
 /* ---- The worksheet list ---- */
 function renderWorksheets() {
   var box = $('wsList');
@@ -13677,7 +13811,11 @@ function renderWorksheets() {
   // have to be painted from the same moment or a card says "not started"
   // about a worksheet they are half way through.
   renderAssignments();
-  if (!worksheets.length) {
+  // The set worksheets stand on the shelves too — the ones this student
+  // has not opened yet beside the ones they have — so the shelf is every
+  // paper they have, not only the ones they have begun.
+  var entries = shelfEntries(worksheets, assignmentsForMe());
+  if (!entries.length) {
     var pad = document.createElement('div');
     pad.className = 'emptyPad';
     pad.innerHTML = '<div class="padIcon">📄</div>' +
@@ -13688,7 +13826,7 @@ function renderWorksheets() {
   }
   // THE BOOKSHELF: one shelf per level and subject, each a wheel of paper
   // that scrolls sideways, filed by topic along the shelf.
-  var groups = shelfGroups(worksheets);
+  var groups = shelfGroups(entries);
   groups.forEach(function (g) { box.appendChild(shelfNode(g)); });
 }
 
@@ -13727,7 +13865,11 @@ function shelfNode(g) {
   g.items.forEach(function (w) {
     var item = document.createElement('div');
     item.className = 'shelfItem';
-    item.appendChild(wsCardNode(w));
+    // A set worksheet not yet started is the class's booklet with "Start
+    // it" on it; everything else is the student's own.
+    var card = w.set ? setCardNode(w.set) : wsCardNode(w);
+    card.classList.add('booklet');
+    item.appendChild(card);
     row.appendChild(item);
   });
   shelf.appendChild(row);
@@ -13910,7 +14052,7 @@ async function startAssignment(id) {
   // for a level this student is not is one `loadWorksheets` filters out and
   // `openWorksheet` cannot find — a worksheet that "starts" and never opens,
   // plus one more hidden copy per press. Said in words instead.
-  if (!canSeeWorksheet(a)) { toast(assignmentNotMineText(a), 8000); return; }
+  if (!canSeeAssignment(a)) { toast(assignmentNotMineText(a), 8000); return; }
   var mine = myCopyOf(a);
   if (mine) { openWorksheet(mine.id); return; }
   toast('Getting “' + (a.name || 'the worksheet') + '” ready…', 15000);
@@ -14063,6 +14205,10 @@ async function pushWorksheet(id, level, locked) {
       name: w.name || 'Worksheet',
       level: w.level || '',
       subject: w.subject || '',
+      // The shelf files a paper by its topic, so a set paper nobody has
+      // opened yet stands beside the ones on the same topic they have.
+      topic: w.topic || '',
+      school: w.school || '',
       guidance: level,
       // Read LIVE by every copy when it is locked, so changing it here
       // changes it for the students who started yesterday too.
@@ -14093,9 +14239,12 @@ async function pushWorksheet(id, level, locked) {
     w.pushed = true;
     renderWorksheets();
     await loadAssignments();
+    var shelfOf = (w.level && w.subject)
+      ? ' It is on every ' + levelLabel(w.level) + ' ' + subjectLabel(w.subject) + ' student’s shelf.'
+      : ' ⚠ It has no level and subject, so it is on nobody’s shelf yet.';
     toast('📌 Set at “' + guidanceLabel(level) + '”' +
-          (locked ? ', locked' : ' — they can change it') + '.' +
-          (rows.length ? ' The key went with it (' + rows.length + ' answers).' : ''), 6000);
+          (locked ? ', locked' : ' — they can change it') + '.' + shelfOf +
+          (rows.length ? ' The key went with it (' + rows.length + ' answers).' : ''), 8000);
   } catch (e) {
     console.error(e);
     // NAMED, never "could not save": a denied write here is one missing
@@ -14124,70 +14273,88 @@ async function unpushWorksheet(id) {
   } catch (e) { toast('Could not take it off the list: ' + ((e && e.message) || e), 6000); }
 }
 
+/* One SET worksheet's card — on a student's shelf before they start it, and
+   in the teacher's class list. ONE node for both, so the shelf and the list
+   can never disagree about what a set paper says or does. */
+function setCardNode(a) {
+  var mine = myCopyOf(a);
+  var card = document.createElement('div');
+  card.className = 'wsCard setCard';
+  card.appendChild(coverNode(a));
+  var h = document.createElement('h3');
+  h.textContent = a.name || 'Worksheet';
+  card.appendChild(h);
+  var meta = document.createElement('div');
+  meta.className = 'wsMeta';
+  meta.appendChild(chipNode('📌 Set by ' + setterName(), 'chip chipSet'));
+  meta.appendChild(chipNode((a.guidanceLocked ? '🔒 ' : '💡 ') +
+    guidanceLabel(a.guidance || HINT_DEFAULT), 'chip chipGrade'));
+  if (a.level) meta.appendChild(chipNode(levelLabel(a.level), 'chip chipLevel'));
+  if (a.subject) meta.appendChild(chipNode(subjectLabel(a.subject), 'chip'));
+  if (a.topic) meta.appendChild(chipNode('📖 ' + a.topic, 'chip chipTopic'));
+  if (a.school) meta.appendChild(chipNode('🏫 ' + a.school, 'chip chipSchool'));
+  if (mine && mine.score && mine.score.attempted) {
+    meta.appendChild(chipNode('✅ ' + mine.score.correct + '/' + mine.score.attempted, 'chip chipScore'));
+  }
+  if (!mine) meta.appendChild(chipNode('✨ Not opened yet', 'chip chipNew'));
+  card.appendChild(meta);
+  var when = document.createElement('div');
+  when.className = 'hint';
+  when.textContent = (a.pageCount ? a.pageCount + ' page' + (a.pageCount === 1 ? '' : 's') + ' · ' : '') +
+    (mine ? 'You have started this' : 'Not started yet');
+  card.appendChild(when);
+  if (a.pdfMissing) {
+    var warn = document.createElement('div');
+    warn.className = 'hint assignWarn';
+    warn.textContent = '⚠ Its PDF is no longer in Storage, so nobody can open it. ' +
+      'Take it off the list, then upload the worksheet and set it again.';
+    card.appendChild(warn);
+  }
+  // The teacher is told a paper with no level or subject reaches no shelf:
+  // to a student it is simply not there, and only the teacher can fix it.
+  var untagged = isAdmin(currentUser) ? assignmentUntaggedNote(a) : '';
+  if (untagged) {
+    var tagWarn = document.createElement('div');
+    tagWarn.className = 'hint assignWarn';
+    tagWarn.textContent = untagged;
+    card.appendChild(tagWarn);
+  }
+  var foot = document.createElement('div');
+  foot.className = 'wsCardFoot';
+  var go = document.createElement('button');
+  go.className = 'btn btnSm btnPrimary';
+  go.textContent = mine ? 'Carry on' : 'Start it';
+  go.disabled = !!a.pdfMissing;
+  go.addEventListener('click', function () { startAssignment(a.id); });
+  foot.appendChild(go);
+  if (isAdmin(currentUser)) {
+    var off = document.createElement('button');
+    off.className = 'btn btnSm';
+    off.textContent = 'Take off the list';
+    off.addEventListener('click', function () { unpushWorksheet(a.id); });
+    foot.appendChild(off);
+  }
+  card.appendChild(foot);
+  return card;
+}
+
 function renderAssignments() {
   var box = $('assignList');
   var sec = $('assignSection');
   if (!box || !sec) return;
-  // Only the worksheets set for THIS student's level and subject — the same
-  // rule their own list obeys. The teacher sees every one.
-  var list = assignmentsForMe();
-  // A student with none of these should not be looking at an empty heading
-  // for a feature they may never see used.
+  // THE TEACHER'S LIST, and nobody else's. A student's set worksheets stand
+  // on their shelves now (`shelfEntries`), opened or not, so a second list
+  // of the same papers above the shelves is the same paper twice. The
+  // teacher's own shelves hold their own uploads; this list is where they
+  // see what is set for the whole centre, at every level, and take one off.
+  var list = isAdmin(currentUser) ? assignmentsForMe() : [];
   var show = list.length > 0;
   sec.classList.toggle('hidden', !show);
   box.innerHTML = '';
   if (!show) return;
   var grid = document.createElement('div');
   grid.className = 'wsGrid';
-  list.forEach(function (a) {
-    var mine = myCopyOf(a);
-    var card = document.createElement('div');
-    card.className = 'wsCard setCard';
-    card.appendChild(coverNode(a));
-    var h = document.createElement('h3');
-    h.textContent = a.name || 'Worksheet';
-    card.appendChild(h);
-    var meta = document.createElement('div');
-    meta.className = 'wsMeta';
-    meta.appendChild(chipNode('📌 Set by ' + setterName(), 'chip chipSet'));
-    meta.appendChild(chipNode((a.guidanceLocked ? '🔒 ' : '💡 ') +
-      guidanceLabel(a.guidance || HINT_DEFAULT), 'chip chipGrade'));
-    if (a.level) meta.appendChild(chipNode(levelLabel(a.level), 'chip chipLevel'));
-    if (a.subject) meta.appendChild(chipNode(subjectLabel(a.subject), 'chip'));
-    if (mine && mine.score && mine.score.attempted) {
-      meta.appendChild(chipNode('✅ ' + mine.score.correct + '/' + mine.score.attempted, 'chip chipScore'));
-    }
-    card.appendChild(meta);
-    var when = document.createElement('div');
-    when.className = 'hint';
-    when.textContent = (a.pageCount ? a.pageCount + ' page' + (a.pageCount === 1 ? '' : 's') + ' · ' : '') +
-      (mine ? 'You have started this' : 'Not started yet');
-    card.appendChild(when);
-    if (a.pdfMissing) {
-      var warn = document.createElement('div');
-      warn.className = 'hint assignWarn';
-      warn.textContent = '⚠ Its PDF is no longer in Storage, so nobody can open it. ' +
-        'Take it off the list, then upload the worksheet and set it again.';
-      card.appendChild(warn);
-    }
-    var foot = document.createElement('div');
-    foot.className = 'wsCardFoot';
-    var go = document.createElement('button');
-    go.className = 'btn btnSm btnPrimary';
-    go.textContent = mine ? 'Carry on' : 'Start it';
-    go.disabled = !!a.pdfMissing;
-    go.addEventListener('click', function () { startAssignment(a.id); });
-    foot.appendChild(go);
-    if (isAdmin(currentUser)) {
-      var off = document.createElement('button');
-      off.className = 'btn btnSm';
-      off.textContent = 'Take off the list';
-      off.addEventListener('click', function () { unpushWorksheet(a.id); });
-      foot.appendChild(off);
-    }
-    card.appendChild(foot);
-    grid.appendChild(card);
-  });
+  list.forEach(function (a) { grid.appendChild(setCardNode(a)); });
   box.appendChild(grid);
   checkAssignmentPdfs();
 }
@@ -14811,9 +14978,12 @@ function openUploadModal() {
   upKeyFile = null;
   $('upKeyName').textContent = '';
   var push = $('upPush');
-  if (push) push.checked = false;
-  // Setting work for the class is the teacher's, and it is checked again in
-  // pushWorksheet — hiding the box is not the lock.
+  // ON by default for the teacher (v1.25.0): a PDF the teacher posts goes
+  // straight onto the shelf of the level and subject it is for, read off
+  // the paper when the pickers are left blank. Untick it for a paper of
+  // their own. Setting work for the class is the teacher's, and it is
+  // checked again in pushWorksheet — hiding the box is not the lock.
+  if (push) push.checked = isAdmin(currentUser);
   $('upPushWrap').classList.toggle('hidden', !isAdmin(currentUser));
   fillGradeGrid('upGradeGrid', upGrade, function (k) { upGrade = k; });
   $('uploadModal').classList.add('open');
@@ -14921,7 +15091,21 @@ async function handleUpload(file) {
     // before it has run a marking scheme on page 1 is still an ordinary page.
     await ensureCover(id, '');
     if (got.filled.length) await loadWorksheets();
-    if (pushIt) { await loadWorksheets(); await pushWorksheet(id); }
+    // AUTO-SET (v1.25.0). The teacher's PDF is set for the class the moment
+    // it is uploaded, and it lands on the shelf its level and subject file
+    // it under — the ones chosen in the dialog, or the ones Chung GPT read
+    // off the cover. It is set AFTER the read and the key scan, so the
+    // level, the subject and the hidden key pages all travel with it; a
+    // paper whose level or subject is still unknown is NOT set, because a
+    // paper set for no level is on nobody's shelf and looks, to the
+    // teacher, exactly like one that went out.
+    if (pushIt) {
+      await loadWorksheets();
+      if (got.level && got.subject) await pushWorksheet(id);
+      else toast('Uploaded, but not set for the class: Chung GPT could not tell its ' +
+                 (!got.level && !got.subject ? 'level or subject' : !got.level ? 'level' : 'subject') +
+                 ' from the paper. Upload it again with them chosen, and it will go on that shelf.', 10000);
+    }
   } catch (e) {
     console.error(e);
     toast('Upload failed: ' + ((e && e.message) || e), 6000);
@@ -15566,18 +15750,49 @@ function canSeeWorksheet(w) {
   return studentSubjectList(st).indexOf(w.subject) !== -1;
 }
 
-/* THE SET LIST GOES THROUGH THE SAME RULE (v1.23.1). A set worksheet
-   carries the level and the subject the teacher gave it, so the ONE
-   predicate that decides a student's own list decides the class list too.
-   Until this the "📌 Set for you" section painted every active assignment
-   for every student — a P5 Maths paper on a P6 account — and pressing Start
-   on it wrote a P5 copy that `loadWorksheets` then filtered straight back
-   out, so `openWorksheet` found nothing and returned without a word: the
-   toast said "Getting it ready…" and nothing happened, and every press
-   after that wrote another invisible copy. The teacher still sees all of
-   them (`canSeeWorksheet` says so), which is how they take one off. */
+/* THE SET LIST GOES THROUGH A RULE OF ITS OWN (v1.23.1, tightened v1.25.0).
+   A set worksheet carries the level and the subject the teacher gave it —
+   or that Chung GPT read off its cover — and a student is shown ONLY the
+   ones set for their own level AND a subject they take. `canSeeWorksheet`
+   is the rule for a student's OWN uploads and it lets an untagged one
+   through, because hiding somebody's own work with no explanation is worse
+   than showing it. A SET worksheet is the other way round: it is the
+   teacher's, it is meant for a class, and one with no level or no subject
+   is on nobody's shelf — a P5 Maths paper on a P6 Science shelf is the
+   very thing the shelves exist to stop. So `canSeeAssignment` is strict,
+   and the teacher's own card says in words that an untagged one reaches
+   no student (`assignmentUntaggedNote`), rather than a paper quietly
+   turning up on every shelf in the school.
+
+   Until v1.23.1 the "📌 Set for you" section painted every active
+   assignment for every student, and pressing Start on one set for another
+   level wrote a copy `loadWorksheets` filtered straight back out — a
+   worksheet that "got ready" and never opened, one more hidden copy per
+   press. The teacher still sees all of them, which is how one is taken off. */
+function canSeeAssignment(a) {
+  if (!a) return false;
+  if (isAdmin(currentUser)) return true;
+  var st = activeStudent();
+  if (!st || !st.level) return true;   // not answered yet — the gate has them anyway
+  if (!a.level || !a.subject) return false;   // set for nobody's shelf yet
+  if (a.level !== st.level) return false;
+  return studentSubjectList(st).indexOf(a.subject) !== -1;
+}
+/* What is missing from a set worksheet for it to reach a shelf — '' when
+   nothing is. Drawn on the TEACHER's card and nowhere else: it is the one
+   person who can put it right. */
+function assignmentUntaggedNote(a) {
+  if (!a) return '';
+  var missing = [];
+  if (!a.level) missing.push('a level');
+  if (!a.subject) missing.push('a subject');
+  if (!missing.length) return '';
+  return '⚠ It has no ' + missing.join(' or ') + ', so it is on no student’s shelf yet. ' +
+         'Take it off the list, then upload it again with the ' + missing.join(' and ') + ' filled in ' +
+         '(or let Chung GPT read them off the paper).';
+}
 function assignmentsForMe() {
-  return assignments.filter(canSeeWorksheet);
+  return assignments.filter(canSeeAssignment);
 }
 /* Why a set worksheet is not this student's, in words. A hidden card is
    never the lock — a link, a stale screen or the console can still name it —
@@ -15585,6 +15800,10 @@ function assignmentsForMe() {
    copy nobody can open. */
 function assignmentNotMineText(a) {
   var st = activeStudent() || {};
+  if (!a.level || !a.subject) {
+    return '“' + (a.name || 'That worksheet') + '” was set without a level and subject, so it is not on ' +
+      'anyone’s shelf yet. Ask ' + setterName() + ' to set it again for ' + (st.name || 'this student') + '.';
+  }
   var its = [a.level ? levelLabel(a.level) : '', a.subject ? subjectLabel(a.subject) : '']
     .filter(Boolean).join(' ') || 'another class';
   var mine = [st.level ? levelLabel(st.level) : '', st.subject ? subjectLabel(studentSubject(st)) : '']

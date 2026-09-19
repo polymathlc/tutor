@@ -12,6 +12,41 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.25.0 — Wooden bookshelves, every paper on its shelf, and a posted PDF files itself
+
+**📚 The bookshelves are wooden, and the papers are booklets.** Each shelf is now a plank of timber in
+a wooden case — drawn from gradients, never a picture, so a school wifi that blocks images still
+gets a shelf — with a brass plate naming its level and subject. Every paper stands on the plank as a
+**stapled booklet**: a dark spine with two staples, the sheets fanning out at the right edge, its own
+front page on the cover. A booklet the teacher set has the class's blue spine and says **✨ Not opened
+yet** until you start it.
+
+**📖 Every paper you have is on a shelf, opened or not.** A worksheet the teacher set used to wait in
+its own *Set for you* list until you started it. It stands on the shelf now — the P5 Science shelf, the
+P6 Maths shelf — beside the ones you have begun, filed by topic exactly as they are, with **Start it**
+on its cover. Start one and it becomes your own copy on the same shelf. The *Set for you* list is gone
+from a student's home screen; the teacher keeps a **📌 Set for the class** list of everything set, at
+every level, which is where one is taken off.
+
+**🎯 Each level and subject sees its own papers only.** A set worksheet reaches the shelves of students
+at **its level, taking its subject**, and no others. One set with no level or subject reaches nobody —
+it used to reach the whole school — and the teacher's own card says so, in words, so it can be set again
+properly. Your own uploads are unchanged: an untagged one of your own is still yours.
+
+**📌 A PDF the teacher posts files itself.** *Put it on my students' shelves* is ticked by default in the
+teacher's upload dialog. Leave the level and subject pickers blank and Chung GPT reads them off the
+paper's cover; the moment the upload, the read and the answer-key scan are done the worksheet is set
+for that class, with its key hidden behind it, and it appears on every one of those students' shelves.
+A paper whose level or subject could not be read is uploaded but **not** set, and the teacher is told
+why — a paper set for no level would be on nobody's shelf while looking, to the teacher, exactly like
+one that went out. The set record now carries the paper's **topic** and **school** too, so an unopened
+paper is filed beside the opened ones on its topic.
+
+**Fixed on the way:** on a phone the ‹ › shelf buttons were meant to give way to swiping and never did
+(a later rule in the stylesheet outranked the one that hid them).
+
+---
+
 ## v1.24.0 — All the apps under one roof, a worksheet sent from the Science portal, and the teacher's corrections reach the buddy
 
 Two features that had shipped on a side branch and never reached the live app, now on it.
