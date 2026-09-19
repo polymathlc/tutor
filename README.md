@@ -12,6 +12,82 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.32.0 — 📕 The mistake book is FILED, 🧩 set out again, and the live tutor stops saying "busy"
+
+### 📕 Every mistake under its subject, its topic and its objective
+
+The mistake book was one long list, newest first, with a *Still to do / Sorted / All* chip above
+it. That is fine at ten cards and useless at eighty: a student revising Heat had to scroll past
+every fraction they have ever got wrong to find the four questions that were about heat.
+
+It is **filed** now, using the very syllabus the report already files a marked paper under — cer's
+own learning outcomes for science and the Maths app's MOE syllabus. Each card wears two new chips,
+**📗 the topic** and **🎯 the objective**, and tapping either filters the book down to it. Above the
+cards there is a row of subject chips, two pickers (topic, then objective) and a search box.
+
+- **The sections are the syllabus's own order**, not the order the mistakes happened in — so
+  revising goes down the book, Heat then Light, rather than hopping about it.
+- **The two pickers are dependent.** Choosing Science narrows the topics to science topics;
+  choosing a topic narrows the objectives to that topic's. A count on each says how many cards are
+  behind it, and the count is of the book rather than of what is half-typed in the search box.
+- **A picker never narrows its own options away.** With a topic chosen, the topic list still
+  offers every other topic — a list you cannot change your mind in is a list that traps you.
+- **A choice that no longer matches anything falls back to "all"** on every paint, so deleting the
+  last card of a topic cannot leave the book showing nothing under a heading nobody is filed under.
+- **The search reads everything the card can show** — the question (including one set out in
+  blocks), what the student wrote, what the buddy said, the paper's name, the topic and the
+  objective — and **every word has to appear**, so a second word narrows rather than widens.
+- **An objective this build has never heard of is shown unplaced** rather than as a chip reading
+  its own bare id. The syllabus catalogue has the last word.
+- Nothing is remembered between visits: a topic filter set last Tuesday and never noticed again is
+  a book that looks empty for no reason.
+
+### 🧩 Set a mistake out again
+
+A mistake is filed with the question **set out again** — the wording typeset, the paper's own
+figures cut out and put back where they belong — exactly the way ⚡ Rapid add builds a question in
+the Science portal. That happens once, inside the marking run, with a ration for the whole paper,
+so a question that missed it landed on the whole-page tier and stayed there for ever: a photograph
+of a page with two other questions on it, which is not a question anybody can practise.
+
+**🧩 Set it out** on a card runs that same pipeline again, on demand. It reads the page off the
+open worksheet's own PDF when the worksheet is open — so the crop is as sharp as the marking run's
+— and off the mistake's own stored page when it is not. The tools bar above the book sets out
+everything on screen that still wants it.
+
+- **It is the same pipeline, not a second one.** One ask, one cleaner, one cropper.
+- **A question already set out in blocks is skipped**, so the button can never cost a call and
+  change nothing.
+- **The old picture is deleted only after the new one is written**, and a refused delete is
+  swallowed: a file left in the bucket is untidy, a card with no picture is unreadable.
+- Bounded at eight in one press, one at a time, and it stops outright if the AI is off.
+
+### 🎧 "Live tutoring is busy. Please try again in a little while."
+
+It was not busy. **Every attempt to start a lesson spent one of the day's six before the provider
+was ever asked**, and nothing ever gave it back — so a microphone the student did not allow, an
+SDP the other end rejected, or a rate limit there each cost a lesson. After six of those the
+endpoint refused with *"you have used today's lessons"* and the app showed *"busy, try again in a
+little while"* about something that was not coming back until midnight.
+
+Three fixes, and the first is the one that was reported:
+
+- **A start that never became a call is given back.** A lesson that really ran and was stopped
+  still counts — that is what the daily allowance is for — but an attempt that never connected is
+  not a lesson used. It is given back once only, and never off the next day's count.
+- **The server's own reason is shown.** The app was throwing the message away and substituting
+  its own by status code, so *"you have used today's 6 live lessons, they come back at midnight"*
+  was displayed as *"busy, try again in a little while"*. Two different things to be told.
+- **A concurrency slot lets go of itself.** The twenty slots the whole school shares were released
+  by a scheduled sweep that is a separate Cloud Function; without it a handful of closed tabs took
+  live mode away from everybody permanently. A slot now carries the moment it was taken, and one
+  older than a whole lesson is let go by the next start.
+
+> **This half needs a Cloud Functions deploy** — `firebase deploy --only functions`. The rest of
+> the app ships with GitHub Pages; `functions/live-repository.js` does not.
+
+---
+
 ## v1.31.0 — ✍️ The tutor writes working on the page, and the pointing is put right
 
 Three things, and all three came out of watching one hint go wrong on a real P5 paper.

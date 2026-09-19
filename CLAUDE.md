@@ -2713,6 +2713,152 @@ plus the key pages.
   looks perfectly right.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 📕 THE MISTAKE BOOK IS FILED — subject, topic, objective, searchable (v1.32.0)
+
+`MIST_NO_SUBJECT` / `MIST_NO_TOPIC` / `MIST_SEARCH_MAX` / `mistFilter` / `mistSubject` /
+`mistTopic` / `mistLo` / `mistQuery` / **`mistPlace`** / `mistSubjectKey` / `mistSubjectLabel` /
+`mistTopicKey` / `mistTopicLabel` / `mistHaystack` / `mistSearchTerms` / `mistSearchHit` /
+**`mistMatches`** / `mistSubjectRank` / `mistCompare` / `mistakesShown` / **`mistGroups`** /
+**`mistFacet`** / `mistSubjectFacet` / `mistTopicFacet` / `mistLoFacet` / `mistPruneFilters` /
+`mistFiltered` / `mistClearFilters` / `mistFilterTopic` / `mistFilterLo` / `renderMistakes` /
+`renderMistFilters` / `renderMistList` / `mistChip` / `mistSelect` / `syncMistClear` (search
+`THE MISTAKE BOOK, FILED`), the `.mistTags` row on `mistakeCard`, and the `.mistFilters` /
+`.mistChipRow` / `.mistPickRow` / `.mistPickBox` / `.mistSearch` / `.mistGroup` / `.mistGroupHead`
+/ `.mistTopicHead` / `.mistTags` / `.mTag` CSS.
+
+The book was ONE list, newest first, with a *Still to do / Sorted / All* chip over it. That is
+fine at ten cards and useless at eighty — a student revising Heat scrolled past every fraction
+they have ever got wrong to reach the four questions that were about heat, which is a book nobody
+opens twice. It is filed now, under the SAME syllabus 🧭 the diagnostic already files a marked
+paper under.
+
+- **`mistPlace(m)` IS THE ONE PLACE A MISTAKE'S PLACEMENT IS DECIDED**, and every reader goes
+  through it — the chips, the sections, the sort, the search, all three facets. A second
+  placement is a card filed under one heading and counted under another, with nothing on any
+  screen saying so. It is memoised on `m._place`, which is why `mbRedoOne` clears it.
+- **THE CATALOGUE HAS THE LAST WORD, and that is the difference from `diagItemPlace`.** That
+  function trusts a placement the marking already made — right for a report about one paper, and
+  not enough for a book that is FILED under headings: **an id the syllabus no longer has would
+  give a card a chip reading its own bare `heat-flow` and a section nothing else is ever in.** So
+  an id that does not resolve through `syllabusLo` / `syllabusTopic` is DROPPED, and what is left
+  is the topic if that resolves and the model's own wording if it does not — `diagPlace`'s own
+  rule, applied one step later.
+- **`mistGroups` FILTERS NOTHING.** It is handed the list `mistakesShown` has already narrowed and
+  it groups it; a group builder that filtered as well would be a second filter to keep in step,
+  and a card lost from a section looks exactly like a card that was never there.
+- **THE SECTIONS ARE THE SYLLABUS'S OWN ORDER** (`place.order`, `Infinity` for an unplaced one),
+  never the order the mistakes happened in — so revising goes DOWN the book rather than hopping
+  about it, and *Not on the syllabus list* is always last.
+- **`mistMatches(m, terms, upTo)` IS THE ONE PREDICATE, and `upTo` is what makes the pickers
+  usable.** A facet counts what it WOULD offer by stopping at its own axis, so choosing a topic
+  does not hide every other topic out of the very list it was chosen from. It is narrowed by the
+  axes ABOVE it (a subject narrows the topics), which is the half that has to keep working.
+- **NO FACET COUNT READS THE QUERY.** The search is applied after all three axes, so a chip
+  reading *Science (12)* means twelve in the book rather than twelve matching what is half-typed.
+- **A CHOICE THAT NO LONGER MATCHES ANYTHING FALLS BACK, ON EVERY PAINT** (`mistPruneFilters`,
+  called from `renderMistakes` BEFORE the bar is drawn). Deleting the last card of a topic is the
+  ordinary way a filter goes stale, and it goes stale in the one place nobody is looking — a prune
+  that is only ever called by hand is one that never runs.
+- **EVERY SEARCH TERM HAS TO APPEAR** (`mistSearchHit`), so a second word NARROWS: typing
+  "heat metal" and getting every card about heat is a search box that stops being used after the
+  first time. `mistHaystack` reads everything the card can SHOW — and **a question set out in
+  BLOCKS keeps its wording there rather than in `question`**, so the blocks are read too or every
+  rebuilt question is unsearchable. It is memoised on `m._hay`.
+- **TYPING REPAINTS THE LIST AND NOT THE BAR.** `renderMistakes` is `prune → filters → list`, and
+  the search handler calls `renderMistList()` + `syncMistClear()` alone: the input is never
+  destroyed, so the caret stays put and forty cards' worth of pictures are not torn down on every
+  letter. ✕ Clear is shown and hidden in place for the same reason.
+- **MODEL OUTPUT IS PAINTED AS TEXT** — `op.textContent`, never `innerHTML`. A topic is a word a
+  model wrote.
+- **THE FILTERS ARE REMEMBERED NOWHERE.** A topic filter that survived a reload is one somebody
+  set last Tuesday and never noticed again, and the book then looks empty for no reason.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
+## 🧩 SETTING A MISTAKE OUT AGAIN (v1.32.0)
+
+`MB_REDO_MAX` / **`_mbBuildFrom`** / `mbStoredPage` / **`mbRedoShots`** / **`mbRedoOne`** /
+`mbRedoWanted` / `_mbRedoBusy` / `mbRedo` (search `SETTING A MISTAKE OUT AGAIN`), the 🧩 button
+on `mistakeCard`, the one in `renderMistTools`, and the `redo` row of `USAGE_EVENTS`.
+
+The rebuild (🧩 THE MISTAKE IS THE QUESTION, above) runs ONCE, inside the marking run, with
+`MB_BUILD_MAX` for the whole paper — so a question that missed the ration lands on the whole-page
+tier and **stays there for ever**: a photograph of a page with two other questions on it, which is
+not a question anybody can practise. This is that pipeline on demand.
+
+- **IT IS THE SAME PIPELINE, NOT A SECOND ONE.** `_mbBuildFrom` is the ask — `MB_BUILD_SYS`,
+  `_mbCleanBuild`, the same shots — lifted out of `_mbBuildBlocks` so both callers share it, and
+  `_mbBuildFigures` / `_mbCropBox` / `_mbUpload` do the cutting. A second prompt here would be a
+  second prompt to improve and the drift would be silent: one door sets a question out properly
+  and the other hands back a photograph.
+- **THE RATION IS STILL SPENT BY THE CALLER**, in `_mbBuildBlocks`, BEFORE the call — so a failure
+  cannot buy another try. `_mbBuildFrom` spends nothing, because this button's bound is
+  `MB_REDO_MAX` and the marking run's is `MB_BUILD_MAX`; one counter for two different limits is
+  a press that silently does nothing once a paper has been marked.
+- **`mbRedoShots` IS THE ONE PLACE THE PICTURES COME FROM, best first**: the open worksheet's own
+  PDF (`rbCleanPage`, which re-renders at `RB_PAGE_MAX_SIDE`, so the crop is as sharp as the
+  marking run's and carries none of the student's ink), then the mistake's own stored page, which
+  is the only source the book has when the worksheet is shut.
+- **`crossOrigin` IS SET BEFORE `src`** in `mbStoredPage`. Set afterwards it does nothing, the
+  picture loads tainted, and the crop then dies on a `SecurityError` when it is SAVED rather than
+  when it is opened — the trap `openCrop` already documents.
+- **A QUESTION ALREADY SET OUT IN BLOCKS IS SKIPPED** (`mbRedoWanted`, asked by the card's own
+  button and by the tools bar). Redoing work that is done is the one way this button can cost a
+  call and change nothing.
+- **THE OLD PICTURE IS DELETED ONLY AFTER THE NEW ROW IS WRITTEN**, and a refused delete is
+  swallowed: a file left in the bucket is untidy, a card with no picture is unreadable. A build
+  that produced neither blocks nor a crop returns `'failed'` and writes NOTHING — a patch of
+  nothing saved as a success is a card that lost its picture to a call that did nothing.
+- **IT RETURNS A WORD, NOT A BOOLEAN** (`done` / `no` / `ai` / `source` / `failed`): "there was
+  nothing to read it off" and "the model could not set it out" are different things to tell
+  somebody, and the caller is what says them.
+- **ONE AT A TIME, BOUNDED, AND IT STOPS ON `ai`.** `_mbRedoBusy` is the lock; `MB_REDO_MAX`
+  bounds one press; the engine being off means every remaining card would say the same thing, so
+  the loop breaks rather than spending the wait. `Promise.all` in that loop is the change that
+  must never be made — `_mbUpload`, `mistakesCollRef` and the module's own globals interleave
+  exactly as two uploads do.
+- **`m._place` AND `m._hay` ARE CLEARED** with the patch. Both are memoised on the mistake, and a
+  question set out again with new wording that is still searched and filed under the old one is
+  the filing quietly lying.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
+## 🎧 WHY LIVE TUTORING SAID "BUSY" (v1.32.0)
+
+`liveErrorText` and the `throw` in `startLiveTutor` (search `WHY LIVE TUTORING SAID NO`), plus
+`reserve`'s stale sweep and `release`'s refund in **`functions/live-repository.js`**.
+
+The live card said **"Live tutoring is busy. Please try again in a little while."** and it was not
+busy, and it was not going to come back in a little while. Three faults, and each is silent.
+
+- **THE DAY'S ALLOWANCE IS SPENT IN `reserve`, BEFORE THE PROVIDER IS EVER ASKED.** That is the
+  right order — the reservation is what stops two tabs racing — but `release` never gave it back,
+  so a microphone the student refused, an SDP the other end rejected and a rate limit there each
+  cost one of `startsPerDay` (6). After six the endpoint answered 429 `daily_limit`, honestly, and
+  the student had had no lesson at all. **`refund` is `!lease.sessionId && current.exists &&
+  ownerData.day === dayKey(lease.createdAt)`**, and all three clauses are load-bearing: a lesson
+  that really ran and was stopped still counts (that is what the allowance is FOR), the session
+  document must still exist or a retried stop refunds the same start twice, and the day must be
+  the lease's own or a refund at midnight takes one off tomorrow.
+- **THE SERVER'S OWN REASON WAS THROWN AWAY.** The client read `response.status` and substituted
+  its own wording, so *"you have used today's 6 live lessons, they come back at midnight"* was
+  shown as *"busy, try again in a little while"* — two different things to be told, and only one
+  of them true. `liveErrorText` takes the message, folds its whitespace and clips it to 240; the
+  status map is the FALLBACK behind it, not the answer.
+- **A CONCURRENCY SLOT NOW LETS GO OF ITSELF.** `active` holds the twenty slots the whole school
+  shares and was written as `true`, released only by a scheduled sweep that is a SEPARATE Cloud
+  Function — deploy the endpoint without it and a handful of closed tabs takes live mode away from
+  everybody PERMANENTLY, with every screen saying "try again in a little while" about something
+  that is never coming back. Each entry carries the moment it was taken (`active[id] = now`) and
+  `reserve` drops anything older than a whole lesson plus a minute. **A legacy `true` reads as `1`
+  through `Number` and is let go for the same reason**, which is what makes the change safe to
+  deploy over live data — and also why the slot must be written as a NUMBER: written as a flag,
+  the very next start sweeps a lesson that is really running and the shared ceiling stops holding
+  at all, which looks exactly like live mode working.
+- **IT NEEDS A FUNCTIONS DEPLOY** — `firebase deploy --only functions`. The `index.html` half
+  ships with GitHub Pages and `functions/live-repository.js` does not, so shipping one without the
+  other leaves the reported fault in place with the release notes saying it is fixed.
+- Run **`cd functions && node --test test/*.test.js`** and **`node tools/tutor-tests.mjs`** after
+  touching any of it.
+
 ## 🧩 THE MISTAKE IS THE QUESTION, SET OUT AGAIN (v1.12.0)
 
 `MB_*` / `_mb*` / `rbCleanPage` / `mbRebuild` (search `REPRODUCING THE
@@ -2871,6 +3017,71 @@ the two in step; a fix to either belongs in both.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📕 the filed mistake book** (`mistPlace`, `mistSubjectKey`,
+  `mistTopicKey`, `mistHaystack`, `mistSearchTerms`, `mistSearchHit`,
+  `mistMatches`, `mistCompare`, `mistakesShown`, `mistGroups`, `mistFacet`,
+  `mistPruneFilters`, `mistFiltered`, `mistClearFilters`, `mistFilterTopic`,
+  `mistFilterLo`, `renderMistakes`, `renderMistFilters`, `renderMistList`,
+  `mistChip`, `mistSelect`, `syncMistClear`, the `.mistTags` row on
+  `mistakeCard`, or the `.mist*` / `.mTag` CSS), run
+  `node tools/tutor-tests.mjs`. Every failure here is silent and the book
+  still paints. Let `mistGroups` FILTER and a card vanishes from a section
+  that looks complete — which is exactly what a card that was never there
+  looks like. Let `mistPlace` trust a stored objective id the syllabus no
+  longer has and a card wears a chip reading its own bare `heat-flow`, under
+  a heading nothing else is ever in. Ignore `upTo` and choosing a topic hides
+  every other topic out of the list it was chosen from, so nobody can change
+  their mind; let a facet count read the query and a chip saying *Science (12)*
+  means twelve matching half a word. Drop `mistPruneFilters` from the paint
+  and deleting the last card of a topic leaves the book showing nothing and
+  saying only "try another filter". Make the search ANY term instead of every
+  one and a second word widens, which is a search box nobody uses twice; stop
+  reading a rebuilt question's blocks and every question set out properly is
+  unsearchable. Rebuild the whole bar on a keystroke and the caret jumps to
+  the end on every letter. Remember a filter between visits and a book looks
+  empty for a reason nobody can see. And paint a picker option with
+  `innerHTML` and model output is markup on the page.
+- After touching **🧩 setting a mistake out again** (`MB_REDO_MAX`,
+  `_mbBuildFrom`, `mbStoredPage`, `mbRedoShots`, `mbRedoOne`, `mbRedoWanted`,
+  `_mbRedoBusy`, `mbRedo`, the 🧩 button on `mistakeCard` or in
+  `renderMistTools`, or the `redo` row of `USAGE_EVENTS`), run
+  `node tools/tutor-tests.mjs`. This one spends AI calls and overwrites the
+  picture a student practises from, and every way it goes wrong is quiet.
+  Delete the old picture before the new row is written — or write a patch of
+  nothing as a success — and the card loses its picture to a call that did
+  nothing. Spend the ration inside `_mbBuildFrom` and the shared ask charges
+  the marking run's budget, so the button silently stops working on a paper
+  that has been marked. Set `crossOrigin` after `src` and the crop dies on a
+  `SecurityError` when it is SAVED, which reads as "setting it out is broken"
+  rather than "that bucket has no CORS rule". Stop asking `mbRedoWanted` and
+  every press redoes work that is done; drop `MB_REDO_MAX` and one tap is a
+  call per card; drop `_mbRedoBusy`, or `Promise.all` that loop, and two runs
+  interleave through the module globals exactly as two uploads do. Stop
+  preferring the open PDF and a sharp re-render is thrown away for the
+  book's own stored page. Carry on past an `ai` result and every remaining
+  card pays the same wait to be told the same thing. And leave `m._place` /
+  `m._hay` set and a question set out again is filed and searched under the
+  wording it no longer has.
+- After touching **🎧 why live tutoring said "busy"** (`liveErrorText`, the
+  `throw` in `startLiveTutor`, or `reserve`'s stale sweep / `release`'s
+  `refund` in `functions/live-repository.js`), run
+  `cd functions && node --test test/*.test.js` **and**
+  `node tools/tutor-tests.mjs` — **and deploy the functions**
+  (`firebase deploy --only functions`), because Pages carries `index.html`
+  and not `functions/`, so shipping one half leaves the reported fault in
+  place with the release notes saying it is fixed. Every failure is silent
+  and the card just says "busy". Stop refunding a start that never became a
+  call and six refused microphones take live mode away until midnight, which
+  is the reported bug; refund one that really ran and the daily allowance
+  stops meaning anything; drop the `current.exists` clause and a retried stop
+  buys a second lesson; drop the day clause and a refund at midnight takes
+  one off tomorrow. Swallow the server's own message again and *"you have
+  used today's 6 lessons"* is shown as *"busy, try again in a little while"*.
+  And write a concurrency slot as a flag rather than a time and the next
+  start sweeps a lesson that is really running, so the ceiling the whole
+  school shares stops holding at all — while dropping the sweep entirely puts
+  the other failure back, where a handful of closed tabs shuts live mode for
+  everybody permanently.
 - After touching **📌 whether the class has it** (`worksheetSetState`,
   `worksheetSetChip`, `worksheetSetBlocker`, `setAllWorksheets`, `blockedList`,
   `unsetWorksheetCount`, `syncSetAllBtn`, `pushWorksheet`'s `opts.quiet` or its
