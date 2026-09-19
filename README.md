@@ -12,6 +12,41 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.23.1 — A set worksheet shows only on the accounts it was set for, and deleting your copy keeps the class's PDF
+
+**Two bugs on the "📌 Set for you" list, one behind the other.**
+
+**A P5 paper on a P6 account.** The set list painted **every** active set worksheet for **every**
+student. A student's own list has always been filtered by their level and subject; the class list
+never was. Pressing Start on one set for another level wrote the student a copy tagged with that
+level, the list then filtered that copy straight back out, and opening it found nothing and gave
+up in silence: the toast said *Getting it ready…* and nothing happened. Every press after that
+wrote one more copy nobody could see.
+
+- The set list goes through the **same rule** as the student's own list. The teacher still sees
+  every one, which is how one is taken off the list.
+- Start it asks the rule **again in the handler** and says, in words, which class the worksheet was
+  set for and which student this is, instead of writing a copy.
+- Opening a worksheet that is not in the list now **says so** instead of returning in silence.
+- The blank duplicate copies the bug wrote are tidied on the next sign-in: only a **duplicate** of a
+  blank starter copy is dropped — never the only copy, never one with a single stroke on it, and
+  never the class's PDF.
+
+**"Object 'tutor-worksheets/….pdf' does not exist" on every student's copy.** Every student's copy
+of a set worksheet reads the **teacher's** PDF, and the guard that stops a student's tidy-up
+deleting it only ever protected the *student's* copy. So the teacher deleting their own copy after
+setting it deleted the one file the whole class read, and every Start / Carry on failed.
+
+- Deleting your own copy of a set worksheet now asks the assignment, live, whether the class reads
+  the file, and **keeps the PDF and the key file** when it does. Only your own marks and hints go;
+  withdraw it from the class with "Take off the list".
+- Start it checks the PDF exists **before** a copy is written, so a broken assignment never leaves
+  a copy that can never be opened.
+- A missing PDF is explained in words, and the work on the copy is said to be kept.
+- The teacher's home screen checks each set worksheet against Storage once per sitting and flags
+  one whose file has gone, with Start disabled. To repair one: take it off the list, upload the
+  worksheet again and set it again.
+
 ## v1.23.0 — the school in the name, a bookshelf, and the whole answer key put away
 
 - **An exam paper is named after the school that set it.** The read now takes the **school** off
