@@ -12,6 +12,48 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.30.0 — 👉 The tutor points at the page
+
+A human tutor does not only talk. They put a **finger on the page**: *"look at THIS number"* is a
+sentence and a gesture together, and a child handed only the sentence has to find the number
+first — which is most of what being stuck actually is.
+
+So the tutor points now. While it is talking in 🎧 **live mode**, and on every 💡 **hint**, it
+draws the gesture a teacher would draw on the spot it is talking about: a **circle** round a
+number, an **underline** under the words that decide the question, an **arrow** at a part of a
+diagram, a **box** round a row of a table. It appears as the tutor says it, in the magenta of the
+centre's own logo, with a white halo underneath so it reads over printed text.
+
+**It is never ink, and that is the part that matters.** The gesture is drawn into the page the
+same way the marking's ticks are — outside the student's own annotations entirely. It cannot be
+dragged, erased or undone, it is never saved into the worksheet, it never prints, and the marking
+run never sees it. A tutor's circle that ended up in the annotations would be read by the next
+marking run as the student's own work, and nothing on any screen would say why the paper had
+suddenly marked itself so kindly.
+
+**It is temporary, and nothing about it runs on a timer.** It goes up when the tutor says
+something about a spot and comes down when the tutor **moves on** — the next spoken question, the
+next hint, the session ending, a new worksheet, leaving the worksheet. That is exactly what a real
+finger does: it stays while the explanation is being worked through, and it is gone the moment the
+conversation is about something else. It never takes a stroke from the stylus either, so a gesture
+left standing costs the child nothing at all.
+
+**A hint keeps its gesture**, so a hint card that has one grows a 👉 **Show me where to look**
+button — the pointing is something that can be asked for again rather than something that happened
+once. The worksheet a child reopens next week still knows where its tutor was pointing.
+
+**It refuses to guess.** A position that is off the page, malformed or only half-written is
+dropped rather than nudged onto the page somewhere plausible, and both prompts say why in as many
+words: *a finger on the wrong question is worse than no finger at all.* It reads a position
+through exactly the same code the marking's ticks do, so the two can never disagree about where
+the top-left of a page is.
+
+It is drawn **under the student's own ink**, so it can never cover the answer it is helping with,
+and it holds still while they write: it fades in once, breathes three times to catch the eye, and
+then simply sits there. Under **Reduce Motion** it appears with neither.
+
+---
+
 ## v1.29.1 — ✏️ The maths pad's symbol strip is one row, not four
 
 The working line offered **thirty symbols over four rows** — Working, Compare, Number and Shape —
