@@ -521,7 +521,43 @@
   }
   .chip.chipTopic { background: rgba(0,150,136,.12); color: #00695C; font-weight: 700; }
   .chip.chipSchool { background: rgba(94,53,177,.10); color: #4527A0; }
+  /* 🗂 THE BAR OVER THE BOOKCASE: which level and subject are in view, and
+     the teacher's ➕. It sits above the shelves rather than on one,
+     because it governs all of them. */
+  .shelfBar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 0 4px 18px; }
+  .shelfPick { display: flex; align-items: center; gap: 8px; font-size: .84rem; font-weight: 700; color: var(--ink-faint); }
+  .shelfPick select {
+    font: inherit; font-weight: 600; color: var(--ink); padding: 7px 11px;
+    border-radius: 9px; border: 1px solid var(--line); background: #fff; cursor: pointer;
+  }
+  /* 🕒 RECENTLY OPENED IS THE SAME BOOKCASE IN A COOLER TIMBER. The wood's
+     colours are custom properties on `.shelf` precisely so a second kind
+     of shelf is four values rather than a second copy of the gradients —
+     and it has to READ as a different shelf, because every paper on it is
+     also standing on one of the shelves below. */
+  .shelf.shelfRecent { --wood: #6F7C8C; --wood-dark: #4A5563; --wood-light: #94A1AF; --wood-edge: #39434F; }
+  /* Where a dragged booklet will land. */
+  .shelf.shelfDrop { outline: 3px dashed #FFE2A8; outline-offset: 4px; }
+  .shelfItem.shelfDragging { opacity: .42; }
+  .shelfEmpty {
+    flex: 0 0 auto; align-self: center; color: #FFEBC9; font-size: .88rem;
+    padding: 30px 20px; border: 2px dashed rgba(255,235,201,.45); border-radius: 12px;
+    text-shadow: 0 1px 1px rgba(46,24,6,.5);
+  }
+  /* ✎ and 🗑 are NOT `.shelfBtn`: that class is hidden on a phone to give
+     the ‹ › buttons up to swiping, and a teacher who loses rename and
+     delete on the device they teach from has lost the feature. Written at
+     TWO classes so the generic `.iconBtn` rule declared later in the sheet
+     cannot take their size back. */
+  .shelfHead .shelfTool {
+    width: 32px; height: 32px; font-size: 1rem; line-height: 1; border-radius: 50%;
+    background: rgba(255,244,224,.82); color: #4E2E12; border-color: rgba(94,55,23,.4);
+  }
+  .chip.chipWhen { background: rgba(255,152,0,.14); color: #8A4B00; font-weight: 700; }
+  .chip.chipShelf { background: rgba(63,81,181,.10); color: #283593; font-weight: 700; }
   @media (max-width: 640px) {
+    .shelfBar { gap: 10px; }
+    .shelfPick { font-size: .78rem; gap: 6px; }
     .shelf { padding: 12px 8px 18px; }
     .shelfHead h3 { font-size: 0.9rem; padding: 4px 10px; }
     .shelfItem { flex-basis: 250px; width: 250px; }
@@ -1695,6 +1731,7 @@
             <button class="btn" id="progressBtn" title="Every topic and learning objective, with your marks on it, added up across every worksheet you have marked">📈 My progress</button>
             <button class="btn btnPrimary" id="uploadBtn">⬆️ Upload a worksheet</button>
           </div>
+          <div id="shelfBar" class="shelfBar hidden"></div>
           <div id="wsList"></div>
         </div>
 
@@ -1892,6 +1929,14 @@
           <label for="upSubject">Subject</label>
           <select id="upSubject"></select>
         </div>
+        <!-- 🗂 The teacher's own: a shelf is their arrangement of the
+             bookcase, and a student's upload lands with the unsorted
+             papers. Hidden until there is a shelf to choose. -->
+        <div class="field hidden" id="upShelfWrap">
+          <label for="upShelf">Shelf</label>
+          <select id="upShelf"></select>
+          <span class="hint">Every student of its level and subject finds it on this shelf too.</span>
+        </div>
       </div>
       <p class="hint hidden" id="upWhoLine" style="margin-top:10px"></p>
 
@@ -2007,6 +2052,39 @@
     <div class="modalFoot">
       <button class="btn" id="pushCancel">Cancel</button>
       <button class="btn btnPrimary" id="pushGo">Set it</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 🗂 Shelves ============ -->
+<div class="modalBack" id="shelfNameModal">
+  <div class="modalCard">
+    <div class="modalHead"><h2 id="shelfNameTitle">🗂 A new shelf</h2></div>
+    <div class="modalBody">
+      <p class="sub" id="shelfNameSub"></p>
+      <div class="fields">
+        <div class="field">
+          <label for="shelfNameInput">What is this shelf called?</label>
+          <input type="text" id="shelfNameInput" placeholder="e.g. 2025 papers" maxlength="48">
+        </div>
+      </div>
+    </div>
+    <div class="modalFoot">
+      <button class="btn" id="shelfNameCancel">Cancel</button>
+      <button class="btn btnPrimary" id="shelfNameGo">Make it</button>
+    </div>
+  </div>
+</div>
+
+<div class="modalBack" id="shelfPickModal">
+  <div class="modalCard">
+    <div class="modalHead"><h2>🗂 Put it on a shelf</h2></div>
+    <div class="modalBody">
+      <p class="sub" id="shelfPickSub"></p>
+      <div id="shelfPickList" style="margin-top:16px"></div>
+    </div>
+    <div class="modalFoot">
+      <button class="btn" id="shelfPickCancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -2303,7 +2381,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.36.0';
+var APP_VERSION = 'v1.37.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -17139,13 +17217,19 @@ var SHELF_WHEEL_MAX = 1;        // beyond this (in viewport widths) the pose sto
 
 function shelfLevelRank(l) { var i = SHELF_LEVEL_ORDER.indexOf(l); return i < 0 ? SHELF_LEVEL_ORDER.length : i; }
 function shelfSubjectRank(sj) { var i = SHELF_SUBJECT_ORDER.indexOf(sj); return i < 0 ? SHELF_SUBJECT_ORDER.length : i; }
-function shelfStamp(w) {
-  var v = w && w.updatedAt;
+/* A Firestore stamp, a Date, a raw `{seconds}` or a number — all of them
+   come out of here as milliseconds, so a shelf never sorts on NaN. Split
+   out of `shelfStamp` so the recently-opened shelf can read a SECOND
+   field (`lastOpenedAt`) the same way, rather than a second reader
+   drifting from this one about what a stamp is. */
+function shelfStampOf(v) {
   if (!v) return 0;
-  if (typeof v.toMillis === 'function') return v.toMillis();
-  if (v instanceof Date) return v.getTime();
+  if (typeof v.toMillis === 'function') { try { return Number(v.toMillis()) || 0; } catch (e) { return 0; } }
+  if (v instanceof Date) return Number(v.getTime()) || 0;
+  if (typeof v.seconds === 'number') return v.seconds * 1000;
   return Number(v) || 0;
 }
+function shelfStamp(w) { return shelfStampOf(w && w.updatedAt); }
 /* Two papers on one shelf: the one with a topic before the one without,
    topics in alphabetical order so the Heat papers sit together, and the
    newest first inside a topic. */
@@ -17163,32 +17247,66 @@ function shelfCompare(a, b) {
    items }`. A level or a subject the app does not know sorts after the ones
    it does and is still shown, because a shelf that quietly drops a paper is
    a paper nobody can find. */
-function shelfGroups(list) {
-  var byKey = {};
+/* Where one shelf stands relative to another: level up the ladder,
+   subject in the centre's order, and then the teacher's own shelves in
+   the order they arranged them with the unsorted one ALWAYS last.
+   The shelf ranks are compared with `<` and not `a - b` on purpose — both
+   are `Infinity` for an unsorted shelf, and `Infinity - Infinity` is NaN,
+   which leaves the whole bookcase in whatever order the engine's sort
+   happened to produce. */
+function shelfGroupCompare(a, b, cat) {
+  var la = shelfLevelRank(a.level), lb = shelfLevelRank(b.level);
+  if (la !== lb) return la - lb;
+  if (a.level !== b.level) return a.level < b.level ? -1 : 1;
+  var sa = shelfSubjectRank(a.subject), sb = shelfSubjectRank(b.subject);
+  if (sa !== sb) return sa - sb;
+  if (a.subject !== b.subject) return a.subject < b.subject ? -1 : 1;
+  var ra = shelfRank(cat, a.shelf), rb = shelfRank(cat, b.shelf);
+  if (ra !== rb) return ra < rb ? -1 : 1;
+  var xa = String(a.shelf || ''), xb = String(b.shelf || '');
+  return xa < xb ? -1 : xa > xb ? 1 : 0;
+}
+function shelfGroups(list, opts) {
+  opts = opts || {};
+  /* Called with nothing it is byte-for-byte the grouping this app had
+     before shelves existed — one shelf per level and subject — which is
+     what makes a centre that never makes a shelf completely unaffected. */
+  var shelfOf = typeof opts.shelfOf === 'function' ? opts.shelfOf : null;
+  var cat = Array.isArray(opts.shelves) ? opts.shelves : null;
+  var byKey = {}, order = [];
   (list || []).forEach(function (w) {
     if (!w) return;
     var level = String(w.level || '');
     var subject = String(w.subject || '');
-    var key = level + '|' + subject;
-    if (!byKey[key]) byKey[key] = { level: level, subject: subject, items: [] };
+    var shelf = shelfOf ? String(shelfOf(w) || '') : '';
+    /* AN UNKNOWN SHELF ID READS AS UNSORTED, and that one line is what
+       makes taking a shelf off the bookcase safe: its papers fall back
+       onto “Not on a shelf yet” rather than into a section nothing draws.
+       A paper can never be lost by shelf bookkeeping. */
+    if (shelf && cat && !shelfFind(cat, shelf)) shelf = '';
+    var key = level + '|' + subject + '|' + shelf;
+    if (!byKey[key]) { byKey[key] = { level: level, subject: subject, shelf: shelf, items: [] }; order.push(key); }
     byKey[key].items.push(w);
   });
-  var out = Object.keys(byKey).map(function (k) { return byKey[k]; });
+  var out = order.map(function (k) { return byKey[k]; });
   out.forEach(function (g) { g.items.sort(shelfCompare); });
-  out.sort(function (a, b) {
-    var la = shelfLevelRank(a.level), lb = shelfLevelRank(b.level);
-    if (la !== lb) return la - lb;
-    if (a.level !== b.level) return a.level < b.level ? -1 : 1;
-    var sa = shelfSubjectRank(a.subject), sb = shelfSubjectRank(b.subject);
-    if (sa !== sb) return sa - sb;
-    return a.subject < b.subject ? -1 : a.subject > b.subject ? 1 : 0;
-  });
+  out.sort(function (a, b) { return shelfGroupCompare(a, b, cat); });
   return out;
 }
-function shelfTitle(g) {
+/* What is written on the shelf's brass plate. With no shelves made it is
+   the level and the subject, exactly as it always was. With shelves it is
+   the shelf's NAME — prefixed by the class, unless that class is the one
+   the picker is already showing, because a page of “P5 · Science · …”
+   repeated down every heading says nothing the picker has not said. */
+function shelfTitle(g, opts) {
+  opts = opts || {};
+  var cat = Array.isArray(opts.shelves) ? opts.shelves : [];
   var lv = g.level ? levelLabel(g.level) : 'Any level';
   var sj = g.subject ? subjectLabel(g.subject) : 'Any subject';
-  return lv + ' · ' + sj;
+  var cls = lv + ' · ' + sj;
+  var name = g.shelf ? shelfLabel(cat, g.shelf) : (cat.length ? SHELF_UNSORTED_TITLE : '');
+  if (!name) return cls;
+  return opts.scoped ? name : cls + ' · ' + name;
 }
 /* THE WHEEL. A card's pose is a function of ONE number: how far its centre
    is from the middle of the shelf, in viewport widths (negative to the
@@ -17289,6 +17407,578 @@ function shelfEntries(own, sets) {
   return out;
 }
 
+/* =====================================================================
+   🗂 SHELVES THE TEACHER MAKES — “2025 papers”, and every class on it
+   ---------------------------------------------------------------------
+   A bookcase with one shelf per level and subject is right until a class
+   has forty papers on one shelf. What a teacher actually has is PILES —
+   this year's prelims, last year's, the topical drills — and until now
+   there was nowhere to put them: the shelf a paper stood on was worked
+   out from its level and subject and could not be chosen.
+
+   So the teacher makes their own shelves, names them, and moves papers
+   between them; and **every student of that level and subject sees the
+   same papers on the same shelves**, because the arrangement is not a
+   thing each copy carries — it is read LIVE off the assignment, the way
+   the locked help level and the key pages already are (`guidanceRule`,
+   `keyPagesFromAssignment`). Move a paper this morning and it moves on
+   thirty shelves, including the students who started it yesterday. What
+   stays theirs is what was always theirs: their ink, their hints, their
+   marking and their mistake book.
+
+   ① THE CATALOGUE IS ONE DOCUMENT IN A COLLECTION WHOSE RULES ALREADY
+      EXIST, and that is why this shipped without a deploy. `tutorShelves`
+      as a collection of its own would need a line in the Firestore rules —
+      which live in `polymathlc/math`, are shared with five apps, and fail
+      CLOSED when they do not know a name: the write is denied, the read
+      comes back empty, and nothing on any screen says why. The rules for
+      `tutorAssignments` are already *read by any signed-in user, written
+      by the admin*, which is EXACTLY what a shelf catalogue wants, so it
+      is the reserved document `tutorAssignments/__shelves__`. It carries
+      `active: false`, and `loadAssignments` asks for `active == true`, so
+      the catalogue can never come back as a worksheet set for a class.
+
+   ② A SHELF IS A LABEL, NOT A CLASS. It carries no level and no subject:
+      “2025 papers” is ONE shelf, and a P5 Science child sees the P5
+      Science papers on it while a P6 Maths child sees theirs. A shelf per
+      class would have meant making the same shelf eight times, and a
+      teacher who makes it seven times has a class whose papers are
+      somewhere else. The level and the subject are the OTHER axis — the
+      scope picker — and the two compose.
+
+   ③ AN UNKNOWN SHELF ID READS AS UNSORTED (`shelfGroups`), and that one
+      line is what makes deleting a shelf safe. The papers on a shelf that
+      has gone fall back onto “Not on a shelf yet” rather than into a
+      section nothing draws — a paper can never be lost by shelf
+      bookkeeping, which is the one thing this feature must never do.
+
+   ④ 🕒 RECENTLY OPENED IS A VIEW, NEVER A MOVE. A paper on it is still on
+      its own shelf and still drawn there; nothing is written when it is
+      shown. It is not a drop target for the same reason — “move it to
+      Recently opened” is not a thing that can be true.
+
+   ⑤ NOTHING HERE IS FILTERED BY A SCOPE THAT WOULD HIDE WORK. A paper
+      with no level or no subject passes EVERY scope (`shelfInScope`), so
+      picking a class can never make somebody's own untagged upload
+      disappear — it stands on its own “Any level” shelf instead, which is
+      the rule `canSeeWorksheet` already follows.
+   ===================================================================== */
+var SHELF_DOC_ID = '__shelves__';   // the reserved catalogue, in ASSIGN_COLLECTION
+var SHELF_MAX = 120;                // one Firestore document, which dies at 1 MB
+var SHELF_NAME_MAX = 48;
+var SHELF_RECENT_ID = '__recent__';
+var SHELF_RECENT_MAX = 12;          // a shelf, not a log
+var SHELF_RECENT_DAYS = 60;
+var SHELF_UNSORTED_TITLE = 'Not on a shelf yet';
+
+var shelves = [];                   // [{ id, name, order, createdAt }]
+var shelvesLoaded = false;
+
+function shelfCleanName(s) {
+  return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, SHELF_NAME_MAX);
+}
+/* THE ONE READER of the catalogue, the way `normStudents` is the one
+   reader of a row's students: junk out, ids deduped, order canonical and
+   the whole thing capped. Every path that shows or writes a shelf goes
+   through it, so a record written by a later version — or half-written by
+   a failed one — can never paint a nameless shelf onto the bookcase. */
+function shelfNorm(raw) {
+  var seen = {}, out = [];
+  (Array.isArray(raw) ? raw : []).forEach(function (s, i) {
+    if (!s || typeof s !== 'object') return;
+    var id = String(s.id == null ? '' : s.id).trim();
+    var name = shelfCleanName(s.name);
+    if (!id || !name || seen[id]) return;
+    seen[id] = true;
+    var order = Number(s.order);
+    out.push({
+      id: id,
+      name: name,
+      order: isFinite(order) ? order : i,
+      createdAt: shelfStampOf(s.createdAt)
+    });
+  });
+  out.sort(function (a, b) {
+    if (a.order !== b.order) return a.order - b.order;
+    if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+    return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+  });
+  return out.slice(0, SHELF_MAX);
+}
+function shelfFind(list, id) {
+  if (!id) return null;
+  var out = null;
+  (list || []).forEach(function (s) { if (!out && s && s.id === id) out = s; });
+  return out;
+}
+function shelfLabel(list, id) {
+  var s = shelfFind(list, id);
+  return s ? s.name : '';
+}
+/* Where a shelf stands on the bookcase. An unsorted paper's shelf is
+   ALWAYS last, and a shelf the catalogue no longer has is unsorted — so
+   this is `Infinity` for both, which is why `shelfGroupCompare` orders
+   ranks with `<` rather than `a - b`: Infinity − Infinity is NaN, and a
+   comparator that returns NaN leaves the shelves in whatever order the
+   engine's sort happened to produce. */
+function shelfRank(list, id) {
+  if (!id) return Infinity;
+  var i = -1;
+  (list || []).forEach(function (s, n) { if (i < 0 && s && s.id === id) i = n; });
+  return i < 0 ? Infinity : i;
+}
+
+/* 🗂 WHICH SHELF A PAPER IS ON — the ONE place it is decided, and the
+   whole of “every student has the same papers on the same shelves”.
+
+   A copy carries the shelf it was made with, and that is NOT what is
+   read: the ASSIGNMENT is, because the assignment is the one record the
+   whole class shares. A shelf read off each copy would only ever govern
+   the students who had not started yet — the exact fault `guidanceRule`
+   documents about the locked help level, and it would look like it worked
+   right up until the teacher moved a paper.
+
+   `assignmentsLoaded` tells “the list has not arrived yet” from “it is
+   not set”, which want opposite answers: until it is in, the copy's own
+   field stands, so a cold start shows the arrangement it had rather than
+   throwing every paper onto the unsorted shelf for a second. */
+function worksheetShelfId(w, list, loaded) {
+  if (!w) return '';
+  if (w.set) return String(w.set.shelf || '');
+  var aid = w.assignmentId || w.id || '';
+  if (loaded && aid) {
+    var live = null;
+    (list || []).forEach(function (x) { if (!live && x && x.id === aid) live = x; });
+    if (live) return String(live.shelf || '');
+  }
+  return String(w.shelf || '');
+}
+
+/* 🕒 WHEN A PAPER WAS LAST WORKED ON. `updatedAt` is written by every
+   auto-save, so it already means “last worked on” for anything that has
+   been written on; `lastOpenedAt` is what adds the paper that was opened,
+   read and closed without a mark. The LATER of the two, because either
+   one alone is a shelf that quietly misses half of what belongs on it.
+
+   A set worksheet nobody has started has never been opened — its stamp is
+   the day the teacher set it — so it is worth 0 here and never stands on
+   the recently-opened shelf. */
+function shelfRecentStamp(w) {
+  if (!w || w.set) return 0;
+  var a = shelfStampOf(w.lastOpenedAt), b = shelfStampOf(w.updatedAt);
+  return a > b ? a : b;
+}
+/* “2 hours ago”, for the chip on the recently-opened shelf. A date is what
+   a card already shows; what this shelf is for is how long ago. */
+function shelfAgo(t, now) {
+  var at = Number(t) || 0;
+  if (!(at > 0)) return '';
+  var ms = (Number(now) || Date.now()) - at;
+  if (ms < 0) ms = 0;
+  var m = Math.floor(ms / 60000);
+  if (m < 2) return 'just now';
+  if (m < 60) return m + ' minutes ago';
+  var h = Math.floor(m / 60);
+  if (h < 2) return 'an hour ago';
+  if (h < 24) return h + ' hours ago';
+  var d = Math.floor(h / 24);
+  if (d < 2) return 'yesterday';
+  if (d < 7) return d + ' days ago';
+  var wk = Math.floor(d / 7);
+  if (wk < 5) return wk < 2 ? 'a week ago' : wk + ' weeks ago';
+  var mo = Math.floor(d / 30);
+  return mo < 2 ? 'a month ago' : mo + ' months ago';
+}
+/* The recently-opened shelf: newest first, inside a window, capped.
+   Returns `{ w, t }` so the card can say WHEN without the renderer
+   working the stamp out a second time and disagreeing about it.
+
+   The ceiling is not decoration: a device with a clock a day fast writes a
+   stamp in the future, and without it that paper is pinned to the front of
+   the shelf for ever. */
+function shelfRecentItems(entries, opts) {
+  opts = opts || {};
+  var now = Number(opts.now) || Date.now();
+  var days = Number(opts.recentDays) > 0 ? Number(opts.recentDays) : SHELF_RECENT_DAYS;
+  var max = Number(opts.recentMax) > 0 ? Number(opts.recentMax) : SHELF_RECENT_MAX;
+  var floor = now - days * 86400000;
+  var ceiling = now + 86400000;
+  var rows = [];
+  (entries || []).forEach(function (w) {
+    var t = shelfRecentStamp(w);
+    if (!(t > 0) || t < floor || t > ceiling) return;
+    rows.push({ w: w, t: t });
+  });
+  rows.sort(function (a, b) { return b.t - a.t; });
+  return rows.slice(0, max);
+}
+
+/* THE SCOPE — which level and subject are in view. An EMPTY half means
+   “any”, and a paper that carries nothing there passes whatever is asked:
+   picking a class must never make an untagged paper of somebody's own
+   disappear, so it stands on its own “Any level · Any subject” shelf
+   instead. That is `canSeeWorksheet`'s rule, applied to the picker. */
+function shelfInScope(w, scope) {
+  if (!w || !scope) return true;
+  if (scope.level && w.level && String(w.level) !== scope.level) return false;
+  if (scope.subject && w.subject && String(w.subject) !== scope.subject) return false;
+  return true;
+}
+
+/* THE ONE PLACE A HOME SCREEN BECOMES AN ORDERED LIST OF SHELVES, and it
+   is pure so the harness can pin it. In: every paper the viewer has, the
+   catalogue, the scope and how to ask a paper which shelf it is on. Out:
+   the sections in the order they are drawn — 🕒 Recently opened, then the
+   named shelves in the teacher's order, then whatever is not on one.
+
+   THE EMPTY SHELVES ARE THE TEACHER'S OWN, and only with ONE class in
+   view. A shelf with no papers on it has no level and no subject of its
+   own — it is a label — so on “every class” there is no heading it could
+   honestly stand under; with a class chosen there is, and that is where
+   arranging happens: a shelf you cannot see is a shelf you cannot drag
+   onto, and a shelf made a moment ago that does not appear reads as a
+   creation that failed. A student is never shown one. */
+function shelfSections(entries, opts) {
+  opts = opts || {};
+  var cat = shelfNorm(opts.shelves);
+  var scope = opts.scope || {};
+  var shelfOf = typeof opts.shelfOf === 'function' ? opts.shelfOf : function () { return ''; };
+  var seen = (entries || []).filter(function (w) { return w && shelfInScope(w, scope); });
+  var out = [];
+  var recent = shelfRecentItems(seen, opts);
+  if (recent.length) {
+    out.push({
+      kind: 'recent', shelf: SHELF_RECENT_ID, level: '', subject: '',
+      title: '🕒 Recently opened',
+      items: recent.map(function (r) { return r.w; }),
+      stamps: recent.map(function (r) { return r.t; })
+    });
+  }
+  var groups = shelfGroups(seen, { shelves: cat, shelfOf: shelfOf });
+  var oneClass = !!(scope.level && scope.subject);
+  if (opts.showEmpty && oneClass && cat.length) {
+    var here = {};
+    groups.forEach(function (g) {
+      if (g.level === scope.level && g.subject === scope.subject) here[g.shelf] = true;
+    });
+    cat.forEach(function (s) {
+      if (here[s.id]) return;
+      groups.push({ level: scope.level, subject: scope.subject, shelf: s.id, items: [] });
+    });
+    if (!here['']) groups.push({ level: scope.level, subject: scope.subject, shelf: '', items: [] });
+    groups.sort(function (a, b) { return shelfGroupCompare(a, b, cat); });
+  }
+  groups.forEach(function (g) {
+    out.push({
+      kind: 'shelf', shelf: g.shelf, level: g.level, subject: g.subject,
+      empty: !g.items.length,
+      /* The “P5 · Science ·” prefix is dropped only on the class that was
+         ASKED FOR — it is already on the picker above. Anything else keeps
+         its label, so an untagged paper's shelf never reads as one of this
+         class's. */
+      title: shelfTitle(g, {
+        shelves: cat,
+        scoped: oneClass && g.level === scope.level && g.subject === scope.subject
+      }),
+      items: g.items
+    });
+  });
+  return out;
+}
+
+/* ---- The catalogue, read and written ---- */
+function shelfNewId() {
+  return 'sh' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+async function loadShelves() {
+  if (!currentUser) { shelves = []; shelvesLoaded = false; return; }
+  try {
+    var d = await db.collection(ASSIGN_COLLECTION).doc(SHELF_DOC_ID).get();
+    shelves = shelfNorm(d && d.exists ? (d.data() || {}).shelves : []);
+    shelvesLoaded = true;
+  } catch (e) {
+    /* A DENIED READ IS NOT AN ERROR WORTH SHOWING. With no catalogue every
+       paper is unsorted and the home screen is byte-for-byte the bookcase
+       this app had before shelves existed — which is the right way for
+       this to fail. */
+    console.warn('shelves: the catalogue could not be read', e);
+    shelves = [];
+    shelvesLoaded = false;
+  }
+}
+/* THE ONE WRITER. Every change to the bookcase — made, renamed, taken off
+   — goes through here, so the cap, the normalising and the renumbering
+   cannot drift between them. */
+async function shelfSave(list) {
+  if (!isAdmin(currentUser)) return false;
+  var clean = shelfNorm(list);
+  try {
+    await db.collection(ASSIGN_COLLECTION).doc(SHELF_DOC_ID).set({
+      kind: 'tutorShelves',
+      /* NOT DECORATION: `loadAssignments` asks for `active == true`, so
+         this is what keeps the catalogue out of the list of worksheets
+         set for a class. */
+      active: false,
+      shelves: clean.map(function (s, i) {
+        return { id: s.id, name: s.name, order: i, createdAt: s.createdAt || Date.now() };
+      }),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+    shelves = clean;
+    shelvesLoaded = true;
+    return true;
+  } catch (e) {
+    console.error(e);
+    var denied = /permission|insufficient|PERMISSION_DENIED/i.test(String((e && e.message) || e));
+    toast(denied
+      ? 'The bookcase could not be saved — the rules do not allow it yet. ' + assignRulesHint()
+      : 'The bookcase could not be saved: ' + ((e && e.message) || e), 12000);
+    return false;
+  }
+}
+async function shelfCreate(name) {
+  if (!isAdmin(currentUser)) return '';
+  var nm = shelfCleanName(name);
+  if (!nm) { toast('Give the shelf a name first.'); return ''; }
+  if (shelves.length >= SHELF_MAX) {
+    toast('That is as many shelves as one bookcase holds (' + SHELF_MAX + ').', 6000);
+    return '';
+  }
+  var dup = null;
+  shelves.forEach(function (s) { if (!dup && s.name.toLowerCase() === nm.toLowerCase()) dup = s; });
+  if (dup) { toast('There is already a shelf called “' + dup.name + '”.', 5000); return ''; }
+  var s = { id: shelfNewId(), name: nm, order: shelves.length, createdAt: Date.now() };
+  if (!await shelfSave(shelves.concat([s]))) return '';
+  toast('🗂 “' + nm + '” is on the bookcase. Drag a paper onto it, or use 🗂 on a card.', 7000);
+  renderWorksheets();
+  return s.id;
+}
+async function shelfRename(id, name) {
+  if (!isAdmin(currentUser)) return false;
+  var nm = shelfCleanName(name);
+  if (!nm) { toast('A shelf needs a name.'); return false; }
+  if (!shelfFind(shelves, id)) { toast('That shelf is not there any more.', 5000); return false; }
+  var next = shelves.map(function (s) {
+    return s.id === id ? { id: s.id, name: nm, order: s.order, createdAt: s.createdAt } : s;
+  });
+  if (!await shelfSave(next)) return false;
+  toast('🗂 Renamed to “' + nm + '” — on every shelf in the centre.', 5000);
+  renderWorksheets();
+  return true;
+}
+/* TAKING A SHELF OFF NEVER TAKES A PAPER OFF. The papers keep the id of a
+   shelf that has gone and `shelfGroups` reads an unknown id as unsorted,
+   so they are back on “Not on a shelf yet” on the very next paint with
+   nothing to migrate and nothing to lose. It is said in the confirm,
+   because “delete the shelf” is a sentence that reads as “delete the
+   papers” to anybody who has not been told otherwise. */
+async function shelfDelete(id) {
+  if (!isAdmin(currentUser)) return false;
+  var s = shelfFind(shelves, id);
+  if (!s) return false;
+  var on = 0;
+  (worksheets || []).forEach(function (w) {
+    if (worksheetShelfId(w, assignments, assignmentsLoaded) === id) on++;
+  });
+  var note = on
+    ? 'The ' + on + ' paper' + (on === 1 ? '' : 's') + ' on it ' + (on === 1 ? 'goes' : 'go') +
+      ' back to “' + SHELF_UNSORTED_TITLE + '”. Nothing is deleted.'
+    : 'It is empty.';
+  if (!confirm('Take the shelf “' + s.name + '” off the bookcase?\n\n' + note)) return false;
+  var next = shelves.filter(function (x) { return x.id !== id; });
+  if (!await shelfSave(next)) return false;
+  toast('🗂 “' + s.name + '” is off the bookcase.' +
+        (on ? ' Its papers are back on “' + SHELF_UNSORTED_TITLE + '”.' : ''), 6000);
+  renderWorksheets();
+  return true;
+}
+
+/* 🗂 THE ONE MOVER. Dragging a booklet with a mouse and the 🗂 button on a
+   card both end here, so a move made with a finger is the same move as
+   one made with a cursor — and there is one place the writes, the order
+   they happen in and the refusals live.
+
+   THE ASSIGNMENT IS WRITTEN FIRST, because it is the record the whole
+   class reads: it is what makes “the same papers on the same shelves”
+   true, and a teacher's own row that moved while the class's did not is
+   the one outcome worth refusing to report as a success. Both writes are
+   merges of a single field, and either failing is NAMED. */
+async function moveWorksheetToShelf(id, shelfId) {
+  if (!isAdmin(currentUser)) { toast('Only ' + setterName() + ' arranges the shelves.', 5000); return false; }
+  shelfId = String(shelfId || '');
+  if (shelfId && !shelfFind(shelves, shelfId)) { toast('That shelf is not there any more.', 5000); return false; }
+  var raw = String(id || '');
+  var setId = raw.indexOf('set:') === 0 ? raw.slice(4) : '';
+  var w = setId ? null : (worksheets || []).find(function (x) { return x && x.id === raw; });
+  var aid = setId || (w ? (w.assignmentId || w.id) : '');
+  var live = aid ? (assignments || []).find(function (x) { return x && x.id === aid; }) : null;
+  if (!w && !live) { toast('That paper is not on your bookcase any more.', 5000); return false; }
+  if (worksheetShelfId(w || { set: live }, assignments, assignmentsLoaded) === shelfId) return true;
+  var to = shelfId ? '“' + shelfLabel(shelves, shelfId) + '”' : '“' + SHELF_UNSORTED_TITLE + '”';
+  try {
+    if (live) {
+      await db.collection(ASSIGN_COLLECTION).doc(aid).set({ shelf: shelfId }, { merge: true });
+      live.shelf = shelfId;
+    }
+    // A COPY IS NOT THE ARRANGEMENT: a paper the teacher started from
+    // somebody else's assignment is moved where the class reads it and
+    // nowhere else, or the copy's own field would quietly outrank the
+    // assignment the next time the list had not arrived.
+    if (w && !w.assignmentId) {
+      await db.collection(COLLECTION).doc(w.id).set({ shelf: shelfId }, { merge: true });
+    }
+    if (w) w.shelf = shelfId;
+    renderWorksheets();
+    var nm = (w && w.name) || (live && live.name) || 'That paper';
+    toast('🗂 “' + nm + '” is on ' + to +
+          (live ? ' — and on every ' +
+                  (live.level ? levelLabel(live.level) + ' ' : '') +
+                  (live.subject ? subjectLabel(live.subject) + ' ' : '') +
+                  'student’s shelf too.' : '.'), 6000);
+    return true;
+  } catch (e) {
+    console.error(e);
+    var denied = /permission|insufficient|PERMISSION_DENIED/i.test(String((e && e.message) || e));
+    toast(denied
+      ? 'It could not be moved — the rules do not allow it yet. ' + assignRulesHint()
+      : 'It could not be moved: ' + ((e && e.message) || e), 10000);
+    return false;
+  }
+}
+
+/* ---- Which level and subject are in view ----
+   Remembered per DEVICE, because it is where this teacher is working
+   today rather than anything about the worksheets — and because a student
+   who takes two subjects and settles on one should find it there
+   tomorrow. A stored value that is not a level or not a subject this app
+   knows is read as “any”, so a record from a later version can never
+   empty the bookcase. */
+var SHELF_SCOPE_KEY = 'tutorShelfScope';
+/* READ ONCE AT LOAD, the way every other per-device preference in this app
+   is, and deliberately NOT from a sign-in hook: the scope belongs to the
+   browser rather than to the account. Hung off `adoptStudents` — the
+   obvious place, beside the active student — it would never run for the
+   TEACHER at all, because the teacher adopts nobody, so the one person who
+   uses the picker most would find it reset on every reload. */
+var shelfScope = (function () {
+  try {
+    var raw = JSON.parse(localStorage.getItem(SHELF_SCOPE_KEY) || '{}') || {};
+    return {
+      level: LEVELS.indexOf(String(raw.level || '')) >= 0 ? String(raw.level) : '',
+      subject: SUBJECT_OK[String(raw.subject || '')] ? String(raw.subject) : ''
+    };
+  } catch (e) { return { level: '', subject: '' }; }
+})();
+function setShelfScope(level, subject) {
+  shelfScope = { level: level || '', subject: subject || '' };
+  try { localStorage.setItem(SHELF_SCOPE_KEY, JSON.stringify(shelfScope)); } catch (e) {}
+  renderWorksheets();
+}
+/* THE SCOPE REALLY IN FORCE — the ONE place it is decided, so the picker,
+   the sections and the empty shelves can never disagree about which class
+   is in view. A STUDENT'S LEVEL IS NEVER A CHOICE: their list is already
+   theirs, and the level goes in so a single-class child gets shelf names
+   without “P5 · Science ·” repeated down the page. A child who takes one
+   subject has nothing to choose between, so it is filled in for them. */
+function shelfScopeNow() {
+  if (isAdmin(currentUser)) {
+    return { level: shelfScope.level || '', subject: shelfScope.subject || '' };
+  }
+  var st = activeStudent();
+  if (!st || !st.level) return { level: '', subject: '' };
+  var subs = studentSubjectList(st);
+  var sub = subs.length === 1
+    ? subs[0]
+    : (subs.indexOf(shelfScope.subject) >= 0 ? shelfScope.subject : '');
+  return { level: st.level, subject: sub };
+}
+
+/* ---- 🗂 Naming a shelf, and choosing one for a paper ----
+   `thenMove` is what makes “make a new shelf for this paper” one gesture
+   rather than three: create it, then put the paper on it. It is cleared
+   on every open, or a shelf made from the bar a week later would drag
+   whatever was being moved back then onto it. */
+var shelfNameTarget = '';
+var shelfNameThenMove = '';
+function openShelfNameModal(id, thenMove) {
+  if (!isAdmin(currentUser)) return;
+  shelfNameTarget = String(id || '');
+  shelfNameThenMove = String(thenMove || '');
+  var s = shelfFind(shelves, shelfNameTarget);
+  $('shelfNameTitle').textContent = s ? '🗂 Rename this shelf' : '🗂 A new shelf';
+  $('shelfNameSub').textContent = s
+    ? 'Every student of every class reads the shelf names you set here, so this renames it on their bookcases too. Nothing moves off it.'
+    : 'Name it for the pile it holds — “2025 papers”, “Prelims”, “Heat revision”. A shelf is a LABEL, not a class: the same shelf stands on every level and subject, and each student sees their own papers on it.';
+  $('shelfNameInput').value = s ? s.name : '';
+  $('shelfNameGo').textContent = s ? 'Rename it' : 'Make it';
+  $('shelfNameModal').classList.add('open');
+  setTimeout(function () { try { $('shelfNameInput').focus(); $('shelfNameInput').select(); } catch (e) {} }, 60);
+}
+async function shelfNameConfirm() {
+  var nm = $('shelfNameInput').value;
+  var id = shelfNameTarget, mv = shelfNameThenMove;
+  shelfNameTarget = ''; shelfNameThenMove = '';
+  $('shelfNameModal').classList.remove('open');
+  if (id) { await shelfRename(id, nm); return; }
+  var made = await shelfCreate(nm);
+  if (made && mv) await moveWorksheetToShelf(mv, made);
+}
+
+var shelfPickTarget = '';
+function openShelfPick(id) {
+  if (!isAdmin(currentUser)) return;
+  shelfPickTarget = String(id || '');
+  var setId = shelfPickTarget.indexOf('set:') === 0 ? shelfPickTarget.slice(4) : '';
+  var w = setId ? null : (worksheets || []).find(function (x) { return x && x.id === shelfPickTarget; });
+  var live = (assignments || []).find(function (x) {
+    return x && x.id === (setId || (w ? (w.assignmentId || w.id) : ''));
+  });
+  var nm = (w && w.name) || (live && live.name) || 'This paper';
+  var on = worksheetShelfId(w || { set: live }, assignments, assignmentsLoaded);
+  var onName = shelfLabel(shelves, on) || SHELF_UNSORTED_TITLE;
+  $('shelfPickSub').textContent = '“' + nm + '” is on “' + onName + '”.' +
+    (live ? ' Every ' + (live.level ? levelLabel(live.level) + ' ' : '') +
+            (live.subject ? subjectLabel(live.subject) + ' ' : '') +
+            'student reads the same arrangement, so moving it here moves it on their shelves too.'
+          : ' It is not set for a class, so this is your own bookcase.');
+  var box = $('shelfPickList');
+  box.innerHTML = '';
+  var add = function (sid, label, sub) {
+    var b = document.createElement('button');
+    b.className = 'obChoice' + (sid === on ? ' on' : '');
+    var t = document.createElement('div');
+    t.className = 'obChoiceTitle';
+    t.textContent = label;
+    b.appendChild(t);
+    if (sub) {
+      var u = document.createElement('div');
+      u.className = 'obChoiceSub';
+      u.textContent = sub;
+      b.appendChild(u);
+    }
+    b.addEventListener('click', function () {
+      $('shelfPickModal').classList.remove('open');
+      moveWorksheetToShelf(shelfPickTarget, sid);
+    });
+    box.appendChild(b);
+  };
+  shelves.forEach(function (sh) {
+    add(sh.id, '🗂 ' + sh.name, sh.id === on ? 'It is on this shelf now.' : '');
+  });
+  add('', '⬦ ' + SHELF_UNSORTED_TITLE, on ? 'Take it off that shelf and leave it with the unsorted papers.' : 'It is here now.');
+  var mk = document.createElement('button');
+  mk.className = 'btn btnSm';
+  mk.style.marginTop = '16px';
+  mk.textContent = '🗂 Make a new shelf for it…';
+  mk.addEventListener('click', function () {
+    var t = shelfPickTarget;
+    $('shelfPickModal').classList.remove('open');
+    openShelfNameModal('', t);
+  });
+  box.appendChild(mk);
+  $('shelfPickModal').classList.add('open');
+}
+
 /* ---- The worksheet list ---- */
 function renderWorksheets() {
   var box = $('wsList');
@@ -17309,6 +17999,10 @@ function renderWorksheets() {
   // a teacher never has to press it to find out whether it had anything
   // to do.
   syncSetAllBtn();
+  // 🗂 Which level and subject are in view, and the teacher's ➕ New shelf.
+  // Painted from here for `syncSetAllBtn`'s reason: this is the one
+  // function every path that changes the list already goes through.
+  renderShelfBar();
   var entries = shelfEntries(worksheets, assignmentsForMe());
   if (!entries.length) {
     var pad = document.createElement('div');
@@ -17319,30 +18013,143 @@ function renderWorksheets() {
     box.appendChild(pad);
     return;
   }
-  // THE BOOKSHELF: one shelf per level and subject, each a wheel of paper
-  // that scrolls sideways, filed by topic along the shelf.
-  var groups = shelfGroups(entries);
-  groups.forEach(function (g) { box.appendChild(shelfNode(g)); });
+  // THE BOOKSHELF: 🕒 Recently opened, then the teacher's own shelves in
+  // the order they arranged them, then whatever is not on one — each a
+  // wheel of paper that scrolls sideways, filed by topic along the shelf.
+  // `shelfSections` is the ONE place that order is decided.
+  var sections = shelfSections(entries, {
+    shelves: shelves,
+    scope: shelfScopeNow(),
+    shelfOf: function (w) { return worksheetShelfId(w, assignments, assignmentsLoaded); },
+    showEmpty: isAdmin(currentUser),
+    now: Date.now()
+  });
+  var shown = 0;
+  sections.forEach(function (sec) { shown += sec.items.length; });
+  // A class with nothing on its shelves is SAID, never left as a blank
+  // page under a picker — a scope that quietly empties the screen reads
+  // as an app that has lost the worksheets.
+  if (!shown) {
+    var sc = shelfScopeNow();
+    var what = (sc.level ? levelLabel(sc.level) : '') + (sc.level && sc.subject ? ' ' : '') +
+               (sc.subject ? subjectLabel(sc.subject) : '');
+    var pad2 = document.createElement('div');
+    pad2.className = 'emptyPad';
+    pad2.innerHTML = '<div class="padIcon">🗂</div>' +
+      '<div class="padTitle">Nothing on the ' + escHtml(what || 'chosen') + ' shelves yet</div>' +
+      '<div class="padSub">Your other papers are still here — pick another level or subject above.</div>';
+    box.appendChild(pad2);
+  }
+  sections.forEach(function (sec) { box.appendChild(shelfNode(sec)); });
+}
+
+/* ---- 🗂 The bar over the bookcase: which class is in view, and ➕ ----
+   The teacher toggles between every level and every subject the centre
+   teaches; a student never picks their LEVEL (their list is already
+   theirs) and is offered a subject only when they really take more than
+   one — a picker with one answer on it is furniture. */
+function renderShelfBar() {
+  var bar = $('shelfBar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  var teacher = isAdmin(currentUser);
+  var st = teacher ? null : activeStudent();
+  var subs = teacher ? SUBJECTS.map(function (x) { return x.value; }) : (st ? studentSubjectList(st) : []);
+  if (!currentUser || (!teacher && subs.length < 2)) { bar.classList.add('hidden'); return; }
+  bar.classList.remove('hidden');
+
+  var mk = function (label, opts, value, onPick) {
+    var wrap = document.createElement('label');
+    wrap.className = 'shelfPick';
+    var cap = document.createElement('span');
+    cap.textContent = label;
+    wrap.appendChild(cap);
+    var sel = document.createElement('select');
+    opts.forEach(function (o) {
+      var op = document.createElement('option');
+      op.value = o.value;
+      op.textContent = o.label;
+      if (o.value === value) op.selected = true;
+      sel.appendChild(op);
+    });
+    sel.addEventListener('change', function () { onPick(sel.value); });
+    wrap.appendChild(sel);
+    bar.appendChild(wrap);
+  };
+
+  if (teacher) {
+    mk('Level', [{ value: '', label: 'Every level' }].concat(LEVELS.map(function (l) {
+      return { value: l, label: levelLabel(l) };
+    })), shelfScope.level, function (v) { setShelfScope(v, shelfScope.subject); });
+  }
+  mk('Subject', [{ value: '', label: 'Every subject' }].concat(subs.map(function (v) {
+    return { value: v, label: subjectLabel(v) };
+  })), shelfScopeNow().subject, function (v) { setShelfScope(shelfScope.level, v); });
+
+  if (teacher) {
+    var sp = document.createElement('span');
+    sp.className = 'spacer';
+    bar.appendChild(sp);
+    var add = document.createElement('button');
+    add.className = 'btn btnSm';
+    add.textContent = '🗂 New shelf';
+    add.title = 'Make a shelf — “2025 papers”, say — and drag your worksheets onto it';
+    add.addEventListener('click', function () { openShelfNameModal(''); });
+    bar.appendChild(add);
+  }
 }
 
 /* One shelf: its heading, the ‹ › buttons, and the row of cards on a
    plank. The row is the scroller; the cards are `.shelfItem`s the wheel
    poses off the scroll position. */
+/* WHICH BOOKLET IS BEING DRAGGED, held here rather than read off the
+   drop: `dataTransfer.getData` is deliberately blocked during `dragover`
+   in every browser, so a shelf cannot ask what is coming and must be told
+   when the drag starts. Cleared on `dragend`, always — a drag abandoned
+   over the page would otherwise leave the next drop moving whatever was
+   picked up a minute ago. */
+var _shelfDragId = '';
+function shelfDropClear() {
+  var lit = document.querySelectorAll('.shelf.shelfDrop');
+  for (var i = 0; i < lit.length; i++) lit[i].classList.remove('shelfDrop');
+}
+
 function shelfNode(g) {
+  var teacher = isAdmin(currentUser);
+  var recent = g.kind === 'recent';
   var shelf = document.createElement('section');
-  shelf.className = 'shelf';
+  shelf.className = 'shelf' + (recent ? ' shelfRecent' : '');
   var head = document.createElement('div');
   head.className = 'shelfHead';
   var h = document.createElement('h3');
-  h.textContent = shelfTitle(g);
+  h.textContent = g.title || shelfTitle(g, { shelves: shelves });
   head.appendChild(h);
   var count = document.createElement('span');
   count.className = 'shelfCount';
-  count.textContent = g.items.length + (g.items.length === 1 ? ' paper' : ' papers');
+  count.textContent = g.items.length
+    ? g.items.length + (g.items.length === 1 ? ' paper' : ' papers')
+    : 'empty';
   head.appendChild(count);
   var sp = document.createElement('span');
   sp.className = 'spacer';
   head.appendChild(sp);
+  // 🗂 Renaming and taking a shelf off are the teacher's, on the shelf
+  // itself — and both refuse in their own handlers besides, because a
+  // button that is not drawn has never been the lock in this app.
+  if (teacher && !recent && g.shelf) {
+    var ren = document.createElement('button');
+    ren.className = 'iconBtn shelfTool';
+    ren.textContent = '✎';
+    ren.title = 'Rename this shelf';
+    ren.addEventListener('click', function () { openShelfNameModal(g.shelf); });
+    head.appendChild(ren);
+    var del = document.createElement('button');
+    del.className = 'iconBtn shelfTool';
+    del.textContent = '🗑';
+    del.title = 'Take this shelf off the bookcase — its papers go back to the unsorted shelf';
+    del.addEventListener('click', function () { shelfDelete(g.shelf); });
+    head.appendChild(del);
+  }
   var prev = document.createElement('button');
   prev.className = 'iconBtn shelfBtn';
   prev.textContent = '‹';
@@ -17357,22 +18164,81 @@ function shelfNode(g) {
 
   var row = document.createElement('div');
   row.className = 'shelfRow';
-  g.items.forEach(function (w) {
+  g.items.forEach(function (w, i) {
     var item = document.createElement('div');
     item.className = 'shelfItem';
     // A set worksheet not yet started is the class's booklet with "Start
     // it" on it; everything else is the student's own.
-    var card = w.set ? setCardNode(w.set) : wsCardNode(w);
+    // 🕒 On the recently-opened shelf a card also says how long ago it was
+    // worked on and WHICH shelf it really lives on, because that shelf is
+    // a view: the paper is still standing in its own place further down.
+    var card = w.set ? setCardNode(w.set) : wsCardNode(w, recent ? {
+      ago: g.stamps ? g.stamps[i] : 0,
+      shelfName: shelfLabel(shelves, worksheetShelfId(w, assignments, assignmentsLoaded))
+    } : null);
     card.classList.add('booklet');
     item.appendChild(card);
+    // 🗂 DRAGGING IS THE MOUSE'S HALF and never the only way: `dragstart`
+    // is never fired by a touchscreen, so the 🗂 button on the card is
+    // what makes this work on the iPads these worksheets are written on.
+    // Both end at `moveWorksheetToShelf`.
+    if (teacher) {
+      item.draggable = true;
+      item.addEventListener('dragstart', function (e) {
+        _shelfDragId = w.id;
+        item.classList.add('shelfDragging');
+        try {
+          e.dataTransfer.setData('text/plain', w.id);
+          e.dataTransfer.effectAllowed = 'move';
+        } catch (err) {}
+      });
+      item.addEventListener('dragend', function () {
+        _shelfDragId = '';
+        item.classList.remove('shelfDragging');
+        shelfDropClear();
+      });
+    }
     row.appendChild(item);
   });
   shelf.appendChild(row);
+  // An empty shelf says what it is for rather than being a bare plank.
+  if (!g.items.length) {
+    var note = document.createElement('div');
+    note.className = 'shelfEmpty';
+    note.textContent = teacher
+      ? 'Drag a paper here, or use 🗂 on any card.'
+      : 'Nothing on this shelf yet.';
+    row.appendChild(note);
+  }
   var plank = document.createElement('div');
   plank.className = 'shelfPlank';
   shelf.appendChild(plank);
   prev.addEventListener('click', function () { shelfNudge(row, -1); });
   next.addEventListener('click', function () { shelfNudge(row, 1); });
+  // 🕒 THE RECENTLY-OPENED SHELF IS NOT A DROP TARGET. It is a view of
+  // what was worked on, so “move it to Recently opened” is not a thing
+  // that can be true — and a shelf that lit up and then did nothing would
+  // be worse than one that never lit up at all.
+  if (teacher && !recent) {
+    shelf.dataset.shelfId = g.shelf || '';
+    shelf.addEventListener('dragover', function (e) {
+      if (!_shelfDragId) return;
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
+      shelf.classList.add('shelfDrop');
+    });
+    shelf.addEventListener('dragleave', function (e) {
+      if (!shelf.contains(e.relatedTarget)) shelf.classList.remove('shelfDrop');
+    });
+    shelf.addEventListener('drop', function (e) {
+      e.preventDefault();
+      shelfDropClear();
+      var id = _shelfDragId;
+      if (!id) { try { id = e.dataTransfer.getData('text/plain'); } catch (err) { id = ''; } }
+      _shelfDragId = '';
+      if (id) moveWorksheetToShelf(id, g.shelf || '');
+    });
+  }
   // Fewer cards than the shelf can show need no buttons and no wheel.
   shelfWheelWatch(row);
   return shelf;
@@ -17396,7 +18262,10 @@ function syncSetAllBtn() {
 }
 
 /* One worksheet card, the same on every shelf. */
-function wsCardNode(w) {
+function wsCardNode(w, opts) {
+    // `opts` is the 🕒 recently-opened shelf's, and nobody else's: called
+    // with one argument this is byte-for-byte the card it always was.
+    opts = opts || {};
     var card = document.createElement('div');
     card.className = 'wsCard';
     card.appendChild(coverNode(w, 'Open it once and the front page shows here'));
@@ -17423,6 +18292,15 @@ function wsCardNode(w) {
     // that went missing.
     var tries = Math.max(1, parseInt(w.attempts, 10) || 1);
     if (tries > 1) meta.appendChild(chipNode('↻ Attempt ' + tries, 'chip'));
+    // 🕒 WHEN IT WAS LAST WORKED ON, and WHICH SHELF IT REALLY LIVES ON —
+    // on the recently-opened shelf alone. That shelf is a view rather than
+    // a move, so a card on it has to say where to find the paper when the
+    // view has scrolled past; without it the same booklet appears twice on
+    // one screen with nothing to say why.
+    if (opts.ago) {
+      meta.appendChild(chipNode('🕒 ' + shelfAgo(opts.ago, Date.now()), 'chip chipWhen'));
+      meta.appendChild(chipNode('🗂 ' + (opts.shelfName || SHELF_UNSORTED_TITLE), 'chip chipShelf'));
+    }
     // 📌 WHETHER THE CLASS HAS IT, said on the card. The teacher's own
     // shelf is the only place this can honestly be shown — a student's
     // shelf holds the papers they were given, so the ones they were NOT
@@ -17473,6 +18351,19 @@ function wsCardNode(w) {
         reset.addEventListener('click', function () { openPushModal(w.id); });
         foot.appendChild(reset);
       }
+    }
+    // 🗂 THE TOUCHSCREEN'S HALF OF THE MOVE. These worksheets are written
+    // on with an Apple Pencil, and a touchscreen never fires `dragstart` —
+    // so a shelf reachable only by dragging is a shelf the teacher cannot
+    // use on the device they teach from. It ends at the same
+    // `moveWorksheetToShelf` the drag does.
+    if (isAdmin(currentUser)) {
+      var mv = document.createElement('button');
+      mv.className = 'btn btnSm';
+      mv.textContent = '🗂 Shelf';
+      mv.title = 'Put this paper on one of your shelves';
+      mv.addEventListener('click', function () { openShelfPick(w.id); });
+      foot.appendChild(mv);
     }
     var del = document.createElement('button');
     del.className = 'btn btnSm btnDanger';
@@ -17536,7 +18427,16 @@ async function loadAssignments() {
     // knowing that is why. Sorted here instead.
     var snap = await db.collection(ASSIGN_COLLECTION).where('active', '==', true).limit(60).get();
     var out = [];
-    snap.forEach(function (d) { var a = d.data() || {}; a.id = d.id; out.push(a); });
+    snap.forEach(function (d) {
+      // 🗂 The shelf catalogue shares this collection, because that is the
+      // one whose Firestore rules already say “read by anybody signed in,
+      // written by the admin”. It carries `active: false` so the query
+      // above cannot return it, and it is dropped by NAME here as well —
+      // a catalogue read as a worksheet set for a class would be a card
+      // nobody can open on every student's home screen.
+      if (d.id === SHELF_DOC_ID) return;
+      var a = d.data() || {}; a.id = d.id; out.push(a);
+    });
     out.sort(function (x, y) {
       var xv = x.createdAt && x.createdAt.toMillis ? x.createdAt.toMillis() : 0;
       var yv = y.createdAt && y.createdAt.toMillis ? y.createdAt.toMillis() : 0;
@@ -17620,6 +18520,11 @@ async function startAssignment(id) {
       // student tidying up their own copy.
       sharedPdf: true,
       assignmentId: a.id,
+      // 🗂 The shelf as it stands today. `worksheetShelfId` reads the
+      // ASSIGNMENT over this, so the teacher moving the paper moves it
+      // here too — this is what the copy stands on for the moment before
+      // the assignment list has arrived.
+      shelf: a.shelf || '',
       setBy: setterName(),
       keyPages: Array.isArray(a.keyPages) ? a.keyPages : [],
       keyPath: a.keyPath || '',
@@ -17737,6 +18642,13 @@ async function pushWorksheet(id, level, locked, opts) {
       // opened yet stands beside the ones on the same topic they have.
       topic: w.topic || '',
       school: w.school || '',
+      // 🗂 WHICH SHELF THE CLASS FINDS IT ON, and the whole of “every
+      // student has the same papers on the same shelves”. It is read off
+      // the worksheet read LIVE above, so a shelf chosen a moment ago in
+      // the upload dialog travels with the paper — and from here on this
+      // field is the one every copy reads (`worksheetShelfId`), so moving
+      // the paper later moves it on thirty bookcases at once.
+      shelf: w.shelf || '',
       guidance: level,
       // Read LIVE by every copy when it is locked, so changing it here
       // changes it for the students who started yesterday too.
@@ -18338,6 +19250,12 @@ async function loadWorksheets() {
   // has been started is read off them, so a set card painted first says "not
   // started" about a worksheet they are half way through.
   try { await loadAssignments(); } catch (e) { /* already reported quietly */ }
+  // 🗂 The bookcase's own catalogue, beside the assignments it rides in
+  // the same collection as — and awaited here so the shelves are never
+  // PAINTED against a catalogue that has not arrived. `loadShelves` never
+  // throws: with none, every paper is unsorted and this is the home screen
+  // the app had before shelves existed.
+  await loadShelves();
   renderWorksheets();
 }
 
@@ -18433,6 +19351,23 @@ async function openWorksheet(id) {
     renderChat();
     showView('ws');
     if (window.innerWidth > 900) openBuddy('hints'); else closeBuddy();
+    // 🕒 WHEN IT WAS LAST OPENED, for the recently-opened shelf. `updatedAt`
+    // already means “last worked on” for anything that has been written on,
+    // because every auto-save writes it — this is what adds the paper that
+    // was opened, read and closed without a mark, which is most of what
+    // “what was I doing yesterday” asks about.
+    //
+    // FIRE AND FORGET, and one merged field: a shelf is a convenience and
+    // must never be the reason a worksheet does not open. Written locally
+    // too, so the shelf is right without waiting for a reload.
+    w.lastOpenedAt = Date.now();
+    var mine = worksheets.find(function (x) { return x && x.id === id; });
+    if (mine) mine.lastOpenedAt = w.lastOpenedAt;
+    try {
+      db.collection(COLLECTION).doc(id)
+        .set({ lastOpenedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true })
+        .catch(function (e) { console.warn('lastOpenedAt could not be written', e); });
+    } catch (e) { console.warn('lastOpenedAt could not be written', e); }
     // Anything this device holds that never reached the server, offered back
     // against what the server actually has.
     offerLocalBackup(id, stampOf(w.updatedAt));
@@ -18612,6 +19547,28 @@ function openUploadModal() {
   // checked again in pushWorksheet — hiding the box is not the lock.
   if (push) push.checked = isAdmin(currentUser);
   $('upPushWrap').classList.toggle('hidden', !isAdmin(currentUser));
+  // 🗂 Which shelf this pile goes on. The teacher's alone, and offered only
+  // when there is a shelf to put it on — a picker whose only answer is
+  // “nowhere” is furniture. It opens on the unsorted shelf every time,
+  // because the last pile's shelf silently chosen again is a term's worth
+  // of papers filed under a heading nobody picked.
+  var shelfSel = $('upShelf');
+  var canShelve = isAdmin(currentUser) && shelves.length > 0;
+  if (shelfSel) {
+    shelfSel.innerHTML = '';
+    var none = document.createElement('option');
+    none.value = '';
+    none.textContent = '⬦ ' + SHELF_UNSORTED_TITLE;
+    shelfSel.appendChild(none);
+    shelves.forEach(function (sh) {
+      var o = document.createElement('option');
+      o.value = sh.id;
+      o.textContent = '🗂 ' + sh.name;
+      shelfSel.appendChild(o);
+    });
+    shelfSel.value = '';
+  }
+  $('upShelfWrap').classList.toggle('hidden', !canShelve);
   fillGradeGrid('upGradeGrid', upGrade, function (k) { upGrade = k; });
   $('uploadModal').classList.add('open');
 }
@@ -18684,6 +19641,12 @@ function uploadSettings() {
     subjects: (isAdmin(currentUser) || !st) ? null : studentSubjectList(st),
     grade: upGrade,
     push: !!(isAdmin(currentUser) && $('upPush') && $('upPush').checked),
+    // 🗂 READ ONCE, WITH THE REST OF THE DIALOG, and carried to every paper
+    // in the pile — the same rule the level and the subject follow, and for
+    // the same reason: the dialog is shut before the first await, so a
+    // shelf read per file is paper 2 landing wherever the cleared form
+    // happens to point.
+    shelf: (isAdmin(currentUser) && $('upShelf')) ? String($('upShelf').value || '') : '',
     keyFile: upKeyFile,
     step: ''
   };
@@ -18720,6 +19683,10 @@ async function uploadOne(file, s, keyFile, solo) {
     ownerName: currentUser.displayName || '',
     storagePath: STORAGE_DIR + '/' + id + '.pdf',
     pageCount: pdfDoc.numPages,
+    // 🗂 The shelf this pile was sent to. An id that is not on the bookcase
+    // reads as unsorted wherever it is drawn, so nothing here can strand a
+    // paper.
+    shelf: s.shelf || '',
     body: '[]',
     bodyPath: '',
     score: { correct: 0, attempted: 0 },
@@ -20999,6 +21966,22 @@ $('fileInput').addEventListener('change', function (e) {
 $('gradeCancel').addEventListener('click', function () { $('gradeModal').classList.remove('open'); });
 $('gradeSave').addEventListener('click', saveGrade);
 $('pushCancel').addEventListener('click', function () { $('pushModal').classList.remove('open'); });
+/* 🗂 The shelf dialogs. Escape closes them with every other dialog through
+   the one `.modalBack.open` sweep, so there is nothing to add there. */
+$('shelfNameCancel').addEventListener('click', function () {
+  shelfNameTarget = ''; shelfNameThenMove = '';
+  $('shelfNameModal').classList.remove('open');
+});
+$('shelfNameGo').addEventListener('click', function () { shelfNameConfirm(); });
+$('shelfNameInput').addEventListener('keydown', function (e) {
+  // Naming a shelf is one word and one key — a dialog that makes you reach
+  // for the mouse to confirm a word is one nobody uses twice.
+  if (e.key === 'Enter') { e.preventDefault(); shelfNameConfirm(); }
+});
+$('shelfPickCancel').addEventListener('click', function () {
+  shelfPickTarget = '';
+  $('shelfPickModal').classList.remove('open');
+});
 $('pushGo').addEventListener('click', pushConfirm);
 $('pushLockOn').addEventListener('click', function () { pushLock = true; renderPushLock(); });
 $('pushLockOff').addEventListener('click', function () { pushLock = false; renderPushLock(); });

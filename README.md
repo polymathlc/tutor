@@ -12,6 +12,54 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.37.0 — 🗂 Shelves you make yourself, and a 🕒 Recently opened shelf
+
+The bookcase had one shelf per level and subject, worked out from the paper's
+own tags — right until a class has forty papers on one shelf. What a teacher
+actually has is **piles**: this year's prelims, last year's, the topical
+drills. So the teacher makes their own shelves, names them, and moves papers
+between them — and **every student of that level and subject sees the same
+papers on the same shelves**.
+
+- **🔁 Toggle between every level and subject.** A bar over the bookcase with a
+  **Level** and a **Subject** picker on it. Pick *P5 · Science* and the
+  bookcase is that class's; pick *Every level* and it is all of them. It is
+  remembered on the device, so it opens where you left it. A student never
+  picks their level — their list is already theirs — and is offered a subject
+  only if they really take more than one.
+- **🗂 Make a shelf, and name it.** *2025 papers*, *Prelims*, *Heat revision*.
+  A shelf is a **label**, not a class: the same shelf stands on every level and
+  subject, and each student sees their own papers on it. Rename it with ✎ on
+  the shelf and it is renamed on every bookcase in the centre. 🗑 takes it off —
+  **and never takes a paper with it**: the papers on it go back to *Not on a
+  shelf yet*, and the confirm says so before you press it.
+- **⬆️ Upload straight onto a shelf.** The upload dialog has a **Shelf** picker
+  when you have shelves. Pick several PDFs at once and the whole pile lands on
+  it together.
+- **🖐 Move a paper between shelves, two ways.** Drag a booklet onto another
+  shelf with a mouse; the shelf you are over lights up. On an iPad — where a
+  touchscreen never fires a drag at all — every card carries a **🗂 Shelf**
+  button that offers the same shelves, plus *Make a new shelf for it…* so the
+  shelf and the move are one gesture.
+- **🕒 Recently opened.** A shelf at the top of the bookcase, in cooler timber,
+  holding what was last worked on with **how long ago** on each card — *2 hours
+  ago*, *yesterday*, *4 days ago*. It is a **view, not a move**: every paper on
+  it is still standing on its own shelf further down, and each card says which
+  shelf that is so you can go and find it. It counts a paper you opened and
+  read without writing on, as well as one you worked on.
+- **The students get exactly your arrangement.** Their own ink, hints, marking
+  and mistake book stay theirs; the shelves are yours. A paper you move this
+  morning moves on thirty bookcases at once — including the children who
+  started it yesterday — because the shelf is read live off the set worksheet
+  rather than off each copy.
+- **It needed no Firestore rules change and no deploy.** The catalogue is one
+  document in the collection the set worksheets already live in, whose rules
+  already say *read by anybody signed in, written by the teacher*.
+- **A centre that never makes a shelf sees no change at all.** With no shelves
+  the bookcase is exactly the one it was: one shelf per level and subject.
+
+---
+
 ## v1.36.0 — ✍️ A tap on your writing no longer moves it
 
 The same stylus fix as Ans Key v1.101.0, so a pen behaves the same way in both
