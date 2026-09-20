@@ -2455,6 +2455,82 @@ slider at it.
   make it usable with a thumb.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 🐛 THE SAVE THREW BEFORE IT WROTE A BYTE (v1.43.0)
+
+**`saveCrashed`** beside `performSave` (search `THE SAVE THREW BEFORE IT WROTE A BYTE`), the
+wrapped `syncActiveTextEditValue()` at the top of `performSave`, its `finally`, and the
+`.catch(saveCrashed)` on all three fire-and-forget call sites — the auto-save timer, `flushSave`
+and `$('saveBtn')`.
+
+`performSave`'s first statement was **`syncTextEditValue()`**, a name that has never existed in
+this file: the function is `syncActiveTextEditValue`. So **every save threw a ReferenceError on
+its very first line** — the timer, the flush on the way out of the tab and the Save button alike —
+and **nothing was written for forty-eight versions**. No ink, no marking, no hints, no score. The
+button sat on *Save* and never became *✓ Saved*, which is precisely what it reads when there is
+nothing to save.
+
+- **IT WAS SILENT BECAUSE NOBODY HELD THE PROMISE.** `performSave` is `async`, so the throw was a
+  rejected promise — and `setTimeout(function () { performSave(true); })`, `flushSave` and the
+  button all start it without awaiting. An unhandled rejection is a line in a console no student
+  opens. **That is the fault worth remembering, not the typo**: a rename that misses one call site
+  is ordinary, and forty-eight versions of silence is not.
+- **READING THE OPEN BOX MAY NEVER COST THE SAVE**, and it is wrapped on its own for exactly that.
+  The box being typed in is ONE annotation; the worksheet is the whole lesson — and it cost all of
+  it. `syncActiveTextEditValue` and **NEVER `commitActiveTextEdit`**: this runs on a timer armed
+  the moment a box is made, and committing here closes the box under a child still typing into it
+  (which is the regression v1.19.x's own commit was written to fix).
+- **`saveCrashed` REPORTS A THROW EXACTLY AS A REFUSED WRITE IS REPORTED** — `saveFails++`, the
+  copy kept on the device, ⚠ on the button, the retry re-armed. To a student the two are the same
+  thing: their work is not on the server. A fire-and-forget call site with no `.catch` is this bug
+  again, wearing whatever the next missing name is.
+- **THE CLAIM IS RELEASED IN A `finally`.** `savingNow` left true is a SECOND way for this app to
+  stop saving and say nothing: every later save returns `false` at the gate. For the same reason a
+  missing toolbar cannot strand it — `btn.disabled` on a null is a throw between the claim and the
+  release.
+- **THE CENSUS IS THE GUARD, AND IT IS THE HALF WORTH KEEPING.** Every pin the auto-save section
+  already had passed the whole time, because each asked what the source *says* rather than whether
+  the names it says RESOLVE. `tools/tutor-tests.mjs` now reads every bare `name(` on the save path
+  and fails on one that is defined nowhere in the file, against a deliberately SHORT list of
+  browser globals — **a name added to that list to make a red tick go away is the guard being
+  switched off**.
+- **THE BUTTON SAYS IT SAVES BY ITSELF**, in BOTH places: the markup's first paint and
+  `setSaveState`'s repaint. One alone is a button that says it until the first save and then stops.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it — **and watch the button go from
+  Save to ✓ Saved on a real worksheet**, which is the one thing reading the source could not check
+  and is exactly how this shipped.
+
+## 🕒 THE MISTAKE BOOK READS NEWEST FIRST (v1.43.0)
+
+`MIST_SORTS` / `mistSort` beside the filter state, the `mistSort === 'new'` arm of **`mistCompare`**,
+the `flat` argument on **`mistGroups`**, the sort row in `renderMistFilters` and the
+`mistGroups(show, mistSort === 'new')` in `renderMistList` (search `HOW THE BOOK IS ORDERED`).
+
+📕 the book is ordered by the SYLLABUS, which is right for revising — you read DOWN it rather than
+hopping about — and is the wrong shape entirely for *"what did I just get wrong?"*: the paper
+marked a minute ago is scattered across whichever headings its questions belong to.
+
+- **IT IS A SORT, NEVER A FILTER**, so `mistFiltered` must not count it: ✕ Clear the filters is
+  about work that is out of sight, and a sort has put none of it there. It is remembered NOWHERE,
+  the rule the filters already follow — one rule for the whole bar rather than two.
+- **NEWEST FIRST READS THE STAMP, not the order the read arrived in.** `loadMistakes` asks
+  Firestore for `createdAt` descending, so `_i` already IS that order today — and a sort leaning on
+  it would silently become something else the day that query changed, under a chip still reading
+  *Newest first*. The stamp is the fact; `_i` is only the tie-break, which is what keeps two
+  questions filed in ONE marking run in paper order under it. An unreadable stamp is 0 and files
+  LAST rather than throwing the render, the rule `shelfStamp` already follows.
+- **ONE LIST, NEVER GROUPED.** Cut into subjects and topics, the card the student opened the book
+  to see is buried under whichever heading it belongs to — the whole thing this sort exists to
+  avoid. `mistGroups(list, true)` returns ONE nameless section holding ONE nameless group, which is
+  what `renderMistList` already draws with no headings at all (`manySubjects` and `manyTopics` are
+  both false), **so the flat list costs no second renderer**. It still FILTERS NOTHING: same list
+  in, same list out — and **called without the flag it is byte-for-byte the grouped book it was**.
+- **THE CHIPS ARE THEIR OWN ROW.** On the status row *Sorted* means a question since got right, and
+  *Newest first* beside it is two kinds of answer wearing one shape. Drawn only when there is more
+  than one card: one card has no order.
+- ✏️ Practise and 🖨 the printed sheet read `mistakesShown()`, so they follow the sort for free —
+  which is the point, not a side effect.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 💾 Auto-save — and what happens when it FAILS (v1.2.0)
 
 `AUTOSAVE_DELAY` / `AUTOSAVE_MAX_DELAY` / `autoSaveDelay` / `scheduleAutoSave`
@@ -3681,6 +3757,44 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **💾 the save** (`performSave`, `saveCrashed`, the wrapped
+  `syncActiveTextEditValue()`, its `finally`, the `.catch(saveCrashed)` on the
+  timer / `flushSave` / the Save button, `scheduleAutoSave`, `setSaveState`, or
+  the census in `tools/tutor-tests.mjs`), run `node tools/tutor-tests.mjs`
+  **and watch the button go from Save to ✓ Saved on a real worksheet**. That
+  last one is not optional and it is not ceremony: this app wrote NOTHING for
+  forty-eight versions and every check in the file was green, because each of
+  them asked what the source says rather than whether it runs. **Let the save
+  call a name that is not there and it throws on its first line, in complete
+  silence** — the button sits on "Save", which is exactly what it reads when
+  there is nothing to save, and a student loses a lesson's work. Drop a
+  `.catch` from any of the three fire-and-forget call sites and that silence is
+  back whatever the next missing name is; drop `saveCrashed`'s local backup and
+  the work is not even kept on the device. Wrap the whole sync inside the write's
+  own `try` instead of its own and a box being typed in costs the entire
+  worksheet again. Release `savingNow` after the catch rather than in a
+  `finally` — or let a missing toolbar throw between the claim and the release
+  — and every later save returns false at the gate with nothing on any screen.
+  And widen the census's browser list to quiet a red tick and you have switched
+  the one check that can see this class of fault off.
+- After touching **🕒 how the mistake book is ordered** (`MIST_SORTS`,
+  `mistSort`, the `mistSort === 'new'` arm of `mistCompare`, `mistGroups`'s
+  `flat` argument, the sort row in `renderMistFilters`, or the
+  `mistGroups(show, mistSort === 'new')` in `renderMistList`), run
+  `node tools/tutor-tests.mjs`. Every failure is silent and the book still
+  paints. Sort on `_i` rather than the stamp and the chip goes on reading
+  "Newest first" while it quietly means "whatever order the read arrived in",
+  the day `loadMistakes`'s query changes. Drop the tie-break and two questions
+  from one marking run come back in whatever order the read handed them, rather
+  than in paper order. GROUP the chronological list and the card the student
+  opened the book to see is buried under whichever heading it belongs to, which
+  is the whole thing the sort exists to avoid; NAME its section and the headings
+  come back with it. Let `mistGroups` called without the flag stop being
+  byte-for-byte the grouped book and every centre that never touches the chip
+  has its book rearranged. Count the sort as a filter and ✕ Clear lights up for
+  something that is hiding nothing. And remember it between visits and the book
+  comes back in an order somebody chose last Tuesday — the rule the filters
+  already follow, broken on the one axis that sits beside them.
 - After touching **🅣 which tools a finger may drive, or 🧽 the drawn eraser**
   (`isDrawTool`, the two `stylusOnly && … isDrawTool(tool)` gates, the
   `tool === 'text'` branch of the overlay's `pointerdown`, the eraser button's

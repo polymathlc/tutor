@@ -2131,6 +2131,130 @@ ok('the box is never written to while it is being typed in',
    ===================================================================== */
 section('Auto-save');
 
+/* =====================================================================
+   🐛 THE SAVE CALLED A FUNCTION THAT DOES NOT EXIST — v1.43.0
+   ---------------------------------------------------------------------
+   `performSave`'s first statement was `syncTextEditValue()`. The function
+   in this file is `syncActiveTextEditValue`; the other name has never
+   existed. So EVERY save threw a ReferenceError on its very first line —
+   the auto-save timer, the flush on the way out of the tab, and the Save
+   button alike — and nothing was written for forty-eight versions. No ink,
+   no marking, no hints, no score.
+
+   IT WAS SILENT BECAUSE NOBODY HELD THE PROMISE. `performSave` is async,
+   so the throw was a rejected promise, and the timer, `flushSave` and the
+   button all call it without awaiting: an unhandled rejection is a line in
+   a console no student opens, and the button simply sat on "Save".
+
+   THE CENSUS BELOW IS WHAT WOULD HAVE CAUGHT IT, and it is the half worth
+   keeping. Every one of the old pins passed the whole time, because each
+   of them asked what the source SAYS rather than whether the names it says
+   resolve. So: every function the save path calls must be DEFINED in this
+   file. A regex that reads the text cannot see a name that is not there;
+   this can.
+   ===================================================================== */
+section('The save actually resolves');
+
+/* Definitions, read out of the page's own script blocks rather than out of
+   a slice: a function the save calls may be declared anywhere in the file. */
+const SCRIPTS = [...html.matchAll(/<script(?![^>]*src=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const DEFINED = new Set();
+for (const js of SCRIPTS) {
+  for (const m of js.matchAll(/\bfunction\s+([A-Za-z_$][\w$]*)\s*\(/g)) DEFINED.add(m[1]);
+  for (const m of js.matchAll(/\b(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=/g)) DEFINED.add(m[1]);
+  for (const m of js.matchAll(/\bwindow\.([A-Za-z_$][\w$]*)\s*=/g)) DEFINED.add(m[1]);
+}
+
+/* What the browser and the two libraries bring. Anything NOT here and not
+   defined above is this app's own name — and if the save calls it, it has
+   to exist. Keep this list short: a name added to it to make a red tick go
+   away is the guard being switched off. */
+const BROWSER = new Set([
+  'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'requestAnimationFrame',
+  'cancelAnimationFrame', 'parseInt', 'parseFloat', 'isFinite', 'isNaN', 'String', 'Number',
+  'Boolean', 'Array', 'Object', 'JSON', 'Math', 'Date', 'Promise', 'Error', 'RegExp', 'Map',
+  'Set', 'fetch', 'alert', 'confirm', 'prompt', 'encodeURIComponent', 'decodeURIComponent',
+  'btoa', 'atob', 'matchMedia', 'getComputedStyle', 'structuredClone', 'queueMicrotask',
+  'function', 'return', 'if', 'for', 'while', 'switch', 'catch', 'typeof', 'new', 'await',
+  'else', 'do', 'try'
+]);
+
+/* The whole save path, in the file's own words. If a name appears here and
+   nowhere else in the app, the save dies on it. */
+const SAVE_PATH = [
+  html.slice(html.indexOf('async function performSave('), html.indexOf('/* ================= AUTO-SAVE =================')),
+  between('function scheduleAutoSave() {', 'function setSaveState(', 'scheduleAutoSave'),
+  between('function flushSave() {', "window.addEventListener('pagehide'", 'flushSave'),
+  between('function saveCrashed(e) {', '/* ================= AUTO-SAVE', 'saveCrashed')
+].join('\n');
+
+function bareCalls(src) {
+  // strip comments and strings, so prose and message text are not read as calls
+  let t = src.replace(/\/\*[\s\S]*?\*\//g, ' ')
+             .replace(/(^|[^:\\])\/\/[^\n]*/gm, (m, a) => a)
+             .replace(/'(?:\\.|[^'\\])*'/g, "''")
+             .replace(/"(?:\\.|[^"\\])*"/g, '""')
+             .replace(/`(?:\\.|[^`\\])*`/g, '``');
+  const out = new Set();
+  for (const m of t.matchAll(/(^|[^\w$.])([A-Za-z_$][\w$]*)\s*\(/g)) out.add(m[2]);
+  return [...out];
+}
+
+const unresolved = bareCalls(SAVE_PATH).filter(n => !DEFINED.has(n) && !BROWSER.has(n));
+ok('every function the save path calls really exists',
+   unresolved.length === 0,
+   unresolved.length
+     ? 'the save dies on its first call to: ' + unresolved.join(', ')
+     : '');
+
+/* THE ONE THAT WAS WRONG, named, so a rename cannot put it back quietly. */
+ok('…and the box being typed in is read by its real name',
+   DEFINED.has('syncActiveTextEditValue') && !DEFINED.has('syncTextEditValue') &&
+   /syncActiveTextEditValue\(\);/.test(SAVE_PATH),
+   'the words a child is still typing reach the save through this and nothing else');
+ok('…and it is still the non-destructive half, never the full commit',
+   !/^\s*commitActiveTextEdit\(\);/m.test(
+     html.slice(html.indexOf('async function performSave('), html.indexOf('await writeBody('))),
+   'the save runs on a timer armed the moment a box is made — committing here closes it under a child still typing');
+
+/* READING THAT BOX MUST NEVER COST THE SAVE. It is ONE annotation; the
+   worksheet is the whole lesson — and for forty-eight versions it cost all
+   of it. Its own try/catch is what makes that impossible. */
+const SYNC_ARM = between('try {\n    syncActiveTextEditValue();', 'try {\n    await writeBody(', 'the wrapped sync');
+ok('a read of the open box that throws costs the box and never the save',
+   /catch \(e\) \{[\s\S]{0,200}console\.error/.test(SYNC_ARM));
+
+/* NOTHING THAT CALLS THE SAVE MAY DROP ITS FAILURE ON THE FLOOR. */
+ok('the auto-save timer catches',
+   /performSave\(true\)\.catch\(saveCrashed\);\s*\}, autoSaveDelay\(\)\);/.test(html));
+ok('…the flush on the way out of the tab catches',
+   /localBackupWrite\(currentDocId\);[^\n]*\n\s*performSave\(true\)\.catch\(saveCrashed\);/.test(html));
+ok('…and so does the Save button',
+   /\$\('saveBtn'\)\.addEventListener\('click', function \(\) \{ performSave\(\)\.catch\(saveCrashed\); \}\);/.test(html));
+ok('a save that THREW is reported exactly as a refused write is',
+   /function saveCrashed\(e\) \{[\s\S]{0,400}saveFails\+\+;[\s\S]{0,300}localBackupWrite\(currentDocId\)[\s\S]{0,200}setSaveState\('failed'\)[\s\S]{0,200}scheduleAutoSave\(\);/.test(html),
+   'to the student a throw and a refusal are the same thing — their work is not on the server');
+
+/* AND THE CLAIM IS RELEASED WHATEVER HAPPENS. `savingNow` left true is a
+   second way for this app to stop saving and say nothing: every later save
+   returns false at the gate. */
+ok('the one-write-at-a-time claim is released in a `finally`',
+   /\} finally \{[\s\S]{0,400}savingNow = false;/.test(html));
+ok('…and a toolbar that is not there cannot strand it',
+   /var btn = \$\('saveBtn'\);\s*\n\s*(?:\/\/[^\n]*\n\s*)*if \(btn\) btn\.disabled = true;/.test(html) &&
+   /if \(btn\) btn\.disabled = false;/.test(html));
+
+/* THE STUDENT IS TOLD IT SAVES BY ITSELF. A child pressing Save every few
+   minutes is a child who does not know it is already happening — and the
+   word is in TWO places, the markup's first paint and `setSaveState`'s own
+   repaint, so both are pinned: one of them alone is a button that says it
+   on the first render and stops the moment anything is saved. */
+ok('the button says it saves by itself from its first paint',
+   /<button class="btn btnSm" id="saveBtn" title="Saves by itself as you work — tap to save now">Save<\/button>/.test(html));
+ok('…and still says it every time it is repainted',
+   /btn\.title = 'Saves by itself as you work — tap to save now';/.test(html) &&
+   /btn\.title = 'Saved — it saves by itself as you work';/.test(html));
+
 S.saveFails = 0;
 eq('the ordinary wait is short', S.autoSaveDelay(), S.AUTOSAVE_DELAY);
 S.saveFails = 1;
@@ -3060,7 +3184,114 @@ ok('…and `mistGroups` filters nothing at all',
    'a group that quietly dropped a card is a book that prints more questions than it shows');
 ok('…and it is PURE — no DOM, no filtering, no re-reading the filters',
    !/document\.|mistFilter|mistQuery|mistakes\b/.test(
-     between('function mistGroups(list) {', 'function mistFacet(', 'mistGroups')));
+     between('function mistGroups(list, flat) {', 'function mistFacet(', 'mistGroups')));
+
+/* =====================================================================
+   🕒 NEWEST FIRST — the other question the book is opened with
+   ---------------------------------------------------------------------
+   📚 By topic is the syllabus's own order and is what revising reads DOWN.
+   It is the wrong shape entirely for "what did I just get wrong?", because
+   the paper marked a minute ago is scattered across whichever headings its
+   questions belong to. Every failure here is silent and the book still
+   paints.
+   ===================================================================== */
+section('The mistake book, newest first');
+
+const stamp = (ms) => ({ toMillis: () => ms });
+S.mistakes = [
+  book({ id: 'newest', subject: 'math', level: maths.level, lo: maths.id, sylTopic: maths.tkey,
+         createdAt: stamp(3000) }),
+  book({ id: 'middle', subject: 'science', lo: '', sylTopic: '', topic: 'Not on any list',
+         createdAt: stamp(2000) }),
+  book({ id: 'oldest', subject: 'science', lo: heatLo.id, sylTopic: heatLo.tkey,
+         createdAt: stamp(1000) })
+];
+
+eq('the default is still the syllabus order, byte for byte',
+   S.mistakesShown().map(m => m.id), ['oldest', 'middle', 'newest']);
+
+S.mistSort = 'new';
+eq('🕒 newest first puts the paper just marked at the top',
+   S.mistakesShown().map(m => m.id), ['newest', 'middle', 'oldest'],
+   'a student opens the book to see what they have just got wrong');
+
+/* IT READS THE STAMP, NOT THE ORDER THE READ ARRIVED IN. `loadMistakes`
+   asks for `createdAt` descending, so the array index already IS that order
+   today — and a sort leaning on it would quietly become something else the
+   day that query changed, under a chip still reading "Newest first". */
+S.mistakes = [
+  book({ id: 'b-old', createdAt: stamp(1000) }),
+  book({ id: 'a-new', createdAt: stamp(9000) })
+];
+eq('…off the STAMP, even when the list arrives the other way round',
+   S.mistakesShown().map(m => m.id), ['a-new', 'b-old'],
+   'the stamp is the fact; the index is only the tie-break');
+
+/* TWO QUESTIONS FILED IN ONE MARKING RUN share a stamp, so the tie-break is
+   what keeps them in PAPER order under it rather than in whatever order the
+   read happened to hand them back. */
+S.mistakes = [
+  book({ id: 'q7', number: '7', createdAt: stamp(5000) }),
+  book({ id: 'q9', number: '9', createdAt: stamp(5000) })
+];
+eq('…and one marking run stays in paper order under it',
+   S.mistakesShown().map(m => m.id), ['q7', 'q9']);
+
+/* A MISTAKE FILED BEFORE `createdAt` EVER RESOLVED still has to sort. A
+   stamp that will not read is 0, which files it LAST rather than throwing
+   the render — the rule `shelfStamp` already follows for the bookcase. */
+S.mistakes = [
+  book({ id: 'no-stamp' }),
+  book({ id: 'stamped', createdAt: stamp(1) })
+];
+eq('a row with no readable stamp sorts last, never throws',
+   S.mistakesShown().map(m => m.id), ['stamped', 'no-stamp']);
+
+/* ONE LIST, NEVER GROUPED. Cut into subjects and topics, the card the
+   student opened the book to see is buried under whichever heading it
+   belongs to — which is the whole thing this sort exists to avoid. */
+S.mistakes = [
+  book({ id: 'n-math', subject: 'math', level: maths.level, lo: maths.id, sylTopic: maths.tkey,
+         createdAt: stamp(3000) }),
+  book({ id: 'n-sci', subject: 'science', lo: heatLo.id, sylTopic: heatLo.tkey,
+         createdAt: stamp(2000) })
+];
+const flatG = S.mistGroups(S.mistakesShown(), true);
+ok('the chronological list is ONE nameless section, so no heading is drawn',
+   flatG.length === 1 && flatG[0].topics.length === 1 && flatG[0].label === '' &&
+   flatG[0].topics[0].label === '',
+   'renderMistList draws a heading only when there is more than one — a flat list needs no second renderer');
+eq('…in exactly the order it was handed, and filtering nothing',
+   flatG[0].topics[0].items.map(m => m.id), ['n-math', 'n-sci']);
+ok('an empty list is no section at all', S.mistGroups([], true).length === 0);
+ok('called WITHOUT the flag it is byte-for-byte the grouped book it was',
+   JSON.stringify(S.mistGroups(S.mistakesShown()).map(g => g.key)) ===
+   JSON.stringify(S.mistGroups(S.mistakesShown(), false).map(g => g.key)) &&
+   S.mistGroups(S.mistakesShown()).length === 2,
+   'every centre that never touches the chip must read the same book it always did');
+
+/* A SORT HIDES NOTHING, so ✕ Clear the filters must not light up for one,
+   and the empty state must not blame a filter nobody set. */
+ok('a sort is NOT a filter', S.mistFiltered() === false);
+
+ok('the two sorts are offered as chips, on a row of their own',
+   /var MIST_SORTS = \[\['topic', '📚 By topic'\], \['new', '🕒 Newest first'\]\];/.test(html) &&
+   /MIST_SORTS\.forEach\(function \(f\) \{\s*mistChip\(sortRow, f\[1\], mistSort === f\[0\]/.test(html),
+   'folded in beside the status chips, "Sorted" and "Newest first" are two kinds of answer wearing one shape');
+ok('…drawn only when there is something to order',
+   /if \(mistakes\.length > 1\) \{\s*var sortRow/.test(html));
+ok('…and the renderer passes the flag through',
+   /var groups = mistGroups\(show, mistSort === 'new'\);/.test(html));
+ok('the sort is remembered NOWHERE, the rule the filters follow',
+   !/localStorage[^\n]*mistSort|mistSort[^\n]*localStorage/.test(html));
+S.mistSort = 'topic';
+
+// Back to the book the filter cases below were written against.
+S.mistakes = [
+  book({ id: 'm-new', subject: 'math', level: maths.level, lo: maths.id, sylTopic: maths.tkey, cleared: false }),
+  book({ id: 's-late', subject: 'science', lo: '', sylTopic: '', topic: 'Not on any list' }),
+  book({ id: 's-first', subject: 'science', lo: heatLo.id, sylTopic: heatLo.tkey })
+];
 
 /* THE FILTERS all go through `mistakesShown`, which is still the ONE place
    the visible set is worked out — ✏️ Practise all and 🖨 the sheet both read
