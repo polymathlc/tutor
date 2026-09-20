@@ -12,6 +12,30 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.39.0 — ✎ Rename a paper, and the whole class reads the new name
+
+A worksheet was called whatever it was called when it went up, and there was no way to change it.
+A file name the teacher never typed, a title the paper read badly off its own cover, a paper that
+turned out to be SA2 rather than SA1 — all of them stuck, on a shelf of thirty cards where the
+name is the only thing anybody reads.
+
+Every card on **the teacher's** bookcase now carries **✎ Rename**. Type the new name, press Enter,
+and it is renamed **everywhere at once**: on the teacher's own shelf, on the class's, and on the
+copy of every student who started it yesterday.
+
+**Their work on it is untouched.** The rename writes one field and nothing else — the writing on
+the page, the hints, the marking, the mistake book, the answer key, the score and the help level
+are all exactly where they were. Nothing is written to a student's copy at all: the name is read
+off the class's own record when the card is drawn, the way the shelf it stands on and the help
+level it is locked to already are.
+
+- The dialog opens on the name it already has, so a rename is an edit rather than a retype.
+- Renaming is the teacher's — a student never sees the button, and pressing it another way is
+  refused with a word rather than quietly ignored.
+- A paper nobody has set for a class is renamed on your own bookcase, and the dialog says so.
+- A worksheet open on screen while it is renamed follows at once, so the paper you are looking at
+  and the card you renamed never disagree.
+
 ## v1.38.0 — 🗂 Drag a whole shelf up or down the bookcase
 
 The papers could be moved between shelves and the **shelves themselves could

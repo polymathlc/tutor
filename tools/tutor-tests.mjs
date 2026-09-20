@@ -1914,8 +1914,8 @@ ok('the key is saved with the worksheet', /key:\s*\{\s*pages: wsKey\.pages/.test
 /* A worksheet the teacher set shares ONE PDF with the whole class, so a
    student tidying up their own copy must not delete the file every other
    student is reading. */
-const del = html.slice(html.indexOf('async function deleteWorksheet'),
-                       html.indexOf('async function deleteWorksheet') + 1100);
+const del = between('async function deleteWorksheet', '/* ---- Uploading ---- */',
+                    'the worksheet delete');
 ok('deleting a copy never deletes the class\'s shared PDF',
    /w\.storagePath && !w\.sharedPdf/.test(del), del.replace(/\s+/g, ' ').slice(0, 300));
 
@@ -4415,6 +4415,45 @@ section('The bookshelf');
      S.worksheetShelfId({ id: 'set:a1', set: { id: 'a1', shelf: 's2' } }, [], true), 's2');
   eq('nothing anywhere is the unsorted shelf', [S.worksheetShelfId(null, live, true), S.worksheetShelfId({ id: 'x' }, live, true)], ['', '']);
 
+  /* ②½ 📄 WHAT A PAPER IS CALLED, and the whole of “rename it once and the
+         class reads the new name”. Same rule as the shelf above and for the
+         same reason — a name kept per copy would only ever govern the
+         students who had not started yet — with ONE deliberate difference:
+         an EMPTY live name is not an answer. */
+  const named = [{ id: 'a1', name: 'Prelim 2025' }];
+  eq('a student\'s copy reads the name LIVE off the assignment, never its own stale field',
+     S.worksheetName({ id: 'w1', assignmentId: 'a1', name: 'Prelim 2024' }, named, true), 'Prelim 2025');
+  eq('…and the teacher\'s own paper, which IS the assignment, the same way',
+     S.worksheetName({ id: 'a1', name: 'Prelim 2024' }, named, true), 'Prelim 2025');
+  eq('until the assignment list has arrived the copy\'s own name stands, so a cold start is not a bookcase of blank cards',
+     S.worksheetName({ id: 'w1', assignmentId: 'a1', name: 'Prelim 2024' }, named, false), 'Prelim 2024');
+  eq('a paper nobody set is the owner\'s own name',
+     S.worksheetName({ id: 'own', name: 'My notes' }, named, true), 'My notes');
+  eq('a set worksheet not yet started reads the assignment it IS',
+     S.worksheetName({ id: 'set:a1', set: { id: 'a1', name: 'Prelim 2025' } }, [], true), 'Prelim 2025');
+  /* THE ONE DIFFERENCE FROM THE SHELF: '' is a real shelf and is not a real
+     name, so an assignment set before it was named must not blank a copy
+     that has a perfectly good title. */
+  eq('an EMPTY live name falls back to the copy\'s own rather than blanking it',
+     S.worksheetName({ id: 'w1', assignmentId: 'a1', name: 'Prelim 2024' }, [{ id: 'a1', name: '   ' }], true),
+     'Prelim 2024');
+  eq('a paper with no name anywhere still reads as something',
+     [S.worksheetName({ id: 'x' }, named, true), S.worksheetName({ id: 'set:z', set: { id: 'z' } }, [], true)],
+     ['Untitled', 'Worksheet']);
+  eq('nothing at all is the empty string', S.worksheetName(null, named, true), '');
+
+  /* A TYPED NAME IS TIDIED AND NEVER INVENTED. An empty answer comes back
+     EMPTY so the rename can refuse it — writing “Untitled” over a paper
+     that had a title is not what a mis-tap should cost. */
+  eq('the whitespace in a pasted title is folded to one line',
+     S.wsNameClean('  Nan Hua\n P5   Science \t SA2  '), 'Nan Hua P5 Science SA2');
+  eq('nothing typed comes back EMPTY, never a made-up name',
+     [S.wsNameClean(''), S.wsNameClean('   '), S.wsNameClean(null), S.wsNameClean(undefined)], ['', '', '', '']);
+  eq('a name longer than the cap is cut rather than allowed to be a shelf wide',
+     S.wsNameClean('x'.repeat(200)).length, S.WS_NAME_MAX);
+  eq('…and a name inside the cap is byte-for-byte what was typed',
+     S.wsNameClean('P5 Science SA2 2024'), 'P5 Science SA2 2024');
+
   /* ③ AN UNKNOWN SHELF ID READS AS UNSORTED. That one line is what makes
         taking a shelf off the bookcase safe — its papers fall back onto
         “Not on a shelf yet” rather than into a section nothing draws, so a
@@ -4714,6 +4753,78 @@ section('The bookshelf');
   ok('the school and the topic ride every save', /school: wsMeta\.school \|\| '',\n\s*topic: wsMeta\.topic \|\| '',/.test(html));
   ok('…and come back when a worksheet is opened', /wsMeta\.school = w\.school \|\| '';\n\s*wsMeta\.topic = w\.topic \|\| '';/.test(html));
   ok('…and are taken off the paper at upload', /wsMeta\.school = got\.school;\n\s*wsMeta\.topic = got\.topic;/.test(html));
+
+  /* =================================================================
+     ✎ RENAMING A PAPER — the class reads the new name, and nothing a
+     child has written on it moves. Every failure below is silent: the
+     rename lands, the toast says it did, and either the class never sees
+     it or the teacher's own next auto-save quietly puts the old name back.
+     ================================================================= */
+  const ren = between('async function renameWorksheet(', '\n/* ---- Which level and subject are in view ----',
+                      'the rename');
+  ok('renaming refuses anybody but the teacher IN THE HANDLER, not only on the button',
+     /if \(!isAdmin\(currentUser\)\) \{ toast\('Only ' \+ setterName\(\) \+ ' renames a paper\.'/.test(ren));
+  /* An empty answer must never be written: "Untitled" over a paper that
+     had a perfectly good title is not what a mis-tap should cost. */
+  ok('…and an empty name is refused rather than written',
+     /var nm = wsNameClean\(name\);\n\s*if \(!nm\) \{ toast\('Give it a name first\.'/.test(ren));
+  ok('a paper that is no longer on the bookcase is refused',
+     /if \(!w && !live\) \{ toast\('That paper is not on your bookcase any more\.'/.test(ren));
+  ok('a name that has not changed writes nothing',
+     /var was = worksheetName\(w \|\| \{ set: live \}, assignments, assignmentsLoaded\);\n\s*if \(was === nm\) return true;/.test(ren));
+  /* ① THE ASSIGNMENT IS WRITTEN FIRST, because it is the record the whole
+        class reads. The teacher's own row renamed while the class's was
+        not is the outcome worth refusing to report as a success. */
+  ok('the assignment the class reads is written FIRST',
+     ren.indexOf('db.collection(ASSIGN_COLLECTION).doc(aid).set({ name: nm }, { merge: true })') > -1 &&
+     ren.indexOf('db.collection(ASSIGN_COLLECTION)') < ren.indexOf('db.collection(COLLECTION)'));
+  /* ② NOTHING BUT THE NAME. One merged field on each document is what
+        leaves the ink, the hints, the marking, the mistake book, the key,
+        the score and the help level exactly where they were. */
+  ok('…and NOTHING but the name is written, on either document',
+     (ren.match(/\{ name: nm \}, \{ merge: true \}/g) || []).length === 2 &&
+     !/\bannotations\b|\bhints\b|\bmarking\b|\bscore\b|\bkeyPages\b|\bguidance\b/.test(ren));
+  /* ③ A copy of somebody else's assignment writing its own row would
+        quietly outrank the assignment the next time the list had not
+        arrived — the rule `moveWorksheetToShelf` already carries. */
+  ok('a copy of somebody else\'s assignment never writes a row of its own',
+     /if \(w && !w\.assignmentId\) \{\n\s*await db\.collection\(COLLECTION\)\.doc\(w\.id\)\.set\(\{ name: nm \}, \{ merge: true \}\);/.test(ren));
+  /* ④ THE ONE THAT IS EASY TO MISS. `performSave` writes `name: docName`
+        on EVERY auto-save, so a rename made while that paper is open and
+        not carried into `docName` is undone by the paper's own next save,
+        a few seconds later, with nothing on any screen saying so. */
+  ok('the open paper\'s title follows, or the next auto-save writes the OLD name straight back',
+     /if \(currentDocId && currentDocId === \(w \? w\.id : ''\)\) setWsTitle\(nm\);/.test(ren));
+  ok('a refused write is NAMED, with the rules hint',
+     /the rules do not allow it yet\. ' \+ assignRulesHint\(\)/.test(ren));
+  ok('…and it says the class sees the new name and their work does not move',
+     /student’s shelf too\. Their work on it is untouched\./.test(ren));
+
+  /* `setWsTitle` is the ONE door, because `docName` and the bar have to
+     move together: a bar changed alone is a label, and a `docName` changed
+     alone is a rename nobody can see until the next save writes it. */
+  ok('there is ONE writer of the open paper\'s title',
+     /function setWsTitle\(name\) \{\n\s*docName = String\(name \|\| ''\) \|\| 'Untitled';/.test(html) &&
+     !/\$\('wsTitle'\)\.textContent = docName;/.test(html));
+  /* The name is re-read AFTER the assignment list is in hand — the list
+     may not have arrived when `loadPdf` ran, so reading it there alone is
+     a session spent under the name the copy happens to carry. */
+  ok('opening a paper reads its name live, and again once the class list is in',
+     /await loadPdf\(new Uint8Array\(buf\), worksheetName\(w, assignments, assignmentsLoaded\)\);/.test(html) &&
+     /if \(rule\.by\) wsMeta\.setBy = rule\.by;\n[\s\S]{0,600}setWsTitle\(worksheetName\(w, assignments, assignmentsLoaded\)\);/.test(html));
+  ok('the card\'s heading is the live name, never the copy\'s own stale field',
+     /h\.textContent = worksheetName\(w, assignments, assignmentsLoaded\);/.test(html));
+  ok('the ✎ button is the teacher\'s, beside 🗂 Shelf',
+     /ren\.textContent = '✎ Rename';/.test(html) &&
+     /ren\.addEventListener\('click', function \(\) \{ openRenameModal\(w\.id\); \}\);/.test(html));
+  ok('…and the dialog refuses a student too',
+     /function openRenameModal\(id\) \{\n\s*if \(!isAdmin\(currentUser\)\) return;/.test(html));
+  ok('the dialog opens on the name it already has, so a rename is an edit rather than a retype',
+     /\$\('wsNameInput'\)\.value = was;/.test(html));
+  ok('…and Enter confirms it, because renaming is one word and one key',
+     /\$\('wsNameInput'\)\.addEventListener\('keydown', function \(e\) \{\n\s*if \(e\.key === 'Enter'\) \{ e\.preventDefault\(\); wsNameConfirm\(\); \}/.test(html));
+  ok('the input is capped at the same number the cleaner is',
+     new RegExp('id="wsNameInput"[^>]*maxlength="' + S.WS_NAME_MAX + '"').test(html));
 }
 eq('an unknown page count is not a stack', S.coverSheets(undefined), 0);
 

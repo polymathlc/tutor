@@ -2108,6 +2108,26 @@
   </div>
 </div>
 
+<!-- ============ 📄 Rename a paper ============ -->
+<div class="modalBack" id="wsNameModal">
+  <div class="modalCard">
+    <div class="modalHead"><h2>✎ Rename this paper</h2></div>
+    <div class="modalBody">
+      <p class="sub" id="wsNameSub"></p>
+      <div class="fields">
+        <div class="field">
+          <label for="wsNameInput">What should it be called?</label>
+          <input type="text" id="wsNameInput" placeholder="e.g. Nan Hua P5 Science SA2 2024" maxlength="90">
+        </div>
+      </div>
+    </div>
+    <div class="modalFoot">
+      <button class="btn" id="wsNameCancel">Cancel</button>
+      <button class="btn btnPrimary" id="wsNameGo">Rename it</button>
+    </div>
+  </div>
+</div>
+
 <div class="modalBack" id="shelfPickModal">
   <div class="modalCard">
     <div class="modalHead"><h2>🗂 Put it on a shelf</h2></div>
@@ -2413,7 +2433,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.38.0';
+var APP_VERSION = 'v1.39.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -17645,6 +17665,47 @@ function worksheetShelfId(w, list, loaded) {
   return String(w.shelf || '');
 }
 
+/* 📄 WHAT A PAPER IS CALLED — the ONE place a name is decided, and the
+   whole of “rename it once and it is renamed on every shelf in the class”.
+
+   THE ASSIGNMENT IS READ OVER THE COPY, exactly as `worksheetShelfId`
+   reads the shelf and `guidanceRule` reads the locked help level. A name
+   kept per copy would only ever govern the students who had not started
+   yet — and it would look like it worked right up until the teacher
+   renamed a paper the class had already begun.
+
+   AN EMPTY LIVE NAME IS NOT AN ANSWER and falls back to the copy's own.
+   That is the deliberate difference from the shelf, where '' is a real
+   answer meaning “not on a shelf”: here it can only be a paper set before
+   it was named, and blanking a perfectly good title is the worse way to be
+   wrong.
+
+   `loaded` tells “the list has not arrived yet” apart from “it is not
+   set”, which want opposite answers — until it is in, the copy's own name
+   stands rather than every card on the bookcase going blank for a second. */
+function worksheetName(w, list, loaded) {
+  if (!w) return '';
+  if (w.set) return String(w.set.name || '').trim() || 'Worksheet';
+  var aid = w.assignmentId || w.id || '';
+  if (loaded && aid) {
+    var live = null;
+    (list || []).forEach(function (x) { if (!live && x && x.id === aid) live = x; });
+    if (live && String(live.name || '').trim()) return String(live.name).trim();
+  }
+  return String(w.name || '').trim() || 'Untitled';
+}
+/* A name the teacher typed, tidied: the whitespace is folded (a title
+   pasted out of a PDF arrives with newlines in it, and a card is one line)
+   and the length is capped, so one paper cannot be a shelf wide.
+
+   IT NEVER INVENTS A NAME. An empty answer comes back EMPTY and the rename
+   refuses it — writing “Untitled” over a paper that had a perfectly good
+   title is not what pressing Cancel-by-accident should cost. */
+var WS_NAME_MAX = 90;
+function wsNameClean(s) {
+  return String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, WS_NAME_MAX);
+}
+
 /* 🕒 WHEN A PAPER WAS LAST WORKED ON. `updatedAt` is written by every
    auto-save, so it already means “last worked on” for anything that has
    been written on; `lastOpenedAt` is what adds the paper that was opened,
@@ -17954,7 +18015,7 @@ async function moveWorksheetToShelf(id, shelfId) {
     }
     if (w) w.shelf = shelfId;
     renderWorksheets();
-    var nm = (w && w.name) || (live && live.name) || 'That paper';
+    var nm = worksheetName(w || { set: live }, assignments, assignmentsLoaded);
     toast('🗂 “' + nm + '” is on ' + to +
           (live ? ' — and on every ' +
                   (live.level ? levelLabel(live.level) + ' ' : '') +
@@ -17967,6 +18028,70 @@ async function moveWorksheetToShelf(id, shelfId) {
     toast(denied
       ? 'It could not be moved — the rules do not allow it yet. ' + assignRulesHint()
       : 'It could not be moved: ' + ((e && e.message) || e), 10000);
+    return false;
+  }
+}
+
+/* 📄 THE ONE RENAME, and every rule in it is about one of two things: the
+   class reading the same name, or the child's work being untouched.
+
+   ① THE ASSIGNMENT IS WRITTEN FIRST, because it is the record the whole
+      class reads (`worksheetName`). The teacher's own row renamed while
+      the class's was not is the one outcome worth refusing to report as a
+      success, so both writes are named on a failure.
+   ② NOTHING BUT THE NAME IS WRITTEN. It is ONE merged field on each
+      document, so the ink, the hints, the marking, the mistake book, the
+      answer key, the score and the help level are exactly where they were
+      — on the teacher's copy and, because nothing is written to them at
+      all, on every student's.
+   ③ A COPY OF SOMEBODY ELSE'S ASSIGNMENT WRITES NO ROW OF ITS OWN, the
+      rule `moveWorksheetToShelf` already carries: that field would quietly
+      outrank the assignment the next time the list had not arrived.
+   ④ THE OPEN PAPER'S TITLE FOLLOWS, and this is the one that is easy to
+      miss. `performSave` writes `name: docName` on EVERY auto-save, so a
+      rename made while that paper is open and not carried into `docName`
+      is undone by the paper's own next save, a few seconds later, with
+      nothing on any screen saying so. */
+async function renameWorksheet(id, name) {
+  // Refused in the handler and not only on the button: this writes a
+  // collection every student reads, and hiding a control has never been
+  // the lock in this app.
+  if (!isAdmin(currentUser)) { toast('Only ' + setterName() + ' renames a paper.', 5000); return false; }
+  var nm = wsNameClean(name);
+  if (!nm) { toast('Give it a name first.', 4000); return false; }
+  var raw = String(id || '');
+  var setId = raw.indexOf('set:') === 0 ? raw.slice(4) : '';
+  var w = setId ? null : (worksheets || []).find(function (x) { return x && x.id === raw; });
+  var aid = setId || (w ? (w.assignmentId || w.id) : '');
+  var live = aid ? (assignments || []).find(function (x) { return x && x.id === aid; }) : null;
+  if (!w && !live) { toast('That paper is not on your bookcase any more.', 5000); return false; }
+  var was = worksheetName(w || { set: live }, assignments, assignmentsLoaded);
+  if (was === nm) return true;
+  try {
+    if (live) {
+      await db.collection(ASSIGN_COLLECTION).doc(aid).set({ name: nm }, { merge: true });
+      live.name = nm;
+    }
+    if (w && !w.assignmentId) {
+      await db.collection(COLLECTION).doc(w.id).set({ name: nm }, { merge: true });
+    }
+    if (w) w.name = nm;
+    // ④ The paper on screen, if it is this one.
+    if (currentDocId && currentDocId === (w ? w.id : '')) setWsTitle(nm);
+    renderWorksheets();
+    toast('✎ “' + was + '” is now “' + nm + '”' +
+          (live ? ' — on every ' +
+                  (live.level ? levelLabel(live.level) + ' ' : '') +
+                  (live.subject ? subjectLabel(live.subject) + ' ' : '') +
+                  'student’s shelf too. Their work on it is untouched.'
+                : '.'), 7000);
+    return true;
+  } catch (e) {
+    console.error(e);
+    var denied = /permission|insufficient|PERMISSION_DENIED/i.test(String((e && e.message) || e));
+    toast(denied
+      ? 'It could not be renamed — the rules do not allow it yet. ' + assignRulesHint()
+      : 'It could not be renamed: ' + ((e && e.message) || e), 10000);
     return false;
   }
 }
@@ -18049,6 +18174,36 @@ async function shelfNameConfirm() {
   if (made && mv) await moveWorksheetToShelf(mv, made);
 }
 
+/* 📄 The ✎ dialog. Teacher-only here AND in `renameWorksheet` — this is
+   one door onto a collection every student reads. */
+var wsNameTarget = '';
+function openRenameModal(id) {
+  if (!isAdmin(currentUser)) return;
+  wsNameTarget = String(id || '');
+  var setId = wsNameTarget.indexOf('set:') === 0 ? wsNameTarget.slice(4) : '';
+  var w = setId ? null : (worksheets || []).find(function (x) { return x && x.id === wsNameTarget; });
+  var live = (assignments || []).find(function (x) {
+    return x && x.id === (setId || (w ? (w.assignmentId || w.id) : ''));
+  });
+  var was = worksheetName(w || { set: live }, assignments, assignmentsLoaded);
+  $('wsNameSub').textContent = live
+    ? 'Every ' + (live.level ? levelLabel(live.level) + ' ' : '') +
+      (live.subject ? subjectLabel(live.subject) + ' ' : '') +
+      'student sees the name you give it — including the ones who have already started it. ' +
+      'Their writing, hints, marking and mistake book on it are untouched.'
+    : 'It is not set for a class, so this renames it on your own bookcase.';
+  $('wsNameInput').value = was;
+  $('wsNameModal').classList.add('open');
+  setTimeout(function () { try { $('wsNameInput').focus(); $('wsNameInput').select(); } catch (e) {} }, 60);
+}
+async function wsNameConfirm() {
+  var nm = $('wsNameInput').value;
+  var id = wsNameTarget;
+  wsNameTarget = '';
+  $('wsNameModal').classList.remove('open');
+  if (id) await renameWorksheet(id, nm);
+}
+
 var shelfPickTarget = '';
 function openShelfPick(id) {
   if (!isAdmin(currentUser)) return;
@@ -18058,7 +18213,7 @@ function openShelfPick(id) {
   var live = (assignments || []).find(function (x) {
     return x && x.id === (setId || (w ? (w.assignmentId || w.id) : ''));
   });
-  var nm = (w && w.name) || (live && live.name) || 'This paper';
+  var nm = worksheetName(w || { set: live }, assignments, assignmentsLoaded);
   var on = worksheetShelfId(w || { set: live }, assignments, assignmentsLoaded);
   var onName = shelfLabel(shelves, on) || SHELF_UNSORTED_TITLE;
   $('shelfPickSub').textContent = '“' + nm + '” is on “' + onName + '”.' +
@@ -18501,7 +18656,10 @@ function wsCardNode(w, opts) {
     card.className = 'wsCard';
     card.appendChild(coverNode(w, 'Open it once and the front page shows here'));
     var h = document.createElement('h3');
-    h.textContent = w.name || 'Untitled';
+    // 📄 The name is read LIVE off the assignment, exactly as the shelf and
+    // the locked help level are — so a paper the teacher renames is renamed
+    // on every student's shelf, including the ones already begun.
+    h.textContent = worksheetName(w, assignments, assignmentsLoaded);
     card.appendChild(h);
 
     var meta = document.createElement('div');
@@ -18589,6 +18747,13 @@ function wsCardNode(w, opts) {
     // use on the device they teach from. It ends at the same
     // `moveWorksheetToShelf` the drag does.
     if (isAdmin(currentUser)) {
+      // 📄 Renaming is the teacher's, and `renameWorksheet` refuses again.
+      var ren = document.createElement('button');
+      ren.className = 'btn btnSm';
+      ren.textContent = '✎ Rename';
+      ren.title = 'Rename this paper — on every student’s shelf too';
+      ren.addEventListener('click', function () { openRenameModal(w.id); });
+      foot.appendChild(ren);
       var mv = document.createElement('button');
       mv.className = 'btn btnSm';
       mv.textContent = '🗂 Shelf';
@@ -19517,12 +19682,24 @@ function applyWorksheetBody(body, w) {
   editingId = null;
 }
 
+/* 📄 THE ONE PLACE THE OPEN PAPER'S NAME IS SET. `performSave` writes
+   `name: docName` on EVERY auto-save, so the variable and the bar have to
+   move together — a bar changed on its own is a label, and a `docName`
+   changed on its own is a rename nobody can see until the next save writes
+   it. The ✎ rename, the open and the paper read at upload all land here. */
+function setWsTitle(name) {
+  docName = String(name || '') || 'Untitled';
+  var el = $('wsTitle');
+  if (el) el.textContent = docName;
+  return docName;
+}
+
 async function openWorksheet(id) {
   var w = worksheets.find(function (x) { return x.id === id; });
   // Silence here was the whole of "nothing happens": a copy filtered out of
   // the list by its level came through this door and left without a word.
   if (!w) { toast('That worksheet is not in your list.', 5000); return; }
-  toast('Opening “' + (w.name || 'Untitled') + '”…');
+  toast('Opening “' + worksheetName(w, assignments, assignmentsLoaded) + '”…');
   try {
     // Whatever the list is holding can be old news — always open from the
     // live document, or a second open writes a stale copy back over the real
@@ -19533,7 +19710,7 @@ async function openWorksheet(id) {
     var resp = await fetch(url);
     if (!resp.ok) throw new Error('the PDF could not be downloaded (HTTP ' + resp.status + ').');
     var buf = await resp.arrayBuffer();
-    await loadPdf(new Uint8Array(buf), w.name || 'Untitled');
+    await loadPdf(new Uint8Array(buf), worksheetName(w, assignments, assignmentsLoaded));
     // Read BEFORE currentDocId is set, deliberately: if the body cannot be
     // read the open fails outright rather than leaving a blank worksheet
     // that auto-save would then write over the real one.
@@ -19560,6 +19737,13 @@ async function openWorksheet(id) {
     wsMeta.guidanceLocked = rule.locked;
     wsMeta.guidance = rule.level;
     if (rule.by) wsMeta.setBy = rule.by;
+    // 📄 AND ITS NAME, live off the assignment for exactly the same reason
+    // and re-read HERE rather than at `loadPdf`: the list may not have
+    // arrived until the await above. A paper the teacher renamed this
+    // morning opens under its new name on a copy begun yesterday — and
+    // because `performSave` writes `name: docName`, that copy's own stale
+    // field converges on it at the student's very next save.
+    setWsTitle(worksheetName(w, assignments, assignmentsLoaded));
     // A KEY MARKED AFTER THE CLASS STARTED still reaches them. The copy's
     // own key pages were frozen the moment it was made, so a page the
     // teacher marked yesterday would stay readable on every copy already
@@ -19573,7 +19757,6 @@ async function openWorksheet(id) {
     // teacher's own copy.
     keyPagesFromAssignment(w);
     if (keyHasAnything() && !wsKey.rows.length) keyRefreshRows(wsEpoch);
-    $('wsTitle').textContent = docName;
     setDirty(false);
     renderAllOverlays();
     applyKeyVisibility();
@@ -19682,10 +19865,10 @@ async function deleteWorksheet(id) {
   var w = worksheets.find(function (x) { return x.id === id; });
   if (!w) return;
   var classReads = await worksheetReadByClass(w);
-  var msg = 'Delete “' + (w.name || 'Untitled') + '”? Your marks and hints on it go too. ' +
+  var msg = 'Delete “' + worksheetName(w, assignments, assignmentsLoaded) + '”? Your marks and hints on it go too. ' +
             'Anything already in your mistake book stays.';
   if (classReads && !w.sharedPdf) {
-    msg = 'Delete your copy of “' + (w.name || 'Untitled') + '”? It is set for your students, ' +
+    msg = 'Delete your copy of “' + worksheetName(w, assignments, assignmentsLoaded) + '”? It is set for your students, ' +
           'so its PDF stays where the class reads it and anyone who has started it keeps their copy. ' +
           'Only your own marks and hints on it go. To withdraw it from the class, use ' +
           '“Take off the list” in 📌 Set for you.';
@@ -19926,7 +20109,7 @@ async function uploadOne(file, s, keyFile, solo) {
   });
   currentDocId = id;
   bodyOverflow = false;
-  $('wsTitle').textContent = docName;
+  setWsTitle(docName);
   setDirty(false);
   renderHints();
   renderMarking();
@@ -19958,10 +20141,7 @@ async function uploadOne(file, s, keyFile, solo) {
     wsMeta.subject = got.subject;
     wsMeta.school = got.school;
     wsMeta.topic = got.topic;
-    if (got.name && got.name !== docName) {
-      docName = got.name;
-      $('wsTitle').textContent = docName;
-    }
+    if (got.name && got.name !== docName) setWsTitle(got.name);
     if (got.filled.length) {
       setDirty(true);
       if (solo) toast('✨ Chung GPT read the paper: ' + got.filled.join(' · '), 6000);
@@ -22208,6 +22388,14 @@ $('shelfNameInput').addEventListener('keydown', function (e) {
   // Naming a shelf is one word and one key — a dialog that makes you reach
   // for the mouse to confirm a word is one nobody uses twice.
   if (e.key === 'Enter') { e.preventDefault(); shelfNameConfirm(); }
+});
+$('wsNameCancel').addEventListener('click', function () {
+  wsNameTarget = '';
+  $('wsNameModal').classList.remove('open');
+});
+$('wsNameGo').addEventListener('click', function () { wsNameConfirm(); });
+$('wsNameInput').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.preventDefault(); wsNameConfirm(); }
 });
 $('shelfPickCancel').addEventListener('click', function () {
   shelfPickTarget = '';
