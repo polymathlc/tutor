@@ -12,6 +12,52 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.46.0 — 🅣 The text box works again, and three lost functions are back
+
+**"Still cannot type with text box."** v1.42.0 took 🅣 out of the pencil-only tool list, which was
+the right fix for the fault that had been reported — and the box still did nothing, because a
+second, older fault was sitting underneath it.
+
+**Three functions this file calls had gone missing in a branch squash**, and every one of them
+failed in silence:
+
+- **`bindTextEditNode`** is called from `annNode`, so the very first tap of the 🅣 tool threw a
+  `ReferenceError` **inside `renderOverlay`**. The annotation was made and the box was never
+  drawn — and because `editingId` stays set, every later rebuild of the overlay threw too. To a
+  child: tap the page, nothing happens, ever.
+- **`renderStylusBtn`** was called at the **top level** of the wiring, so the throw took every
+  line *below* it with it: the one-letter tool shortcuts, Ctrl+Z, Ctrl+S, Escape, the save on
+  the way out of the tab, and the eight opening render calls. **The app still painted**, because
+  the sign-in callback re-runs the renders — which is exactly why nobody could see it.
+- **`commitDrawing`** was called by a **second copy of the touch navigation engine**: v1.12.0's
+  `attachTouchNavigation`, superseded by `navBind` and never taken out. Both were bound to the
+  same element and both drove the same state. It is gone; there is one engine now.
+
+And the ✍️ button was in the markup **twice**, with **two click handlers** on it — so pencil-only
+mode was toggled twice per press and landed exactly where it started: a button that toasts at you
+and changes nothing.
+
+### The guard, which is the half worth keeping
+
+v1.43.0 found the same class of fault on the save path (`syncTextEditValue`, a name that never
+existed, which wrote nothing for forty-eight versions) and added a census: every name the save
+path calls must be defined somewhere in the file. **That census passed this whole time**, because
+the save path was fine — it was the other two paths that were broken.
+
+- The census now covers **the text-edit path and the whole wiring block**, handler bodies
+  included: a handler calling a name that is not there is a button that throws when it is pressed.
+- **`tools/browser-check.mjs` is new**, and it is the only honest check of any of this. It opens
+  the real page in a real Chromium, asserts nothing threw, then builds a page, dispatches a
+  **touch** pointer with 🅣 in hand, and checks that a box appears, takes words, grows to hold
+  them, commits on blur and survives a rebuild mid-word. It also presses ✍️ and asserts the mode
+  really flips. On the broken build 13 of its 17 checks go red; reading the source, all of them
+  pass.
+
+Nothing about what the app *does* changed: this is v1.45.0 with the parts that were missing put
+back.
+
+---
+
 ## v1.45.0 — 👉 The tutor can mark TWO places at once
 
 *"Can the AI be more like Brilliant's Koji — actually draw boxes to show where I should be

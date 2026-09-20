@@ -2285,6 +2285,75 @@ ok('every function the save path calls really exists',
      ? 'the save dies on its first call to: ' + unresolved.join(', ')
      : '');
 
+/* ---------------------------------------------------------------------
+   …AND THE SAME CENSUS OVER THE TWO PATHS v1.46.0 FOUND IT ON.
+
+   The save was not the only place a name was lost in a branch squash, and
+   the other two were worse to meet:
+
+     • `bindTextEditNode`, called from `annNode`. The FIRST tap of the 🅣
+       tool threw inside `renderOverlay`, so the box was never drawn and
+       never focused — and because `editingId` stays set, every later
+       rebuild threw too. The report was "the text box does not work".
+     • `renderStylusBtn`, called at the TOP LEVEL of the wiring tail. A
+       throw there kills every line BELOW it: the one-letter tool
+       shortcuts, Ctrl+Z, Ctrl+S, Escape, the `beforeunload` save and the
+       eight opening render calls. The app still painted, because the auth
+       callback re-runs the renders — which is exactly why nobody saw it.
+
+   So the census covers the wiring and the text-edit path as well. **The
+   wiring is the whole block, handler bodies included**: a handler that
+   calls a name that is not there is a button that throws when it is
+   pressed, which is this same fault wearing a different hat. -------- */
+
+const TEXT_EDIT = [
+  between('function renderOverlay(p) {', '\nfunction drawAnnsOnCtx(', 'the overlay and its nodes'),
+  between('function syncActiveTextEditValue() {', '\nvar ANN_CARET_PROBE', 'the live editor'),
+  between('function startTextBox(p, pt) {', '\nfunction textBoxWidth(', 'startTextBox')
+].join('\n');
+
+const WIRING = SCRIPTS[0].slice(SCRIPTS[0].indexOf('/* ================= Wiring ================= */'));
+
+for (const [what, src, cost] of [
+  ['the 🅣 text box', TEXT_EDIT, 'the first tap throws inside renderOverlay and no box is ever drawn'],
+  ['the wiring', WIRING, 'a throw at the top level takes every line below it — the shortcuts, Ctrl+Z, the beforeunload save and the opening renders']
+]) {
+  const gone = bareCalls(src).filter(n => !DEFINED.has(n) && !BROWSER.has(n));
+  ok('every function ' + what + ' calls really exists', gone.length === 0,
+     gone.length ? 'missing: ' + gone.join(', ') + ' — ' + cost : '');
+}
+
+/* THE THREE THAT WERE GONE, named, so a squash cannot drop one quietly. */
+ok('…and the three names v1.46.0 put back are still here',
+   DEFINED.has('bindTextEditNode') && DEFINED.has('renderStylusBtn') && DEFINED.has('setStylusOnly'),
+   'bindTextEditNode binds the box being typed in; renderStylusBtn paints ✍️');
+
+/* ONE navigation engine. A second copy of it — v1.12.0's own
+   `attachTouchNavigation`, superseded by `navBind` and left standing until
+   v1.46.0 — binds the SAME `#viewerArea` and drives the SAME global `nav`,
+   and the stale one called a `commitDrawing` that no longer exists. */
+ok('…and there is ONE touch navigation engine, not two',
+   !/function attachTouchNavigation\b/.test(html) &&
+   (html.match(/function navBind\(/g) || []).length === 1,
+   'navBind is the one place a gesture is decided — see ✍️ THE STYLUS, THE PALM AND THE FINGERS');
+
+/* ONE ✍️ button and ONE thing listening to it. `document.getElementById`
+   hands back the FIRST match, so a duplicate id is dead markup nobody can
+   find — but `$('stylusBtn')` resolves to that same element for BOTH
+   wirings, so a toggle bound twice runs twice and lands where it started. */
+ok('…and ONE ✍️ button, wired once',
+   (html.match(/id="stylusBtn"/g) || []).length === 1 &&
+   (html.match(/\$\('stylusBtn'\)\.addEventListener/g) || []).length === 1,
+   'two handlers on one button toggle pencil-only mode twice and change nothing');
+
+/* IT SHIPS VISIBLE AND IS HIDDEN BY THE PAINTER, never the other way
+   round. Pencil-only mode is ON by default, so a painter that failed
+   leaving the button hidden is a touchscreen nobody can draw on with a
+   finger and no control anywhere to say so. */
+ok('…and ✍️ ships visible, so a painter that fails is one spare button',
+   !/id="stylusBtn"[^>]*\bhidden\b/.test(html) && /b\.hidden = !touchy;/.test(html),
+   'renderStylusBtn is what hides it on a machine with no touchscreen');
+
 /* THE ONE THAT WAS WRONG, named, so a rename cannot put it back quietly. */
 ok('…and the box being typed in is read by its real name',
    DEFINED.has('syncActiveTextEditValue') && !DEFINED.has('syncTextEditValue') &&
