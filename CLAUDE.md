@@ -1794,6 +1794,59 @@ knew who was looking at it.**
   on a child's shelf is something nothing on the screen would ever explain.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## ✎ RENAMING A PAPER — the class reads the new name, and nothing they wrote moves (v1.39.0)
+
+**`worksheetName`** / `WS_NAME_MAX` / **`wsNameClean`** (beside `worksheetShelfId` — search
+`WHAT A PAPER IS CALLED`), **`renameWorksheet`** (beside `moveWorksheetToShelf` — search
+`THE ONE RENAME`), **`setWsTitle`** (just above `openWorksheet`), `openRenameModal` /
+`wsNameConfirm` / `wsNameTarget`, the ✎ button on `wsCardNode`, and `#wsNameModal`.
+
+A worksheet was called whatever it was called at upload, for ever. A file name nobody typed, a
+title the paper read badly off its own cover, a paper that turns out to be SA2 rather than SA1 —
+all stuck, on a shelf of thirty cards where the name is the only thing anybody reads.
+
+- **`worksheetName(w, list, loaded)` IS THE ONE PLACE A NAME IS DECIDED, and it reads the
+  ASSIGNMENT over the copy** — exactly as `worksheetShelfId` reads the shelf and `guidanceRule`
+  reads the locked help level, and for exactly the same reason: a name kept per copy would only
+  ever govern the students who had not started yet, and it would look like it worked right up
+  until the teacher renamed a paper the class had already begun. `loaded` tells “the list has not
+  arrived yet” from “it is not set”, so a cold start is not a bookcase of blank cards.
+- **AN EMPTY LIVE NAME IS NOT AN ANSWER, and that is the one deliberate difference from the
+  shelf.** There `''` is a real answer meaning *not on a shelf*; here it can only be a paper set
+  before it was named, and blanking a perfectly good title is the worse way to be wrong.
+- **NOTHING IS WRITTEN TO A STUDENT'S COPY, because nothing needs to be.** The teacher cannot
+  write another account's documents at all, so “the student's version also updates” has exactly
+  one honest implementation: the name is READ live. Their ink, hints, marking, mistake book,
+  answer key, score and help level are untouched by construction — the rename is ONE merged field
+  on each of two documents and the harness counts them.
+- **THE ASSIGNMENT IS WRITTEN FIRST**, because it is the record the whole class reads. A
+  teacher's own row renamed while the class's was not is the one outcome worth refusing to report
+  as a success, so both writes are named on failure and `assignRulesHint()` goes with a refusal.
+  A copy of somebody else's assignment never writes its own row — that field would quietly
+  outrank the assignment the next time the list had not arrived, the rule `moveWorksheetToShelf`
+  already carries.
+- **⚠️ `performSave` WRITES `name: docName` ON EVERY AUTO-SAVE, AND THAT IS THE TRAP.** A rename
+  made while that paper is open and not carried into `docName` is undone by the paper's own next
+  save a few seconds later, with nothing on any screen saying so. **`setWsTitle` is the ONE
+  writer** of `docName` and the bar together: a bar changed alone is a label, and a `docName`
+  changed alone is a rename nobody can see until the next save writes it. `renameWorksheet` calls
+  it when the renamed paper is the open one.
+- **THE NAME IS RE-READ AFTER THE CLASS LIST IS IN HAND.** `openWorksheet` names the paper at
+  `loadPdf` and again beside `guidanceRule`, because the list may not have arrived until the
+  await above — reading it only at `loadPdf` is a whole session spent under the name the copy
+  happens to carry. And because the save writes `docName` back, a student's own stale field
+  CONVERGES on the live name at their very next save.
+- **IT IS THE TEACHER'S, REFUSED IN THE HANDLER.** `openRenameModal` and `renameWorksheet` both
+  ask `isAdmin` — hiding a button has never been the lock in this app, and this one writes a
+  collection every student reads.
+- **`wsNameClean` NEVER INVENTS A NAME.** Whitespace is folded (a title pasted out of a PDF
+  arrives with newlines in it, and a card is one line) and the length is capped at `WS_NAME_MAX`,
+  which the input's own `maxlength` matches; an empty answer comes back EMPTY and the rename
+  refuses it rather than writing “Untitled” over a paper that had a title.
+- The dialog opens on the name it already has, so a rename is an edit rather than a retype, and
+  Enter confirms it — renaming is one word and one key.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 🗂 SHELVES THE TEACHER MAKES — “2025 papers”, in the teacher’s own order (v1.38.0)
 
 `SHELF_DOC_ID` / `SHELF_MAX` / `SHELF_RECENT_*` / `SHELF_UNSORTED_TITLE` / `shelves` /
@@ -3454,6 +3507,27 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **✎ the rename** (`worksheetName`, `wsNameClean`, `WS_NAME_MAX`,
+  `renameWorksheet`, `setWsTitle`, `openRenameModal`, `wsNameConfirm`, the ✎ button
+  on `wsCardNode`, `#wsNameModal`, or any surface that shows a paper's name), run
+  `node tools/tutor-tests.mjs`. Every failure here is silent and the card still
+  paints. **Read the name off the COPY instead of the assignment and a paper the
+  teacher renames this morning keeps its old name for everybody who started it
+  yesterday** — the whole feature quietly not happening, on a shelf that looks
+  perfectly right. Let an EMPTY live name through and a paper set before it was
+  named blanks every card it is on; drop `assignmentsLoaded` and a cold start is a
+  bookcase of “Untitled”. Write the teacher's own row before the assignment and a
+  refused second write leaves the class reading a name the teacher believes they
+  changed. Write ANYTHING but the name — a field slipped into either `set` — and a
+  rename reaches into a child's own work, which is the one thing this promised not
+  to do. **Drop `setWsTitle(nm)` from the rename and the paper's own next auto-save
+  writes the OLD name straight back**, because `performSave` writes `name: docName`
+  every time; split `docName` and the bar into two writers and the same thing
+  happens through the other door. Read the name only at `loadPdf` and a copy opened
+  before the class list arrives runs the whole session under the name it happens to
+  carry. Let `wsNameClean` invent “Untitled” for an empty answer and a mis-tap
+  renames a paper that had a perfectly good title. And gate it on the button rather
+  than in the handler and a student can rename the class's paper.
 - After touching **🗂 the shelves** (`SHELF_DOC_ID`, `shelfNorm`, `shelfFind`,
   `shelfRank`, `shelfReorder`, `shelfStampOf`, `worksheetShelfId`,
   `shelfRecentStamp`, `shelfAgo`, `shelfRecentItems`, `shelfInScope`,
