@@ -2303,7 +2303,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.35.0';
+var APP_VERSION = 'v1.36.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -4920,7 +4920,7 @@ function eventPoint(e, p, rect) {
 }
 
 var drawing = null;   // { page, ann, svgNode, _d, _dCount, ptrType, startT }
-var moving = null;    // { page, id, snap, lastX, lastY, moved }
+var moving = null;    // { page, id, snap, lastX, lastY, cx, cy, moved, dragged }
 var erasing = null;   // { page, snap, removed }
 
 /* Keep the page's saved ink, text, hints and marks in the DOM while writing.
@@ -5442,6 +5442,32 @@ function resetPointerInput() {
   rejectedTouches.clear(); penPointerId = null; penGuardUntil = 0;
 }
 
+/* ---- A GRAB IS NOT YET A MOVE ----
+   A stylus tip is never perfectly still. It wobbles a pixel or two as it
+   touches down and again as it lifts, and a graphics tablet reports absolute
+   positions, so what the hand meant as a tap arrives as a tap AND a small
+   drag. Without a threshold the very act of SELECTING a stroke nudges it out
+   of place, which is exactly what "it moves my writing instead of writing"
+   feels like. So a grab becomes a MOVE only once the pointer has travelled a
+   real distance.
+
+   IT IS MEASURED IN SCREEN PIXELS, NEVER IN PAGE UNITS, and that is the whole
+   point of it: a page-unit threshold is a hair at 400% zoom and most of a
+   centimetre at fit-width, so the same tremor would be swallowed on one
+   worksheet and move the ink on the next. `cx`/`cy` are the client
+   coordinates the gesture started at — every grab records them. */
+var DRAG_SLOP_PX = 4;
+function dragStarted(g, e) {
+  if (!g) return false;
+  if (g.moved) return true;
+  // A gesture with no recorded start point is let through rather than frozen:
+  // a drag that cannot be measured is better than one that can never begin.
+  if (typeof g.cx !== 'number' || typeof g.cy !== 'number') { g.moved = true; return true; }
+  if (Math.hypot(e.clientX - g.cx, e.clientY - g.cy) <= DRAG_SLOP_PX) return false;
+  g.moved = true;
+  return true;
+}
+
 // iPads report ordinary fingertips at contact sizes up to ~45px, so the palm
 // threshold must sit above that or normal finger scrolling gets eaten.
 var PALM_CONTACT = 55;
@@ -5484,7 +5510,7 @@ function cancelStaleGesture(restoreTouch) {
   if (restoreTouch && (erasing || moving)) {
     var gesture = erasing || moving;
     annotations = JSON.parse(gesture.snap);
-    if (moving && moving.moved && undoStack[undoStack.length - 1] === moving.snap) undoStack.pop();
+    if (moving && moving.dragged && undoStack[undoStack.length - 1] === moving.snap) undoStack.pop();
     renderOverlay(gesture.page);
   }
   erasing = null;
@@ -5788,7 +5814,14 @@ function attachOverlayHandlers(p) {
   var svg = p.svg;
 
   svg.addEventListener('pointerdown', function (e) {
-    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    /* Only the PRIMARY button starts anything, whatever the pointer is.
+       A graphics-tablet pen carries a barrel button exactly where the fingers
+       grip it, and squeezing it mid-word fires a second `pointerdown` — with
+       the SAME pointerId as the tip already down, so the one-pointer-at-a-time
+       guard below cannot see it. Left through, it abandons the stroke in
+       progress and starts a fresh gesture under the hand. The eraser end of a
+       pen (button 5) arrives the same way. */
+    if (e.button > 0) return;
 
     /* ---- PALM REJECTION — see ✍️ THE STYLUS, THE PALM AND THE FINGERS ----
        The first time a real stylus touches down, pencil-only mode comes
@@ -5879,7 +5912,7 @@ function attachOverlayHandlers(p) {
       e.preventDefault();
       claimPointer(e);
       try { svg.setPointerCapture(e.pointerId); } catch (err) {}
-      moving = { page: p, id: id, snap: snapshot(), lastX: pt.x, lastY: pt.y, moved: false };
+      moving = { page: p, id: id, snap: snapshot(), lastX: pt.x, lastY: pt.y, cx: e.clientX, cy: e.clientY, moved: false };
       return;
     }
 
@@ -5936,11 +5969,17 @@ function attachOverlayHandlers(p) {
       return;
     }
     if (moving && moving.page === p) {
+      // A tap is not a drag: the ink must not shift under a stylus that was
+      // only ever tapped down on it to select it. `moved` says the threshold
+      // was crossed; `dragged` says the ink really went somewhere, and it is
+      // that one the undo entry and the save hang off — a threshold crossed
+      // and nothing translated must not cost a Ctrl+Z that undoes nothing.
+      if (!dragStarted(moving, e)) return;
       var mp = eventPoint(e, p);
       var dx = mp.x - moving.lastX, dy = mp.y - moving.lastY;
       if (!dx && !dy) return;
       moving.lastX = mp.x; moving.lastY = mp.y;
-      if (!moving.moved) { moving.moved = true; pushUndo(moving.snap); }
+      if (!moving.dragged) { moving.dragged = true; pushUndo(moving.snap); }
       var a = annotations.find(function (x) { return x.id === moving.id; });
       if (a) { translateAnn(a, dx, dy); renderOverlay(p); }
       return;
@@ -5974,7 +6013,7 @@ function attachOverlayHandlers(p) {
       return;
     }
     if (moving && moving.page === p) {
-      if (moving.moved) setDirty(true);
+      if (moving.dragged) setDirty(true);
       moving = null;
       return;
     }

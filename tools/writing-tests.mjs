@@ -27,6 +27,9 @@ const source = [
 function setup(savedMode) {
   const frames = new Map(), store = new Map(), metrics = { nodes: 0, rects: 0, writes: 0 };
   let frameId = 0, clock = 1000, annId = 0;
+  // The page's RENDERED size. A test changes it to simulate zoom: `eventPoint`
+  // turns screen pixels into page units by baseW / rect.width.
+  let rectW = 600, rectH = 800;
   if (savedMode !== undefined) store.set('tutorStylusOnly', savedMode ? '1' : '0');
   class Node {
     constructor(tag) { this.tagName = tag; this.children = []; this.attrs = {}; this.listeners = {}; this.style = {}; this.captures = new Set(); metrics.nodes++; }
@@ -62,12 +65,17 @@ function setup(savedMode) {
       if (!keys.length) return [];
       return this.children.filter(n => keys.some(k => n.attrs[k] != null));
     }
-    closest(sel) { return sel === 'svg.overlay' ? this : null; }
+    closest(sel) {
+      if (sel === 'svg.overlay') return this;
+      // The select tool asks for the annotation under the pointer.
+      if (/\[data-id\]/.test(sel) && this.attrs['data-id']) return this;
+      return null;
+    }
     addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
     setPointerCapture(id) { this.captures.add(id); }
     hasPointerCapture(id) { return this.captures.has(id); }
     releasePointerCapture(id) { this.captures.delete(id); }
-    getBoundingClientRect() { metrics.rects++; return { left: 0, top: 0, width: 600, height: 800 }; }
+    getBoundingClientRect() { metrics.rects++; return { left: 0, top: 0, width: rectW, height: rectH }; }
     getBBox() { return { x: 0, y: 0, width: 10, height: 10 }; }
   }
   const area = new Node('area'), svg = new Node('svg'), doc = new Node('document'), win = new Node('window');
@@ -119,6 +127,7 @@ function setup(savedMode) {
       changedTouches: list, preventDefault() {} });
   }
   return { S, p, svg, area, doc, win, frames, metrics, store, pointer, touches, emit,
+    zoom: (w, h) => { rectW = w; rectH = h; },
     time: ms => { clock = ms; },
     flush: () => { const pending = [...frames.values()]; frames.clear(); pending.forEach(fn => fn(clock)); } };
 }
@@ -321,4 +330,102 @@ test('blur commits current ink once, cancels frames and clears navigation and pe
   assert.equal(h.S.penPointerId, null); assert.equal(h.S.nav.pts.size, 0);
   assert.equal(h.frames.size, 0); assert.equal(h.S.undoStack.length, 1);
   h.pointer('pointerup'); assert.equal(h.S.undoStack.length, 1);
+});
+
+/* ---- A GRAB IS NOT YET A MOVE ----
+   A stylus tip wobbles a pixel or two as it touches down, and a graphics
+   tablet reports absolute positions — so what the hand meant as a tap on a
+   stroke arrives as a tap AND a small drag. Without a threshold the act of
+   SELECTING a stroke nudges the writing out of place, which is what "it moves
+   my writing instead of writing" feels like. Every failure here is silent. */
+
+function withInk(h) {
+  h.S.annotations = [{ id: 'ink1', page: 1, type: 'pen', color: '#000', width: 3,
+                       points: [{ x: 100, y: 100 }, { x: 140, y: 140 }] }];
+  h.S.renderOverlay(h.p);
+  const node = h.svg.querySelector('[data-id="ink1"]');
+  assert(node, 'the stroke did not render');
+  return node;
+}
+
+test('a stylus tremor selects a stroke without nudging it; a real drag still moves it', () => {
+  const h = setup();
+  const node = withInk(h);
+  h.S.tool = 'select';
+  h.pointer('pointerdown', { target: node, clientX: 100, clientY: 100 });
+  assert.equal(h.S.selectedId, 'ink1', 'the tap did not select the stroke');
+  assert(h.S.moving, 'the tap did not arm the drag');
+
+  h.pointer('pointermove', { target: node, clientX: 102, clientY: 101 });
+  assert.equal(h.S.moving.dragged, undefined, 'a 2px tremor counted as a drag');
+  assert.equal(h.S.annotations[0].points[0].x, 100, 'the writing moved under a tap');
+  assert.equal(h.S.annotations[0].points[0].y, 100, 'the writing moved under a tap');
+
+  h.pointer('pointerup', { target: node, clientX: 102, clientY: 101 });
+  assert.equal(h.S.undoStack.length, 0, 'a tap cost an undo step that undoes nothing');
+  assert.equal(h.S.dirtyCalls, 0, 'a tap marked the worksheet dirty');
+
+  // A deliberate drag still works, and is still exactly one undo step.
+  h.pointer('pointerdown', { target: h.svg.querySelector('[data-id="ink1"]'), clientX: 100, clientY: 100 });
+  h.pointer('pointermove', { clientX: 160, clientY: 100 });
+  h.pointer('pointermove', { clientX: 180, clientY: 100 });
+  assert.equal(h.S.moving.dragged, true, 'a real drag was swallowed by the threshold');
+  assert(h.S.annotations[0].points[0].x > 100, 'a real drag moved nothing');
+  h.pointer('pointerup', { clientX: 180, clientY: 100 });
+  assert.equal(h.S.undoStack.length, 1, 'a drag is one undo step');
+});
+
+test('the threshold is screen pixels, so it means the same at every zoom', () => {
+  // Zoomed IN (600 page units drawn across 2400px): a real 10px drag moves it.
+  const zin = setup();
+  zin.zoom(2400, 3200);
+  const nIn = withInk(zin);
+  zin.S.tool = 'select';
+  zin.pointer('pointerdown', { target: nIn, clientX: 100, clientY: 100 });
+  zin.pointer('pointermove', { clientX: 110, clientY: 100 });
+  assert.equal(zin.S.moving.dragged, true, 'zoomed in, a real 10px drag was swallowed');
+
+  // Zoomed OUT (600 units across 150px): the same 2px tremor is still a tap.
+  const zout = setup();
+  zout.zoom(150, 200);
+  const nOut = withInk(zout);
+  zout.S.tool = 'select';
+  zout.pointer('pointerdown', { target: nOut, clientX: 100, clientY: 100 });
+  zout.pointer('pointermove', { clientX: 102, clientY: 101 });
+  assert.equal(zout.S.moving.dragged, undefined, 'zoomed out, a 2px tremor moved the writing');
+});
+
+test('a barrel-button press mid-word cannot hijack the stroke in progress', () => {
+  const h = setup();
+  h.S.tool = 'pen';
+  h.pointer('pointerdown', { clientX: 60, clientY: 60 });
+  const first = h.S.drawing && h.S.drawing.ann.id;
+  assert(first, 'the pen did not start a stroke');
+  // The SAME pointerId — the one-pointer-at-a-time guard cannot see this one.
+  h.pointer('pointerdown', { clientX: 60, clientY: 60, button: 2, buttons: 3 });
+  assert.equal(h.S.drawing && h.S.drawing.ann.id, first,
+    'the barrel button abandoned the stroke and started a second gesture');
+  assert.equal(h.S.activePointerId, 1);
+});
+
+test('nothing on the overlay can switch the tool out of a hand that is writing', () => {
+  /* anskey once carried a `dblclick` fallback here that called
+     `setTool('select')`, so two quick marks landing on existing ink silently
+     turned the pen into the select tool and the next stroke MOVED the writing.
+     Nothing in this app may grow that: a double-tap while drawing is two
+     marks. */
+  const h = setup();
+  assert.equal(h.svg.listeners['dblclick'], undefined,
+    'the overlay grew a dblclick handler — check it cannot reach setTool');
+  for (const t of ['pen', 'highlight', 'line', 'arrow', 'rect', 'ellipse', 'eraser']) {
+    h.S.tool = t;
+    const node = withInk(h);
+    h.pointer('pointerdown', { target: node, clientX: 100, clientY: 100 });
+    h.pointer('pointerup', { target: node, clientX: 100, clientY: 100 });
+    h.time(1000 + 80);
+    h.pointer('pointerdown', { target: node, clientX: 100, clientY: 100 });
+    h.pointer('pointerup', { target: node, clientX: 100, clientY: 100 });
+    assert.equal(h.S.tool, t, `${t} lost the tool to two quick taps on existing ink`);
+    assert.equal(h.S.moving, null, `${t} armed a drag on the student's own writing`);
+  }
 });
