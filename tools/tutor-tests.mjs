@@ -4276,8 +4276,8 @@ section('The bookshelf');
   ok('junk is the middle pose', S.shelfWheelPose('x').rot === 0 && S.shelfWheelPose(undefined).scale === 1);
   ok('the row is the scroller and snaps to a paper', /\.shelfRow \{[^}]*scroll-snap-type: x mandatory/.test(html) && /\.shelfItem \{[^}]*scroll-snap-align: center/.test(html));
   ok('the wheel is posed off the scroll, one paint a frame', /row\.addEventListener\('scroll', kick, \{ passive: true \}\)/.test(html) && /requestAnimationFrame\(run\)/.test(html));
-  ok('the home screen is built from shelfGroups over EVERY paper the student has',
-     /var entries = shelfEntries\(worksheets, assignmentsForMe\(\)\);[\s\S]{0,700}var groups = shelfGroups\(entries\);\n\s*groups\.forEach\(function \(g\) \{ box\.appendChild\(shelfNode\(g\)\); \}\);/.test(html));
+  ok('the home screen is built from shelfSections over EVERY paper the student has',
+     /var entries = shelfEntries\(worksheets, assignmentsForMe\(\)\);[\s\S]{0,1400}var sections = shelfSections\(entries, \{[\s\S]{0,400}\}\);[\s\S]{0,1200}sections\.forEach\(function \(sec\) \{ box\.appendChild\(shelfNode\(sec\)\); \}\);/.test(html));
 
   /* EVERY PAPER IS ON A SHELF, OPENED OR NOT (v1.25.0). A set worksheet the
      student has not started stands on the shelf beside the ones they have,
@@ -4307,11 +4307,11 @@ section('The bookshelf');
   eq('a set worksheet whose level nobody has answered is still an entry (the filter is the caller\'s)',
      S.shelfEntries([], [{ id: 'a9', name: 'x' }]).map(e => e.id), ['set:a9']);
   ok('the shelf draws a set entry with the set card and every card as a booklet',
-     /var card = w\.set \? setCardNode\(w\.set\) : wsCardNode\(w\);\n\s*card\.classList\.add\('booklet'\);/.test(html));
+     /var card = w\.set \? setCardNode\(w\.set\) : wsCardNode\(w, recent \? \{[\s\S]{0,260}\} : null\);\n\s*card\.classList\.add\('booklet'\);/.test(html));
   ok('a set worksheet not opened yet says so on its cover',
      /if \(!mine\) meta\.appendChild\(chipNode\('✨ Not opened yet', 'chip chipNew'\)\);/.test(html));
   ok('the set record carries the topic and the school the shelf files by',
-     /topic: w\.topic \|\| '',\n\s*school: w\.school \|\| '',\n\s*guidance: level,/.test(html));
+     /topic: w\.topic \|\| '',\n\s*school: w\.school \|\| '',[\s\S]{0,700}\n\s*guidance: level,/.test(html));
   /* THE WOOD AND THE BOOKLETS, against the stylesheet. Drawn, never a
      picture: a school wifi that blocks the image leaves a broken tile
      behind every shelf. */
@@ -4324,6 +4324,249 @@ section('The bookshelf');
      /\.wsCard\.booklet::before \{[^}]*#2F4858/.test(html) &&
      /\.wsCard\.booklet \{[^}]*1px 0 0 #F2ECDD, 2px 0 0 #E4DCCB/.test(html));
   ok('a set booklet wears the class\'s blue spine', /\.wsCard\.booklet\.setCard::before \{[^}]*#1565C0/.test(html));
+  /* =====================================================================
+     🗂 SHELVES THE TEACHER MAKES (v1.37.0)
+     ---------------------------------------------------------------------
+     Every failure here is silent and the bookcase still paints, which is
+     why each of these is a case rather than a comment: a paper on a shelf
+     nobody draws looks exactly like a paper that was never uploaded.
+     ===================================================================== */
+  /* ① THE CATALOGUE READER. It is the one door every path that shows or
+        writes a shelf goes through, so a record half-written by a failed
+        version can never paint a nameless shelf onto the bookcase. */
+  eq('junk, nameless and duplicate shelves never reach the bookcase',
+     S.shelfNorm([
+       { id: 'a', name: 'Prelims', order: 1 },
+       null, 'nope', { name: 'no id' }, { id: 'b' },
+       { id: 'a', name: 'the same id twice' },
+       { id: 'c', name: '  2025   papers  ', order: 0 }
+     ]).map(x => x.id + ':' + x.name), ['c:2025 papers', 'a:Prelims']);
+  eq('a shelf with no order sorts where it was written, and a name is folded and capped',
+     S.shelfNorm([{ id: 'x', name: 'z'.repeat(80) }])[0].name.length, 48);
+  eq('a bookcase holds no more shelves than one Firestore document can',
+     S.shelfNorm(Array.from({ length: 400 }, (_, i) => ({ id: 's' + i, name: 'n' + i }))).length, 120);
+  eq('an empty catalogue is an empty bookcase', S.shelfNorm(undefined), []);
+  const cat = S.shelfNorm([
+    { id: 's1', name: '2025 papers', order: 0 },
+    { id: 's2', name: 'Prelims', order: 1 }
+  ]);
+  eq('a shelf is found and named by its id', [S.shelfLabel(cat, 's2'), S.shelfLabel(cat, 'gone')], ['Prelims', '']);
+
+  /* ② WHICH SHELF A PAPER IS ON — the whole of “every student has the same
+        papers on the same shelves”. The ASSIGNMENT is read over the copy,
+        so the teacher moving a paper this morning moves it for the child
+        who started it yesterday. Read off each copy instead and the move
+        would only ever reach the students who had not begun. */
+  const live = [{ id: 'a1', shelf: 's2' }];
+  eq('a student\'s copy reads the shelf LIVE off the assignment, never its own stale field',
+     S.worksheetShelfId({ id: 'w1', assignmentId: 'a1', shelf: 's1' }, live, true), 's2');
+  eq('…and the teacher\'s own paper, which IS the assignment, the same way',
+     S.worksheetShelfId({ id: 'a1', shelf: 's1' }, live, true), 's2');
+  eq('until the assignment list has arrived the copy\'s own field stands, so a cold start is not a bookcase emptied for a second',
+     S.worksheetShelfId({ id: 'w1', assignmentId: 'a1', shelf: 's1' }, live, false), 's1');
+  eq('a paper nobody set is the owner\'s own arrangement',
+     S.worksheetShelfId({ id: 'own', shelf: 's1' }, live, true), 's1');
+  eq('a set worksheet not yet started reads the assignment it IS',
+     S.worksheetShelfId({ id: 'set:a1', set: { id: 'a1', shelf: 's2' } }, [], true), 's2');
+  eq('nothing anywhere is the unsorted shelf', [S.worksheetShelfId(null, live, true), S.worksheetShelfId({ id: 'x' }, live, true)], ['', '']);
+
+  /* ③ AN UNKNOWN SHELF ID READS AS UNSORTED. That one line is what makes
+        taking a shelf off the bookcase safe — its papers fall back onto
+        “Not on a shelf yet” rather than into a section nothing draws, so a
+        paper can never be lost by shelf bookkeeping. */
+  const shelved = [
+    { id: 'p', level: 'P5', subject: 'science', updatedAt: 9, shelf: 's1' },
+    { id: 'q', level: 'P5', subject: 'science', updatedAt: 8, shelf: 's2' },
+    { id: 'r', level: 'P5', subject: 'science', updatedAt: 7, shelf: 'DELETED' },
+    { id: 't', level: 'P5', subject: 'science', updatedAt: 6 }
+  ];
+  const shelfOf = w => w.shelf || '';
+  eq('a paper on a shelf that has gone is back with the unsorted ones, never lost',
+     S.shelfGroups(shelved, { shelves: cat, shelfOf }).map(g => g.shelf + ':' + g.items.map(w => w.id).join(',')),
+     ['s1:p', 's2:q', ':r,t']);
+  eq('the shelves stand in the teacher\'s order and the unsorted one is ALWAYS last',
+     S.shelfGroups(shelved, { shelves: S.shelfNorm([{ id: 's2', name: 'Prelims', order: 0 }, { id: 's1', name: '2025 papers', order: 1 }]), shelfOf })
+       .map(g => g.shelf), ['s2', 's1', '']);
+  /* With no shelves made, this is byte-for-byte the bookcase the app had
+     before they existed — which is what makes a centre that never makes
+     one completely unaffected. */
+  eq('called with nothing, the grouping is exactly what it always was',
+     S.shelfGroups(shelved).map(g => g.level + '|' + g.subject + '|' + g.shelf + ':' + g.items.map(w => w.id).join(',')),
+     ['P5|science|:p,q,r,t']);
+  eq('a shelf says its name, and the class it is under unless that class is the one being shown',
+     [S.shelfTitle({ level: 'P5', subject: 'science', shelf: 's1' }, { shelves: cat }),
+      S.shelfTitle({ level: 'P5', subject: 'science', shelf: 's1' }, { shelves: cat, scoped: true }),
+      S.shelfTitle({ level: 'P5', subject: 'science', shelf: '' }, { shelves: cat, scoped: true }),
+      S.shelfTitle({ level: 'P5', subject: 'science', shelf: '' }, { shelves: [] })],
+     ['P5 · Science · 2025 papers', '2025 papers', 'Not on a shelf yet', 'P5 · Science']);
+
+  /* ④ THE SCOPE NEVER HIDES WORK. A paper with no level or no subject
+        passes every scope, so picking a class can never make somebody's
+        own untagged upload disappear — it stands on its own “Any level”
+        shelf instead, which is `canSeeWorksheet`'s rule applied to the
+        picker. */
+  ok('a scope narrows to one class',
+     S.shelfInScope({ level: 'P5', subject: 'science' }, { level: 'P5', subject: 'science' }) &&
+     !S.shelfInScope({ level: 'P6', subject: 'science' }, { level: 'P5', subject: '' }) &&
+     !S.shelfInScope({ level: 'P5', subject: 'math' }, { level: '', subject: 'science' }));
+  ok('…and an UNTAGGED paper passes every scope there is',
+     S.shelfInScope({ level: '', subject: '' }, { level: 'P5', subject: 'science' }) &&
+     S.shelfInScope({ level: 'P5', subject: '' }, { level: 'P5', subject: 'math' }) &&
+     S.shelfInScope({ id: 'x' }, { level: 'S1', subject: 'chinese' }));
+  ok('an empty scope is every paper', S.shelfInScope({ level: 'P6', subject: 'math' }, {}));
+
+  /* ⑤ 🕒 RECENTLY OPENED. The LATER of `lastOpenedAt` and `updatedAt`,
+        because either alone is a shelf that quietly misses half of what
+        belongs on it: a paper written on and never re-opened, and a paper
+        opened and read without a mark. */
+  const T = 1_700_000_000_000;
+  eq('the later of opened and saved is when a paper was last worked on',
+     [S.shelfRecentStamp({ lastOpenedAt: T, updatedAt: T - 5000 }),
+      S.shelfRecentStamp({ lastOpenedAt: T - 5000, updatedAt: T }),
+      S.shelfRecentStamp({ updatedAt: T })], [T, T, T]);
+  eq('a set worksheet nobody has started has never been opened, whatever the set date says',
+     S.shelfRecentStamp({ set: { id: 'a1' }, updatedAt: T }), 0);
+  const recent = S.shelfRecentItems([
+    { id: 'old', updatedAt: T - 90 * 86400000 },
+    { id: 'now', updatedAt: T - 1000 },
+    { id: 'yday', updatedAt: T - 26 * 3600000 },
+    { id: 'never' },
+    { id: 'skew', updatedAt: T + 40 * 86400000 },
+    { id: 'set:a', set: { id: 'a' }, updatedAt: T }
+  ], { now: T });
+  eq('newest first, nothing that was never opened, nothing outside the window',
+     recent.map(r => r.w.id), ['now', 'yday']);
+  ok('…and a clock a month fast cannot pin a paper to the front of the shelf for ever',
+     !recent.some(r => r.w.id === 'skew'));
+  eq('the shelf is capped: it is a shelf, not a log',
+     S.shelfRecentItems(Array.from({ length: 40 }, (_, i) => ({ id: 'w' + i, updatedAt: T - i * 1000 })), { now: T }).length, 12);
+  eq('the stamp comes back WITH the paper, so the card and the shelf cannot disagree about when',
+     recent[0].t, T - 1000);
+  eq('how long ago, in words',
+     [S.shelfAgo(T - 30000, T), S.shelfAgo(T - 20 * 60000, T), S.shelfAgo(T - 5 * 3600000, T),
+      S.shelfAgo(T - 30 * 3600000, T), S.shelfAgo(T - 4 * 86400000, T), S.shelfAgo(0, T)],
+     ['just now', '20 minutes ago', '5 hours ago', 'yesterday', '4 days ago', '']);
+
+  /* ⑥ THE ONE PLACE A HOME SCREEN BECOMES AN ORDERED LIST OF SHELVES. */
+  const home = [
+    { id: 'p', level: 'P5', subject: 'science', updatedAt: T - 1000, shelf: 's1' },
+    { id: 'q', level: 'P5', subject: 'science', updatedAt: T - 9000, shelf: 's2' },
+    { id: 'u', level: 'P6', subject: 'math', updatedAt: T - 3000, shelf: 's1' },
+    { id: 'n', level: '', subject: '', updatedAt: T - 4000 }
+  ];
+  const secAll = S.shelfSections(home, { shelves: cat, shelfOf, now: T });
+  eq('🕒 Recently opened leads the bookcase, then the shelves in order, then the unsorted',
+     secAll.map(x => x.kind + ':' + (x.shelf || '-')),
+     ['recent:__recent__', 'shelf:s1', 'shelf:s2', 'shelf:s1', 'shelf:-']);
+  eq('…and a paper on the recent shelf is STILL standing on its own shelf below it',
+     [secAll[0].items.map(w => w.id).join(','), secAll[1].items.map(w => w.id).join(',')],
+     ['p,u,n,q', 'p']);
+  eq('with one class in view the headings lose the class and keep it on anything else',
+     S.shelfSections(home, { shelves: cat, shelfOf, now: T, scope: { level: 'P5', subject: 'science' } })
+       .filter(x => x.kind === 'shelf').map(x => x.title),
+     ['2025 papers', 'Prelims', 'Any level · Any subject · Not on a shelf yet']);
+  eq('…and an untagged paper of somebody\'s own is never filtered away by a scope',
+     S.shelfSections(home, { shelves: cat, shelfOf, now: T, scope: { level: 'P5', subject: 'science' } })
+       .filter(x => x.kind === 'shelf').map(x => x.items.map(w => w.id).join(',')),
+     ['p', 'q', 'n']);
+  /* THE EMPTY SHELVES ARE THE TEACHER'S OWN, and only with ONE class in
+     view: a shelf is a label with no class of its own, so on “every class”
+     there is no heading it could honestly stand under. A shelf you cannot
+     see is a shelf you cannot drag onto, and one made a moment ago that
+     does not appear reads as a creation that failed. */
+  const cat3 = S.shelfNorm(cat.concat([{ id: 's3', name: 'Heat revision', order: 2 }]));
+  eq('the teacher sees a shelf with nothing on it yet, in its place, with somewhere to drop',
+     S.shelfSections(home, { shelves: cat3, shelfOf, now: T, showEmpty: true, scope: { level: 'P5', subject: 'science' } })
+       .filter(x => x.kind === 'shelf').map(x => (x.shelf || '-') + (x.empty ? '!' : '')),
+     ['s1', 's2', 's3!', '-!', '-']);
+  ok('a student is never shown an empty shelf',
+     !S.shelfSections(home, { shelves: cat3, shelfOf, now: T, scope: { level: 'P5', subject: 'science' } })
+       .some(x => x.kind === 'shelf' && !x.items.length));
+  ok('…and neither is the teacher on “every class”, where a label has no class to stand under',
+     !S.shelfSections(home, { shelves: cat3, shelfOf, now: T, showEmpty: true })
+       .some(x => x.kind === 'shelf' && !x.items.length));
+  ok('nothing at all is no shelves rather than a page of empty ones',
+     S.shelfSections([], { shelves: cat, shelfOf, now: T }).length === 0);
+
+  /* ⑦ THE RULES THAT CANNOT BE READ OFF A PURE FUNCTION, against the file.
+        The catalogue lives in a collection whose Firestore rules already
+        exist — a collection of its own would need a line in another
+        repository's rules and would fail CLOSED until somebody deployed
+        it, with nothing on any screen to say why. */
+  ok('the catalogue is a reserved document in the collection the assignments already use',
+     /var SHELF_DOC_ID = '__shelves__';/.test(html) &&
+     /db\.collection\(ASSIGN_COLLECTION\)\.doc\(SHELF_DOC_ID\)/.test(html) &&
+     !/collection\('tutorShelves'\)/.test(html));
+  ok('…and it can never come back as a worksheet set for a class',
+     /active: false,/.test(html) && /if \(d\.id === SHELF_DOC_ID\) return;/.test(html));
+  ok('a denied read leaves the bookcase the one this app had before shelves existed, never an error',
+     /console\.warn\('shelves: the catalogue could not be read', e\);\n\s*shelves = \[\];/.test(html));
+  ok('every write to the bookcase goes through the ONE writer',
+     (html.match(/db\.collection\(ASSIGN_COLLECTION\)\.doc\(SHELF_DOC_ID\)\.set\(/g) || []).length === 1);
+  /* THE ASSIGNMENT IS WRITTEN FIRST, because it is the record the whole
+     class reads: it is what makes “the same papers on the same shelves”
+     true, and a teacher's own row that moved while the class's did not is
+     the one outcome worth refusing to report as a success. */
+  const mover = between('async function moveWorksheetToShelf(', '\n/* ---- Which level and subject are in view', 'the mover');
+  ok('the mover writes the ASSIGNMENT before the teacher\'s own row',
+     mover.indexOf('db.collection(ASSIGN_COLLECTION).doc(aid).set({ shelf: shelfId }') <
+     mover.indexOf('db.collection(COLLECTION).doc(w.id).set({ shelf: shelfId }'));
+  ok('…and it refuses anybody but the teacher IN THE HANDLER, not only on the button',
+     /async function moveWorksheetToShelf\(id, shelfId\) \{\n\s*if \(!isAdmin\(currentUser\)\)/.test(html));
+  ok('…and a shelf that is not on the bookcase any more', /if \(shelfId && !shelfFind\(shelves, shelfId\)\)/.test(mover));
+  ok('…and a refused write is NAMED, with the rule to paste',
+     /PERMISSION_DENIED/.test(mover) && /assignRulesHint\(\)/.test(mover));
+  ok('a copy is never the arrangement: only a paper of the teacher\'s own writes its own row',
+     /if \(w && !w\.assignmentId\) \{\n\s*await db\.collection\(COLLECTION\)\.doc\(w\.id\)\.set/.test(mover));
+  /* BOTH WAYS OF MOVING A PAPER END AT THE ONE MOVER. `dragstart` is never
+     fired by a touchscreen, so a shelf reachable only by dragging is a
+     shelf the teacher cannot use on the iPad they teach from. */
+  ok('dragging and the 🗂 button both end at the one mover',
+     /if \(id\) moveWorksheetToShelf\(id, g\.shelf \|\| ''\);/.test(html) &&
+     /mv\.addEventListener\('click', function \(\) \{ openShelfPick\(w\.id\); \}\);/.test(html));
+  ok('the dragged paper is remembered on dragstart, because a shelf may not ask during dragover',
+     /var _shelfDragId = '';/.test(html) &&
+     /item\.addEventListener\('dragstart', function \(e\) \{\n\s*_shelfDragId = w\.id;/.test(html) &&
+     /item\.addEventListener\('dragend', function \(\) \{\n\s*_shelfDragId = '';/.test(html));
+  ok('🕒 the recently-opened shelf is not a drop target — it is a view, not a place',
+     /if \(teacher && !recent\) \{\n\s*shelf\.dataset\.shelfId/.test(html));
+  /* 🕒 `lastOpenedAt` must never be the reason a worksheet does not open. */
+  ok('when it was last opened is written fire-and-forget, as one merged field',
+     /\.set\(\{ lastOpenedAt: firebase\.firestore\.FieldValue\.serverTimestamp\(\) \}, \{ merge: true \}\)\n\s*\.catch\(/.test(html));
+  ok('…and locally too, so the shelf is right without waiting for a reload',
+     /if \(mine\) mine\.lastOpenedAt = w\.lastOpenedAt;/.test(html));
+  /* THE SHELF TRAVELS WITH THE PAPER, or the class is looking at a
+     bookcase the teacher never arranged. */
+  ok('the push carries the shelf onto the assignment every student reads',
+     /shelf: w\.shelf \|\| '',/.test(html));
+  ok('…a fresh copy carries it too, for the moment before the list arrives',
+     /shelf: a\.shelf \|\| '',/.test(html));
+  ok('…and an upload lands on the shelf the pile was sent to',
+     /shelf: s\.shelf \|\| '',/.test(html));
+  ok('the upload reads its shelf ONCE with the rest of the dialog, never per file',
+     /shelf: \(isAdmin\(currentUser\) && \$\('upShelf'\)\) \? String\(\$\('upShelf'\)\.value \|\| ''\) : '',/.test(
+       between('function uploadSettings() {', 'async function uploadOne(', 'the upload settings')));
+  /* ✎ and 🗑 are deliberately NOT `.shelfBtn`: that class is hidden on a
+     phone to give the ‹ › buttons up to swiping, and a teacher who loses
+     rename and delete on the device they teach from has lost the feature. */
+  ok('the shelf tools survive a phone, because they are not the buttons the phone drops',
+     /shelfTool/.test(html) && !/'iconBtn shelfBtn shelfTool'/.test(html) &&
+     /\.shelfHead \.shelfTool \{/.test(html));
+  ok('taking a shelf off asks first, and says the papers are not going with it',
+     /confirm\('Take the shelf “' \+ s\.name \+ '” off the bookcase\?/.test(html));
+  ok('the scope is remembered per device and a junk one reads as “every”',
+     /var SHELF_SCOPE_KEY = 'tutorShelfScope';/.test(html) &&
+     /LEVELS\.indexOf\(String\(raw\.level \|\| ''\)\) >= 0 \? String\(raw\.level\) : ''/.test(html));
+  /* Read at LOAD and never from a sign-in hook: `adoptStudents` is the
+     obvious place and runs for a STUDENT only, so the teacher — who uses
+     the picker most — would find it reset on every single reload. */
+  ok('…and it is read at load, not from a hook the teacher never reaches',
+     /var shelfScope = \(function \(\) \{/.test(html) && !/loadShelfScope/.test(html));
+  ok('the bar is over the bookcase, above the list it governs',
+     /<div id="shelfBar" class="shelfBar hidden"><\/div>\n\s*<div id="wsList"><\/div>/.test(html));
+  ok('a student never picks their own level, and is offered a subject only when they take more than one',
+     /if \(!currentUser \|\| \(!teacher && subs\.length < 2\)\) \{ bar\.classList\.add\('hidden'\); return; \}/.test(html));
+
   /* AUTO-SET: the teacher's PDF goes onto the shelf its level and subject
      file it under, the moment it is uploaded — and only once both are
      known, because a paper set for no level is on nobody's shelf and looks

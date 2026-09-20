@@ -1794,6 +1794,125 @@ knew who was looking at it.**
   on a child's shelf is something nothing on the screen would ever explain.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 🗂 SHELVES THE TEACHER MAKES — “2025 papers”, and every class on it (v1.37.0)
+
+`SHELF_DOC_ID` / `SHELF_MAX` / `SHELF_RECENT_*` / `SHELF_UNSORTED_TITLE` / `shelves` /
+`shelvesLoaded` / **`shelfNorm`** / `shelfFind` / `shelfLabel` / `shelfRank` / `shelfStampOf` /
+**`worksheetShelfId`** / `shelfRecentStamp` / `shelfAgo` / **`shelfRecentItems`** /
+**`shelfInScope`** / `shelfGroupCompare` / **`shelfGroups`** (now takes `opts`) / `shelfTitle`
+(now takes `opts`) / **`shelfSections`** / `loadShelves` / **`shelfSave`** / `shelfCreate` /
+`shelfRename` / `shelfDelete` / **`moveWorksheetToShelf`** / `shelfScope` / `SHELF_SCOPE_KEY` /
+`setShelfScope` / **`shelfScopeNow`** / `openShelfNameModal` / `shelfNameConfirm` /
+`openShelfPick` / `_shelfDragId` / `shelfDropClear` / `renderShelfBar` (search `SHELVES THE
+TEACHER MAKES`), plus the `shelf` field on a worksheet and on an assignment, `lastOpenedAt`
+written in `openWorksheet`, `#shelfBar` / `#shelfNameModal` / `#shelfPickModal`, the `#upShelf`
+picker, and the `.shelfBar` / `.shelfPick` / `.shelfRecent` / `.shelfDrop` / `.shelfDragging` /
+`.shelfEmpty` / `.shelfHead .shelfTool` / `.chipWhen` / `.chipShelf` CSS.
+
+📚 The bookcase (v1.23.0) filed a paper by its level and subject and that was the only shelf it
+could ever be on — right until a class has forty papers on one. What a teacher HAS is piles: this
+year's prelims, last year's, the topical drills. So they make their own shelves, name them, and
+move papers between them — and **every student of that level and subject reads the same
+arrangement**, because it is not a thing each copy carries.
+
+- **A SHELF IS A LABEL, NOT A CLASS.** It carries no level and no subject: “2025 papers” is ONE
+  shelf, and a P5 Science child sees the P5 Science papers on it while a P6 Maths child sees
+  theirs. A shelf per class would mean making the same shelf eight times, and a teacher who makes
+  it seven times has a class whose papers are somewhere else. The level and the subject are the
+  OTHER axis — the scope picker — and the two compose: a section is a (level, subject, shelf)
+  triple, which is `shelfGroups` doing exactly what it already did with one more dimension.
+- **`worksheetShelfId` IS THE ONE PLACE A PAPER'S SHELF IS DECIDED, and it reads the ASSIGNMENT
+  over the copy.** That is the whole of “the same papers on the same shelves”: a shelf read off
+  each copy would only ever govern the students who had not started yet — the exact fault
+  `guidanceRule` documents about the locked help level — and it would look like it worked right
+  up until the teacher moved a paper. `assignmentsLoaded` tells “the list has not arrived yet”
+  from “it is not set”, which want opposite answers, so on a cold start the copy's own field
+  stands rather than the whole bookcase emptying for a second.
+- **THE CATALOGUE IS ONE DOCUMENT IN A COLLECTION WHOSE RULES ALREADY EXIST**, and that is why
+  this shipped with no deploy. A `tutorShelves` collection would need a line in the Firestore
+  rules — which live in `polymathlc/math`, are shared with five apps, and **fail CLOSED** when
+  they do not know a name: the write is denied, the read comes back empty, and nothing on any
+  screen says why. `tutorAssignments` is already *read by anybody signed in, written by the
+  admin*, which is exactly what a shelf catalogue wants, so it is the reserved document
+  `tutorAssignments/__shelves__`. It carries **`active: false`** — `loadAssignments` asks for
+  `active == true` — **and is dropped by NAME there as well**, because a catalogue read as a
+  worksheet set for a class is a card nobody can open on every student's home screen.
+- **AN UNKNOWN SHELF ID READS AS UNSORTED** (`shelfGroups`), and that one line is what makes
+  taking a shelf off safe: its papers fall back onto *Not on a shelf yet* rather than into a
+  section nothing draws. Nothing is migrated, nothing is rewritten, and **a paper can never be
+  lost by shelf bookkeeping** — which is the one thing this feature must never do. The confirm
+  says so too, because “delete the shelf” reads as “delete the papers” to anybody not told
+  otherwise.
+- **CALLED WITH NOTHING, `shelfGroups` AND `shelfTitle` ARE BYTE-FOR-BYTE WHAT THEY WERE.** A
+  centre that never makes a shelf is completely unaffected — one shelf per level and subject,
+  same order, same heading. That is the property that made this safe to ship over a live
+  bookcase, and the harness pins it.
+- **THE ASSIGNMENT IS WRITTEN FIRST** (`moveWorksheetToShelf`), because it is the record the
+  whole class reads. A teacher's own row that moved while the class's did not is the one outcome
+  worth refusing to report as a success, so both writes are named on failure and the rules hint
+  goes with a refusal. It refuses a non-admin **in the handler** and a shelf that is no longer on
+  the bookcase; a copy of somebody else's assignment never writes its own row, or that field
+  would quietly outrank the assignment the next time the list had not arrived.
+- **THERE ARE TWO WAYS TO MOVE A PAPER AND ONE MOVER.** `dragstart` is never fired by a
+  touchscreen, so a shelf reachable only by dragging is a shelf the teacher cannot use on the
+  iPad these worksheets are written on: every card carries a **🗂 Shelf** button that offers the
+  same shelves and *Make a new shelf for it…*. Both end at `moveWorksheetToShelf`.
+  **`_shelfDragId` is held in a global rather than read off the drop**, because
+  `dataTransfer.getData` is deliberately blocked during `dragover` in every browser — a shelf
+  cannot ask what is coming and must be told when the drag starts. It is cleared on `dragend`,
+  always, or a drag abandoned over the page leaves the next drop moving whatever was picked up a
+  minute ago.
+- **🕒 RECENTLY OPENED IS A VIEW, NEVER A MOVE.** A paper on it is still standing on its own
+  shelf further down and is still drawn there; nothing is written when it is shown, and it is
+  **not a drop target** — “move it to Recently opened” is not a thing that can be true, and a
+  shelf that lit up and then did nothing would be worse than one that never lit up. Each card on
+  it says how long ago (`shelfAgo`) **and which shelf it really lives on**, because without that
+  the same booklet is on one screen twice with nothing to say why.
+  - **`shelfRecentStamp` is the LATER of `lastOpenedAt` and `updatedAt`.** Either alone is a
+    shelf that quietly misses half of what belongs on it: `updatedAt` is written by every
+    auto-save and so already means “last worked on” for anything written on, and `lastOpenedAt`
+    is what adds the paper opened, read and closed without a mark — which is most of what “what
+    was I doing yesterday” asks about. A SET worksheet nobody has started has never been opened,
+    whatever its set date says, so it is worth 0 and never stands there.
+  - **`lastOpenedAt` IS FIRE AND FORGET**, one merged field, caught: a shelf is a convenience and
+    must never be the reason a worksheet does not open. It is written locally too, so the shelf
+    is right without waiting for a reload.
+  - **THE CEILING IS NOT DECORATION.** A device with a clock a day fast writes a stamp in the
+    future, and without `now + 1 day` that paper is pinned to the front of the shelf for ever.
+- **A SCOPE NEVER HIDES WORK.** `shelfInScope` lets a paper with no level or no subject through
+  EVERY scope, so picking a class can never make somebody's own untagged upload disappear — it
+  stands on its own *Any level · Any subject* shelf instead, which is `canSeeWorksheet`'s rule
+  applied to the picker. A class with nothing on its shelves is SAID, never left as a blank page
+  under a picker: a scope that quietly empties the screen reads as an app that has lost the
+  worksheets.
+- **THE EMPTY SHELVES ARE THE TEACHER'S OWN, AND ONLY WITH ONE CLASS IN VIEW.** A shelf is a
+  label with no class of its own, so on “every level” there is no heading it could honestly stand
+  under; with a class chosen there is, and that is where arranging happens — a shelf you cannot
+  see is a shelf you cannot drag onto, and one made a moment ago that does not appear reads as a
+  creation that failed. A student is never shown one.
+- **THE SCOPE IS READ AT LOAD, NEVER FROM A SIGN-IN HOOK.** It is a per-device preference, and
+  `adoptStudents` — the obvious place, beside the active student — **runs for a STUDENT only**,
+  so the teacher, who uses the picker most, would find it reset on every single reload. A stored
+  level or subject this app does not know reads as “every”, so a record from a later version can
+  never empty the bookcase.
+- **✎ AND 🗑 ARE DELIBERATELY NOT `.shelfBtn`.** That class is hidden under 640px to give the ‹ ›
+  buttons up to swiping (`.shelfHead .shelfBtn`, at two classes, for the `.iconBtn` reason that
+  rule already documents) — and a teacher who loses rename and delete on the device they teach
+  from has lost the feature. They are `.shelfTool`, styled at `.shelfHead .shelfTool` so the
+  later `.iconBtn` rule cannot take their size back.
+- **🕒 The recent shelf is the same bookcase in a COOLER TIMBER**, which is four custom
+  properties rather than a second copy of the gradients — the reason `--wood*` are properties on
+  `.shelf` at all. It has to read as a different shelf, because every paper on it is also
+  standing on one of the shelves below.
+- **THE SHELF TRAVELS WITH THE PAPER**: `uploadOne` writes it at creation, `pushWorksheet` carries
+  it onto the assignment, and `startAssignment` puts it on the fresh copy for the moment before
+  the list arrives. The upload dialog reads its shelf ONCE with the rest of the settings, before
+  the loop — the rule 📚 UPLOADING already carries, and for the same reason: a shelf read per file
+  is paper 2 landing wherever the cleared form happens to point.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it **and look at the home screen** —
+  the wood, the drag highlight and the cooler timber are the one thing reading the source cannot
+  check.
+
 ## 📚 WOODEN SHELVES, EVERY PAPER ON ONE, and a posted PDF files itself (v1.25.0)
 
 `canSeeAssignment` / `assignmentUntaggedNote` (beside `canSeeWorksheet` — search `THE SET LIST GOES
@@ -3281,6 +3400,44 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **🗂 the shelves** (`SHELF_DOC_ID`, `shelfNorm`, `shelfFind`,
+  `shelfRank`, `shelfStampOf`, `worksheetShelfId`, `shelfRecentStamp`,
+  `shelfAgo`, `shelfRecentItems`, `shelfInScope`, `shelfGroupCompare`,
+  `shelfGroups`, `shelfTitle`, `shelfSections`, `loadShelves`, `shelfSave`,
+  `shelfCreate`, `shelfRename`, `shelfDelete`, `moveWorksheetToShelf`,
+  `shelfScope`, `shelfScopeNow`, `renderShelfBar`, `shelfNode`'s drag
+  handlers, `openShelfPick`, `openShelfNameModal`, the `shelf` field on an
+  upload / a push / a fresh copy, `lastOpenedAt` in `openWorksheet`, or the
+  `.shelf*` / `.chipWhen` / `.chipShelf` CSS), run
+  `node tools/tutor-tests.mjs` **and look at the home screen**. Every failure
+  here is silent and the bookcase still paints. **Read the shelf off the COPY
+  instead of the assignment and a paper the teacher moves this morning moves
+  for nobody who started it yesterday** — which is the whole feature quietly
+  not happening, on a screen that looks perfectly arranged. Drop the
+  unknown-id fallback and taking a shelf off strands every paper on it in a
+  section nothing draws; drop `assignmentsLoaded` and a cold start empties the
+  bookcase onto the unsorted shelf for a second. Give the catalogue a
+  collection of its own and it needs a rules deploy from another repository
+  and fails CLOSED until somebody makes it, with nothing on any screen saying
+  why; let it lose `active: false` or the by-name guard in `loadAssignments`
+  and it is a card nobody can open on every student's home screen. Let
+  `shelfGroups` or `shelfTitle` called with no `opts` stop being what they
+  were and every centre that has never made a shelf has its bookcase
+  rearranged under it. Write the teacher's own row before the assignment and a
+  refused second write leaves the class on an arrangement the teacher believes
+  they gave them. Make 🕒 Recently opened a drop target and it offers a move
+  that cannot happen; read only `updatedAt` and it misses every paper opened
+  and read without a mark, while only `lastOpenedAt` misses everything written
+  on before this shipped; drop the future-stamp ceiling and one fast clock
+  pins a paper to the front of it for ever; let `lastOpenedAt` throw and a
+  convenience is the reason a worksheet will not open. Let `shelfInScope`
+  filter an UNTAGGED paper and picking a class hides somebody's own upload
+  with nothing to say where it went. Read the scope from `adoptStudents` and
+  the teacher — who adopts nobody — gets it reset on every reload. Give ✎ and
+  🗑 the `.shelfBtn` class and a phone hides the two buttons that arrange the
+  bookcase. And drop the 🗂 button from the card and the only way to move a
+  paper is a drag, which a touchscreen never fires at all — on the iPads these
+  worksheets are written on.
 - After touching **🚀 the deploy workflow or the CI checks**
   (`.github/workflows/deploy-functions.yml`, the `node --test
   functions/test/*.test.js` step in `.github/workflows/checks.yml`, or the
