@@ -87,6 +87,10 @@ const SRC_REBUILD = between('var MB_BUILD_MAX = 10;',
                             '/* ================= The mistake book =================', 'the question rebuild');
 const SRC_TIERS   = between('/* ---- WHICH TIER THIS ONE IS',
                             'async function loadMistakes(quiet) {', 'the three tiers');
+/* The teacher's copy of a student's book: what may travel off the device,
+   and what the panel makes of it. */
+const SRC_MIRROR  = between('var MIST_MIRROR_MAX =',
+                            'async function mistakeImageUrl(m) {', 'the mistake mirror');
 /* The ONE renderer the card, the practice session and the printed sheet all
    build the question with. The practice tests below drive it for real. */
 const SRC_QNODES  = between('/* =====================================================================\n   THE ONE PLACE A MISTAKE\'S QUESTION IS DRAWN',
@@ -161,7 +165,7 @@ vm.createContext(sandbox);
 vm.runInContext(SRC_DEADLINES + '\n' + SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
                 '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
                 '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER + '\n' + SRC_GUIDE +
-                '\n' + SRC_REBUILD + '\n' + SRC_TIERS + '\n' + SRC_QNODES + '\n' + SRC_PALM +
+                '\n' + SRC_REBUILD + '\n' + SRC_TIERS + '\n' + SRC_MIRROR + '\n' + SRC_QNODES + '\n' + SRC_PALM +
                 '\n' + SRC_RULER,
                 sandbox, { filename: 'index.html' });
 const S = sandbox;
@@ -1266,7 +1270,217 @@ ok('"skipped" finds them in the book', /skipped blank went past not attempted/.t
    demand, so a download URL stored here would be the one row the deleting
    and the caching could not see. */
 ok('a block figure is stored as a path, never a download URL',
-   /var path = MISTAKE_DIR \+ '\/' \+ currentUser\.uid \+ '\/' \+ name \+ '\.jpg';/.test(html));
+   /var path = MISTAKE_DIR \+ '\/' \+ currentUser\.uid \+ '\/' \+ name \+ ext;/.test(html));
+/* …and the extension follows the PICTURE. A redrawn crop comes back as a
+   PNG (line work re-encoded as JPEG rings along every edge), so a path
+   that always said `.jpg` would name a PNG as a JPEG for ever. */
+ok('…and it is named for what it really is',
+   /var ext = \/\^data:image\\\/png\/i\.test\(String\(dataUrl\)\) \? '\.png' : '\.jpg';/.test(html));
+
+/* =====================================================================
+   🖼 THE PICTURE IS REDRAWN, THE WAY ⚡ RAPID ADD DOES IT
+   ---------------------------------------------------------------------
+   Every failure here is silent and the question is still filed — it is
+   simply a grey crop of a photograph again, which is what a student was
+   practising from before. The failures in the OTHER direction are worse:
+   a clean-up that throws costs the question itself, and a prompt that
+   stops forbidding invention puts a number into a maths question that
+   the paper never printed.
+   ===================================================================== */
+section('The picture clean-up');
+
+/* The 98th percentile, never the MAXIMUM: one blown-out specular pixel is
+   255 on any glossy sheet, so the maximum sets the white point highest on
+   exactly the pictures that need it lowest. */
+function buf(spec) {                       // [[count, r, g, b, a?], …] -> RGBA
+  const out = [];
+  spec.forEach(([count, r, g, b, a]) => {
+    for (let i = 0; i < count; i++) out.push(r, g, b, a === undefined ? 255 : a);
+  });
+  return new Uint8ClampedArray(out);
+}
+eq('the white point is the 98th percentile, not the brightest pixel',
+   S._paperWhitePoint(buf([[1, 255, 255, 255], [999, 240, 240, 240]])).white, 240);
+
+const px = buf([[100, 10, 10, 10], [900, 248, 248, 248]]);
+const rep1 = S._paperCleanPixels(px);
+ok('a near-white weave over line work is cleaned', rep1.ok && rep1.changed === 900, JSON.stringify(rep1));
+eq('…the background is snapped to pure white', [px[400], px[401], px[402]], [255, 255, 255]);
+/* THE ONE FAILURE THAT WOULD LOOK LIKE A BEAUTIFULLY CLEAN PICTURE. */
+eq('…and the drawing is not touched', [px[0], px[1], px[2]], [10, 10, 10]);
+
+/* Three refusals, and each is a picture this must not touch. A refusal is
+   ALL-OR-NOTHING on purpose: half-cleaned is worse than left alone. */
+const dark = S._paperCleanPixels(buf([[1000, 100, 100, 100]]));
+eq('a picture with no white in it is refused — it is not paper', [dark.ok, dark.changed], [false, 0]);
+const noInk = S._paperCleanPixels(buf([[1000, 250, 250, 250]]));
+eq('…so is one with no line work to protect', [noInk.ok, noInk.reason], [false, 'no-ink']);
+const notPaper = S._paperCleanPixels(buf([[250, 255, 255, 255], [750, 150, 150, 150]]));
+eq('…and one whose background is a bright PATCH rather than a page',
+   [notPaper.ok, notPaper.reason], [false, 'not-paper']);
+
+/* A pale wash of real COLOUR is part of the drawing — the blue of water in
+   a beaker — whatever its brightness. */
+const wash = buf([[100, 10, 10, 10], [800, 248, 248, 248], [100, 255, 230, 230]]);
+S._paperCleanPixels(wash);
+eq('a pale wash of real colour is kept', [wash[3600], wash[3601], wash[3602]], [255, 230, 230]);
+const hole = buf([[100, 10, 10, 10], [800, 248, 248, 248], [100, 250, 250, 250, 0]]);
+S._paperCleanPixels(hole);
+eq('…and a hole stays a hole', hole[3603], 0);
+
+/* THE DOOR NEVER THROWS. The picture IS the question; the clean-up is a
+   luxury on top of it, so a rebuild that died because an image model was
+   busy, capped or simply not in this project would cost the student the
+   question itself. */
+const RAW = 'data:image/jpeg;base64,AAAA';
+/* It must not THROW, so the harness must not die when it does — a crash
+   reports nothing about which rule broke. */
+async function enhanced(url, ctx) {
+  try { return await S.mbEnhance(url, ctx); }
+  catch (e) { return 'IT THREW: ' + ((e && e.message) || e); }
+}
+S._mbEnhanceBudget = 5;
+S.window.imageAiReady = undefined;
+S.window.askGeminiImage = undefined;
+eq('no image model in the project hands the crop straight back',
+   await enhanced(RAW, null), RAW);
+S.window.imageAiReady = () => true;
+S.window.askGeminiImage = async () => { throw new Error('busy'); };
+eq('a model that refused hands the crop straight back', await enhanced(RAW, null), RAW);
+S.window.askGeminiImage = async () => 'sorry, I cannot do that';
+eq('…and so does a reply with no picture in it', await enhanced(RAW, null), RAW);
+S.window.askGeminiImage = async () => 'data:image/png;base64,BBBB';
+ok('a redrawn picture comes back', (await enhanced(RAW, null)).indexOf('BBBB') > -1);
+/* Spent BEFORE the call, so a failure cannot buy another try — and an
+   empty budget is the raw crop, never a wait. */
+S._mbEnhanceBudget = 1;
+await enhanced(RAW, null);
+eq('the budget is spent whether or not the call worked', S._mbEnhanceBudget, 0);
+eq('…and an empty budget is the crop, not a refusal', await enhanced(RAW, null), RAW);
+S._mbEnhanceBudget = 5;
+S.window.askGeminiImage = async () => 'data:image/png;base64,BBBB';
+eq('a worksheet closed mid-call keeps the crop it already had',
+   await enhanced(RAW, { epoch: -1, docId: 'gone', uid: 'x' }), RAW);
+
+ok('the budget is spent before the call, never after',
+   /_mbEnhanceBudget--;[\s\S]{0,200}askGeminiImage\(MB_ENHANCE_PROMPT/.test(html));
+ok('…and refilled at BOTH doors that start a batch of rebuilds',
+   (html.match(/_mbEnhanceBudget = MB_ENHANCE_MAX/g) || []).length === 2,
+   'the marking run and 🧩 Set it out again');
+/* ONE crop, cut and redrawn in ONE place: the day the marking run learned
+   to redraw the picture and the button did not, the same card set out two
+   ways would be two different pictures. */
+ok('every figure is redrawn before it is stored', /crop = await mbEnhance\(crop, context\);/.test(html));
+ok('…and the whole-question crop through the ONE shared cut',
+   (html.match(/_mbQuestionCrop\(/g) || []).length === 3,
+   'the declaration, the marking run and the button');
+ok('…and the shared cut is what redraws it',
+   /return enhance === false \? crop : await mbEnhance\(crop, context\);/.test(html));
+/* ② is only ever SHOWN when the blocks did not come out, so redrawing it
+   anyway is an image call the next question does not get — and on a paper
+   where every question set out properly, it is the whole ration. */
+ok('the whole-question crop is redrawn only when it will be SEEN',
+   /out\.qcrop = await _mbQuestionCrop\(built, context, !out\.blocks\.length\);/.test(html) &&
+   /_mbQuestionCrop\(built, null, !patch\.blocks\);/.test(html),
+   'the marking run and the button both weigh it');
+ok('…but it is still CUT either way, as the fallback behind the blocks',
+   /var crop = _mbCropBox\(s\.canvas, built\.qbox, true\);/.test(html));
+/* ③ THE WHOLE PAGE IS DELIBERATELY LEFT ALONE. A whole page handed to an
+   image model is where invention is likeliest and least checkable, and it
+   is the tier nobody chose. */
+ok('the whole-page tier is not redrawn', !/mbEnhance/.test(SHOTFOR));
+
+/* The prompt is the other half of the safety. An image model told only
+   "clean this up" renders the scanning damage beautifully, or invents the
+   axis value the scan destroyed — and a number added to a maths question
+   on its way into the book is one the student then gets wrong twice. */
+ok('the prompt says what is DAMAGE and what is the drawing', /TREAT ALL OF THAT AS DAMAGE/.test(html));
+ok('…and forbids inventing anything', /BUT DO NOT INVENT ANYTHING/.test(html));
+ok('…and never guessing at text the scan destroyed', /Never guess at text you cannot/.test(html));
+ok('…and asks for black-and-white line work, not a render',
+   /BLACK-AND-WHITE line diagram/.test(html) && /do NOT add shading/.test(html));
+ok('…and forbids ANSWERING the question it is redrawing',
+   /Do NOT answer it,/.test(html) && /tick anything or write on it/.test(html),
+   'a question that comes back with its answer written on it is a question nobody can practise');
+
+/* =====================================================================
+   📕 THE TEACHER'S COPY OF THE BOOK
+   ---------------------------------------------------------------------
+   This is the one path in the app that carries a child's own words off
+   their own device, so what it carries is pinned here by NAME: anything
+   added to the row is added to what leaves, and the census below fails on
+   a field nobody decided to send.
+   ===================================================================== */
+section('What the teacher can see');
+
+const mrow = S.mistakeMirrorRow({
+  question: 'Explain why the puddle dried up.', number: '7', docName: 'P5 Science SA2',
+  level: 'P5', subject: 'science', topic: 'Water', lo: 'water-cycle', verdict: 'wrong',
+  marks: '0/2', studentAnswer: 'it went away', answer: 'The water evaporated.',
+  feedback: 'You have not said where the water went.', explanation: 'Evaporation is…',
+  imagePath: 'tutor-mistakes/uid/abc.jpg', blocks: [{ type: 'image', path: 'x.jpg' }],
+  cleared: false, createdAt: 1700000000000
+});
+eq('a row carries the question, what they put and the answer',
+   [mrow.q, mrow.mine, mrow.ans], ['Explain why the puddle dried up.', 'it went away', 'The water evaporated.']);
+/* THE CENSUS. A picture is a Storage path under the STUDENT's own uid that
+   the admin cannot read without a Storage rule this app is not going to
+   ask for — so sending one would put a grid of broken images in front of a
+   teacher. Everything else here is a decision about a child's privacy. */
+eq('…and nothing else at all', Object.keys(mrow).sort(),
+   ['ans', 'at', 'doc', 'done', 'lo', 'lvl', 'mine', 'mk', 'n', 'q', 'sub', 'top', 'v']);
+ok('no picture travels', !JSON.stringify(mrow).includes('tutor-mistakes') && !JSON.stringify(mrow).includes('x.jpg'));
+eq('every field is clipped', S.mistakeMirrorRow({ question: 'x'.repeat(900), studentAnswer: 'y'.repeat(900) }).q.length,
+   S.MIST_MIRROR_Q);
+/* 🕳 A skipped blank must not arrive with an empty verdict the panel
+   would have to read as "wrong": they are different lessons. */
+eq('a skipped blank says so', S.mistakeMirrorRow({ question: 'Q', skipped: true, verdict: '' }).v, 'skipped');
+eq('a row with neither a question nor a number is not a row',
+   S.mistakeMirrorRow({ studentAnswer: 'something' }), null);
+eq('nothing at all is not a crash', S.mistakeMirrorRow(null), null);
+
+eq('a profile from before this existed reads as nothing, never as an error',
+   [S.mistakesOf(null), S.mistakesOf({}), S.mistakesOf({ tutorMistakes: 'junk' })], [[], [], []]);
+eq('…and a junk entry inside a real list is dropped',
+   S.mistakesOf({ tutorMistakes: [{ q: 'a' }, null, 'x', 7] }).length, 1);
+
+/* The question a teacher opens this to ask is what the class gets wrong
+   MOST — so biggest first, and an unlabelled question under its own
+   heading and never folded into somebody else's topic. */
+const mgroups = S.mistMirrorGroups([
+  { top: 'Heat', _who: 'Amy' }, { top: 'Heat', _who: 'Ben' }, { top: 'heat', _who: 'Amy' },
+  { top: '', _who: 'Amy' }, { top: '', _who: 'Ben' }, { top: '', _who: 'Cal' }, { top: '', _who: 'Dee' },
+  { top: 'Forces', _who: 'Cal' }
+]);
+eq('topics come biggest first', mgroups.map(g => g.label), ['Heat', 'Forces', 'Not labelled']);
+eq('…however big it is, Not labelled is always last', mgroups[mgroups.length - 1].rows.length, 4);
+eq('…a topic spelled two ways is one topic', mgroups[0].rows.length, 3);
+eq('…and it counts the students, not the questions', mgroups[0].students, 2);
+
+/* IT IS THE TEACHER'S AND NOBODY ELSE'S, and the write is a MERGE on the
+   centre's shared roster document — a plain set would take the level, the
+   subject and the onboarding answers off it. */
+const MIRROR = between('function mistakeMirrorSync() {', 'function mistakesOf(p) {', 'the mirror write');
+ok('the teacher\u2019s own papers are never mirrored', /isAdmin\(currentUser\)/.test(MIRROR));
+ok('…and the write is a merge onto the roster document',
+   /peopleRef\(currentUser\.uid\)\.set\(\{[\s\S]*\}, \{ merge: true \}\)/.test(MIRROR));
+ok('…and a refused write never interrupts the student',
+   /write\.catch\(function \(e\) \{ console\.warn\('mistake mirror/.test(MIRROR));
+ok('the class-wide panel refuses anyone but the admin IN THE HANDLER',
+   /function openClassMistakes\(\) \{\n  if \(!isAdmin\(currentUser\)\) return;/.test(html),
+   'hiding the button has never been the lock in this app');
+/* The mirror is a copy of the book AS IT NOW STANDS, so it is written
+   after the reload — written before, a paper's worth of mistakes is
+   invisible to the teacher until the next paper is marked. */
+ok('the mirror is written after the book is reloaded',
+   /await loadMistakes\(true\);[\s\S]{0,500}mistakeMirrorSync\(\);/.test(FILING));
+ok('…and again whenever the book CHANGES',
+   (html.match(/mistakeMirrorSync\(\);/g) || []).length === 3,
+   'filed, sorted and removed — or the teacher reads a book that no longer exists');
+ok('a student with a book and no counters still shows it',
+   /if \(!u\.any && !r\.mistakes\.length\) \{/.test(html));
+ok('the panel paints a child\u2019s words as TEXT, never as markup',
+   /l\.appendChild\(document\.createTextNode\(bit\[1\]\)\);/.test(html));
 
 /* =====================================================================
    🧩 THE KEYWORD CHECK — the syllabus it reads, the cleaner and the hook
