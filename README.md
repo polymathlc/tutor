@@ -12,6 +12,59 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.35.0 — 🖼 The question is redrawn, and 📕 the teacher can see the book
+
+Three things, and the first two are one thing: a mistake in the book should look like a question
+out of the Science portal's ⚡ **Rapid add**, not like a photograph of a photocopy.
+
+### 🖼 Every picture is redrawn as black line work
+
+The crop machinery here has always been the portal's, ported under the same names. What was
+missing was the half that makes a rebuilt question **readable**: over there every figure is handed
+to an image model and comes back as crisp black line-work on white before it is stored. Here a
+student practised from a crop of their own photograph — grey paper, weak toner, a shadow down one
+edge, speckle — and on a printed practice sheet, a grey smudge.
+
+Now every figure inside a rebuilt question, and the whole-question crop itself, is redrawn before
+it is stored.
+
+- **It goes through Firebase AI Logic, App Check'd and server-keyed.** There is no API-key box in
+  this app and there never will be — it is opened by children on shared iPads — so a student's
+  phone gets the clean-up with nothing set up on it.
+- **The prompt is most of the safety.** A model told only "clean this up" renders the scanning
+  damage beautifully, or writes in the axis value the scan destroyed. It is told at length what is
+  **damage** and what is the drawing, then told twice not to invent anything: a number added to a
+  maths question on its way into the book is one the student then gets wrong a second time, for a
+  reason nobody can see. It is also forbidden to answer, tick or fill in the question it redraws.
+- **It never costs the question.** No image model, a model that refused, a reply with no picture
+  in it, a worksheet closed mid-call — every one of them hands back the crop that came in.
+- **🧻 And the weave comes straight back out.** An image model has no flat white: it paints the
+  background, and its decoder leaves a faint texture a few units under the paper — invisible on a
+  phone and a grey wash the moment the sheet is printed. A white-point clamp takes it out, refuses
+  outright on anything that is not paper with line work on it, and never touches the drawing.
+- The whole-page fallback is deliberately left alone: a whole page handed to an image model is
+  where invention is likeliest and least checkable.
+
+### 📕 The teacher can see what the class is getting wrong
+
+The most useful thing this app makes lived in exactly one account — the student's own. The teacher
+who set the paper, marked the class on it and is planning next week could not see a single
+question anybody had got wrong. Now 👥 **Who has signed in** carries 📕 **What the class gets
+wrong**, and each student's panel ends with their own book.
+
+- **The student's book is still the truth.** Every mistake stays where it is, with its pictures.
+  What travels is a compact text row onto the centre's roster document — the one this app already
+  writes and the teacher already reads — so it needs no rules change and no deploy.
+- **The class view groups by topic, biggest first**, which is the question a teacher opens it to
+  ask. An unlabelled question keeps its own heading and is always last.
+- **The pictures do not travel**, and both panels say so: those files live under the student's own
+  account, and a teacher would get a grid of broken images rather than a book.
+- It is the admin's and nobody else's — checked when the panel is drawn **and** again when it is
+  opened — and a teacher's own practice papers are never mirrored.
+- 🕳 A skipped question says **Skipped**, not "not quite", here too.
+
+---
+
 ## v1.34.0 — 🕳 A question they skipped past is a mistake too
 
 **A blank is never marked wrong. That rule has not moved, and it is not what this is about.**

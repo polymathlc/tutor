@@ -825,6 +825,24 @@
      answer, which a skipped question is not, and not the grey of `.mBlank`,
      which disappears on a shelf of coloured cards. */
   .mistCard.mSkip { border-left-color: #5C6BC0; }
+  /* 📕 The teacher's view of a student's book. Deliberately plain rows
+     rather than the student's own cards: a teacher is reading forty of
+     these looking for a pattern, not working through one. */
+  .mmSec { margin-top: 26px; }
+  .mmTopic {
+    font-weight: 700; font-size: 0.95rem; margin: 22px 0 10px;
+    padding-bottom: 6px; border-bottom: 1px solid var(--line);
+  }
+  .mmRow {
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 12px 14px; margin-bottom: 10px; background: var(--bg-soft);
+  }
+  .mmRow.done { opacity: .6; }
+  .mmHead { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-bottom: 7px; }
+  .mmWho { font-weight: 700; font-size: 0.78rem; }
+  .mmQ { font-size: 0.9rem; line-height: 1.55; }
+  .mmLine { font-size: 0.82rem; color: var(--ink-soft); margin-top: 6px; line-height: 1.5; }
+  .mmLine b { color: var(--ink); font-weight: 700; }
   .mistShot {
     display: block; width: 100%; max-height: 240px; object-fit: contain;
     background: var(--bg-soft); border-bottom: 1px solid var(--line); cursor: zoom-in;
@@ -2079,6 +2097,7 @@
     <div class="modalHead"><h2>👥 Who has signed in</h2></div>
     <div class="modalBody" id="peopleBody"></div>
     <div class="modalFoot">
+      <button class="btn" id="peopleMist">📕 What the class gets wrong</button>
       <button class="btn" id="peopleCopy">📋 Copy</button>
       <button class="btn btnPrimary" id="peopleClose">Done</button>
     </div>
@@ -2284,7 +2303,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.34.0';
+var APP_VERSION = 'v1.35.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -10811,6 +10830,175 @@ function rbJpeg(canvas, maxSide, q) {
   return out.toDataURL('image/jpeg', q || 0.86).split(',')[1];
 }
 
+/* =====================================================================
+   🖼 THE PICTURE IS REDRAWN, THE WAY ⚡ RAPID ADD DOES IT
+   ---------------------------------------------------------------------
+   The crop machinery here is already the Science portal's, ported under
+   the SAME identifiers so a fix copies across. What was missing was the
+   half that makes a rebuilt question READABLE: over there every figure is
+   handed to an image model and comes back as crisp black line work on
+   white before it is stored. Here the student practised from a crop of
+   their own photograph — grey, skewed, speckled, and on a printed sheet
+   a grey smudge.
+
+   `SCAN_SOURCE_PROMPT` IS THE SAFETY HALF AND IT IS PORTED WHOLE. An
+   image model told only "clean this up" reads the scanning damage as
+   artwork and renders it beautifully, or invents the axis value the scan
+   destroyed. It says, at length, what is DAMAGE and what is the drawing,
+   and then says twice not to invent: a number added to a maths question
+   on its way into the mistake book is a question the student then gets
+   wrong for a second time, for a reason nobody can see.
+
+   IT IS THE LAST THING DONE BEFORE THE PICTURE IS STORED, so the crop
+   the rectangle chose is what gets redrawn — never the whole page, which
+   is where invention is likeliest and least checkable. ③ the whole-page
+   tier is deliberately left as it is for that reason.
+   ===================================================================== */
+var SCAN_SOURCE_PROMPT =
+  'SOURCE — READ FIRST: this picture was scanned, photocopied or photographed from a printed worksheet or exam ' +
+  'paper, so it almost certainly carries scanning damage rather than being clean artwork. Expect some of: faint, ' +
+  'broken, patchy or grey lines where the toner was weak; lines that are meant to be straight but bow, wobble or ' +
+  'slant because the page was curved or the scan was skewed; an arrow-head, tick, bracket, box or letter that has ' +
+  'partly faded, dropped out or been cut off; speckle, dust and dirty-photocopy noise; JPEG mush and moire; a ' +
+  'grey, yellowed or unevenly lit background instead of white; shadows or dark bands along the page edge; faint ' +
+  'show-through of print from the back of the sheet; staple holes, punch holes, creases and folds; and slightly ' +
+  'blurred or double-struck text. ' +
+  'TREAT ALL OF THAT AS DAMAGE, NOT AS PART OF THE DIAGRAM. Darken faint strokes to a solid, even line; ' +
+  'straighten what is meant to be straight, make circles round and boxes square; close small gaps and rejoin ' +
+  'broken strokes; complete an arrow-head, tick or letter that has obviously faded out; remove the speckle, dirt, ' +
+  'shadows, show-through and staple or punch marks; de-skew the figure; and set it on a clean white background. ' +
+  'BUT DO NOT INVENT ANYTHING. Only restore marks that are clearly the SAME feature the paper already shows. ' +
+  'Never add a label, number, unit, axis value, arrow or shape that is not there. Never guess at text you cannot ' +
+  'read — reproduce the characters as they appear rather than substituting plausible ones. If an element is ' +
+  'missing or genuinely unreadable, leave it out rather than making one up. The diagram itself — every shape, ' +
+  'label, proportion and position — stays exactly as the paper has it.';
+
+var MB_ENHANCE_PROMPT = SCAN_SOURCE_PROMPT + ' ' +
+  'TASK: clean up this ENTIRE image into a sharp BLACK-AND-WHITE line diagram — crisp black line-work and text ' +
+  'on a clean white background, like a freshly printed textbook figure rather than a photocopy or a scan. Keep ' +
+  'every diagram, detail, label, shape, proportion and all text the SAME and in the same positions, with the ' +
+  'scanning damage described above repaired. This is a question a child is about to answer again, so it must ask ' +
+  'exactly what the paper asked. Do NOT make it photo-realistic, do NOT add shading, gradients, rendering, ' +
+  'textures, colour or a new style, and do NOT restyle, rearrange, add or remove anything. Do NOT answer it, ' +
+  'fill anything in, tick anything or write on it. Output only the image, same aspect ratio.';
+
+/* THE RATION. An image call is slow and it is charged for, and a paper
+   where ten questions were wrong can carry two figures each — so the
+   whole RUN gets this many and the rest are stored as the raw crop they
+   always were. Refilled at the two doors that start a batch of rebuilds
+   (`fileMistakes` and `mbRedo`) and nowhere else. They cannot overlap:
+   one runs inside a marking run and the other behind `_mbRedoBusy`. */
+var MB_ENHANCE_MAX = 14;
+var _mbEnhanceBudget = 0;
+
+/* 🧻 CLEAN PAPER — the weave an image model's decoder leaves behind.
+   Nothing here draws it and no prompt can stop it: a model has no notion
+   of a flat, uniform white, so it PAINTS the background and its decoder
+   leaves a faint regular texture a few units under the paper. Invisible
+   on a phone at 300px and a grey wash across the figure the moment a
+   practice sheet is printed, because a laser printer has to halftone it.
+   The fix is pixels: measure the paper's own white and snap everything
+   within `PAPER_TEX_DEPTH` of it to pure white. Ported from
+   `polymathlc/cer` — ship a change to both. */
+var PAPER_WHITE_MIN = 200;    // the background has to be BRIGHT to be paper at all
+var PAPER_BG_MIN = 0.30;      // …and most of the picture; a bright patch in a photo is not a page
+var PAPER_TEX_DEPTH = 20;     // how far under the white point still counts as background
+var PAPER_TEX_CHROMA = 22;    // a pale wash of real COLOUR is part of the drawing, whatever its brightness
+var PAPER_INK_MIN = 0.004;    // there must be line work to be worth protecting
+var PAPER_INK_MAX = 128;      // …and nothing at or below this is ever written to, by construction
+
+/* The 98th percentile rather than the MAXIMUM: one blown-out specular
+   pixel is 255 on any glossy sheet and is not what the page is made of,
+   so the maximum sets the white point highest on exactly the pictures
+   that need it lowest. */
+function _paperWhitePoint(px) {
+  var hist = new Uint32Array(256), n = 0, i, l;
+  for (i = 0; i < px.length; i += 4) {
+    if (px[i + 3] < 8) continue;
+    l = (px[i] * 299 + px[i + 1] * 587 + px[i + 2] * 114) / 1000 | 0;
+    hist[l]++; n++;
+  }
+  if (!n) return { white: 0, n: 0, hist: hist };
+  var want = n * 0.98, seen = 0, white = 255;
+  for (l = 0; l < 256; l++) { seen += hist[l]; if (seen >= want) { white = l; break; } }
+  return { white: white, n: n, hist: hist };
+}
+
+/* The pass itself, over a raw RGBA buffer, IN PLACE. `ok: false` means
+   NOTHING was written — a refusal is all-or-nothing on purpose, because a
+   half-cleaned picture is worse than one left alone. Three guards, and
+   each is a picture this must not touch: a photograph of an experiment
+   has bright areas and no line work, and flattening its highlights into a
+   plate is quiet damage nobody can see against an original nobody kept. */
+function _paperCleanPixels(px) {
+  var m = _paperWhitePoint(px), white = m.white, n = m.n, hist = m.hist;
+  if (!n) return { ok: false, reason: 'empty', white: 0, changed: 0 };
+  if (white < PAPER_WHITE_MIN) return { ok: false, reason: 'no-white', white: white, changed: 0 };
+  var floor = white - PAPER_TEX_DEPTH, bg = 0, ink = 0, l, i;
+  for (l = 0; l < 256; l++) { if (l >= floor) bg += hist[l]; else if (l <= PAPER_INK_MAX) ink += hist[l]; }
+  if (bg / n < PAPER_BG_MIN) return { ok: false, reason: 'not-paper', white: white, changed: 0 };
+  if (ink / n < PAPER_INK_MIN) return { ok: false, reason: 'no-ink', white: white, changed: 0 };
+  var changed = 0;
+  for (i = 0; i < px.length; i += 4) {
+    if (px[i + 3] < 8) continue;                        // a hole stays a hole
+    var r = px[i], g = px[i + 1], b = px[i + 2];
+    var lum = (r * 299 + g * 587 + b * 114) / 1000 | 0;
+    if (lum < floor) continue;                          // the drawing
+    if (Math.max(r, g, b) - Math.min(r, g, b) > PAPER_TEX_CHROMA) continue;  // real colour
+    if (r === 255 && g === 255 && b === 255) continue;  // already paper
+    px[i] = 255; px[i + 1] = 255; px[i + 2] = 255;
+    changed++;
+  }
+  return { ok: true, reason: 'cleaned', white: white, changed: changed, bg: bg / n, ink: ink / n };
+}
+
+/* A data: URL in, a cleaned data: URL out. It NEVER throws and never
+   returns nothing: a picture that could not be cleaned is handed back
+   exactly as it arrived. PNG in, PNG out — a JPEG step here would put its
+   own texture straight back. */
+function _paperCleanDataUrl(dataUrl) {
+  return new Promise(function (resolve) {
+    try {
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var cv = document.createElement('canvas');
+          cv.width = img.naturalWidth || img.width;
+          cv.height = img.naturalHeight || img.height;
+          if (!cv.width || !cv.height) { resolve(dataUrl); return; }
+          var ctx = cv.getContext('2d', { willReadFrequently: true });
+          ctx.drawImage(img, 0, 0);
+          var id = ctx.getImageData(0, 0, cv.width, cv.height);
+          var report = _paperCleanPixels(id.data);
+          if (!report.ok || !report.changed) { resolve(dataUrl); return; }
+          ctx.putImageData(id, 0, 0);
+          resolve(cv.toDataURL('image/png'));
+        } catch (e) { console.warn('clean paper failed', e); resolve(dataUrl); }
+      };
+      img.onerror = function () { resolve(dataUrl); };
+      img.src = dataUrl;
+    } catch (e) { console.warn('clean paper failed', e); resolve(dataUrl); }
+  });
+}
+
+/* THE ONE DOOR every mistake picture is redrawn through, and IT NEVER
+   THROWS. The picture IS the question; the clean-up is a luxury on top of
+   it, so a rebuild that died because an image model was busy, capped or
+   simply not in this project would cost the student the question itself.
+   Every refusal — no budget, no model, a reply with no picture in it, a
+   worksheet closed mid-call — hands back the crop that came in. */
+async function mbEnhance(dataUrl, context) {
+  if (!dataUrl || _mbEnhanceBudget <= 0) return dataUrl;
+  if (!window.askGeminiImage || !window.imageAiReady || !window.imageAiReady()) return dataUrl;
+  _mbEnhanceBudget--;           // spent BEFORE the call, so a failure cannot buy another
+  try {
+    var out = await window.askGeminiImage(MB_ENHANCE_PROMPT, dataUrl);
+    if (!mistakeContextOK(context)) return dataUrl;
+    if (!/^data:image\//i.test(String(out || ''))) return dataUrl;
+    return await _paperCleanDataUrl(out);
+  } catch (e) { console.warn('picture clean-up failed', e); return dataUrl; }
+}
+
 var MB_BUILD_SYS =
   'You are reproducing ONE question from the attached page of a school worksheet or exam paper, so that a ' +
   'student can be given it again to try. You are NOT answering it, NOT marking it and NOT rewording it: your ' +
@@ -10888,7 +11076,12 @@ async function _mbBuildBlocks(it, context) {
    deleting and the caching could not see. */
 async function _mbUpload(dataUrl, name) {
   if (!storage || !dataUrl || !currentUser) return '';
-  var path = MISTAKE_DIR + '/' + currentUser.uid + '/' + name + '.jpg';
+  /* THE EXTENSION FOLLOWS THE PICTURE. A redrawn crop comes back as a PNG
+     — line work re-encoded as JPEG rings along every edge — so a path
+     that always said `.jpg` would name a PNG as a JPEG for ever. Every
+     caller that hands over a JPEG is byte-for-byte unaffected. */
+  var ext = /^data:image\/png/i.test(String(dataUrl)) ? '.png' : '.jpg';
+  var path = MISTAKE_DIR + '/' + currentUser.uid + '/' + name + ext;
   await storage.ref(path).putString(dataUrl, 'data_url');
   return path;
 }
@@ -10909,6 +11102,11 @@ async function _mbBuildFigures(blocks, shots, id, context) {
       var isOpts = b.role === 'options';
       var crop = _mbCropBox(s.canvas, b.box, false, isOpts ? { trim: false } : null);
       if (!crop) continue;
+      /* REDRAWN BEFORE IT IS STORED, the way ⚡ Rapid add does it — and it
+         is the LAST thing done to the crop, so what the model is shown is
+         the rectangle the reading chose and nothing around it. */
+      crop = await mbEnhance(crop, context);
+      if (!mistakeContextOK(context)) return [];
       var path = await _mbUpload(crop, id + '_f' + out.length);
       if (!path) continue;
       var made = { type: 'image', path: path };
@@ -10921,16 +11119,35 @@ async function _mbBuildFigures(blocks, shots, id, context) {
 
 /* THE WHOLE PASS, and it swallows everything: a rebuild that did not work
    must leave the entry exactly as it would have been filed without it. */
+/* THE WHOLE-QUESTION CROP, cut and redrawn in ONE place. The marking run
+   and 🧩 Set it out again each made their own, so the day one of them
+   learned to redraw the picture and the other did not, a card set out by
+   the marking and the same card set out by the button would be two
+   different pictures. */
+async function _mbQuestionCrop(built, context, enhance) {
+  if (!built || !built.qbox) return '';
+  var s = built.shots[(built.qpage || 1) - 1] || built.shots[0];
+  if (!s) return '';
+  var crop = _mbCropBox(s.canvas, built.qbox, true);
+  /* IT IS STILL CUT EITHER WAY — only the REDRAW is skipped. The crop is
+     stored as the fallback whatever happens, so refusing to make it would
+     leave a question with nothing behind its blocks. */
+  return enhance === false ? crop : await mbEnhance(crop, context);
+}
+
 async function mbRebuild(it, id, context) {
   try {
     var built = await _mbBuildBlocks(it, context);
     if (!built) return null;
     var out = { blocks: [], qcrop: '' };
-    if (built.qbox) {
-      var s = built.shots[(built.qpage || 1) - 1] || built.shots[0];
-      if (s) out.qcrop = _mbCropBox(s.canvas, built.qbox, true);
-    }
+    /* THE FIGURES FIRST, because what they come to decides whether the
+       whole-question crop is worth redrawing. */
     if (built.blocks.length) out.blocks = await _mbBuildFigures(built.blocks, built.shots, id, context);
+    /* ② is only ever SHOWN when the blocks did not come out (`mistakeTier`),
+       so it is redrawn only then. An image call spent on a picture no card
+       will ever display is one the next question does not get — and on a
+       paper where every question set out properly, it is the whole ration. */
+    out.qcrop = await _mbQuestionCrop(built, context, !out.blocks.length);
     return out;
   } catch (e) { console.warn('question rebuild failed', e); return null; }
 }
@@ -11055,13 +11272,10 @@ async function mbRedoOne(m) {
     var blocks = await _mbBuildFigures(built.blocks, built.shots, m.id, null);
     if (blocks.length) patch.blocks = blocks;
   }
-  if (built.qbox) {
-    var s = built.shots[(built.qpage || 1) - 1] || built.shots[0];
-    var crop = s ? _mbCropBox(s.canvas, built.qbox, true) : '';
-    if (crop) {
-      var path = await _mbUpload(crop, m.id + '-q' + Date.now().toString(36));
-      if (path) { patch.imagePath = path; patch.shot = 'question'; }
-    }
+  var crop = await _mbQuestionCrop(built, null, !patch.blocks);
+  if (crop) {
+    var path = await _mbUpload(crop, m.id + '-q' + Date.now().toString(36));
+    if (path) { patch.imagePath = path; patch.shot = 'question'; }
   }
   if (!patch.blocks && !patch.imagePath) return 'failed';
   await mistakesCollRef().doc(m.id).set(patch, { merge: true });
@@ -11091,6 +11305,7 @@ async function mbRedo(ids) {
       ' out again?\n\nChung GPT reads each one off its own page and cuts the figures out where they were ' +
       'printed, the way a question is added in the Science portal. It costs one read each.')) return;
   _mbRedoBusy = true;
+  _mbEnhanceBudget = MB_ENHANCE_MAX;
   renderMistakes();
   var done = 0, tally = {};
   try {
@@ -12024,6 +12239,7 @@ async function fileMistakes() {
   // inside `_mbBuildBlocks`, so a paper where every question is wrong costs
   // ten vision calls and then quietly falls back to the tiers under it.
   _mbBuildBudget = MB_BUILD_MAX;
+  _mbEnhanceBudget = MB_ENHANCE_MAX;
   var filed = 0, wentPast = 0;
   for (var i = 0; i < due.length; i++) {
     if (!mistakeContextOK(context)) break;
@@ -12117,6 +12333,11 @@ async function fileMistakes() {
   rbForgetPages();
   if (filed && mistakeContextOK(context)) {
     await loadMistakes(true);
+    /* AFTER the reload, never before it: the mirror is a copy of the book
+       as it now stands, so writing it from the list this run started with
+       would file a paper's worth of mistakes the teacher cannot see until
+       the next one is marked. */
+    mistakeMirrorSync();
     /* THE SKIPPED ONES ARE NAMED. They are new in v1.34.0 and they are the
        ones a student did not know they had "got wrong", so a count that
        folded them in with the crosses would be a book that had quietly
@@ -12197,6 +12418,116 @@ async function loadMistakes(quiet) {
   renderMistakes();
 }
 
+/* =====================================================================
+   📕 THE TEACHER SEES WHAT THE CLASS IS GETTING WRONG
+   ---------------------------------------------------------------------
+   The mistake book is the most useful thing this app makes and it lived
+   in exactly ONE account: the student's own. The teacher who set the
+   paper, marked the class on it and is planning next week could not see
+   a single question anybody had got wrong.
+
+   IT IS A MIRROR, AND THE STUDENT'S OWN BOOK IS STILL THE TRUTH. Every
+   mistake stays where it is, under their own uid, with its pictures.
+   What travels is a compact TEXT row onto `studentProfiles/{uid}` — the
+   centre's roster document, which this app already writes (`tutorOnboard`,
+   `tutorUsage`, `tutorRecent`, `tutorLastSeen`) and the admin already
+   reads.
+
+   SO IT NEEDS NO FIRESTORE RULES CHANGE AND NO DEPLOY, and that is the
+   whole reason it is shaped this way rather than as a collection of its
+   own. Those rules live in `polymathlc/math` and are shared with five
+   apps, so a feature that needs one is a feature that waits — and a
+   collection nobody has written a rule for fails CLOSED: the write is
+   denied, the read comes back empty, and nothing on any screen says why.
+
+   ⚠️ THIS IS A DELIBERATE REVERSAL of 📈 WHO DID WHAT's rule that only
+   counts and a worksheet's own name ever leave the device. It is
+   reversed for the TEACHER and for nobody else: this collection is
+   readable by the admin and by the account it belongs to, every panel
+   that shows it is behind `isAdmin(currentUser)` AND refuses in its own
+   handler, and the mirror is never written by the teacher's own device.
+   Anything added to `mistakeMirrorRow` is added to what leaves a child's
+   device, so add nothing to it without deciding that again.
+
+   THE PICTURES DO NOT TRAVEL. They are Storage paths under the student's
+   own uid, which the admin cannot read without a Storage rule this app
+   is not going to ask for — so a row carries the question as TEXT and the
+   panel says so, rather than showing a teacher a grid of broken images.
+   ===================================================================== */
+var MIST_MIRROR_MAX = 150;   // rows on the profile — a Firestore document dies at ~1 MB
+var MIST_MIRROR_Q = 300;     // …so every field is clipped, hard
+var MIST_MIRROR_A = 160;
+var MIST_PANEL_MAX = 240;    // and what one panel will draw
+
+/* ONE ROW, and it is PURE so the harness can hold it to exactly what may
+   travel. A row with neither a question nor a number is not a row: it
+   would show the teacher a blank card they cannot act on. */
+function mistakeMirrorRow(m) {
+  if (!m) return null;
+  var q = _mkStr(m.question, MIST_MIRROR_Q), num = _mkStr(m.number, 16);
+  if (!q && !num) return null;
+  return {
+    q: q,
+    n: num,
+    doc: _mkStr(m.docName, 80),
+    lvl: _mkStr(m.level, 8),
+    sub: _mkStr(m.subject, 16),
+    top: _mkStr(m.topic, 70),
+    lo: _mkStr(m.lo, 40),
+    /* 🕳 A skipped blank says so rather than arriving with an empty
+       verdict the panel would have to read as "wrong" — the teacher needs
+       "they went past this" and "they tried and missed" to look different
+       at a glance, because they are different lessons. */
+    v: m.skipped ? 'skipped' : _mkStr(m.verdict, 10),
+    mk: _mkStr(m.marks, 12),
+    mine: _mkStr(m.studentAnswer, MIST_MIRROR_A),
+    ans: _mkStr(m.answer, MIST_MIRROR_A),
+    done: !!m.cleared,
+    at: stampOf(m.createdAt) || 0
+  };
+}
+
+/* The WHOLE (capped) book, newest first, written as ONE field. It is
+   last-writer-wins on purpose, exactly like `tutorRecent`: the student's
+   own collection is the truth and this is the teacher's convenience, so a
+   row lost to two tabs racing costs a glance and never a mistake.
+   Mirroring the whole book rather than appending to it is what makes it
+   SELF-HEALING — a question sorted, deleted or set out again drops out or
+   updates on the next write, with nothing anywhere to remember. */
+function mistakeMirrorSync() {
+  /* The teacher's own papers are not a student's book, and a teacher at
+     the top of their own roster is the fault 📈 usage already refuses to
+     make. */
+  if (!currentUser || !db || isAdmin(currentUser)) return null;
+  var rows = [];
+  for (var i = 0; i < mistakes.length && rows.length < MIST_MIRROR_MAX; i++) {
+    var row = mistakeMirrorRow(mistakes[i]);
+    if (row) rows.push(row);
+  }
+  /* A MERGE, ALWAYS. This document is the centre's roster and four apps
+     write namespaced fields on it; a plain set would take the level, the
+     subject and the onboarding answers off it — which is how a student
+     disappears from every list in every app at once. */
+  var write = peopleRef(currentUser.uid).set({
+    tutorMistakes: rows,
+    tutorMistakeCount: mistakes.length,
+    tutorMistakesAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+  // Never a reason to interrupt a student. Worth knowing about, and nothing more.
+  if (write && write.catch) write.catch(function (e) { console.warn('mistake mirror: not recorded', e); });
+  return write;
+}
+
+/* What the teacher reads back. A profile from before this existed carries
+   nothing and a row written by a later version may carry fields this
+   build has never heard of — both read as "nothing recorded yet" rather
+   than as an error, the rule every reader on this document follows. */
+function mistakesOf(p) {
+  var raw = p && p.tutorMistakes;
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(function (r) { return r && typeof r === 'object'; });
+}
+
 async function mistakeImageUrl(m) {
   if (m._url) return m._url;
   if (!m.imagePath) return '';
@@ -12212,8 +12543,10 @@ async function setMistakeCleared(id, cleared) {
   m.cleared = cleared;
   if (cleared) usageNote('cleared', m.docName || '');
   renderMistakes();
-  try { await mistakesCollRef().doc(id).update({ cleared: cleared }); }
-  catch (e) { toast('Could not save that — please try again.'); }
+  try {
+    await mistakesCollRef().doc(id).update({ cleared: cleared });
+    mistakeMirrorSync();
+  } catch (e) { toast('Could not save that — please try again.'); }
 }
 
 async function deleteMistake(id) {
@@ -12232,6 +12565,7 @@ async function deleteMistake(id) {
       try { await storage.ref(paths[i]).delete(); } catch (e) { /* may be gone */ }
     }
     await mistakesCollRef().doc(id).delete();
+    mistakeMirrorSync();
   } catch (e) { toast('Could not remove it — please try again.'); }
 }
 
@@ -19977,7 +20311,9 @@ function personRow(id, p) {
     seen: stampOf(p && p.tutorLastSeen),
     managed: !!(p && p.managed),
     usage: usageOf(p),
-    recent: usageRecent(p)
+    recent: usageRecent(p),
+    mistakes: mistakesOf(p),
+    mistakeCount: Number(p && p.tutorMistakeCount) || 0
   };
 }
 /* Newest sign-in first: a list a teacher opens to see who has been in is a
@@ -20122,7 +20458,10 @@ function openPersonUsage(id) {
   body.appendChild(sub);
 
   var u = r.usage;
-  if (!u.any) {
+  /* A book with something in it is something to show, whatever the counts
+     say: an account from before 📈 usage existed has no counters at all,
+     and returning early on it would hide the one thing worth reading. */
+  if (!u.any && !r.mistakes.length) {
     var none = document.createElement('p');
     none.className = 'sub';
     none.style.marginTop = '18px';
@@ -20205,6 +20544,187 @@ function openPersonUsage(id) {
       ul.appendChild(row);
     });
     body.appendChild(ul);
+  }
+
+  /* 📕 …and what they have actually got wrong. It goes LAST because the
+     counts are the glance and this is the reading. */
+  if (r.mistakes.length) {
+    var mh = document.createElement('h3');
+    mh.className = 'mmSec';
+    mh.textContent = '📕 What they got wrong (' + (r.mistakeCount || r.mistakes.length) + ')';
+    body.appendChild(mh);
+    var note = document.createElement('p');
+    note.className = 'sub';
+    note.textContent = 'Their work as text. The pictures stay in their own mistake book.';
+    body.appendChild(note);
+    r.mistakes.slice(0, MIST_PANEL_MAX).forEach(function (row) {
+      body.appendChild(mistMirrorRowNode(row, ''));
+    });
+    if (r.mistakes.length > MIST_PANEL_MAX) {
+      var mm = document.createElement('p');
+      mm.className = 'sub';
+      mm.textContent = 'Showing the newest ' + MIST_PANEL_MAX + ' of ' + r.mistakes.length + '.';
+      body.appendChild(mm);
+    }
+  }
+  $('personModal').classList.add('open');
+}
+
+/* 📕 ONE ROW RENDERER, so a student's own panel and the class-wide view
+   cannot come to show the same mistake two different ways. `who` is the
+   student's name in the class view and empty in their own — a name
+   repeated down forty rows of one student's panel is noise. */
+function mistMirrorRowNode(row, who) {
+  var card = document.createElement('div');
+  card.className = 'mmRow' + (row.done ? ' done' : '');
+
+  var head = document.createElement('div');
+  head.className = 'mmHead';
+  if (who) {
+    var w = document.createElement('span');
+    w.className = 'mmWho';
+    w.textContent = who;
+    head.appendChild(w);
+  }
+  [[row.n ? 'Q' + row.n : '', 'chip'],
+   [row.doc || '', 'chip'],
+   [row.lvl ? levelLabel(row.lvl) : '', 'chip chipLevel'],
+   [row.sub ? subjectLabel(row.sub) : '', 'chip'],
+   [row.mk || '', 'chip']].forEach(function (bit) {
+    if (!bit[0]) return;
+    var c = document.createElement('span');
+    c.className = bit[1];
+    c.textContent = bit[0];
+    head.appendChild(c);
+  });
+  /* The same three words the student's own card uses, so a teacher and a
+     child are reading one vocabulary — and 🕳 a skipped question is never
+     shown as a wrong answer, here either. */
+  var v = document.createElement('span');
+  if (row.v === 'skipped') { v.className = 'verdict mSkip'; v.textContent = '⬜ Skipped'; }
+  else if (row.v === 'partial') { v.className = 'verdict mPartial'; v.textContent = '🟡 Almost'; }
+  else { v.className = 'verdict mWrong'; v.textContent = '❌ Not quite'; }
+  head.appendChild(v);
+  if (row.done) {
+    var d = document.createElement('span');
+    d.className = 'verdict mCorrect';
+    d.textContent = '✓ Sorted';
+    head.appendChild(d);
+  }
+  card.appendChild(head);
+
+  var q = document.createElement('div');
+  q.className = 'mmQ';
+  q.textContent = row.q || '(the question was not recorded)';
+  card.appendChild(q);
+
+  // MODEL OUTPUT AND A CHILD'S OWN WORDS, painted as TEXT. Every one of
+  // these is something a student or a model wrote, rendered into the
+  // teacher's page.
+  [['They put', row.mine], ['The answer', row.ans]].forEach(function (bit) {
+    if (!bit[1]) return;
+    var l = document.createElement('div');
+    l.className = 'mmLine';
+    var b = document.createElement('b');
+    b.textContent = bit[0] + ': ';
+    l.appendChild(b);
+    l.appendChild(document.createTextNode(bit[1]));
+    card.appendChild(l);
+  });
+  return card;
+}
+
+/* The topic a row files under, as a key and as a label. An unlabelled
+   question is shown under its own heading and NEVER folded into somebody
+   else's topic — the rule 📊 the report already follows, for the reason it
+   follows it: "go and revise Not labelled" is advice nobody can act on,
+   and a question quietly filed under the wrong topic is worse. */
+function mistMirrorTopicKey(row) {
+  return String((row && row.top) || '').trim().toLowerCase() || '~none';
+}
+function mistMirrorTopicLabel(row) {
+  return String((row && row.top) || '').trim() || 'Not labelled';
+}
+
+/* Grouped by topic, biggest first — which IS the question a teacher opens
+   this to ask: what is the class getting wrong MOST. Unlabelled is always
+   last however big it is. PURE, so the harness can hold the order. */
+function mistMirrorGroups(rows) {
+  var by = {}, out = [];
+  (rows || []).forEach(function (r) {
+    var k = mistMirrorTopicKey(r);
+    if (!by[k]) { by[k] = { key: k, label: mistMirrorTopicLabel(r), rows: [], who: {} }; out.push(by[k]); }
+    by[k].rows.push(r);
+    if (r._who) by[k].who[r._who] = 1;
+  });
+  out.forEach(function (g) { g.students = Object.keys(g.who).length; });
+  return out.sort(function (a, b) {
+    if (a.key === '~none') return 1;
+    if (b.key === '~none') return -1;
+    if (b.rows.length !== a.rows.length) return b.rows.length - a.rows.length;
+    return a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1;
+  });
+}
+
+/* EVERY student's book at once, grouped. It reuses the one-student window
+   rather than adding a second: same shell, same Done button, same close
+   wiring — a second modal is a second one to remember to close. */
+function openClassMistakes() {
+  if (!isAdmin(currentUser)) return;    // hiding the button has never been the lock
+  var rows = [];
+  (_peopleRows || []).forEach(function (r) {
+    var who = r.students.length ? r.students.join(', ') : (r.name || r.email || 'somebody');
+    r.mistakes.forEach(function (m) {
+      var copy = {};
+      Object.keys(m).forEach(function (k) { copy[k] = m[k]; });
+      copy._who = who;
+      rows.push(copy);
+    });
+  });
+  rows.sort(function (a, b) { return (b.at || 0) - (a.at || 0); });
+
+  var body = $('personBody');
+  body.innerHTML = '';
+  $('personTitle').textContent = '📕 What the class is getting wrong';
+
+  if (!rows.length) {
+    var none = document.createElement('p');
+    none.className = 'sub';
+    none.style.marginTop = '18px';
+    none.textContent = 'Nothing yet. A question lands here when a student marks a paper and gets it wrong, ' +
+      'leaves it blank and carries on past it, or gets it partly right.';
+    body.appendChild(none);
+    $('personModal').classList.add('open');
+    return;
+  }
+
+  var groups = mistMirrorGroups(rows);
+  var sum = document.createElement('p');
+  sum.className = 'sub';
+  sum.textContent = rows.length + ' question' + (rows.length === 1 ? '' : 's') + ' across ' +
+    groups.length + ' topic' + (groups.length === 1 ? '' : 's') + '. This is their work as TEXT — the ' +
+    'pictures stay in each student\u2019s own mistake book.';
+  body.appendChild(sum);
+
+  var drawn = 0;
+  groups.forEach(function (g) {
+    if (drawn >= MIST_PANEL_MAX) return;
+    var h = document.createElement('div');
+    h.className = 'mmTopic';
+    h.textContent = g.label + ' — ' + g.rows.length + ' question' + (g.rows.length === 1 ? '' : 's') +
+      (g.students > 1 ? ', ' + g.students + ' students' : '');
+    body.appendChild(h);
+    g.rows.forEach(function (r) {
+      if (drawn >= MIST_PANEL_MAX) return;
+      body.appendChild(mistMirrorRowNode(r, r._who));
+      drawn++;
+    });
+  });
+  if (drawn < rows.length) {
+    var more = document.createElement('p');
+    more.className = 'sub';
+    more.textContent = 'Showing the newest ' + drawn + ' of ' + rows.length + '.';
+    body.appendChild(more);
   }
   $('personModal').classList.add('open');
 }
@@ -20388,6 +20908,7 @@ $('peopleBtn').addEventListener('click', openPeople);
 $('peopleClose').addEventListener('click', function () { $('peopleModal').classList.remove('open'); });
 $('personClose').addEventListener('click', function () { $('personModal').classList.remove('open'); });
 $('peopleCopy').addEventListener('click', function () { copyText(peopleAsText(), 'Roster copied'); });
+$('peopleMist').addEventListener('click', openClassMistakes);
 
 $('repClose').addEventListener('click', closeReport);
 $('repPrint').addEventListener('click', function () { printThis($('reportModal')); });
@@ -20883,6 +21404,88 @@ let geminiModel = null;
 try {
   geminiModel = getGenerativeModel(getAI(app, { backend: new GoogleAIBackend() }), { model: AI_MODEL });
 } catch (e) { console.warn("Firebase AI init failed (AI disabled):", e); }
+
+/* =====================================================================
+   🖼 THE PICTURE MODEL — one door, and NO KEY BOX, ever
+   ---------------------------------------------------------------------
+   A question cut out of a worksheet is a crop of a PHOTOGRAPH: grey
+   paper, weak toner, a shadow down one edge, speckle, and very often a
+   photocopy of a photocopy. Redrawn as black line work on white it
+   becomes a question a child can read on a phone and a teacher can print
+   — which is what ⚡ Rapid add in the Science portal has done to every
+   figure on its way into the bank since it shipped, and what this app
+   did not do at all.
+
+   IT GOES THROUGH FIREBASE AI LOGIC, exactly as `askGemini` does, so it
+   is App Check'd and SERVER-KEYED. **There is no API-key box in this app
+   and there never will be** — it is opened by children on shared iPads,
+   and a key field there is a key waiting to be typed on the wrong device
+   — so the browser-key ChatGPT Images route the sibling apps carry is
+   deliberately NOT here. A student's phone gets the clean-up with
+   nothing set up on it, which is the half of the school that matters.
+
+   THE MODEL IS A ROUTE, NOT A PROMISE. An image model id is renamed and
+   withdrawn like any other, and one this project cannot reach is a 404
+   on every picture — which reads as "the clean-up is broken" rather than
+   "that id is a release out of date". So they are tried in order and the
+   first that answers wins. NONE of them answering is not an error worth
+   showing anybody: the crop is already in hand and the question is filed
+   exactly as it would have been before any of this existed.
+   ===================================================================== */
+const AI_IMAGE_MODELS = ["gemini-3.1-flash-image-preview", "gemini-2.5-flash-image"];
+let geminiImageModels = [];
+try {
+  const _imgAi = getAI(app, { backend: new GoogleAIBackend() });
+  geminiImageModels = AI_IMAGE_MODELS.map(m => getGenerativeModel(_imgAi, { model: m }));
+} catch (e) { console.warn("Firebase AI image init failed (picture clean-up off):", e); }
+
+window.imageAiReady = () => geminiImageModels.length > 0;
+window.imageRouteNote = () => (geminiImageModels.length
+  ? "Pictures are redrawn by " + AI_IMAGE_MODELS[0] + "."
+  : "Picture clean-up is not available in this project.");
+
+/* The inline picture out of a reply, whichever shape the SDK hands back.
+   The 11.10.0 SDK has `inlineDataParts()`; older and snake_case shapes are
+   read too, because a picture that arrived and was not recognised is a
+   clean-up that silently never happens. */
+function _inlineImage(result) {
+  const inline = result?.response?.inlineDataParts ? result.response.inlineDataParts() : [];
+  for (const part of inline || []) {
+    const img = part.inlineData || part;
+    if (img?.data && img?.mimeType?.startsWith("image/")) return img;
+  }
+  const cands = result?.response?.candidates || result?.candidates || [];
+  for (const c of cands) {
+    for (const part of (c?.content?.parts || [])) {
+      const img = part.inlineData || part.inline_data;
+      if (img?.data && img?.mimeType?.startsWith("image/")) return img;
+      if (img?.data && img?.mime_type?.startsWith("image/")) return { data: img.data, mimeType: img.mime_type };
+    }
+  }
+  return null;
+}
+
+/* Redraw a picture: a data: URL in, a data: URL out. It THROWS when no
+   route answered — the caller decides what that costs, and the only
+   caller in this app decides it costs the clean-up and never the
+   question. */
+window.askGeminiImage = async function askGeminiImage(prompt, ref) {
+  if (!geminiImageModels.length) throw new Error("no image model is available in this project");
+  const parts = [prompt];
+  const m = /^data:(image\/[a-z0-9.+-]+);base64,/i.exec(String(ref || ""));
+  if (m) parts.push({ inlineData: { mimeType: m[1], data: String(ref).split(",")[1] || "" } });
+  let last = null;
+  for (let i = 0; i < geminiImageModels.length; i++) {
+    try {
+      const out = await geminiImageModels[i].generateContent(parts);
+      const img = _inlineImage(out);
+      if (img) return "data:" + (img.mimeType || "image/png") + ";base64," + img.data;
+      const said = out?.response?.text ? out.response.text() : "";
+      throw new Error(said || "the model did not return a picture");
+    } catch (e) { last = e; console.warn("image model " + AI_IMAGE_MODELS[i] + " refused", e); }
+  }
+  throw last || new Error("picture clean-up failed");
+};
 
 /* =====================================================================
    🎙️ TRANSCRIPTION — ONE MODEL, ONE DOOR

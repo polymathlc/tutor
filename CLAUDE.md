@@ -1268,6 +1268,79 @@ still came back, it simply went on making the mistake the teacher had already co
   - **They come out of the SAME rebuild ration** (`MB_BUILD_MAX`, 10 a paper), so a paper with a
     dozen unanswered questions spends it sooner and the rest land on tier ③ — which is what
     🧩 Set it out again is for.
+- **🖼 THE PICTURE IS REDRAWN, THE WAY ⚡ RAPID ADD DOES IT** (v1.35.0 —
+  `AI_IMAGE_MODELS` / `window.askGeminiImage` / `window.imageAiReady` in the module,
+  `SCAN_SOURCE_PROMPT` / `MB_ENHANCE_PROMPT` / `MB_ENHANCE_MAX` / **`mbEnhance`** /
+  `_paperWhitePoint` / **`_paperCleanPixels`** / `_paperCleanDataUrl` / **`_mbQuestionCrop`**
+  beside the rebuild). A crop of a child's photograph is grey paper, weak toner and a shadow
+  down one edge; redrawn as black line work on white it is a question they can read on a phone
+  and a teacher can print. The crop machinery here was already the Science portal's, ported
+  under the same identifiers — this is the half that was missing.
+  - **THERE IS NO KEY BOX IN THIS APP AND THERE NEVER WILL BE.** It goes through Firebase AI
+    Logic exactly as `askGemini` does, App Check'd and server-keyed, so a student's phone gets
+    it with nothing set up on it. The browser-key ChatGPT Images route the sibling apps carry is
+    deliberately NOT here — see 🤖 above.
+  - **`mbEnhance` IS THE ONE DOOR AND IT NEVER THROWS.** The picture IS the question and the
+    clean-up is a luxury on top of it, so no budget, no model, a reply with no picture in it and
+    a worksheet closed mid-call all hand back the crop that came in. A rebuild that died because
+    an image model was busy would cost the student the question itself.
+  - **`SCAN_SOURCE_PROMPT` IS THE SAFETY HALF AND IS PORTED WHOLE.** A model told only "clean
+    this up" renders the scanning damage beautifully or invents the axis value the scan
+    destroyed. It says at length what is DAMAGE and what is the drawing, then says twice not to
+    invent — **a number added to a maths question on its way into the book is one the student
+    then gets wrong a second time, for a reason nobody can see** — and it forbids answering,
+    ticking or writing on the question it is redrawing.
+  - **🧻 THE WEAVE COMES STRAIGHT BACK OUT** (`_paperCleanDataUrl`). An image model has no flat
+    white: it PAINTS the background and its decoder leaves a faint texture a few units under the
+    paper — invisible at 300px and a grey wash the moment a practice sheet is printed. The pass
+    is a white-point clamp, it is ALL-OR-NOTHING (half-cleaned is worse than left alone), and
+    its three refusals are three pictures it must not touch. **Nothing at or below
+    `PAPER_INK_MAX` is ever written to, by construction** — "the pass ate the diagram" is the one
+    failure that looks like a beautifully clean picture. Ported from `polymathlc/cer`; ship a
+    change to both.
+  - **③ THE WHOLE-PAGE TIER IS DELIBERATELY LEFT ALONE.** A whole page handed to an image model
+    is where invention is likeliest and least checkable, and it is the tier nobody chose.
+  - **THE RATION IS PER RUN** (`MB_ENHANCE_MAX`, 14), spent BEFORE the call so a failure cannot
+    buy another, and refilled at the two doors that start a batch (`fileMistakes` and `mbRedo`)
+    and nowhere else. They cannot overlap — one runs inside a marking run, the other behind
+    `_mbRedoBusy`.
+  - **`_mbUpload` NAMES THE PICTURE FOR WHAT IT IS.** A redrawn crop is a PNG (line work
+    re-encoded as JPEG rings along every edge), so a path that always said `.jpg` would name a
+    PNG as a JPEG for ever. Every caller handing over a JPEG is byte-for-byte unaffected.
+- **📕 THE TEACHER SEES WHAT THE CLASS IS GETTING WRONG** (v1.35.0 — `MIST_MIRROR_MAX` /
+  **`mistakeMirrorRow`** / **`mistakeMirrorSync`** / `mistakesOf` beside `mistakeImageUrl`, and
+  `mistMirrorRowNode` / `mistMirrorGroups` / **`openClassMistakes`** beside `peopleAsText`).
+  The most useful thing this app makes lived in ONE account: the student's own.
+  - **IT IS A MIRROR AND THE STUDENT'S OWN BOOK IS STILL THE TRUTH.** Every mistake stays under
+    their own uid with its pictures; what travels is a compact TEXT row onto
+    `studentProfiles/{uid}` — the roster document this app already writes and the admin already
+    reads. **SO IT NEEDS NO FIRESTORE RULES CHANGE AND NO DEPLOY**, which is the whole reason it
+    is shaped this way: those rules live in `polymathlc/math`, are shared with five apps, and a
+    collection nobody has written a rule for fails CLOSED — the write is denied, the read comes
+    back empty, and nothing on any screen says why.
+  - **⚠️ IT IS A DELIBERATE REVERSAL of 📈 WHO DID WHAT's "never a question, never an answer".**
+    Reversed for the TEACHER and nobody else: the collection is readable by the admin and by the
+    account it belongs to, every panel is behind `isAdmin(currentUser)` **and refuses in its own
+    handler**, and the mirror is never written by the teacher's own device. **Anything added to
+    `mistakeMirrorRow` is added to what leaves a child's device** — the harness pins its key list
+    by name, so a field nobody decided to send fails the run.
+  - **THE PICTURES DO NOT TRAVEL.** They are Storage paths under the student's own uid that the
+    admin cannot read without a Storage rule this app is not going to ask for, so sending one
+    would put a grid of broken images in front of a teacher. Both panels say the rows are text.
+  - **IT MIRRORS THE WHOLE (capped) BOOK rather than appending**, which is what makes it
+    SELF-HEALING: a question sorted, deleted or set out again drops out or updates on the next
+    write with nothing to remember. Last-writer-wins on purpose, exactly like `tutorRecent`.
+    Written AFTER `loadMistakes` reloads, or a paper's worth of mistakes is invisible until the
+    next paper is marked.
+  - **THE WRITE IS A MERGE, ALWAYS.** That document is the centre's roster and four apps write
+    namespaced fields on it; a plain set takes the level, the subject and the onboarding answers
+    off it — which is how a student disappears from every list in every app at once.
+  - **🕳 A SKIPPED BLANK SAYS SO** rather than arriving with an empty verdict the panel would
+    have to read as "wrong": "they went past this" and "they tried and missed" are different
+    lessons, and the class view uses the student's own three words for them.
+  - **THE CLASS VIEW GROUPS BY TOPIC, BIGGEST FIRST**, because that IS the question a teacher
+    opens it to ask — and an unlabelled question keeps its own heading and is always last,
+    the rule 📊 the report already follows.
 - **`mistakeKey` is `docId | page | number`**, so marking the same worksheet twice does not file the
   same question twice, and a re-read that words the question slightly differently still matches.
 - **The picture is the WHOLE PAGE, honestly.** The marking knows which page a question is on and
@@ -2540,12 +2613,14 @@ The roster said who had signed in. It could not say what any of them had
   `mark` and eighteen questions). A second writer is a second place to forget
   the two rules below, and a path added later that logs its own way is a piece
   of work that shows up in no total.
-- **WHAT LEAVES THE DEVICE IS COUNTS AND A WORKSHEET'S OWN NAME.** Never a
-  question, never an answer, never the mark on a particular question — a
-  child's work stays in their own account, which is the rule the mistake book
-  already carries. The detail is folded to one line and cut to 80 characters,
-  so a caller that hands it something bigger cannot turn the feed into a
-  transcript.
+- **WHAT LEAVES THE DEVICE THROUGH *THIS* DOOR IS COUNTS AND A WORKSHEET'S OWN
+  NAME.** Never a question, never an answer, never the mark on a particular
+  question. The detail is folded to one line and cut to 80 characters, so a
+  caller that hands it something bigger cannot turn the feed into a transcript.
+  **Since v1.35.0 the MISTAKE BOOK is the one deliberate exception** and it has
+  its own door (📕 below) — `usageNote` is not it, and widening this one to
+  carry a child's words would put them in a feed with none of that door's
+  guards on it.
 - **THE COUNTERS ARE `FieldValue.increment`, and the feed is not.** A student
   has the app open on an iPad and a phone; a counter written as a number this
   tab worked out is a counter the other tab overwrites. The recent list is
@@ -3215,6 +3290,44 @@ the two in step; a fix to either belongs in both.
   SHRINK the clock — and a student watches the timer run past its own
   limit, which reads as the app being broken rather than as a longer
   lesson.
+- After touching **🖼 the picture clean-up** (`AI_IMAGE_MODELS`, `window.askGeminiImage`,
+  `window.imageAiReady`, `_inlineImage`, `SCAN_SOURCE_PROMPT`, `MB_ENHANCE_PROMPT`,
+  `MB_ENHANCE_MAX`, `mbEnhance`, `_paperWhitePoint`, `_paperCleanPixels`, `_paperCleanDataUrl`,
+  `_mbQuestionCrop`, `_mbUpload`'s extension, or the `mbEnhance` call in `_mbBuildFigures`), run
+  `node tools/tutor-tests.mjs`. **Let `mbEnhance` THROW and a busy image model costs the student
+  the question itself** — the crop is already in hand, and everything about this is a luxury on
+  top of it. Spend the budget after the call and a failure buys another try, so a paper of
+  unreadable crops is paid for twice; refill it anywhere but the two doors and one press of 🧩
+  quietly takes the next paper's clean-ups away. Drop `SCAN_SOURCE_PROMPT`, or its two
+  do-not-invent paragraphs, and the model renders the scanning damage beautifully or writes in
+  the axis value the scan destroyed — a number in a maths question that the paper never printed,
+  which the student then gets wrong a second time. Let it answer, tick or fill anything in and
+  the question comes back already done. Run the clean-up on the whole-PAGE tier and invention is
+  at its likeliest on the picture nobody chose. Let `_paperCleanPixels` write at or below
+  `PAPER_INK_MAX` and it eats the diagram, which looks like a beautifully clean picture; drop
+  the chroma test and the blue of water in a beaker is bleached out; drop any of its three
+  refusals and a photograph of an experiment has its highlights flattened into a plate. And name
+  a redrawn PNG `.jpg` again and every enhanced picture is stored under a lie.
+- After touching **📕 the teacher's copy of the book** (`MIST_MIRROR_MAX`, `MIST_MIRROR_Q`,
+  `MIST_MIRROR_A`, `MIST_PANEL_MAX`, `mistakeMirrorRow`, `mistakeMirrorSync`, `mistakesOf`,
+  `mistMirrorRowNode`, `mistMirrorTopicKey`, `mistMirrorGroups`, `openClassMistakes`, the 📕
+  section in `openPersonUsage`, `personRow`'s `mistakes` field, or `#peopleMist`), run
+  `node tools/tutor-tests.mjs`. **This is the ONE path in the app that carries a child's own
+  words off their own device**, so the harness pins the row's key list BY NAME: add a field and
+  the run fails until somebody has decided to send it. Send a picture PATH and the teacher gets
+  a grid of broken images, because those files are under the student's own uid and no Storage
+  rule lets the admin read them. Drop `isAdmin(currentUser)` from the mirror and the teacher's
+  own practice papers are filed as a student's book, at the top of their own roster; drop it
+  from `openClassMistakes` and a student's device can read the class's — hiding a button has
+  never been the lock here. Write the mirror before `loadMistakes` reloads and a whole paper is
+  invisible until the next one is marked; append instead of mirroring the whole book and a
+  question sorted or deleted stays on the teacher's screen for ever. **Make the write anything
+  but a MERGE and it takes the level, the subject and the onboarding answers off the centre's
+  shared roster**, which is how a student disappears from every list in every app at once. Let a
+  skipped blank arrive with an empty verdict and the panel shows it as a wrong answer, which is
+  the cross the whole marking path refuses to put on a blank. Paint a row with `innerHTML` and a
+  child's own words are markup in the teacher's page. And put this into `usageNote` instead and
+  a transcript of a child's answers is in a feed with none of these guards on it.
 - After touching **🕳 which blanks are mistakes** (`markLastAnswered`, `markSkipped`, the `due`
   walk or the `skipped` field in `fileMistakes`, `mistSkipped`, the card's `mSkip` class or chip,
   the *You went past this one* note, the `m.answer ? 'Why' : 'Where to start'` label, the
