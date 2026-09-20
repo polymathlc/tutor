@@ -12,6 +12,28 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.44.0 — 📕 A question is in the mistake book as soon as it is MARKED
+
+**A mistake reached the book only when the WHOLE paper had finished marking.** So a run that
+stopped part way — the tab closed, the network gone, a student simply putting the iPad down —
+filed **nothing at all**, however many questions the marking had already read and judged. The
+marking cards were on the screen and the mistake book was empty.
+
+- **Every wrong or partly-right answer is filed the moment its batch lands**, through the very
+  same ⚡ rapid-add rebuild every other mistake goes through — so it is set out again as a
+  question, ready to practise one at a time or to print as a worksheet, with no waiting for the
+  last page.
+- **🕳 A skipped blank still waits for the end of the paper, and that is deliberate.** A blank
+  is only a mistake when a LATER question was answered — and mid-run there are no later
+  questions, so every blank would read as the tail. Filing them then would be a book of
+  questions nobody has failed at. They are picked up by the last pass, where the whole paper is
+  in hand.
+- **Still ONE message a paper.** The mid-run passes are quiet and the counts are added up, so a
+  ten-page paper says what it filed once rather than four times over — and the skipped ones are
+  still named separately in it.
+- The mistake book and the teacher's copy of it are refreshed on every pass, so a half-marked
+  paper's questions are really there rather than pending.
+
 ## v1.43.0 — 💾 Nothing was being saved, and 🕒 the mistake book sorts by newest
 
 **The save has been dead for forty-eight versions, in complete silence.** Not slow, not

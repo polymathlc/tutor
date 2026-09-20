@@ -2455,6 +2455,50 @@ slider at it.
   make it usable with a thumb.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 📕 A QUESTION IS IN THE BOOK AS SOON AS IT IS MARKED (v1.44.0)
+
+**`fileMistakes(opts)`** and its `{ filed, wentPast }` answer, **`markRation`** beside it, and the
+per-batch `await fileMistakes({ marked: true, quiet: true })` at the foot of `runMarking`'s batch
+loop with the accumulated `mistFiled` / `mistPast` toast after it (search `A QUESTION IS IN THE
+BOOK AS SOON AS IT IS MARKED` and `THE ONE PLACE A MARKING RUN'S REBUILD RATION IS FILLED`).
+
+`fileMistakes` ran ONCE, after the last batch of the whole paper. So a run that was interrupted —
+the tab closed, the network gone, a worksheet left half marked, a student simply stopping — filed
+**NOTHING**, however many questions had already been read and judged. The marking cards were on
+the screen and the book was empty, with nothing on any screen saying the two were about to
+disagree.
+
+- **EVERY BATCH FILES WHAT IT JUST JUDGED**, through the very same 🧩 rebuild every other mistake
+  goes through — so the questions are SET OUT AGAIN, practisable and printable, the moment their
+  page has been read. **Called with nothing `fileMistakes` is byte-for-byte the end-of-run pass it
+  always was**, which is what made this safe over a live book.
+- **🕳 A SKIPPED BLANK CANNOT BE JUDGED MID-RUN, and that is the one thing this split must keep
+  straight.** `markSkipped` asks whether a LATER question was answered, and mid-run there are
+  none — so every blank looks like the tail and filing one is a book of questions nobody has
+  failed at, which is exactly what the 🕳 rule refuses. `markedOnly` is what holds them back; the
+  LAST pass is the one that can see the whole paper, and it is where they are judged.
+- **THE RATION MOVED OUT, AND THAT IS THE EXPENSIVE HALF.** `MB_BUILD_MAX` was refilled at the top
+  of `fileMistakes` — right while it ran once a paper, and a **ten-fold overspend** now that it
+  runs once a BATCH: a ten-page paper would refill ten times and quietly buy a hundred vision
+  calls. `markRation()` fills it at the door that STARTS the run, so a paper's worth of rebuilds is
+  still `MB_BUILD_MAX` however many batches it arrives in. **It has exactly ONE caller** — 🧩
+  `mbRedo` is deliberately not one, because its own bound is `MB_REDO_MAX` and one counter for two
+  limits is a button that silently does nothing once a paper has been marked.
+- **THE PER-BATCH CALL IS AWAITED, never fired and forgotten.** It writes documents, uploads
+  pictures and reloads the book, so two passes in flight would race over `have`, the ration and
+  `mistakes` itself. The next batch's reading is the wait, which is time the run would have spent
+  anyway — and the run **re-checks it is still the run** afterwards, or a worksheet closed mid-
+  filing carries on being marked. A batch whose filing FAILED never sinks the marking.
+- **ONE TOAST A PAPER, NEVER ONE A BATCH.** The mid-run passes are `quiet`, `fileMistakes` hands
+  its counts BACK (`{ filed, wentPast }`) and the caller adds them up — so a ten-page paper says
+  what it filed once rather than four times over, and 🕳 the skipped ones are still named
+  separately in it.
+- **THE RELOAD AND THE MIRROR RUN ON EVERY PASS**, mid-run included: they are what make a
+  half-marked paper's book REAL rather than pending. The mirror is a whole-book, last-writer-wins
+  write (📕 above), so running it more than once a paper is a few extra writes and never a wrong
+  answer — and it is still written AFTER the reload, never before it.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 🐛 THE SAVE THREW BEFORE IT WROTE A BYTE (v1.43.0)
 
 **`saveCrashed`** beside `performSave` (search `THE SAVE THREW BEFORE IT WROTE A BYTE`), the
@@ -3757,6 +3801,31 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📕 when a mistake is filed** (`fileMistakes`'s `opts` /
+  `markedOnly` / `quiet` / its returned counts, `markRation`, the per-batch
+  `await fileMistakes({ marked: true, quiet: true })` in `runMarking`, its
+  `catch` and the cancellation re-check after it, the end-of-run
+  `fileMistakes({ quiet: true })`, or the `mistFiled` / `mistPast` toast), run
+  `node tools/tutor-tests.mjs`. **Both directions are silent and the marking
+  still finishes.** Stop filing per batch and an interrupted run files NOTHING
+  — the marking cards on screen and the book empty, which is the reported
+  fault; file a BLANK per batch and the book fills with questions nobody has
+  failed at, because mid-run `markSkipped` has no later questions to read and
+  every blank is the tail. Run the LAST pass in marked-only mode and the
+  skipped blanks are never judged at all. **Refill the ration inside
+  `fileMistakes` and a ten-page paper buys a hundred vision calls**, silently,
+  because it runs once a batch now; give `markRation` a second caller and 🧩
+  Set it out again spends the marking run's budget instead of its own, so the
+  button quietly does nothing on a paper that has been marked; drop it from
+  the door that starts the run and every rebuild after the first ten is
+  refused. Fire the batch pass and forget it and two passes race over `have`,
+  the ration and `mistakes` itself; drop its `catch` and one refused write
+  sinks a paper that was marking perfectly; drop the re-check after it and a
+  worksheet closed mid-filing carries on being marked. Let the mid-run passes
+  toast and a ten-page paper says the same sentence four times; drop the
+  paper-wide one and a book that quietly grew is one nobody trusts. And write
+  the mirror before the reload and the teacher cannot see a paper's mistakes
+  until the next one is marked.
 - After touching **💾 the save** (`performSave`, `saveCrashed`, the wrapped
   `syncActiveTextEditValue()`, its `finally`, the `.catch(saveCrashed)` on the
   timer / `flushSave` / the Save button, `scheduleAutoSave`, `setSaveState`, or
