@@ -1833,10 +1833,22 @@ arrangement**, because it is not a thing each copy carries.
   rules — which live in `polymathlc/math`, are shared with five apps, and **fail CLOSED** when
   they do not know a name: the write is denied, the read comes back empty, and nothing on any
   screen says why. `tutorAssignments` is already *read by anybody signed in, written by the
-  admin*, which is exactly what a shelf catalogue wants, so it is the reserved document
-  `tutorAssignments/__shelves__`. It carries **`active: false`** — `loadAssignments` asks for
+  admin*, which is exactly what a shelf catalogue wants, so it is one reserved document in it,
+  `tutorAssignments/shelfCatalogue`. It carries **`active: false`** — `loadAssignments` asks for
   `active == true` — **and is dropped by NAME there as well**, because a catalogue read as a
   worksheet set for a class is a card nobody can open on every student's home screen.
+- **🐛 ITS ID IS AN ORDINARY ONE, AND HAS TO BE** (v1.37.1). **Firestore RESERVES every
+  document id matching `__.*__`** and refuses it outright, so v1.37.0's `__shelves__` was
+  rejected on every read and every write: making a shelf toasted *“Resource id "__shelves__" is
+  invalid because it is reserved”*, which at least SAID so — and the READ failed with the same
+  refusal and is CAUGHT, so the bookcase simply stood there with no shelves on it, looking
+  exactly like a centre that had never made one. The name is the only thing that changed:
+  `active: false` and the by-name guard in `loadAssignments` are still what keep the catalogue
+  out of the class's set list, and **there is nothing to migrate**, because that document could
+  never have been written in the first place. `SHELF_RECENT_ID` was renamed with it although it
+  is only ever a SECTION key — a name shaped like a document id is one somebody later writes —
+  and the harness pins the SHAPE of both rather than their spelling, because this is a value
+  typed into the source that Firestore will not take.
 - **AN UNKNOWN SHELF ID READS AS UNSORTED** (`shelfGroups`), and that one line is what makes
   taking a shelf off safe: its papers fall back onto *Not on a shelf yet* rather than into a
   section nothing draws. Nothing is migrated, nothing is rewritten, and **a paper can never be
@@ -3420,7 +3432,10 @@ and nothing on any screen says what changed.
   collection of its own and it needs a rules deploy from another repository
   and fails CLOSED until somebody makes it, with nothing on any screen saying
   why; let it lose `active: false` or the by-name guard in `loadAssignments`
-  and it is a card nobody can open on every student's home screen. Let
+  and it is a card nobody can open on every student's home screen. **Name it
+  `__anything__` and Firestore refuses it outright** — that is what v1.37.0
+  did, and the write at least said so while the caught READ left the bookcase
+  silently shelf-less, which is the half nobody could have reported. Let
   `shelfGroups` or `shelfTitle` called with no `opts` stop being what they
   were and every centre that has never made a shelf has its bookcase
   rearranged under it. Write the teacher's own row before the assignment and a

@@ -4457,7 +4457,7 @@ section('The bookshelf');
   const secAll = S.shelfSections(home, { shelves: cat, shelfOf, now: T });
   eq('🕒 Recently opened leads the bookcase, then the shelves in order, then the unsorted',
      secAll.map(x => x.kind + ':' + (x.shelf || '-')),
-     ['recent:__recent__', 'shelf:s1', 'shelf:s2', 'shelf:s1', 'shelf:-']);
+     ['recent:recent', 'shelf:s1', 'shelf:s2', 'shelf:s1', 'shelf:-']);
   eq('…and a paper on the recent shelf is STILL standing on its own shelf below it',
      [secAll[0].items.map(w => w.id).join(','), secAll[1].items.map(w => w.id).join(',')],
      ['p,u,n,q', 'p']);
@@ -4493,10 +4493,21 @@ section('The bookshelf');
         exist — a collection of its own would need a line in another
         repository's rules and would fail CLOSED until somebody deployed
         it, with nothing on any screen to say why. */
-  ok('the catalogue is a reserved document in the collection the assignments already use',
-     /var SHELF_DOC_ID = '__shelves__';/.test(html) &&
+  ok('the catalogue is one reserved document in the collection the assignments already use',
      /db\.collection\(ASSIGN_COLLECTION\)\.doc\(SHELF_DOC_ID\)/.test(html) &&
      !/collection\('tutorShelves'\)/.test(html));
+  /* 🐛 v1.37.0 NAMED IT `__shelves__` AND FIRESTORE REFUSED EVERY READ AND
+     EVERY WRITE — an id matching `__.*__` is RESERVED. Making a shelf
+     toasted “Resource id … is invalid because it is reserved”, and the
+     READ failed with it too: caught, so the bookcase simply stood there
+     with no shelves on it and nothing on the screen said why. A document
+     id is data, and this one is typed into the source rather than
+     generated, so the SHAPE is what has to be pinned. */
+  const shelfDocId = (html.match(/var SHELF_DOC_ID = '([^']*)';/) || [])[1];
+  ok('the catalogue\'s document id is an ORDINARY one, never a reserved `__…__` name',
+     !!shelfDocId && !/^__.*__$/.test(shelfDocId) && /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(shelfDocId));
+  ok('…and no id typed into this file wears that shape, the 🕒 section key included',
+     ![...html.matchAll(/var SHELF_\w*ID = '([^']*)';/g)].some(m => /^__.*__$/.test(m[1])));
   ok('…and it can never come back as a worksheet set for a class',
      /active: false,/.test(html) && /if \(d\.id === SHELF_DOC_ID\) return;/.test(html));
   ok('a denied read leaves the bookcase the one this app had before shelves existed, never an error',

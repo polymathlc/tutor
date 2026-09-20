@@ -12,6 +12,23 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.37.1 — 🐛 Making a shelf works
+
+*“The bookcase could not be saved: Resource id `__shelves__` is invalid because
+it is reserved.”* **Firestore reserves every document id matching `__…__`**, so
+the shelf catalogue v1.37.0 shipped could not be written — and could not be
+READ either. The write said so out loud; the read is caught, so the bookcase
+just stood there with no shelves on it, looking exactly like a centre that had
+never made one.
+
+The document is called `shelfCatalogue` now and nothing else about it moved: it
+still sits in `tutorAssignments`, whose rules already exist, still carries
+`active: false`, and is still dropped by name so it can never turn up as a
+worksheet set for a class. **There is nothing to migrate** — that document could
+never have been written, so no shelf was ever lost.
+
+---
+
 ## v1.37.0 — 🗂 Shelves you make yourself, and a 🕒 Recently opened shelf
 
 The bookcase had one shelf per level and subject, worked out from the paper's
