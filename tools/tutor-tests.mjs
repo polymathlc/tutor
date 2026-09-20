@@ -2922,15 +2922,86 @@ ok('…and only the arrow grows a head',
    gesture saved on a hint can be put back up months later. */
 S.wsEpoch = 7;
 ok('showing a gesture stamps it with the worksheet it is on',
-   S.tutorPointShow(S.tutorPointMake({ at: [100, 100] }, 1)) === true && S.tutorPoint.epoch === 7);
+   S.tutorPointShow(S.tutorPointMake({ at: [100, 100] }, 1)) === true &&
+   S.tutorPoints.length === 1 && S.tutorPoints[0].epoch === 7);
 ok('…and the maker itself carries no epoch at all',
    S.tutorPointMake({ at: [100, 100] }, 1).epoch === undefined,
    'a hint keeps its gesture for months; an epoch baked in would be stale the next time it opened');
 ok('a gesture that could not be read leaves the one on the page alone',
-   S.tutorPointShow(null) === false && S.tutorPoint !== null,
+   S.tutorPointShow(null) === false && S.tutorPoints.length === 1,
    'a marker nobody could parse must not take down the finger already pointing');
 S.tutorPointClear();
-ok('…and clearing takes it down', S.tutorPoint === null);
+ok('…and clearing takes it down', S.tutorPoints.length === 0);
+
+/* =====================================================================
+   …and it can mark TWO PLACES AT ONCE
+   =====================================================================
+   "Compare the first input with the first output" is not a sentence about
+   one spot. A tutor saying it boxes BOTH, and a child handed one box has to
+   guess which half of the comparison they are looking at. */
+const pairSpec = [{ at: [200, 300], shape: 'box' }, { at: [600, 300], shape: 'box' }];
+ok('a LIST of gestures goes up together',
+   S.tutorPointShow(S.tutorPointsMake(pairSpec, 1)) === true && S.tutorPoints.length === 2,
+   'one box where the tutor described two leaves the child guessing which half it is');
+ok('…and every mark of one group shares ONE `made`, so it is ONE node with ONE fade-in',
+   S.tutorPoints[0].made === S.tutorPoints[1].made,
+   'two boxes that arrive a beat apart read as two statements rather than one comparison');
+ok('…and they are kept in the order the tutor gave them, which is what ① ② number',
+   S.tutorPoints[0].at.y === 200 && S.tutorPoints[1].at.y === 600);
+ok('…and a SINGLE gesture still goes up exactly as it always did',
+   S.tutorPointShow(S.tutorPointMake({ at: [100, 100] }, 1)) === true && S.tutorPoints.length === 1,
+   'every call site written before v1.45.0 hands over one object and must be unaffected');
+ok('…and so does a hint saved before any of this existed',
+   S.tutorPointShow({ page: 2, shape: 'circle', at: { y: 10, x: 10 }, to: null }) === true &&
+   S.tutorPoints.length === 1 && S.tutorPoints[0].page === 2,
+   '`h.point` is ONE object on every hint written before v1.45.0');
+
+/* BOUNDED, and the bound is the point of it: a page under six boxes says
+   nothing at all about where to look, which is worse than the singleton
+   ever was. */
+const sixMarks = [1, 2, 3, 4, 5, 6].map((n) => ({ at: [n * 100, 300], shape: 'box' }));
+eq('a model that answered with six boxes has POINT_MAX drawn',
+   S.tutorPointsMake(sixMarks, 1).length, S.POINT_MAX);
+ok('…and the writer caps it too, so a caller that reached past the maker cannot flood the page',
+   S.tutorPointShow(sixMarks.map((m) => S.tutorPointMake(m, 1))) === true &&
+   S.tutorPoints.length === S.POINT_MAX);
+ok('POINT_MAX is small enough to still be a comparison', S.POINT_MAX <= 3 && S.POINT_MAX >= 2);
+S.tutorPointClear();
+
+/* A SPEC THAT COULD NOT BE READ IS DROPPED AND THE REST STILL GO UP: one
+   half of a comparison is a poorer answer than both and a better one than
+   neither, and a gesture that landed nowhere was never one of the halves. */
+eq('an unreadable spec is dropped and its partner still goes up',
+   S.tutorPointsMake([{ at: [400, 1400] }, { at: [600, 300] }], 1).length, 1);
+ok('…and nothing readable at all comes back NULL, never an empty list',
+   S.tutorPointsMake([{ at: [400, 1400] }], 1) === null &&
+   S.tutorPointsMake([], 1) === null && S.tutorPointsMake(null, 1) === null,
+   'an empty array is truthy, so the hint card would grow a "show me where" button with nothing behind it');
+eq('…and ONE spec that is not a list is still read',
+   S.tutorPointsMake({ at: [400, 300], shape: 'underline' }, 2).length, 1);
+ok('…through the ONE maker, so a point the marking would refuse is refused here',
+   S.tutorPointsMake([{ at: [-1, 300] }], 1) === null,
+   'a finger on the wrong question is worse than no finger at all');
+
+/* THE NUMBER SITS BESIDE THE MARK, NEVER ON IT. A disc dropped in the middle
+   of a box sits over the very words the box was drawn round — and an arrow's
+   badge belongs on its TAIL, because its head IS the spot. */
+const bgeo = (spec) => S.tutorPointGeom(S.tutorPointMake(spec, 1), tpW, tpH);
+const bBox = bgeo({ at: [500, 500], shape: 'box' });
+const bBadge = S.tutorPointBadgeAt(bBox, 12);
+ok('a box\'s number sits OUTSIDE its top-left corner',
+   bBadge.x < bBox.x && bBadge.y < bBox.y, JSON.stringify(bBadge));
+const bArr = bgeo({ at: [500, 500], shape: 'arrow' });
+const aBadge = S.tutorPointBadgeAt(bArr, 12);
+ok('an arrow\'s number sits on its TAIL, never on the head it points with',
+   aBadge.x === bArr.x1 && aBadge.y === bArr.y1,
+   'a disc on the head covers the very thing the arrow is pointing at');
+const cBadge = S.tutorPointBadgeAt(bgeo({ at: [500, 500], shape: 'circle' }), 12);
+ok('a circle\'s number sits off its left shoulder', cBadge.x < tpW * 0.5);
+const uBadge = S.tutorPointBadgeAt(bgeo({ at: [500, 300], shape: 'underline' }), 12);
+ok('an underline\'s number sits above where the rule starts', uBadge.y < tpH * 0.5);
+ok('a badge for a geometry that could not be built is refused rather than drawn at the origin',
+   S.tutorPointBadgeAt(null, 12) === null);
 
 /* =====================================================================
    …and against index.html itself
@@ -2972,7 +3043,42 @@ ok('…and it is drawn UNDER the student\'s own ink',
    /svg\.insertBefore\(g, svg\.firstChild\);/.test(POINT_SRC) && !/svg\.appendChild\(g\);/.test(POINT_SRC),
    'a finger over a child\'s answer covers the work it is meant to be helping with');
 ok('…and the zoom is part of what it is, because the stroke width is baked in',
-   /pt\.made \+ ':' \+ Math\.round\(Math\.max\(0\.25, scale\) \* 100\)/.test(POINT_SRC));
+   /mine\[0\]\.made \+ ':' \+ mine\.length \+ ':' \+ group\.length \+ ':' \+ Math\.round\(Math\.max\(0\.25, scale\) \* 100\)/.test(POINT_SRC));
+/* ONE NODE FOR EVERY MARK ON THE PAGE. A node per mark is a fade-in per
+   mark, and the wipe that steps over `g[data-point]` would then be stepping
+   over several — so a pair would blink in one at a time rather than arriving
+   as the one comparison it is. */
+ok('every mark on a page shares ONE node, so a pair fades in together',
+   /var g = el\('g', \{ 'data-point': want[\s\S]{0,120}?mine\.forEach\(function \(m\) \{/.test(POINT_SRC) &&
+   (POINT_SRC.match(/svg\.insertBefore\(g, svg\.firstChild\);/g) || []).length === 1,
+   'two boxes that arrive a beat apart read as two statements rather than one comparison');
+/* THE NUMBERING COUNTS THE WHOLE GROUP, not this page's share of it. A pair
+   split across a page break must still be ① and ②, or the tutor's own words
+   name the wrong one — on a page that looks perfectly convincing. */
+ok('…and the numbers are read off the WHOLE group, not off this page',
+   /group\.indexOf\(m\) \+ 1/.test(POINT_SRC) && /if \(group\.length > 1\)/.test(POINT_SRC),
+   'a pair split over a page break must still be ① and ②, not ① twice');
+ok('…and a lone gesture is drawn with NO number at all',
+   /if \(group\.length > 1\) \{/.test(POINT_SRC),
+   'one gesture must be byte-for-byte the drawing it has always been');
+ok('…and the number itself never breathes',
+   !/'class': 'tpInk'/.test(between('var num = el(\'text\'', 'g.appendChild(num);', 'the badge\'s number')),
+   'a digit fading in and out is a digit nobody can read');
+/* ONE `made` FOR THE WHOLE GROUP, pinned in the source rather than on the
+   clock: two `Date.now()` calls in the same millisecond agree by luck, so a
+   model-level check would pass on the very build that gave each mark its own
+   stamp — and each stamp is its own node identity, so each would be its own
+   fade-in. */
+ok('…and every mark of one group is stamped from ONE reading of the clock',
+   (between('function tutorPointShow(pt) {', 'function tutorPointClear()', 'the one writer')
+      .match(/Date\.now\(\)/g) || []).length === 1,
+   'a stamp per mark is a node per mark, and a fade-in per mark');
+/* NO LINE BETWEEN THEM. A magenta rule from one box to the other is struck
+   across whatever is printed in between — the very fault the underline's own
+   "always level" rule exists to prevent. The tutor's WORDS do the linking. */
+ok('and nothing draws a connector between two marks',
+   !/connector|joinMarks|linkPoints/i.test(POINT_SRC),
+   'a rule drawn from one box to the other crosses the print between them');
 ok('…and the breathe SETTLES rather than pulsing for ever',
    /animation: tpBreathe [\d.]+s ease-in-out 3 both;/.test(html),
    'a shape pulsing beside the question a child is working on is one they stop being able to ignore');
@@ -2985,7 +3091,7 @@ ok('NOTHING here sets a timer',
    !/setTimeout|setInterval/.test(POINT_SRC),
    'it comes down when the tutor MOVES ON, which is what a real finger does');
 ok('the epoch is checked before it is painted',
-   /pt\.epoch === wsEpoch && pt\.page === p\.num/.test(POINT_SRC),
+   /m\.epoch === wsEpoch/.test(POINT_SRC) && /m\.page === p\.num/.test(POINT_SRC),
    'a gesture about the last worksheet standing over this one is the fault every floating box here guards against');
 ok('the ink is sized in screen pixels over the zoom, like the pins',
    /3\.6 \/ Math\.max\(0\.25, scale\)/.test(POINT_SRC),
@@ -3020,9 +3126,9 @@ ok('…and nothing but that one function calls either half',
    for; the live tutor opens its spoken reply with a marker. Both are told
    the same thing about being sure. */
 ok('the hint ladder asks for a point',
-   /"point":\{"at":\[412,300\]/.test(html) && /POINTING AT THE PAGE/.test(html));
+   /"point":\[\{"at":\[412,300\]/.test(html) && /POINTING AT THE PAGE/.test(html));
 ok('…and reads it back through the ONE maker',
-   /point: tutorPointMake\(res\.point, p\.num\)/.test(html));
+   /point: tutorPointsMake\(res\.point, p\.num\)/.test(html));
 ok('…and keeps it ON the hint, so it is saved and can be shown again',
    /h\.point = out\.point; tutorPointShow\(out\.point\);/.test(html) &&
    /\u{1F449} Show me where to look/u.test(html));
@@ -3041,6 +3147,28 @@ ok('…and the button puts the WORKING back with the finger',
    'half an explanation put back is a note about a step with nothing pointing at the question');
 const HINT_SYS_SRC = between('var HINT_SYS =', 'function hintPromptFor(', 'the hint system prompt');
 const LIVE_SYS_SRC = between('You support a live voice tutor.', 'onProgress: function ()', 'the live system prompt');
+/* BOTH PROMPTS SAY WHAT A SECOND MARK IS FOR, and both say it the same way:
+   a comparison, never a second interesting thing. A model that marks four
+   places has told the student nothing about where to look. */
+ok('…and both prompts say a second mark is for a COMPARISON and nothing else',
+   /"point" is a LIST/.test(HINT_SYS_SRC) &&
+   /when and only when the student has to COMPARE two places/.test(HINT_SYS_SRC) &&
+   /when and only when the student has to COMPARE two places/.test(LIVE_SYS_SRC) &&
+   /a page under three boxes says nothing/.test(HINT_SYS_SRC) &&
+   /a page under three boxes says nothing/.test(LIVE_SYS_SRC),
+   'a model that boxes four things has said nothing about where to look');
+ok('…and both say the marks are NUMBERED, so the words can name them',
+   /numbered ① ②/.test(HINT_SYS_SRC) && /numbered ① ②/.test(LIVE_SYS_SRC));
+/* …and both PERMIT a second one in the first place. A prompt that carries
+   every rule about a pair and never says to write one is the live half of
+   this quietly not existing, on a build whose every other pin is green. */
+ok('…and both actually ASK for the second mark rather than only ruling on it',
+   /you may give a SECOND spot/.test(HINT_SYS_SRC) &&
+   /Write a SECOND pointer marker/.test(LIVE_SYS_SRC),
+   'every rule about a pair and nothing that says to write one is a feature nobody reaches');
+ok('…and the live prompt bounds the run of markers it may write',
+   /At most THREE pointer markers and at most ONE working marker/.test(LIVE_SYS_SRC),
+   'an unbounded run is a page under magenta');
 ok('BOTH prompts refuse to guess',
    /a finger on the wrong question is worse/.test(HINT_SYS_SRC) &&
    /a finger on the wrong question is worse/.test(LIVE_SYS_SRC),

@@ -209,6 +209,9 @@ function harness(options = {}) {
        the page) is pinned for real in \`tools/tutor-tests.mjs\`, which has the
        marking's own \`_markAt\` beside it. */
     tutorPointMake: (spec, page) => (spec && spec.at ? { page, shape: spec.shape || 'circle', at: spec.at, to: spec.to || null } : null),
+    /* Since v1.45.0 this is handed the WHOLE group of marks, every time that
+       group grows — never the newcomer on its own — so what is on the page is
+       the LAST call's list. `marksOn` below is the one reader of that. */
     tutorPointShow(pt) { if (pt) calls.points.push(pt); return !!pt; },
     tutorPointClear() { calls.points.push(null); },
     /* ✍️ …and the working beside it, on the same footing: recorded rather
@@ -256,6 +259,16 @@ async function connected(options) {
 
 function comments(channel) {
   return channel.sent.filter(event => event.type === 'session.commentary.append');
+}
+
+/* WHAT IS ACTUALLY ON THE PAGE. A run of pointer markers is ONE group, and
+   `tutorPointShow` is handed the whole of it every time it grows — so the
+   marks standing on the worksheet are the LAST call's list, never all the
+   calls run together. Reading them any other way would count a two-mark
+   group as three gestures and pass on a build that had shown one. */
+function marksOn(h) {
+  const groups = h.calls.points.filter(Boolean);
+  return groups.length ? [].concat(groups[groups.length - 1]) : [];
 }
 
 test('worksheet capture ranks actual visible area and excludes hidden key pages', () => {
@@ -1262,7 +1275,7 @@ test('the pointer marker is read, raises a gesture, and is never spoken', async 
   assert.equal(comments(channel).length, 1);
   assert.equal(comments(channel)[0].content, 'Look at the arrow on the diagram.',
     'not one character of the marker reaches the speaker');
-  const raised = h.calls.points.filter(Boolean);
+  const raised = marksOn(h);
   assert.equal(raised.length, 1, 'one marker is one gesture');
   assert.equal(JSON.stringify(raised[0]),
     JSON.stringify({ page: 2, shape: 'underline', at: [412, 300], to: null }));
@@ -1323,8 +1336,67 @@ test('a second position rides with the marker', async () => {
   await flush();
   await s.end('[[point p3 412,300 412,700 underline]] Read the two numbers again.');
   await work;
-  assert.equal(JSON.stringify(h.calls.points.filter(Boolean)[0]),
+  assert.equal(JSON.stringify(marksOn(h)[0]),
     JSON.stringify({ page: 3, shape: 'underline', at: [412, 300], to: [412, 700] }));
+  h.c.stopLiveTutor();
+});
+
+/* ------------------------------------------------------------------------
+   👉 TWO MARKS AT ONCE — the comparison
+   ------------------------------------------------------------------------
+   "Compare the first input with the first output" boxes BOTH, and a child
+   handed one box has to guess which half they are looking at. A run of
+   pointer markers is ONE group, so the second must never REPLACE the first.
+   ------------------------------------------------------------------------ */
+
+test('two pointer markers in one reply are ONE group, not one gesture twice', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const channel = h.c.liveTutor.channel;
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  await s.end('[[point p2 200,300 box]][[point p2 600,300 box]] What turns the first into the second?');
+  await work;
+  const on = marksOn(h);
+  assert.equal(on.length, 2, 'the second marker REPLACING the first is how a comparison came out as one box');
+  assert.equal(on[0].at[0], 200, 'and they keep the order the tutor wrote them in, which is what ① ② number');
+  assert.equal(on[1].at[0], 600);
+  assert.equal(comments(channel).map(e => e.content).join(' '),
+    'What turns the first into the second?',
+    'not one character of either marker reaches the speaker');
+  h.c.stopLiveTutor();
+});
+
+test('…and a pair SPLIT across two chunks is still one group', async () => {
+  /* The stream can cut a run of markers in half: the first flush consumes
+     one, meets an unclosed `[[` and waits. A group collected per FLUSH would
+     then show the second marker alone and the pair the tutor was describing
+     would be half a pair, silently — which is why the group lives for the
+     whole reply rather than for one chunk of it. */
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  s.chunk('[[point p2 200,300 box]][[point p2 600,3');
+  assert.equal(marksOn(h).length, 1, 'the first is up while the second is still being written');
+  await s.end('[[point p2 200,300 box]][[point p2 600,300 box]] What turns the first into the second?');
+  await work;
+  const on = marksOn(h);
+  assert.equal(on.length, 2, 'the pair survives the chunk boundary');
+  assert.equal(on[0].at[0], 200);
+  assert.equal(on[1].at[0], 600);
+  h.c.stopLiveTutor();
+});
+
+test('…and a finger and a line of working still travel together', async () => {
+  const s = stream();
+  const h = await connected({ ai: s.ai });
+  const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
+  await flush();
+  await s.end('[[point p1 200,300 box]][[work p1 560,120 | 3 units = 12 | 1 unit = ?]] Try the next line.');
+  await work;
+  assert.equal(marksOn(h).length, 1, 'a working marker is never batched into the pointer group');
+  assert.equal(h.calls.works.filter(Boolean).length, 1, 'and the working still goes up');
   h.c.stopLiveTutor();
 });
 

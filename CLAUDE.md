@@ -136,11 +136,13 @@ it is handed to the speaker** (`liveStripFiller` on `spokenReply`).
 - Run **`node --test tools/live-tutor-tests.mjs`**, **`node tools/tutor-tests.mjs`** and
   **`cd functions && node --test test/*.test.js`** after touching any of it.
 
-## 👉 THE TUTOR POINTS AT THE PAGE (v1.30.0)
+## 👉 THE TUTOR POINTS AT THE PAGE (v1.30.0, a PAIR of marks since v1.45.0)
 
 `POINT_SHAPES` / `POINT_DEFAULT_SHAPE` / `POINT_SPAN` / `POINT_R` / `POINT_TAIL` / `POINT_INK` /
-`tutorPoint` / `tutorPointShape` / **`tutorPointMake`** / **`tutorPointGeom`** /
-`tutorPointPaths` / **`tutorPointShow`** / **`tutorPointClear`** / `syncTutorPoint` /
+**`POINT_MAX`** / `POINT_BADGE_R` / `POINT_BADGE_TEXT` /
+**`tutorPoints`** / `tutorPointShape` / **`tutorPointMake`** / **`tutorPointsMake`** /
+**`tutorPointGeom`** / `tutorPointPaths` / **`tutorPointBadgeAt`** / **`tutorPointShow`** /
+**`tutorPointClear`** / `syncTutorPoint` /
 **`renderTutorPointOn`** (search `THE TUTOR POINTS AT THE PAGE`), the live half —
 **`LIVE_MARK_RE`** / **`livePointSpec`** / **`livePointStrip`** and the `pointPage` / marker LOOP
 of `liveFlush` (search `THE POINTER MARKER`) — the `point` field of `HINT_SYS` / `hintLadderFor` /
@@ -210,18 +212,76 @@ spot it is talking about, in live mode and on a hint alike.
 - **A WHITE HALO UNDER THE INK, NOT A DROP-SHADOW.** This is drawn over printed text, and magenta
   on black serifs is a line nobody can see. It costs one more path and no filter.
 
+### ① ② TWO PLACES AT ONCE — the comparison (v1.45.0)
+
+*"Can the AI be more like Brilliant's Koji — actually draw boxes to show where I should be
+looking?"* It could draw one box. **It could not draw the PAIR**, and the pair is the interesting
+half: *"compare the first input with the first output"* is not a sentence about one spot, so a
+tutor saying it boxes BOTH. `tutorPoint` was a SINGLETON, so a second gesture silently REPLACED
+the first — on a hint only the last survived, and in live mode a reply opening with two pointer
+markers put up the second while the tutor's words named a mark nobody could see.
+
+- **`tutorPoints` IS A BOUNDED LIST, AND THE BOUND IS THE POINT OF IT.** `POINT_MAX` (3) is what
+  a comparison needs; past it the words are doing the work, and **a page under six boxes says
+  nothing at all about where to look** — which is worse than the singleton ever was. It is capped
+  in `tutorPointsMake` AND again in `tutorPointShow`, because a caller that reached past the maker
+  must not be able to flood the page.
+- **`tutorPointShow` TAKES ONE GESTURE OR A LIST, and that is the whole migration.** Called with
+  one object it is byte-for-byte what it always was — so every call site written before v1.45.0 is
+  untouched, and **a hint saved before it still puts its one finger back**, because `h.point` is a
+  single object on every hint in every body written until now. The rule `shelfGroups(opts)` and
+  `fileMistakes(opts)` already carry, applied to the one writer.
+- **ONE `made` FOR THE WHOLE GROUP, from ONE reading of the clock.** The node's identity is built
+  from it, so every mark of one group is ONE `g` with ONE fade-in: **two boxes that arrive a beat
+  apart read as two separate statements rather than as the one comparison they are.** Pinned in
+  the SOURCE rather than on the clock, because two `Date.now()` calls in the same millisecond
+  agree by luck and a model-level check would pass on the very build that broke it.
+- **ONE NODE FOR EVERY MARK ON THE PAGE**, and that is load-bearing twice: `renderOverlay`'s wipe
+  steps over `g[data-point]` rather than detaching it (a detached node loses its animation), so a
+  node per mark would be a fade-in per mark and the whole "left alone when the overlay rebuilds"
+  rule would have to hold for several nodes at once instead of one.
+- **THE NUMBERS COUNT THE WHOLE GROUP, never this page's share of it.** A pair split over a page
+  break must still be ① and ②, or the tutor's own words name the wrong one — on a page that looks
+  perfectly convincing. The badge is drawn ONLY where the group holds more than one, so **a lone
+  gesture is byte-for-byte the drawing it has always been**, and it carries no `tpInk`: a digit
+  breathing in and out is a digit nobody can read.
+- **THERE IS DELIBERATELY NO LINE BETWEEN THEM.** A magenta rule from one box to the other is
+  struck across whatever is printed in between — precisely the fault the underline's own "always
+  level" rule exists to prevent — and it gets worse the further apart the two marks are, which is
+  exactly when a reader most wants the link. The NUMBERS do the linking and the tutor's own words
+  name them; the badge sits BESIDE its mark (an arrow's on its TAIL, because its head IS the spot).
+- **ONE UNREADABLE SPEC IS DROPPED AND ITS PARTNER STILL GOES UP.** One half of a comparison is a
+  poorer answer than both halves and a better one than neither, and a gesture that landed nowhere
+  was never one of the halves. **Nothing readable at all comes back NULL, never an empty list** —
+  an empty array is truthy, so the hint card would grow a *show me where to look* button with
+  nothing behind it.
+- **A RUN OF LIVE MARKERS IS ONE GROUP, AND THE GROUP LIVES FOR THE WHOLE REPLY.** `liveMarkApply`
+  gained a `batch`: given one a gesture is PUSHED and the caller shows the whole group, and called
+  without one it shows straight away exactly as before. The array is declared beside `pointPage`,
+  in `runLiveDelegation`'s own scope, because **the stream can cut a run of markers in half** — the
+  first flush consumes one, meets an unclosed `[[` and waits — so a group collected per FLUSH shows
+  the second marker alone and the pair is silently half a pair. `grew` is what stops a flush that
+  read no marker re-stamping the group and blinking the marks all the way through the reply.
+  Working is never batched: two blocks of working beside one question is a lecture.
+- **BOTH PROMPTS SAY WHAT A SECOND MARK IS FOR, and both must also ASK for one.** A comparison the
+  student cannot get past without — never a second thing that happens to be interesting. A prompt
+  carrying every rule about a pair and nothing that says to write one is this half quietly not
+  existing, on a build whose every other pin is green.
+
 ### The two producers
 
 - **A HINT CARRIES ITS GESTURE IN THE JSON IT ALREADY ASKS FOR** — one more field on `HINT_SYS`'s
-  shape, read back through `tutorPointMake(res.point, p.num)` and nowhere else. It is measured on
+  shape, read back through `tutorPointsMake(res.point, p.num)` and nowhere else (it was
+  `tutorPointMake`; the field is a LIST since v1.45.0 and the maker takes either shape). It is measured on
   the WHOLE-PAGE picture `hintImagesFor` builds, which is why the page number is this page's. The
   prompt says **point at the QUESTION, never at the answer**: a finger on where the answer goes is
   the ladder's own hole through a side door.
 - **A SPOKEN REPLY IS TEXT, STREAMED, so there is no second field to put a gesture in** — a reply
   asked for as `json` is never streamed at all, and the tolerant parser is the one thing that
-  makes a truncated one survivable. So the tutor opens with ONE marker, `[[point p3 412,300
-  underline]]`, and **it is consumed off the FRONT through the very same `cursor` the opening
-  filler is**: dealt with without being spoken, and unable to come back as part of the remainder.
+  makes a truncated one survivable. So the tutor opens with a marker, `[[point p3 412,300
+  underline]]` (or two of them, for a comparison), and **it is consumed off the FRONT through the
+  very same `cursor` the opening filler is**: dealt with without being spoken, and unable to come
+  back as part of the remainder.
 - **AN OPEN `[[` WITH NO CLOSE YET WAITS**, before a single character is taken. Without it a
   half-written marker that happens to contain what reads as a sentence end is CONSUMED, the rest
   of it is then no longer at the front, and the closing brackets are read aloud to a child while
@@ -4373,7 +4433,29 @@ and nothing on any screen says what changed.
   flashes on every word the child writes or covers the answer it is helping with. Read
   `liveWorkSpec`'s position from the whole marker and the digits in "3 units = 12" become a
   coordinate. And paint a line with `innerHTML` and model output is markup on a child's page.
-- After touching **👉 the tutor's finger** (`POINT_SHAPES`, `POINT_INK`, `tutorPoint`,
+- After touching **① ② the PAIR of marks** (`POINT_MAX`, `POINT_BADGE_R`, `POINT_BADGE_TEXT`,
+  `tutorPoints`, `tutorPointsMake`, `tutorPointBadgeAt`, `tutorPointShow`'s list arm, the `group` /
+  `mine` split or the badge in `renderTutorPointOn`, `liveMarkApply`'s `batch`, the `pointMarks`
+  accumulator or the `grew` flag in `liveFlush`, or the two prompts' paragraphs about a second
+  mark), run `node tools/tutor-tests.mjs` **and** `node --test tools/live-tutor-tests.mjs` — **and
+  ask for one hint that compares two things on a real page**. Every failure here is silent and a
+  mark still goes up. **Make `tutorPoints` a singleton again — anywhere: the writer, the maker, the
+  live batch — and the second half of every comparison is silently thrown away**, which is the
+  reported fault, and the tutor's own words then name a mark nobody can see. Let a flush collect
+  the group instead of the reply and a pair the stream cut in half comes out as the second marker
+  alone; drop `grew` and the marks blink their way through the whole reply. Give each mark its own
+  `made` and they fade in one at a time, which reads as two statements rather than one comparison;
+  draw them as a node each and the wipe that must never detach them has several to step over.
+  Number them off THIS PAGE rather than the group and a pair split over a page break is ① twice,
+  on a page that looks perfectly convincing. Take the cap off and a model that liked four things
+  puts the page under magenta, which says less about where to look than one box did. Return an
+  empty LIST where nothing was readable and the hint card grows a *show me where to look* button
+  with nothing behind it; throw the whole list away when ONE spec fails and half a comparison
+  becomes none of it. Draw a LINE between two marks and it is a magenta rule struck across
+  whatever is printed in between — the fault the underline's own rule exists to prevent, and it is
+  worst exactly where the link is most wanted. And let either prompt stop ASKING for a second mark
+  — not merely stop ruling on it — and this half quietly does not exist, with every other pin green.
+- After touching **👉 the tutor's finger** (`POINT_SHAPES`, `POINT_INK`, `tutorPoints`,
   `tutorPointShape`, `tutorPointMake`, `tutorPointGeom`, `tutorPointPaths`, `tutorPointShow`,
   `tutorPointClear`, `syncTutorPoint`, `renderTutorPointOn`, the `renderTutorPointOn(p)` line in
   `renderOverlay`, `LIVE_POINT_RE`, `livePointSpec`, `livePointStrip`, `pointPage`, the marker arm
