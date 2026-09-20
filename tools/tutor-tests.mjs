@@ -4352,6 +4352,51 @@ section('The bookshelf');
   ]);
   eq('a shelf is found and named by its id', [S.shelfLabel(cat, 's2'), S.shelfLabel(cat, 'gone')], ['Prelims', '']);
 
+  /* ①½ 🗂 THE ORDER OF THE SHELVES THEMSELVES. The one thing that makes
+         this whole feature either work or quietly not happen is the
+         RENUMBER: `shelfSave` runs `shelfNorm` before it writes, and
+         `shelfNorm` sorts by `order` FIRST — so a list whose array order
+         was changed and whose `order` fields were not is sorted straight
+         back into the arrangement it started in. The write lands, the
+         toast says the shelf moved, the bookcase repaints exactly as it
+         was, and nothing on any screen says why. */
+  const three = S.shelfNorm([
+    { id: 's1', name: 'A', order: 0 },
+    { id: 's2', name: 'B', order: 1 },
+    { id: 's3', name: 'C', order: 2 }
+  ]);
+  eq('a shelf moved to the front is STILL at the front once the catalogue is re-read',
+     S.shelfNorm(S.shelfReorder(three, 's3', 0)).map(s => s.id), ['s3', 's1', 's2']);
+  eq('…which is the renumber: every shelf is written back with the place it now stands in',
+     S.shelfReorder(three, 's3', 0).map(s => s.order), [0, 1, 2]);
+  eq('▼ moves a shelf one place down the bookcase and ▲ one place up',
+     [S.shelfReorder(three, 's1', 1).map(s => s.id).join(','),
+      S.shelfReorder(three, 's3', 1).map(s => s.id).join(',')],
+     ['s2,s1,s3', 's1,s3,s2']);
+  eq('a move carries the shelf\'s own name with it, so nothing is renamed by being dragged',
+     S.shelfReorder(three, 's3', 0).map(s => s.name), ['C', 'A', 'B']);
+  /* A shelf that is no longer on the bookcase cannot be moved, and putting
+     it back would be a reorder resurrecting a shelf somebody deleted. */
+  eq('a shelf the catalogue no longer has moves nothing and is never put back',
+     S.shelfReorder(three, 'gone', 0).map(s => s.id), ['s1', 's2', 's3']);
+  eq('a position that is not a number moves nothing at all',
+     [S.shelfReorder(three, 's3', 'x').map(s => s.id).join(','),
+      S.shelfReorder(three, 's3', undefined).map(s => s.id).join(',')],
+     ['s1,s2,s3', 's1,s2,s3']);
+  /* An index worked out from a RANK is clamped to the ends — the honest
+     answer to "further than the bookcase goes" — where a POSITION on a
+     child's page is never clamped (`_markAt`), because there a clamp is a
+     guess about which question was meant. */
+  eq('a place off either end of the bookcase is pulled to the end, never dropped',
+     [S.shelfReorder(three, 's1', 99).map(s => s.id).join(','),
+      S.shelfReorder(three, 's3', -5).map(s => s.id).join(',')],
+     ['s2,s3,s1', 's3,s1,s2']);
+  eq('moving a shelf to where it already stands changes nothing',
+     S.shelfReorder(three, 's2', 1).map(s => s.id), ['s1', 's2', 's3']);
+  eq('an empty bookcase has nothing to move', S.shelfReorder([], 's1', 0), []);
+  ok('the reorder is PURE — the catalogue it was handed is untouched by any of that',
+     three.map(s => s.id + ':' + s.order).join(',') === 's1:0,s2:1,s3:2');
+
   /* ② WHICH SHELF A PAPER IS ON — the whole of “every student has the same
         papers on the same shelves”. The ASSIGNMENT is read over the copy,
         so the teacher moving a paper this morning moves it for the child
@@ -4533,7 +4578,7 @@ section('The bookshelf');
      fired by a touchscreen, so a shelf reachable only by dragging is a
      shelf the teacher cannot use on the iPad they teach from. */
   ok('dragging and the 🗂 button both end at the one mover',
-     /if \(id\) moveWorksheetToShelf\(id, g\.shelf \|\| ''\);/.test(html) &&
+     /if \(id && id\.indexOf\(SHELF_DRAG_PREFIX\) !== 0\) moveWorksheetToShelf\(id, g\.shelf \|\| ''\);/.test(html) &&
      /mv\.addEventListener\('click', function \(\) \{ openShelfPick\(w\.id\); \}\);/.test(html));
   ok('the dragged paper is remembered on dragstart, because a shelf may not ask during dragover',
      /var _shelfDragId = '';/.test(html) &&
@@ -4541,6 +4586,70 @@ section('The bookshelf');
      /item\.addEventListener\('dragend', function \(\) \{\n\s*_shelfDragId = '';/.test(html));
   ok('🕒 the recently-opened shelf is not a drop target — it is a view, not a place',
      /if \(teacher && !recent\) \{\n\s*shelf\.dataset\.shelfId/.test(html));
+  /* 🗂 THE ORDER OF THE SHELVES IS THE TEACHER'S TOO, and it is written on
+     the CATALOGUE every class reads — so a bookcase arranged this morning
+     is the bookcase every child opens. Both ways of moving a whole shelf
+     end at `moveShelfTo`, exactly as a dragged booklet and the 🗂 button on
+     a card both end at `moveWorksheetToShelf`. */
+  const shelfMover = between('async function moveShelfTo(', '\n/* 🗂 THE ONE MOVER.', 'the shelf mover');
+  ok('the shelf mover refuses anybody but the teacher IN THE HANDLER, not only on the button',
+     /async function moveShelfTo\(id, to\) \{\n\s*if \(!isAdmin\(currentUser\)\)/.test(html));
+  ok('…and a shelf that is not on the bookcase any more',
+     /var s = shelfFind\(shelves, id\);\n\s*if \(!s\)/.test(shelfMover));
+  ok('…and it writes through the ONE writer, never a `.set` of its own',
+     /if \(!await shelfSave\(next\)\) return false;/.test(shelfMover) && !/\.set\(/.test(shelfMover));
+  ok('a shelf that did not move is not reported as one that did',
+     /if \(shelfRank\(next, id\) === from\) return false;/.test(shelfMover));
+  ok('both ways of moving a WHOLE shelf end at the one shelf mover',
+     (html.match(/moveShelfTo\(/g) || []).length === 4 &&
+     /if \(g\.shelf && moving !== g\.shelf\) moveShelfTo\(moving, shelfRank\(shelves, g\.shelf\)\);/.test(html) &&
+     /moveShelfTo\(g\.shelf, shelfRank\(shelves, g\.shelf\) - 1\);/.test(html) &&
+     /moveShelfTo\(g\.shelf, shelfRank\(shelves, g\.shelf\) \+ 1\);/.test(html));
+  /* ▲ ▼ ARE THE TOUCH HALF. `dragstart` is never fired by a touchscreen,
+     so a bookcase arrangeable only by dragging is one the teacher cannot
+     arrange on the iPad they teach from — and they are `shelfTool`, never
+     `shelfBtn`, or a phone hides them along with the ‹ › buttons. */
+  ok('▲ ▼ survive a phone, because they are not the buttons the phone drops',
+     /up\.className = 'iconBtn shelfTool';/.test(html) &&
+     /down\.className = 'iconBtn shelfTool';/.test(html) &&
+     !/(?:up|down)\.className = '[^']*shelfBtn/.test(html));
+  ok('…and the rank is RE-READ when one is pressed, because the button outlives the catalogue it was drawn from',
+     /up\.addEventListener\('click', function \(\) \{\n\s*moveShelfTo\(g\.shelf, shelfRank\(shelves, g\.shelf\) - 1\);/.test(html));
+  ok('…and they are disabled at the ends rather than silently doing nothing',
+     /up\.disabled = !\(rank > 0\);/.test(html) &&
+     /down\.disabled = !\(isFinite\(rank\) && rank < shelves\.length - 1\);/.test(html));
+  /* THE TWO DRAGS ARE HELD APART, in three ways at once: a global of its
+     own, a NAMESPACED payload, and ONE dispatcher that asks which move is
+     being made before it does anything. A shelf read as a paper would hand
+     a shelf id to `moveWorksheetToShelf` as a worksheet's. */
+  ok('a shelf being dragged is remembered in a global of its OWN, never the paper\'s',
+     /var _shelfOrderDragId = '';/.test(html) &&
+     /grip\.addEventListener\('dragstart', function \(e\) \{\n\s*_shelfOrderDragId = g\.shelf;/.test(html));
+  ok('…and it is ALWAYS let go of on dragend, or the next drop moves what was picked up a minute ago',
+     /grip\.addEventListener\('dragend', function \(\) \{\n\s*_shelfOrderDragId = '';/.test(html));
+  ok('…and its payload is namespaced, so the paper\'s own fallback refuses it',
+     /var SHELF_DRAG_PREFIX = 'shelf:';/.test(html) &&
+     /setData\('text\/plain', SHELF_DRAG_PREFIX \+ g\.shelf\)/.test(html));
+  ok('ONE dispatcher decides which drag it is, and asks about the shelf FIRST',
+     /shelf\.addEventListener\('dragover', function \(e\) \{\n\s*if \(_shelfOrderDragId\) \{/.test(html) &&
+     /shelf\.addEventListener\('drop', function \(e\) \{[\s\S]{0,200}?if \(_shelfOrderDragId\) \{/.test(html));
+  /* A shelf may not be dropped on the unsorted shelf (always last by rule)
+     or on itself, and `shelfOrderSlot` returning '' is what withholds the
+     `preventDefault` that would make either a drop target. */
+  ok('a shelf is never dropped on itself or on the unsorted shelf, which is last by rule',
+     /if \(!_shelfOrderDragId \|\| !targetId \|\| targetId === _shelfOrderDragId\) return '';/.test(html) &&
+     /var slot = shelfOrderSlot\(g\.shelf\);\n\s*[\s\S]{0,260}?if \(!slot\) return;/.test(html));
+  ok('…and the grip is drawn for the teacher alone, and never on 🕒 Recently opened',
+     /if \(teacher && !recent && g\.shelf\) \{\n\s*var grip = document\.createElement\('span'\);/.test(html));
+  ok('every lit drop target is cleared, whichever of the two drags lit it',
+     /lit\[i\]\.classList\.remove\('shelfDrop', 'shelfOrderBefore', 'shelfOrderAfter'\);/.test(html) &&
+     /querySelectorAll\('\.shelf\.shelfDrop, \.shelf\.shelfOrderBefore, \.shelf\.shelfOrderAfter'\)/.test(html));
+  /* `.shelf::before` / `::after` are the bookcase's own uprights, so the
+     drop indicator is an outline and a nudge rather than a third pseudo
+     element — and both stand down for a teacher who asked for less motion. */
+  ok('the drop indicator moves the shelf rather than borrowing the uprights',
+     /\.shelf\.shelfOrderBefore \{ transform: translateY\(12px\); \}/.test(html) &&
+     /\.shelf\.shelfOrderBefore, \.shelf\.shelfOrderAfter \{ transition: none; transform: none; \}/.test(html));
   /* 🕒 `lastOpenedAt` must never be the reason a worksheet does not open. */
   ok('when it was last opened is written fire-and-forget, as one merged field',
      /\.set\(\{ lastOpenedAt: firebase\.firestore\.FieldValue\.serverTimestamp\(\) \}, \{ merge: true \}\)\n\s*\.catch\(/.test(html));

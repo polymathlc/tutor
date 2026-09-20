@@ -553,6 +553,35 @@
     width: 32px; height: 32px; font-size: 1rem; line-height: 1; border-radius: 50%;
     background: rgba(255,244,224,.82); color: #4E2E12; border-color: rgba(94,55,23,.4);
   }
+  /* ▲ at the top of the bookcase is SAID rather than left to do nothing,
+     which reads as a button that has stopped working. */
+  .shelfHead .shelfTool[disabled] { opacity: .3; cursor: default; }
+  /* 🗂 THE GRIP — where a whole shelf is picked up. The dots are DRAWN,
+     for the reason the wood is: a glyph a school iPad has no font for
+     comes out as a box, and this is the one control whose whole job is to
+     say “you can move me”. */
+  .shelfHead .shelfGrip {
+    flex: 0 0 auto; width: 26px; height: 30px; border-radius: 8px; cursor: grab;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .shelfHead .shelfGrip::before {
+    content: ''; width: 15px; height: 22px;
+    background-image: radial-gradient(circle at 3.5px 3.5px, rgba(255,238,206,.95) 1.7px, transparent 1.8px);
+    background-size: 7px 7px;
+  }
+  .shelfHead .shelfGrip:hover { background: rgba(255,244,224,.22); }
+  .shelfHead .shelfGrip:active { cursor: grabbing; }
+  /* Where a dragged SHELF will land. The gap OPENS at the edge it slides
+     in at, so the place is shown rather than guessed — and it is a
+     `transform`, never `::before`/`::after`, because those two are the
+     bookcase's own uprights. */
+  .shelf.shelfMoving { opacity: .45; }
+  .shelf.shelfOrderBefore, .shelf.shelfOrderAfter {
+    outline: 3px solid #FFE2A8; outline-offset: 4px;
+    transition: transform .12s ease;
+  }
+  .shelf.shelfOrderBefore { transform: translateY(12px); }
+  .shelf.shelfOrderAfter { transform: translateY(-12px); }
   .chip.chipWhen { background: rgba(255,152,0,.14); color: #8A4B00; font-weight: 700; }
   .chip.chipShelf { background: rgba(63,81,181,.10); color: #283593; font-weight: 700; }
   @media (max-width: 640px) {
@@ -568,7 +597,10 @@
        row was meant to lose on a phone stay. Two classes outrank one. */
     .shelfHead .shelfBtn { display: none; }
   }
-  @media (prefers-reduced-motion: reduce) { .shelfItem { transition: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .shelfItem { transition: none; }
+    .shelf.shelfOrderBefore, .shelf.shelfOrderAfter { transition: none; transform: none; }
+  }
   /* WHO SET IT (a student's copy) — deliberately NOT the two below.
      `.chipSet` is "📌 Set by Mr Chung"; the class-state chips are their own
      names, because one class carrying two meanings is a rule that drifts —
@@ -2381,7 +2413,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.37.1';
+var APP_VERSION = 'v1.38.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -17485,6 +17517,13 @@ var SHELF_NAME_MAX = 48;
    shelf is a VIEW. It is kept off the `__…__` shape all the same, because
    a name that looks like a document id is one somebody later writes. */
 var SHELF_RECENT_ID = 'recent';
+/* 🗂 A SHELF BEING DRAGGED AND A PAPER BEING DRAGGED ARE DIFFERENT MOVES,
+   and this prefix is what keeps the one from being read as the other. The
+   live drag is held in a global (see `_shelfDragId`), but the `drop`
+   handler falls back to the payload — and an unprefixed shelf id coming
+   back through that fallback is a shelf id handed to `moveWorksheetToShelf`
+   as though it were a worksheet's. */
+var SHELF_DRAG_PREFIX = 'shelf:';
 var SHELF_RECENT_MAX = 12;          // a shelf, not a log
 var SHELF_RECENT_DAYS = 60;
 var SHELF_UNSORTED_TITLE = 'Not on a shelf yet';
@@ -17544,6 +17583,40 @@ function shelfRank(list, id) {
   var i = -1;
   (list || []).forEach(function (s, n) { if (i < 0 && s && s.id === id) i = n; });
   return i < 0 ? Infinity : i;
+}
+/* 🗂 THE CATALOGUE WITH ONE SHELF MOVED TO A NEW PLACE — pure, so the
+   harness can pin it, and the ONE place the arithmetic of a reorder
+   lives. Both ways of moving a shelf (the grip, and the ▲ ▼ buttons)
+   compute an index and come here.
+
+   **IT RENUMBERS `order`, AND THAT IS NOT TIDINESS — IT IS THE WHOLE
+   THING.** `shelfNorm` sorts by `order` FIRST, and `shelfSave` calls it
+   before it renumbers on the way out; so a list whose ARRAY order was
+   changed and whose `order` fields were not is sorted straight back into
+   the arrangement it started in. The write lands, the toast says the
+   shelf moved, the bookcase repaints exactly as it was, and nothing on
+   any screen says why.
+
+   Out of range is CLAMPED rather than refused: an index is worked out
+   from a rank here, so the ends are the honest answer to "further than
+   the bookcase goes" — where a POSITION on a page is never clamped
+   (`_markAt`), because there a clamp is a guess about a child's paper. */
+function shelfReorder(list, id, to) {
+  var cat = shelfNorm(list);
+  var from = -1;
+  cat.forEach(function (s, i) { if (from < 0 && s.id === id) from = i; });
+  /* A shelf the catalogue no longer has cannot be moved, and putting it
+     back would be this feature resurrecting a shelf somebody deleted. */
+  if (from < 0 || !cat.length) return cat;
+  to = Number(to);
+  if (!isFinite(to)) return cat;
+  to = Math.max(0, Math.min(cat.length - 1, Math.round(to)));
+  if (to === from) return cat;
+  var out = cat.slice();
+  out.splice(to, 0, out.splice(from, 1)[0]);
+  return out.map(function (s, i) {
+    return { id: s.id, name: s.name, order: i, createdAt: s.createdAt };
+  });
 }
 
 /* 🗂 WHICH SHELF A PAPER IS ON — the ONE place it is decided, and the
@@ -17807,6 +17880,40 @@ async function shelfDelete(id) {
   if (!await shelfSave(next)) return false;
   toast('🗂 “' + s.name + '” is off the bookcase.' +
         (on ? ' Its papers are back on “' + SHELF_UNSORTED_TITLE + '”.' : ''), 6000);
+  renderWorksheets();
+  return true;
+}
+
+/* 🗂 THE ONE MOVER FOR A WHOLE SHELF. The grip and the ▲ ▼ buttons both
+   end here, for the reason `moveWorksheetToShelf` exists: `dragstart` is
+   never fired by a touchscreen, so a bookcase that can only be arranged
+   by dragging is a bookcase the teacher cannot arrange on the iPad these
+   worksheets are written on — and two movers would be two places for the
+   refusals and the renumbering to drift apart.
+
+   THE ORDER IS THE CENTRE'S, not this screen's: a shelf is a label with
+   no class of its own, so moving it moves it on every class's bookcase at
+   once — which is what the toast says, because a teacher who arranges P5
+   Science and finds P6 Maths rearranged has been surprised by their own
+   app.
+
+   It refuses a non-admin IN THE HANDLER, the rule every door here
+   carries, and `shelfSave` refuses again besides. */
+async function moveShelfTo(id, to) {
+  if (!isAdmin(currentUser)) { toast('Only ' + setterName() + ' arranges the shelves.', 5000); return false; }
+  var s = shelfFind(shelves, id);
+  if (!s) { toast('That shelf is not there any more.', 5000); return false; }
+  var from = shelfRank(shelves, id);
+  var next = shelfReorder(shelves, id, to);
+  /* NOTHING MOVED IS NOT A FAILURE AND IS NOT WORTH A WORD: a shelf
+     dropped on itself, or ▲ at the top, has simply stayed where it is. */
+  if (shelfRank(next, id) === from) return false;
+  if (!await shelfSave(next)) return false;
+  var now = shelfRank(shelves, id);
+  var above = now > 0 ? shelves[now - 1] : null;
+  toast('🗂 “' + s.name + '” now comes ' +
+        (above ? 'after “' + above.name + '”' : 'first') +
+        ' — on every class\u2019s bookcase.', 6000);
   renderWorksheets();
   return true;
 }
@@ -18127,9 +18234,29 @@ function renderShelfBar() {
    over the page would otherwise leave the next drop moving whatever was
    picked up a minute ago. */
 var _shelfDragId = '';
+/* 🗂 AND THE SHELF BEING DRAGGED, which is a DIFFERENT move and so a
+   different global: one variable for both would mean a shelf dropped on a
+   shelf being read as a paper being filed onto it. */
+var _shelfOrderDragId = '';
+/* THE ONE CLEARER, and it has to know every class a drag can light up —
+   a highlight left on after a drag is a shelf that looks like a target
+   for a drag nobody is making. */
 function shelfDropClear() {
-  var lit = document.querySelectorAll('.shelf.shelfDrop');
-  for (var i = 0; i < lit.length; i++) lit[i].classList.remove('shelfDrop');
+  var lit = document.querySelectorAll('.shelf.shelfDrop, .shelf.shelfOrderBefore, .shelf.shelfOrderAfter');
+  for (var i = 0; i < lit.length; i++) {
+    lit[i].classList.remove('shelfDrop', 'shelfOrderBefore', 'shelfOrderAfter');
+  }
+}
+/* Which edge the dragged shelf slides in at, so the gap opens where it
+   will actually land rather than leaving the teacher to guess. '' means
+   this shelf is not somewhere it can go — itself, the unsorted shelf
+   (which is always last by rule) or one that is no longer catalogued. */
+function shelfOrderSlot(targetId) {
+  if (!_shelfOrderDragId || !targetId || targetId === _shelfOrderDragId) return '';
+  var from = shelfRank(shelves, _shelfOrderDragId);
+  var to = shelfRank(shelves, targetId);
+  if (!isFinite(from) || !isFinite(to)) return '';
+  return to < from ? 'shelfOrderBefore' : 'shelfOrderAfter';
 }
 
 function shelfNode(g) {
@@ -18139,6 +18266,38 @@ function shelfNode(g) {
   shelf.className = 'shelf' + (recent ? ' shelfRecent' : '');
   var head = document.createElement('div');
   head.className = 'shelfHead';
+  /* 🗂 THE GRIP — where a WHOLE shelf is picked up, and the only drag
+     source for one. The head is not made draggable instead: it carries
+     ✎ 🗑 ▲ ▼ ‹ ›, and a button pressed with a hair of movement would then
+     start a drag rather than a click. It goes FIRST, because a handle
+     nobody can find is a feature nobody has. */
+  if (teacher && !recent && g.shelf) {
+    var grip = document.createElement('span');
+    grip.className = 'shelfGrip';
+    grip.title = 'Drag to move this whole shelf up or down the bookcase';
+    grip.setAttribute('aria-hidden', 'true');
+    grip.draggable = true;
+    grip.addEventListener('dragstart', function (e) {
+      _shelfOrderDragId = g.shelf;
+      shelf.classList.add('shelfMoving');
+      try {
+        e.dataTransfer.setData('text/plain', SHELF_DRAG_PREFIX + g.shelf);
+        e.dataTransfer.effectAllowed = 'move';
+        /* The ghost is the WHOLE SHELF, because that is what is moving —
+           a thumbnail of the grip would say a handle was being dragged. */
+        e.dataTransfer.setDragImage(shelf, 48, 26);
+      } catch (err) {}
+    });
+    /* ALWAYS cleared on dragend, the rule `_shelfDragId` already carries:
+       a drag abandoned over the page would otherwise leave the next drop
+       moving whatever was picked up a minute ago. */
+    grip.addEventListener('dragend', function () {
+      _shelfOrderDragId = '';
+      shelf.classList.remove('shelfMoving');
+      shelfDropClear();
+    });
+    head.appendChild(grip);
+  }
   var h = document.createElement('h3');
   h.textContent = g.title || shelfTitle(g, { shelves: shelves });
   head.appendChild(h);
@@ -18155,6 +18314,32 @@ function shelfNode(g) {
   // itself — and both refuse in their own handlers besides, because a
   // button that is not drawn has never been the lock in this app.
   if (teacher && !recent && g.shelf) {
+    /* ▲ ▼ ARE THE TOUCH HALF and never an afterthought: they are the only
+       way to arrange the bookcase on a touchscreen, and they are what a
+       keyboard reaches. Both end at `moveShelfTo`, exactly as the 🗂
+       button on a card and a dragged booklet both end at the one mover.
+       They are DISABLED at the ends rather than silently doing nothing —
+       and the rank is re-read at the click, because this node outlives
+       the catalogue it was drawn from. */
+    var rank = shelfRank(shelves, g.shelf);
+    var up = document.createElement('button');
+    up.className = 'iconBtn shelfTool';
+    up.textContent = '▲';
+    up.title = 'Move this shelf up — on every class\u2019s bookcase';
+    up.disabled = !(rank > 0);
+    up.addEventListener('click', function () {
+      moveShelfTo(g.shelf, shelfRank(shelves, g.shelf) - 1);
+    });
+    head.appendChild(up);
+    var down = document.createElement('button');
+    down.className = 'iconBtn shelfTool';
+    down.textContent = '▼';
+    down.title = 'Move this shelf down — on every class\u2019s bookcase';
+    down.disabled = !(isFinite(rank) && rank < shelves.length - 1);
+    down.addEventListener('click', function () {
+      moveShelfTo(g.shelf, shelfRank(shelves, g.shelf) + 1);
+    });
+    head.appendChild(down);
     var ren = document.createElement('button');
     ren.className = 'iconBtn shelfTool';
     ren.textContent = '✎';
@@ -18239,22 +18424,50 @@ function shelfNode(g) {
   // be worse than one that never lit up at all.
   if (teacher && !recent) {
     shelf.dataset.shelfId = g.shelf || '';
+    /* 🗂 ONE DISPATCHER FOR BOTH DRAGS, so which move is being made is
+       decided in exactly one place — the rule `liveMarkApply` carries.
+       Two sets of handlers on one shelf would both fire, and the paper's
+       would read the shelf's own payload as a worksheet id. */
     shelf.addEventListener('dragover', function (e) {
+      if (_shelfOrderDragId) {
+        var slot = shelfOrderSlot(g.shelf);
+        /* NO preventDefault means NO drop here, which is what keeps a
+           shelf off the unsorted shelf (always last by rule) and off
+           itself. */
+        if (!slot) return;
+        e.preventDefault();
+        try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
+        shelf.classList.add(slot);
+        return;
+      }
       if (!_shelfDragId) return;
       e.preventDefault();
       try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
       shelf.classList.add('shelfDrop');
     });
     shelf.addEventListener('dragleave', function (e) {
-      if (!shelf.contains(e.relatedTarget)) shelf.classList.remove('shelfDrop');
+      if (!shelf.contains(e.relatedTarget)) {
+        shelf.classList.remove('shelfDrop', 'shelfOrderBefore', 'shelfOrderAfter');
+      }
     });
     shelf.addEventListener('drop', function (e) {
       e.preventDefault();
       shelfDropClear();
+      if (_shelfOrderDragId) {
+        var moving = _shelfOrderDragId;
+        _shelfOrderDragId = '';
+        /* Dropped ON a shelf, the dragged one TAKES ITS PLACE — which
+           reads the right way round whichever direction it came from. */
+        if (g.shelf && moving !== g.shelf) moveShelfTo(moving, shelfRank(shelves, g.shelf));
+        return;
+      }
       var id = _shelfDragId;
       if (!id) { try { id = e.dataTransfer.getData('text/plain'); } catch (err) { id = ''; } }
       _shelfDragId = '';
-      if (id) moveWorksheetToShelf(id, g.shelf || '');
+      /* A shelf's payload is NAMESPACED and refused here: the fallback
+         exists for a paper, and an unprefixed shelf id arriving through
+         it would be a shelf id handed over as a worksheet's. */
+      if (id && id.indexOf(SHELF_DRAG_PREFIX) !== 0) moveWorksheetToShelf(id, g.shelf || '');
     });
   }
   // Fewer cards than the shelf can show need no buttons and no wheel.

@@ -1794,20 +1794,22 @@ knew who was looking at it.**
   on a child's shelf is something nothing on the screen would ever explain.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
-## 🗂 SHELVES THE TEACHER MAKES — “2025 papers”, and every class on it (v1.37.0)
+## 🗂 SHELVES THE TEACHER MAKES — “2025 papers”, in the teacher’s own order (v1.38.0)
 
 `SHELF_DOC_ID` / `SHELF_MAX` / `SHELF_RECENT_*` / `SHELF_UNSORTED_TITLE` / `shelves` /
-`shelvesLoaded` / **`shelfNorm`** / `shelfFind` / `shelfLabel` / `shelfRank` / `shelfStampOf` /
-**`worksheetShelfId`** / `shelfRecentStamp` / `shelfAgo` / **`shelfRecentItems`** /
-**`shelfInScope`** / `shelfGroupCompare` / **`shelfGroups`** (now takes `opts`) / `shelfTitle`
-(now takes `opts`) / **`shelfSections`** / `loadShelves` / **`shelfSave`** / `shelfCreate` /
-`shelfRename` / `shelfDelete` / **`moveWorksheetToShelf`** / `shelfScope` / `SHELF_SCOPE_KEY` /
-`setShelfScope` / **`shelfScopeNow`** / `openShelfNameModal` / `shelfNameConfirm` /
-`openShelfPick` / `_shelfDragId` / `shelfDropClear` / `renderShelfBar` (search `SHELVES THE
-TEACHER MAKES`), plus the `shelf` field on a worksheet and on an assignment, `lastOpenedAt`
-written in `openWorksheet`, `#shelfBar` / `#shelfNameModal` / `#shelfPickModal`, the `#upShelf`
+`shelvesLoaded` / **`shelfNorm`** / `shelfFind` / `shelfLabel` / `shelfRank` /
+**`shelfReorder`** / `shelfStampOf` / **`worksheetShelfId`** / `shelfRecentStamp` / `shelfAgo` /
+**`shelfRecentItems`** / **`shelfInScope`** / `shelfGroupCompare` / **`shelfGroups`** (takes
+`opts`) / `shelfTitle` (takes `opts`) / **`shelfSections`** / `loadShelves` / **`shelfSave`** /
+`shelfCreate` / `shelfRename` / `shelfDelete` / **`moveWorksheetToShelf`** / **`moveShelfTo`** /
+`shelfScope` / `SHELF_SCOPE_KEY` / `setShelfScope` / **`shelfScopeNow`** / `openShelfNameModal` /
+`shelfNameConfirm` / `openShelfPick` / `_shelfDragId` / **`SHELF_DRAG_PREFIX`** /
+**`_shelfOrderDragId`** / **`shelfOrderSlot`** / `shelfDropClear` / `renderShelfBar` (search
+`SHELVES THE TEACHER MAKES`), plus the `shelf` field on a worksheet and on an assignment,
+`lastOpenedAt` written in `openWorksheet`, `#shelfBar` / `#shelfNameModal` / `#shelfPickModal`, the `#upShelf`
 picker, and the `.shelfBar` / `.shelfPick` / `.shelfRecent` / `.shelfDrop` / `.shelfDragging` /
-`.shelfEmpty` / `.shelfHead .shelfTool` / `.chipWhen` / `.chipShelf` CSS.
+`.shelfEmpty` / `.shelfHead .shelfTool` / `.shelfHead .shelfGrip` / `.shelfMoving` /
+`.shelfOrderBefore` / `.shelfOrderAfter` / `.chipWhen` / `.chipShelf` CSS.
 
 📚 The bookcase (v1.23.0) filed a paper by its level and subject and that was the only shelf it
 could ever be on — right until a class has forty papers on one. What a teacher HAS is piles: this
@@ -1874,6 +1876,46 @@ arrangement**, because it is not a thing each copy carries.
   cannot ask what is coming and must be told when the drag starts. It is cleared on `dragend`,
   always, or a drag abandoned over the page leaves the next drop moving whatever was picked up a
   minute ago.
+- **🗂 AND THE SHELVES THEMSELVES ARE PUT IN ORDER THE SAME TWO WAYS** (v1.38.0). They stood in
+  the order they were made, for ever, so the shelf a class works out of this term was wherever
+  it happened to land. **`shelfReorder` is the ONE place the arithmetic lives** — pure, so the
+  harness pins it — and `moveShelfTo` is the ONE mover both the grip's drop and the ▲ ▼ buttons
+  end at, exactly as a dragged booklet and a card's 🗂 button both end at `moveWorksheetToShelf`.
+  - **IT RENUMBERS `order`, AND THAT IS NOT TIDINESS — IT IS THE WHOLE THING.** `shelfSave` runs
+    `shelfNorm` before it writes and `shelfNorm` sorts by `order` FIRST, so a list whose ARRAY
+    order was changed and whose `order` fields were not is **sorted straight back into the
+    arrangement it started in**: the write lands, the toast says the shelf moved, the bookcase
+    repaints exactly as it was, and nothing on any screen says why.
+  - **AN INDEX IS CLAMPED WHERE A POSITION ON A PAGE IS NOT.** `to` is worked out from a RANK,
+    so the ends are the honest answer to “further than the bookcase goes”; `_markAt` refuses an
+    out-of-range point instead, because there a clamp is a guess about which question on a
+    child's paper was meant. A shelf the catalogue no longer has moves nothing and is never put
+    back — that would be a reorder resurrecting a shelf somebody deleted.
+  - **THE ORDER IS THE CATALOGUE'S, so it reaches the class.** It is not a field on anybody's
+    copy of a paper, which is the same reason `worksheetShelfId` reads the assignment: an order
+    kept per copy would govern only the students who had not started, and would look like it
+    worked right up until the teacher moved a shelf.
+  - **▲ ▼ ARE THE TOUCH HALF AND ARE NEVER AN AFTERTHOUGHT**, for the reason the 🗂 button on a
+    card is: `dragstart` is never fired by a touchscreen, so a bookcase arrangeable only by
+    dragging is one the teacher cannot arrange on the iPad they teach from. They are
+    `shelfTool`, never `shelfBtn` — that class is hidden under 640px — they are **disabled at
+    the ends** rather than silently doing nothing, and each **re-reads the rank at the click**,
+    because the button outlives the catalogue it was drawn from.
+  - **THE GRIP IS THE DRAG SOURCE AND THE HEAD IS NOT.** The heading carries ✎ 🗑 ▲ ▼ ‹ ›, and a
+    button pressed with a hair of movement on a draggable parent starts a drag rather than a
+    click. It is drawn in CSS rather than as a glyph, the rule the wood already follows.
+  - **THE TWO DRAGS ARE HELD APART THREE WAYS AND DISPATCHED IN ONE PLACE**: `_shelfOrderDragId`
+    is its own global (a shelf and a paper are different moves), the payload is namespaced
+    `SHELF_DRAG_PREFIX` so the paper path's `getData` fallback REFUSES it, and one `dragover` /
+    `drop` pair asks which move it is before it does anything — two sets of handlers on one
+    shelf would both fire and hand a shelf id to `moveWorksheetToShelf` as a worksheet's. It is
+    cleared on `dragend`, always, the rule `_shelfDragId` already carries.
+  - **A SHELF IS NEVER DROPPED ON ITSELF OR ON THE UNSORTED SHELF.** `shelfOrderSlot` returning
+    `''` is what withholds the `preventDefault` that would make either a drop target — the
+    unsorted shelf is always last by rule, and 🕒 Recently opened gets no handler at all.
+  - **THE INDICATOR IS AN OUTLINE AND A NUDGE, never a third pseudo element**: `.shelf::before`
+    and `::after` are the bookcase's own uprights. Both it and the fade stand down under
+    `prefers-reduced-motion`.
 - **🕒 RECENTLY OPENED IS A VIEW, NEVER A MOVE.** A paper on it is still standing on its own
   shelf further down and is still drawn there; nothing is written when it is shown, and it is
   **not a drop target** — “move it to Recently opened” is not a thing that can be true, and a
@@ -3413,14 +3455,16 @@ and nothing on any screen says what changed.
 
 ## House rules
 - After touching **🗂 the shelves** (`SHELF_DOC_ID`, `shelfNorm`, `shelfFind`,
-  `shelfRank`, `shelfStampOf`, `worksheetShelfId`, `shelfRecentStamp`,
-  `shelfAgo`, `shelfRecentItems`, `shelfInScope`, `shelfGroupCompare`,
-  `shelfGroups`, `shelfTitle`, `shelfSections`, `loadShelves`, `shelfSave`,
-  `shelfCreate`, `shelfRename`, `shelfDelete`, `moveWorksheetToShelf`,
-  `shelfScope`, `shelfScopeNow`, `renderShelfBar`, `shelfNode`'s drag
-  handlers, `openShelfPick`, `openShelfNameModal`, the `shelf` field on an
-  upload / a push / a fresh copy, `lastOpenedAt` in `openWorksheet`, or the
-  `.shelf*` / `.chipWhen` / `.chipShelf` CSS), run
+  `shelfRank`, `shelfReorder`, `shelfStampOf`, `worksheetShelfId`,
+  `shelfRecentStamp`, `shelfAgo`, `shelfRecentItems`, `shelfInScope`,
+  `shelfGroupCompare`, `shelfGroups`, `shelfTitle`, `shelfSections`,
+  `loadShelves`, `shelfSave`, `shelfCreate`, `shelfRename`, `shelfDelete`,
+  `moveWorksheetToShelf`, `moveShelfTo`, `shelfScope`, `shelfScopeNow`,
+  `renderShelfBar`, `shelfNode`'s grip / ▲ ▼ / drag handlers,
+  `SHELF_DRAG_PREFIX`, `_shelfOrderDragId`, `shelfOrderSlot`,
+  `shelfDropClear`, `openShelfPick`, `openShelfNameModal`, the `shelf` field
+  on an upload / a push / a fresh copy, `lastOpenedAt` in `openWorksheet`, or
+  the `.shelf*` / `.chipWhen` / `.chipShelf` CSS), run
   `node tools/tutor-tests.mjs` **and look at the home screen**. Every failure
   here is silent and the bookcase still paints. **Read the shelf off the COPY
   instead of the assignment and a paper the teacher moves this morning moves
@@ -3452,7 +3496,22 @@ and nothing on any screen says what changed.
   🗑 the `.shelfBtn` class and a phone hides the two buttons that arrange the
   bookcase. And drop the 🗂 button from the card and the only way to move a
   paper is a drag, which a touchscreen never fires at all — on the iPads these
-  worksheets are written on.
+  worksheets are written on. **And on the SHELVES' OWN ORDER: stop renumbering
+  `order` in `shelfReorder` and the whole thing quietly does not happen** —
+  `shelfSave` runs `shelfNorm`, which sorts by `order` FIRST, so the write
+  lands, the toast says the shelf moved, and the bookcase repaints exactly as
+  it was. Read the order off a COPY rather than the catalogue and the teacher
+  arranges a bookcase nobody else is looking at. Drop the ▲ ▼ buttons, or give
+  them `.shelfBtn`, and the bookcase can only be arranged by dragging — on the
+  one device that never drags. Capture the rank instead of re-reading it at the
+  click and the second press of ▲ moves the wrong shelf, because the button
+  outlives the catalogue it was drawn from. Let the two drags share a global —
+  or drop the namespaced payload, or ask about the PAPER first — and a shelf id
+  is handed to `moveWorksheetToShelf` as a worksheet's. Put a shelf back that
+  the catalogue no longer has and a reorder resurrects a shelf somebody
+  deleted. And let a shelf be dropped on itself or on the unsorted shelf and
+  the bookcase offers a move that cannot happen, which is worse than one that
+  never lit up.
 - After touching **🚀 the deploy workflow or the CI checks**
   (`.github/workflows/deploy-functions.yml`, the `node --test
   functions/test/*.test.js` step in `.github/workflows/checks.yml`, or the

@@ -12,6 +12,42 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.38.0 — 🗂 Drag a whole shelf up or down the bookcase
+
+The papers could be moved between shelves and the **shelves themselves could
+not be moved at all**: they stood in the order they were made, for ever. So the
+shelf a class is working out of this term was wherever it happened to land, and
+the only way to put it at the top was to delete the two above it and make them
+again.
+
+Now the teacher arranges the bookcase itself, and the arrangement is the
+**catalogue every class reads** — so a bookcase put in order this morning is the
+bookcase every student opens.
+
+- **⣿ Grab a shelf by its grip.** Every shelf the teacher can arrange grows a
+  handle at the left of its heading. Drag it up or down and drop it on another
+  shelf: the dragged shelf **takes that shelf's place**, and the one it landed
+  on moves aside. The shelf you are holding fades, and the shelf under the
+  pointer nudges out of the way so you can see where it is going.
+- **▲ ▼ on every shelf, because a touchscreen never drags.** `dragstart` is not
+  a thing an iPad fires, so a bookcase you could only arrange with a mouse is a
+  bookcase the teacher cannot arrange on the device they teach from. The two
+  buttons sit beside ✎ and 🗑 on the shelf's heading and move it one place at a
+  time; they go flat at the top and the foot rather than quietly doing nothing.
+- **It is the same order for everybody.** The order lives on the shelf
+  catalogue, not on anyone's copy of a paper, so it reaches the student who
+  started a worksheet yesterday just as surely as one who has not opened it yet.
+  The toast says so: *“Topical” now comes first — on every class's bookcase.*
+- **The shelves move; the papers never do.** Nothing about which paper is on
+  which shelf changes, and nothing is written to a single worksheet.
+- 🕒 **Recently opened stays at the top** and cannot be dragged or dropped on —
+  it is a view of what you were last working on, not a place. Neither can *Not
+  on a shelf yet*, which is always last by rule.
+- **Only the teacher.** A student never sees a grip or an arrow, and the app
+  refuses the move itself rather than merely hiding the buttons.
+
+---
+
 ## v1.37.1 — 🐛 Making a shelf works
 
 *“The bookcase could not be saved: Resource id `__shelves__` is invalid because
