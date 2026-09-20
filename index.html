@@ -2381,7 +2381,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.37.0';
+var APP_VERSION = 'v1.37.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -17434,9 +17434,15 @@ function shelfEntries(own, sets) {
       comes back empty, and nothing on any screen says why. The rules for
       `tutorAssignments` are already *read by any signed-in user, written
       by the admin*, which is EXACTLY what a shelf catalogue wants, so it
-      is the reserved document `tutorAssignments/__shelves__`. It carries
-      `active: false`, and `loadAssignments` asks for `active == true`, so
-      the catalogue can never come back as a worksheet set for a class.
+      is ONE reserved document in it, `tutorAssignments/shelfCatalogue`.
+      It carries `active: false`, and `loadAssignments` asks for
+      `active == true`, so the catalogue can never come back as a
+      worksheet set for a class — and it is dropped by NAME there too.
+      **THE ID IS AN ORDINARY ONE AND HAS TO BE**: Firestore RESERVES
+      every id matching `__.*__`, so v1.37.0's `__shelves__` was refused
+      on every read and every write ("Resource id … is invalid because it
+      is reserved"). The write said so in a toast; the read was caught, so
+      the bookcase simply had no shelves on it and nothing said why.
 
    ② A SHELF IS A LABEL, NOT A CLASS. It carries no level and no subject:
       “2025 papers” is ONE shelf, and a P5 Science child sees the P5
@@ -17463,10 +17469,22 @@ function shelfEntries(own, sets) {
       disappear — it stands on its own “Any level” shelf instead, which is
       the rule `canSeeWorksheet` already follows.
    ===================================================================== */
-var SHELF_DOC_ID = '__shelves__';   // the reserved catalogue, in ASSIGN_COLLECTION
+/* A FIRESTORE DOCUMENT ID MAY NEVER MATCH `__.*__` — those are RESERVED,
+   and the write is refused outright ("Resource id … is invalid because it
+   is reserved"). v1.37.0 called this document `__shelves__`, so every
+   attempt to make a shelf failed with that message and the read failed
+   with it too — caught, so the bookcase quietly fell back to having no
+   shelves at all and the rest of the home screen looked perfectly right.
+   The name has to be an ORDINARY id; the reserved document is still the
+   idea, and `active: false` plus the by-name guard in `loadAssignments`
+   are what keep it out of the class's set list. */
+var SHELF_DOC_ID = 'shelfCatalogue'; // the catalogue, in ASSIGN_COLLECTION
 var SHELF_MAX = 120;                // one Firestore document, which dies at 1 MB
 var SHELF_NAME_MAX = 48;
-var SHELF_RECENT_ID = '__recent__';
+/* A SECTION KEY, never a document id and never written anywhere: the 🕒
+   shelf is a VIEW. It is kept off the `__…__` shape all the same, because
+   a name that looks like a document id is one somebody later writes. */
+var SHELF_RECENT_ID = 'recent';
 var SHELF_RECENT_MAX = 12;          // a shelf, not a log
 var SHELF_RECENT_DAYS = 60;
 var SHELF_UNSORTED_TITLE = 'Not on a shelf yet';
