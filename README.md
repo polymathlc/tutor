@@ -12,6 +12,30 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.45.0 — 👉 The tutor can mark TWO places at once
+
+*"Can the AI be more like Brilliant's Koji — actually draw boxes to show where I should be
+looking?"* It could draw one box. It could not draw the pair.
+
+**"Compare the first input with the first output" is not a sentence about one spot.** A tutor
+saying it boxes BOTH, because what is being taught is the relation between them — and a child
+handed one box has to guess which half they are looking at. The tutor's finger was a SINGLETON,
+so a second gesture silently REPLACED the first: on a hint, only the last one survived; in live
+mode, a reply that opened with two pointer markers put up the second and the tutor's own words
+then named a mark nobody could see.
+
+- **The finger is a bounded LIST now**, on a hint and in live mode alike. Up to three marks stand
+  together; more than that is a page under magenta, which says nothing at all about where to look.
+- **They go up TOGETHER**, as one node with one fade-in. Two boxes that arrive a beat apart read
+  as two separate statements rather than as the one comparison they are.
+- **And where there is more than one they are NUMBERED ① ②**, so the tutor's own words can name
+  them — *"compare ① with ②"*. There is deliberately **no line drawn between them**: a magenta
+  rule from one box to the other is struck across whatever is printed in between.
+- **A single gesture is byte-for-byte the drawing it has always been** — no number, same node,
+  same fade — and a hint saved before this still puts its one finger back exactly as it did.
+- Both prompts say what a second mark is FOR: a comparison the student cannot get past without,
+  never a second thing that happens to be interesting.
+
 ## v1.44.0 — 📕 A question is in the mistake book as soon as it is MARKED
 
 **A mistake reached the book only when the WHOLE paper had finished marking.** So a run that
