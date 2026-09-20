@@ -2493,7 +2493,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.43.0';
+var APP_VERSION = 'v1.44.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -10255,6 +10255,10 @@ async function runMarking() {
     await Promise.all([aiWithDeadline(function () { return loadTeachingNotes(); }, 10000, null, 'Teaching notes took too long to load. Please try again.'), keyEnsureReady()]);
     var total = work.length;
     var carry = '';
+    /* ONE RATION FOR THE WHOLE PAPER. `fileMistakes` runs once a BATCH now,
+       so the refill cannot live inside it — see `markRation`. */
+    markRation();
+    var mistFiled = 0, mistPast = 0;
     for (var start = 0; start < total; start += MARK_BATCH) {
       if (run !== _markRun || epoch !== wsEpoch) return;
       var batch = work.slice(start, start + MARK_BATCH);
@@ -10305,6 +10309,23 @@ async function runMarking() {
       var last = marking.items[marking.items.length - 1];
       carry = last ? _mkStr(last.question, 300) : '';
       renderMarking();
+      /* 📕 EVERY QUESTION THIS BATCH JUDGED GOES INTO THE BOOK NOW, set
+         out through the same rapid-add rebuild as any other mistake — so a
+         run that stops here has still delivered them, ready to practise or
+         to print. A blank is NOT filed yet: `markSkipped` asks whether a
+         LATER question was answered, and mid-run there are none, so every
+         blank would read as the tail. They are picked up by the end-of-run
+         pass below, where the whole paper is in hand.
+
+         AWAITED, never fired and forgotten: it writes documents, uploads
+         pictures and reloads the book, and two passes in flight would race
+         over `have`, the ration and `mistakes` itself. The next batch's
+         reading is the wait, which is time this would have spent anyway. */
+      try {
+        var got = await fileMistakes({ marked: true, quiet: true });
+        mistFiled += got.filed;
+      } catch (e) { console.warn('Mistakes could not be filed for this batch', e); }
+      if (run !== _markRun || epoch !== wsEpoch) return;
     }
     marking.runAt = Date.now();
     usageNote('mark', docName || '');
@@ -10322,7 +10343,19 @@ async function runMarking() {
     setDirty(true);
     _markFiling = true;
     markProgress(total, total, 'Marks ready — preparing your mistake book…');
-    try { await fileMistakes(); } finally { _markFiling = false; }
+    /* THE LAST PASS IS THE ONE THAT CAN SEE THE WHOLE PAPER, so it is where
+       🕳 the skipped blanks are judged — and where the paper's own count is
+       said, once, over everything the batches filed as well. */
+    try {
+      var endGot = await fileMistakes({ quiet: true });
+      mistFiled += endGot.filed;
+      mistPast += endGot.wentPast;
+      if (mistFiled) {
+        toast('📕 ' + mistFiled + ' question' + (mistFiled === 1 ? '' : 's') +
+              ' added to your mistake book' +
+              (mistPast ? ' — ' + mistPast + ' you skipped past' : '') + '.', 5000);
+      }
+    } finally { _markFiling = false; }
   } catch (e) {
     toast('Marking failed: ' + ((e && e.message) || 'please try again.'), 6000);
   } finally {
@@ -12458,8 +12491,29 @@ function mistakesCollRef() {
   return db.collection('users').doc(currentUser.uid).collection('mistakes');
 }
 
-async function fileMistakes() {
-  if (!currentUser || !currentDocId) return;
+/* 📕 A QUESTION IS IN THE BOOK AS SOON AS IT IS MARKED — v1.44.0.
+   `fileMistakes` used to run ONCE, after the last batch of the whole paper.
+   So a run that was interrupted — the tab closed, the network gone, a
+   worksheet left half marked, the student simply stopping — filed NOTHING,
+   however many questions had already been read and judged. The marking
+   cards were on the screen and the book was empty.
+
+   `opts.marked` is the mid-run call: the questions the model has already
+   judged, filed the moment their batch lands, through the very same rapid-add
+   rebuild every other mistake goes through. Called with nothing it is
+   byte-for-byte the end-of-run pass it always was.
+
+   🕳 A SKIPPED BLANK CANNOT BE JUDGED MID-RUN, and that is the one thing
+   this split must keep straight. `markSkipped` asks whether any LATER
+   question was answered, and mid-run there are no later questions yet —
+   every blank looks like the tail. Filing one then is a book of questions
+   nobody has failed at, which is exactly what the 🕳 rule refuses. So a blank
+   waits for the end, where the whole paper is in hand; a WRONG or PARTLY
+   RIGHT answer never needed anything after it and goes straight in. */
+async function fileMistakes(opts) {
+  if (!currentUser || !currentDocId) return { filed: 0, wentPast: 0 };
+  var markedOnly = !!(opts && opts.marked);
+  var quiet = !!(opts && opts.quiet);
   var context = { epoch: wsEpoch, docId: currentDocId, uid: currentUser.uid };
   /* WHAT GOES IN THE BOOK: every wrong or partly-right answer, and every
      blank the student went PAST (🕳 above). ONE walk, in paper order, each
@@ -12470,19 +12524,21 @@ async function fileMistakes() {
   marking.items.forEach(function (it, i) {
     if (it.marked) {
       if (it.verdict === 'wrong' || it.verdict === 'partial') due.push({ it: it, skipped: false });
-    } else if (markSkipped(marking.items, i)) {
+    } else if (!markedOnly && markSkipped(marking.items, i)) {
       due.push({ it: it, skipped: true });
     }
   });
-  if (!due.length) return;
+  if (!due.length) return { filed: 0, wentPast: 0 };
   var coll = mistakesCollRef();
   var have = {};
   mistakes.forEach(function (m) { have[m.key] = 1; });
-  // The rebuild ration is refilled HERE and nowhere else. Spent per call
-  // inside `_mbBuildBlocks`, so a paper where every question is wrong costs
-  // ten vision calls and then quietly falls back to the tiers under it.
-  _mbBuildBudget = MB_BUILD_MAX;
-  _mbEnhanceBudget = MB_ENHANCE_MAX;
+  /* THE RATION IS NOT REFILLED HERE ANY MORE, and that is what makes the
+     per-batch call safe. It used to be refilled at the top of this function
+     — which was right while this ran ONCE a paper, and is a ten-fold
+     overspend now that it runs once a BATCH: a ten-page paper would refill
+     ten times and quietly buy a hundred vision calls. `markRation()` fills
+     it at the door that starts the run, so a paper's worth of rebuilds is
+     still `MB_BUILD_MAX` however many batches it arrives in. */
   var filed = 0, wentPast = 0;
   for (var i = 0; i < due.length; i++) {
     if (!mistakeContextOK(context)) break;
@@ -12575,6 +12631,13 @@ async function fileMistakes() {
   }
   rbForgetPages();
   if (filed && mistakeContextOK(context)) {
+    /* THE RELOAD AND THE MIRROR RUN ON EVERY PASS, mid-run included. They
+       are what make a half-marked paper's book REAL rather than pending: the
+       cards are on the student's screen and the teacher's copy is current,
+       so a run that stops here has still delivered everything it read. The
+       mirror is a whole-book, last-writer-wins write (📕 above), so running
+       it more than once a paper is a few extra writes and never a wrong
+       answer. */
     await loadMistakes(true);
     /* AFTER the reload, never before it: the mirror is a copy of the book
        as it now stands, so writing it from the list this run started with
@@ -12584,10 +12647,31 @@ async function fileMistakes() {
     /* THE SKIPPED ONES ARE NAMED. They are new in v1.34.0 and they are the
        ones a student did not know they had "got wrong", so a count that
        folded them in with the crosses would be a book that had quietly
-       grown with nothing anywhere saying why. */
-    toast('📕 ' + filed + ' question' + (filed === 1 ? '' : 's') + ' added to your mistake book' +
-          (wentPast ? ' — ' + wentPast + ' you skipped past' : '') + '.', 5000);
+       grown with nothing anywhere saying why.
+       ONE TOAST A PAPER, NEVER ONE A BATCH: the mid-run passes are `quiet`
+       and the caller adds their counts up, so a ten-page paper says what it
+       filed once rather than four times over. */
+    if (!quiet) {
+      toast('📕 ' + filed + ' question' + (filed === 1 ? '' : 's') + ' added to your mistake book' +
+            (wentPast ? ' — ' + wentPast + ' you skipped past' : '') + '.', 5000);
+    }
   }
+  return { filed: filed, wentPast: wentPast };
+}
+
+/* THE ONE PLACE A MARKING RUN'S REBUILD RATION IS FILLED, and it is filled
+   at the door that STARTS the run rather than inside `fileMistakes`, which
+   now runs once per BATCH. Refilled there it would be a ten-fold overspend:
+   a ten-page paper would fill ten times and quietly buy a hundred vision
+   calls, with nothing on any screen saying so.
+
+   🧩 `mbRedo` is deliberately NOT a caller. It refills the ENHANCE budget
+   alone, because its own bound is `MB_REDO_MAX` and `_mbBuildFrom` spends
+   nothing — one counter for two different limits is a press that silently
+   does nothing once a paper has been marked. */
+function markRation() {
+  _mbBuildBudget = MB_BUILD_MAX;
+  _mbEnhanceBudget = MB_ENHANCE_MAX;
 }
 
 /* ③ THE LAST TIER — the whole page, cut out of the PDF with none of the

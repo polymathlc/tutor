@@ -1197,7 +1197,7 @@ ok('…and never the composited one, which carries the student\'s own answer',
 /* THE DOCUMENT IS WRITTEN FIRST and every picture is an extra on it: a
    Storage bucket that is not there, or rules that refuse the write, must
    cost the picture and never the mistake. */
-const FILING = between('async function fileMistakes() {', '/* ③ THE LAST TIER', 'filing a mistake');
+const FILING = between('async function fileMistakes(opts) {', "/* THE ONE PLACE A MARKING RUN'S REBUILD RATION IS FILLED", 'filing a mistake');
 ok('the document is added before anything is uploaded',
    FILING.indexOf('await coll.add(doc)') < FILING.indexOf('mbRebuild('));
 ok('a rebuild that failed cannot cost the mistake',
@@ -1234,7 +1234,7 @@ ok('✂️ Crop is offered only where the picture is actually on screen',
    card left to guess would read an unjudged ANSWER as a skip the day one is
    ever filed. */
 ok('a blank the student went past is filed beside the wrong answers',
-   /\} else if \(markSkipped\(marking\.items, i\)\) \{/.test(FILING),
+   /\} else if \(!markedOnly && markSkipped\(marking\.items, i\)\) \{/.test(FILING),
    'the one blank that belongs in the book');
 ok('…gathered in ONE walk, so the loop never decides it a second time',
    /var it = due\[i\]\.it;\n\s*var skipped = due\[i\]\.skipped;/.test(FILING));
@@ -1242,6 +1242,84 @@ ok('…and the document carries which it was', /\n      skipped: skipped,/.test(
 ok('…and the toast names them rather than folding them in with the crosses',
    /you skipped past/.test(FILING),
    'a book that quietly grew is one nobody trusts');
+
+/* 📕 A QUESTION IS IN THE BOOK AS SOON AS IT IS MARKED — v1.44.0. This one
+   fails in two opposite directions and BOTH are silent: stop filing per
+   batch and an interrupted run leaves the book empty with the marking cards
+   on screen, and file a BLANK per batch and the book fills with questions
+   nobody has failed at, because mid-run every blank looks like the tail. */
+section('The book fills as the paper is marked');
+
+ok('the filing takes a marked-only mode', /var markedOnly = !!\(opts && opts\.marked\);/.test(FILING),
+   'the mid-run pass');
+ok('…and a quiet one, so a ten-page paper says it once rather than four times',
+   /var quiet = !!\(opts && opts\.quiet\);/.test(FILING));
+ok('called with NOTHING it is the end-of-run pass it always was',
+   /async function fileMistakes\(opts\) \{/.test(FILING) &&
+   !/opts\.marked \|\|/.test(FILING),
+   'every older reading of it is unchanged');
+ok('it hands its counts BACK rather than only toasting them',
+   /return \{ filed: filed, wentPast: wentPast \};/.test(FILING),
+   'the caller is what adds a paper up');
+ok('…and an early exit answers in the same shape',
+   /return \{ filed: 0, wentPast: 0 \};/.test(FILING));
+
+/* 🕳 THE BLANK IS THE HALF THAT MUST WAIT. `markSkipped` asks whether a
+   LATER question was answered; mid-run there are none. */
+ok('a WRONG or PARTLY RIGHT answer is filed whatever mode it is in',
+   /if \(it\.verdict === 'wrong' \|\| it\.verdict === 'partial'\) due\.push/.test(FILING));
+ok('…and a blank is judged only when the whole paper is in hand',
+   /!markedOnly && markSkipped/.test(FILING),
+   'mid-run every blank reads as the tail');
+
+/* THE RATION IS THE OTHER HALF, and it is a ten-fold overspend when it is
+   got wrong: a refill inside a function that now runs once a BATCH buys a
+   hundred vision calls on a ten-page paper, silently. */
+const RATION = between('function markRation() {', '/* ③ THE LAST TIER', 'the run ration');
+ok('ONE function fills the marking run\'s ration', /_mbBuildBudget = MB_BUILD_MAX;/.test(RATION));
+ok('…and the enhance budget with it', /_mbEnhanceBudget = MB_ENHANCE_MAX;/.test(RATION));
+ok('the filing NEVER refills the build budget itself',
+   !/_mbBuildBudget = MB_BUILD_MAX/.test(FILING),
+   'once a batch, it would be a ten-fold overspend');
+ok('…nor the enhance budget', !/_mbEnhanceBudget = MB_ENHANCE_MAX/.test(FILING));
+ok('the ration is filled at the door that STARTS the run',
+   /markRation\(\);\n\s*var mistFiled = 0, mistPast = 0;/.test(html),
+   'once a paper, however many batches it arrives in');
+ok('…and it has EXACTLY ONE caller, which is the marking run',
+   (html.match(/markRation\(\);/g) || []).length === 1,
+   '🧩 Set it out again is bounded by MB_REDO_MAX — one counter for two limits is a button that does nothing');
+ok('…so mbRedo still fills only the enhance budget',
+   /_mbEnhanceBudget = MB_ENHANCE_MAX;/.test(between('async function mbRedo(', 'function renderMistTools', 'the redo door')));
+
+/* THE PER-BATCH CALL. Fired and forgotten, two passes race over `have`,
+   the ration and `mistakes` itself. */
+const MARKRUN = between('async function runMarking() {', 'function markTally() {', 'the marking run');
+ok('every batch files what it just judged',
+   /var got = await fileMistakes\(\{ marked: true, quiet: true \}\);/.test(MARKRUN));
+ok('…AWAITED, never fired and forgotten',
+   /await fileMistakes\(\{ marked: true/.test(MARKRUN),
+   'two passes in flight race over the book itself');
+ok('…and a batch that could not be filed never sinks the marking',
+   /catch \(e\) \{ console\.warn\('Mistakes could not be filed for this batch', e\); \}/.test(MARKRUN));
+ok('…and the run re-checks it is still the run afterwards',
+   /Mistakes could not be filed for this batch[\s\S]{0,120}if \(run !== _markRun \|\| epoch !== wsEpoch\) return;/.test(MARKRUN),
+   'a paper closed mid-filing must not carry on marking it');
+ok('the LAST pass is the one that sees the whole paper',
+   /var endGot = await fileMistakes\(\{ quiet: true \}\);/.test(MARKRUN),
+   '🕳 where the skipped blanks are judged');
+ok('ONE toast a paper, over everything the batches filed as well',
+   /mistFiled \+= endGot\.filed;[\s\S]{0,200}if \(mistFiled\) \{[\s\S]{0,120}added to your mistake book/.test(MARKRUN));
+ok('…and the skipped ones are still named separately in it',
+   /mistPast \? ' — ' \+ mistPast \+ ' you skipped past' : ''/.test(MARKRUN));
+
+/* THE RELOAD AND THE MIRROR RUN ON EVERY PASS, which is what makes a
+   half-marked paper's book real rather than pending. */
+ok('every pass reloads the book, so the cards are on screen at once',
+   /await loadMistakes\(true\);/.test(FILING));
+ok('…and the teacher\'s copy is current after each one',
+   /loadMistakes\(true\);[\s\S]{0,400}mistakeMirrorSync\(\);/.test(FILING),
+   'AFTER the reload, never before it');
+
 /* A SKIPPED QUESTION MUST NOT WEAR THE RED OF A WRONG ANSWER. That is the
    cross the marking refuses to put on a blank, moved into the book — and a
    child reading it is told they got wrong a question they never tried. */
