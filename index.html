@@ -1886,7 +1886,7 @@
 
         <button class="btn btnSm keyChip hidden" id="keyChip" title="This worksheet's answer key">🔑 Answer key</button>
         <button class="btn btnSm" id="printBtn" title="Print this worksheet">🖨 Print</button>
-        <button class="btn btnSm" id="saveBtn" title="Save your work">Save</button>
+        <button class="btn btnSm" id="saveBtn" title="Saves by itself as you work — tap to save now">Save</button>
       </div>
 
       <div id="wsMain">
@@ -2493,7 +2493,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.42.0';
+var APP_VERSION = 'v1.43.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -16027,6 +16027,20 @@ function renderMistFilters() {
   });
   filters.appendChild(statusRow);
 
+  /* THE SORT IS ITS OWN ROW, never folded in beside the status chips.
+     "Sorted" there means a question the student has since got right, and a
+     sort chip on the same row reading "Newest first" is two different kinds
+     of answer wearing one shape. It is drawn only when there is something to
+     order: one card has no order. */
+  if (mistakes.length > 1) {
+    var sortRow = document.createElement('div');
+    sortRow.className = 'mistChipRow';
+    MIST_SORTS.forEach(function (f) {
+      mistChip(sortRow, f[1], mistSort === f[0], function () { mistSort = f[0]; renderMistakes(); });
+    });
+    filters.appendChild(sortRow);
+  }
+
   /* THE SUBJECT IS CHIPS AND THE REST ARE PICKERS, and that split is the
      phone. Two or three subjects fit on a row a thumb can reach; a term's
      worth of topics is a wall of chips nobody can read, and a wall is
@@ -16123,7 +16137,7 @@ function renderMistList() {
   /* SECTIONS, cut out of the very list the buttons above read. A single
      subject and a single topic draw no heading at all — a heading over
      the whole book says nothing and costs a screenful on a phone. */
-  var groups = mistGroups(show);
+  var groups = mistGroups(show, mistSort === 'new');
   var manySubjects = groups.length > 1;
   groups.forEach(function (g) {
     var sec = document.createElement('section');
@@ -16556,6 +16570,20 @@ var mistTopic = 'all';
 var mistLo = 'all';
 var mistQuery = '';
 
+/* 🕒 HOW THE BOOK IS ORDERED — and it is a SORT, never a filter.
+   📚 By topic is the syllabus's own order: revising goes DOWN the book
+   rather than hopping about it, which is what the sections are for. 🕒
+   Newest first answers the other question entirely — "what did I just get
+   wrong?" — and the paper a student has this minute marked is the one they
+   came to the book to look at.
+
+   IT HIDES NOTHING, so `mistFiltered` must never count it: ✕ Clear the
+   filters is about work that is out of sight, and a sort has put none of it
+   there. It is remembered NOWHERE, the rule the filters already follow —
+   one rule for the whole bar rather than two. */
+var MIST_SORTS = [['topic', '📚 By topic'], ['new', '🕒 Newest first']];
+var mistSort = 'topic';
+
 /* 🕳 A BLANK THE STUDENT WENT PAST. The ONE predicate every surface in
    the book reads — the card's colour, its chip, the note on it, the search
    and the practice session's prompt — so not one of them can decide for
@@ -16675,6 +16703,18 @@ function mistSubjectRank(key) {
   return SUBJECTS.length + (key === MIST_NO_SUBJECT ? 1 : 0);
 }
 function mistCompare(a, b) {
+  /* 🕒 NEWEST FIRST READS THE STAMP, not the order the read happened to
+     arrive in. `loadMistakes` asks Firestore for `createdAt` descending, so
+     `_i` already IS that order today — and a sort that leaned on it would
+     silently become something else the day that query changed, on a chip
+     still reading "Newest first". The stamp is the fact; `_i` is only the
+     tie-break, which is what keeps two questions filed in the same marking
+     run in PAPER order under it. */
+  if (mistSort === 'new') {
+    var sa = stampOf(a && a.createdAt), sb = stampOf(b && b.createdAt);
+    if (sa !== sb) return sb - sa;
+    return a._i - b._i;
+  }
   var ra = mistSubjectRank(mistSubjectKey(a)), rb = mistSubjectRank(mistSubjectKey(b));
   if (ra !== rb) return ra - rb;
   var pa = mistPlace(a), pb = mistPlace(b);
@@ -16697,7 +16737,20 @@ function mistakesShown() {
 /* The sections, cut out of that SAME ordered list. PURE, and it neither
    filters nor re-sorts: a group that quietly dropped a card would be a
    book that prints more questions than it shows. */
-function mistGroups(list) {
+function mistGroups(list, flat) {
+  /* 🕒 NEWEST FIRST IS ONE LIST AND IS NEVER GROUPED. Cut into subjects
+     and topics, the card the student opened the book to see is buried under
+     whichever heading it happens to belong to — which is the whole thing
+     this sort exists to avoid. One section with one nameless group is what
+     `renderMistList` already draws with no headings at all (`manySubjects`
+     and `manyTopics` are both false), so the flat list costs no second
+     renderer. It still FILTERS NOTHING: same list in, same list out. */
+  if (flat) {
+    var items = (list || []).slice();
+    if (!items.length) return [];
+    return [{ key: '~all', label: '', n: items.length,
+              topics: [{ key: '~all', label: '', items: items }] }];
+  }
   var out = [], bySub = {};
   (list || []).forEach(function (m) {
     var sk = mistSubjectKey(m);
@@ -19729,22 +19782,50 @@ function scoreOf() {
   return { correct: c.correct, attempted: c.correct + c.partial + c.wrong };
 }
 
+/* 🐛 THE SAVE THREW BEFORE IT WROTE A BYTE, and did it in silence.
+   This function's first statement called `syncTextEditValue()` — a name
+   that has never existed in this file; the function is
+   `syncActiveTextEditValue`. So EVERY save threw a ReferenceError on its
+   very first line: the auto-save timer, the flush on the way out of the
+   tab, and the Save button alike. Nothing was ever written — no ink, no
+   marking, no hints, no score — and the button simply sat on "Save".
+
+   IT STAYED SILENT BECAUSE NOBODY WAS HOLDING THE PROMISE. `performSave` is
+   async, so the throw was a rejected promise, and the timer
+   (`setTimeout(function () { performSave(true); })`), `flushSave` and the
+   button all call it without awaiting. An unhandled rejection is a line in
+   a console no student opens. Three things close that, and all three are
+   needed: the sync is wrapped so it can never cost the save (below),
+   `saveCrashed` catches at every fire-and-forget call site, and `savingNow`
+   is released in a `finally`. */
 async function performSave(quiet) {
-  // The words in the box being typed in are not in `annotations` until they
-  // are written there — saving first would store an EMPTY box over the
-  // child's answer. `syncTextEditValue` and NOT `commitActiveTextEdit`: this
-  // runs on the AUTO-SAVE timer, and ending the edit here closes the box
-  // under a child who is still typing into it. See syncTextEditValue.
-  syncTextEditValue();
   if (!currentDocId || !currentUser) return false;
   // One write at a time. Auto-save, a hidden tab and a pressed button can
   // all fire within a second of each other, and two writes of the same body
   // racing is how the older one lands last.
   if (savingNow) { saveAgain = true; return false; }
   savingNow = true;
+  // A TOOLBAR THAT IS NOT THERE MUST NOT STRAND THE SAVE. `btn.disabled` on
+  // a null is a throw between the claim above and the `finally` below — the
+  // same shape of silence this whole block exists to end.
   var btn = $('saveBtn');
-  btn.disabled = true;
+  if (btn) btn.disabled = true;
   setSaveState('saving');
+  /* The words in the box being typed in are not in `annotations` until they
+     are written there — saving first would store an EMPTY box over the
+     child's answer. `syncActiveTextEditValue` and NOT `commitActiveTextEdit`:
+     this runs on the AUTO-SAVE timer, and ending the edit here would close
+     the box under a child who is still typing into it.
+
+     IT IS WRAPPED ON ITS OWN, and that is the load-bearing half. The box
+     being typed in is ONE annotation; the worksheet is the whole lesson. A
+     read of that box that throws must cost the box and never the save —
+     which is precisely what it cost, for forty-eight versions. */
+  try {
+    syncActiveTextEditValue();
+  } catch (e) {
+    console.error('The open text box could not be read into the save', e);
+  }
   try {
     await writeBody(currentDocId, worksheetBody(), {
       name: docName,
@@ -19792,11 +19873,30 @@ async function performSave(quiet) {
       toast('Could not save just yet — your work is kept on this device and ' +
             'I will keep trying. ' + ((e && e.message) || e), 6000);
     }
+  } finally {
+    /* RELEASED IN A `finally`. It used to be released after the catch, so
+       anything that threw between the claim and the write left it true and
+       every later save returned `false` without a word — a second way for
+       this app to stop saving and say nothing. */
+    savingNow = false;
+    if (btn) btn.disabled = false;
   }
-  savingNow = false;
-  btn.disabled = false;
   if (saveAgain) { saveAgain = false; scheduleAutoSave(); }
   return !dirty;
+}
+
+/* WHAT A FIRE-AND-FORGET SAVE DOES WITH A THROW. The timer, the flush and
+   the Save button do not await `performSave`, so without this a throw
+   anywhere in it is an unhandled rejection: no ⚠ on the button, no copy
+   kept on the device, no retry armed, and nothing on any screen. It reports
+   it exactly as a REFUSED WRITE is reported, because to the student they are
+   the same thing — their work is not on the server. */
+function saveCrashed(e) {
+  console.error('The save itself threw', e);
+  saveFails++;
+  try { localBackupWrite(currentDocId); } catch (_) {}
+  setSaveState('failed');
+  scheduleAutoSave();
 }
 
 /* ================= AUTO-SAVE =================
@@ -19827,7 +19927,11 @@ function autoSaveDelay() {
 function scheduleAutoSave() {
   if (!currentDocId) return;
   clearTimeout(autoSaveTimer);
-  autoSaveTimer = setTimeout(function () { performSave(true); }, autoSaveDelay());
+  autoSaveTimer = setTimeout(function () {
+    // .catch, ALWAYS — see saveCrashed. Nothing here awaits the save, so a
+    // throw is a rejected promise with nobody holding it.
+    performSave(true).catch(saveCrashed);
+  }, autoSaveDelay());
 }
 
 /* WHAT THE STUDENT IS TOLD. It was the Save button's own label, which could
@@ -19845,9 +19949,9 @@ function setSaveState(st) {
     return;
   }
   btn.classList.remove('saveBad');
-  if (st === 'saved') { btn.textContent = '✓ Saved'; btn.title = 'Saved'; return; }
+  if (st === 'saved') { btn.textContent = '✓ Saved'; btn.title = 'Saved — it saves by itself as you work'; return; }
   btn.textContent = 'Save';
-  btn.title = 'Save your work';
+  btn.title = 'Saves by itself as you work — tap to save now';
 }
 
 /* ---- The copy on the device ----
@@ -19933,7 +20037,7 @@ function flushSave() {
   if (dirty && currentDocId) {
     clearTimeout(autoSaveTimer);
     localBackupWrite(currentDocId);   // before the write, not after it
-    performSave(true);
+    performSave(true).catch(saveCrashed);
   }
 }
 document.addEventListener('visibilitychange', function () {
@@ -22849,7 +22953,7 @@ $('redoBtn').addEventListener('click', redo);
 $('zoomInBtn').addEventListener('click', function () { zoomBy(1.2); });
 $('zoomOutBtn').addEventListener('click', function () { zoomBy(1 / 1.2); });
 $('fitBtn').addEventListener('click', fitWidth);
-$('saveBtn').addEventListener('click', function () { performSave(); });
+$('saveBtn').addEventListener('click', function () { performSave().catch(saveCrashed); });
 $('printBtn').addEventListener('click', openPrintModal);
 $('printCancel').addEventListener('click', function () { $('printModal').classList.remove('open'); });
 $('printPlain').addEventListener('click', function () { printWorksheet(false); });

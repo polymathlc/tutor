@@ -12,6 +12,62 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.43.0 — 💾 Nothing was being saved, and 🕒 the mistake book sorts by newest
+
+**The save has been dead for forty-eight versions, in complete silence.** Not slow, not
+occasional — every single save threw before it wrote a byte: the auto-save timer, the flush on the
+way out of the tab, and the Save button alike. No ink, no marking, no hints, no score reached the
+server. The button simply sat on **Save** and never turned into **✓ Saved**, which is exactly what
+it looks like when there is nothing to save.
+
+The cause was one word. `performSave`'s first line called `syncTextEditValue()` — a function that
+has never existed in this app; the real one is `syncActiveTextEditValue`. It reads the words out
+of a text box that is still being typed in, so that a save cannot store an empty box over a
+child's answer. A rename in v1.19.x moved the call and not the function.
+
+**It stayed silent because nobody was holding the promise.** The save is asynchronous, so the
+error became a rejected promise — and the timer, the flush and the button all start it without
+waiting for it. An unhandled rejection is a line in a console no student ever opens.
+
+Four things are fixed, not one:
+
+- The call names the function that exists.
+- **Reading the open text box can never cost the save again.** That box is one annotation; the
+  worksheet is the whole lesson, and for forty-eight versions it cost all of it. It is now read
+  inside its own guard, so a failure there costs that box and nothing else.
+- **Every place that starts a save now catches.** A save that throws is reported exactly the way a
+  refused write already was — ⚠ **Not saved** on the button, a copy of the work kept on the
+  device, and the retry re-armed. To a student those are the same thing: their work is not on the
+  server.
+- **The one-write-at-a-time claim is released whatever happens**, so nothing can leave the app
+  quietly refusing every later save.
+
+And the harness gained the check that would have caught it: **every function the save path calls
+must actually exist in the file.** Every pin that was already there passed the whole time, because
+each of them asked what the source *says* rather than whether the names it says resolve.
+
+The Save button also says what it does now — *"Saves by itself as you work — tap to save now"*.
+A child pressing Save every few minutes is a child who does not know it is already happening.
+
+**🕒 The mistake book can be read newest first.** It has always been ordered by the syllabus, which
+is the right shape for revision — you read down the book rather than hopping about it. It is the
+wrong shape entirely for *"what did I just get wrong?"*, because the paper marked a minute ago is
+scattered across whichever headings its questions belong to. Two chips over the book now:
+**📚 By topic** (unchanged, still the default) and **🕒 Newest first**, which is one flat list with
+no headings at all — the question filed a moment ago is the first card. ✏️ Practise and 🖨 the
+printed sheet read the same order, so practising the newest first is the same one tap.
+
+It sorts on the time each mistake was **filed**, not on the order the read happened to arrive in,
+and two questions from one marking run stay in paper order under it. It hides nothing, so ✕ Clear
+the filters does not light up for it, and it is remembered nowhere — the rule the filters already
+follow.
+
+**Mistakes were already being added automatically** the moment a paper is marked, and still are;
+nothing about that changed. What had been happening is that the marking itself was never saved, so
+it was gone on the next reload.
+
+---
+
 ## v1.42.0 — 🅣 The text box works with a finger, and 🧽 the eraser looks like an eraser
 
 **Two things reported, and the first one is a real bug.**
