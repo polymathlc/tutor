@@ -401,6 +401,40 @@
   .keyRow .dim, .keyState .dim { color: var(--ink-faint); }
   .wsCard.setCard { border-color: var(--accent-deep, #1E88E5); }
 
+  /* ---------- 📌 THE SET LIST, FOLDED AWAY ----------
+     The header IS the switch, so there is no second control to find, and
+     it carries the count and the ⚠ whether the list under it is drawn or
+     not: a section folded away silently is a paper no child can open,
+     sitting set for a term with nothing anywhere saying so. */
+  .assignHead { margin-bottom: 10px; }
+  .assignToggle {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: none; border: 0; padding: 4px 0; margin: 0;
+    font: inherit; color: inherit; text-align: left; cursor: pointer;
+  }
+  .assignToggle .assignCaret { font-size: 0.86rem; color: var(--ink-faint); width: 0.9em; }
+  .assignToggle .assignTitle { font-size: 1.22rem; font-weight: 700; }
+  .assignToggle .assignCount { font-size: 0.85rem; font-weight: 600; color: var(--ink-soft); }
+  .assignToggle .assignFlag {
+    font-size: 0.74rem; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+    color: #B4531E; background: #FFF4EC; border: 1px solid #F3D2BC;
+  }
+  .assignToggle:hover .assignTitle { text-decoration: underline; }
+
+  /* Open, it is a REGISTER rather than a shelf: one line a paper, because
+     for the teacher every one of these already stands on their own
+     bookcase below with a 📌 chip on it. The warnings wrap to a full line
+     of their own — a flagged paper is meant to be taller than the rest. */
+  .setRows { display: flex; flex-direction: column; gap: 8px; }
+  .wsCard.setRow {
+    flex-direction: row; align-items: center; flex-wrap: wrap;
+    padding: 12px 16px; gap: 10px 14px; box-shadow: none;
+  }
+  .wsCard.setRow h3 { flex: 1 1 210px; min-width: 0; font-size: 0.95rem; }
+  .wsCard.setRow .wsMeta { flex: 0 1 auto; }
+  .wsCard.setRow .wsCardFoot { flex: 0 0 auto; margin-top: 0; }
+  .wsCard.setRow .assignWarn { flex: 1 1 100%; font-size: 0.82rem; }
+
   /* ---------- 📚 THE BOOKSHELF ---------- */
   /* THE WOOD IS DRAWN, NOT DOWNLOADED. A picture of wood grain is one more
      request on a school wifi that blocks half of them, and a shelf with a
@@ -1745,16 +1779,23 @@
 
         <div id="homeSignedIn" class="hidden">
           <div id="assignSection" class="hidden">
-            <div class="sectionHead">
-              <h2>📌 Set for the class</h2>
+            <div class="sectionHead assignHead">
+              <button class="assignToggle" id="assignToggle" aria-expanded="false" aria-controls="assignBody">
+                <span class="assignCaret" id="assignCaret">▸</span>
+                <span class="assignTitle">📌 Set for the class</span>
+                <span class="assignCount" id="assignCount"></span>
+                <span class="assignFlag hidden" id="assignFlag"></span>
+              </button>
             </div>
-            <p class="sub" style="margin:0 4px 16px">
-              Every worksheet set for your students, at every level. Each one stands on the shelf of the level
-              and subject it is for; a student starts it there and gets their own copy to write on — Chung GPT
-              already has its answer key, so it can mark them against the real thing.
-            </p>
-            <div id="assignList"></div>
-            <div style="height:34px"></div>
+            <div id="assignBody" class="hidden">
+              <p class="sub" style="margin:0 4px 16px">
+                Every worksheet set for your students, at every level. Each one stands on the shelf of the level
+                and subject it is for; a student starts it there and gets their own copy to write on — Chung GPT
+                already has its answer key, so it can mark them against the real thing.
+              </p>
+              <div id="assignList"></div>
+              <div style="height:34px"></div>
+            </div>
           </div>
           <div class="sectionHead">
             <h2>My worksheets</h2>
@@ -2441,7 +2482,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.40.0';
+var APP_VERSION = 'v1.41.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -19393,36 +19434,100 @@ async function unpushWorksheet(id) {
   } catch (e) { toast('Could not take it off the list: ' + ((e && e.message) || e), 6000); }
 }
 
+/* =====================================================================
+   📌 THE SET LIST IS FOLDED AWAY  (v1.41.0)
+   ---------------------------------------------------------------------
+   Every paper set for the centre, at every level, drawn as a wall of
+   cover cards ABOVE the bookcase — and for the TEACHER every one of them
+   is the same paper twice: their own upload stands on their own shelf
+   below, wearing a 📌 chip that says the class has it. A term's worth of
+   papers was several screens of duplicates before the bookcase began.
+
+   • THE SECTION FOLDS, AND IT IS FOLDED BY DEFAULT. The header is the
+     switch — there is no second control to go and find — and it is
+     remembered PER DEVICE, like every other preference in this app. A
+     device that refuses storage gets the DEFAULT, which is folded: the
+     tidy screen is the one an iPad in Lockdown Mode gets too.
+   • A FOLDED SECTION MUST STILL SHOUT, and that is what makes hiding it
+     safe. The header carries the COUNT and, when a set paper has lost its
+     PDF or reaches no shelf, a ⚠ naming how many — the two faults only
+     the teacher can put right and the only reason to open the list at
+     all. `checkAssignmentPdfs()` therefore runs whether the body is drawn
+     or not; fold them out of sight silently and a paper no child can open
+     sits set for a term with nothing anywhere saying so.
+   • NOTHING IS TAKEN AWAY. This list is still every active assignment at
+     every level, and it is still the ONE place a worksheet is taken off
+     the class list — so it folds rather than being narrowed by the shelf
+     scope, which would hide the P6 paper the teacher came to withdraw.
+   • OPEN, IT IS A REGISTER RATHER THAN A SHELF, and that is ONE BRANCH
+     inside the ONE node (`setCardNode(a, { row: true })`) rather than a
+     second renderer. The row and the card can never disagree about what a
+     set paper DOES, because both end at the same two buttons and the same
+     two warnings. **Called with nothing it is byte-for-byte the card the
+     student's shelf has always drawn**, which is what makes this safe.
+   • THE ROW DROPS ONLY WHAT SAYS NOTHING HERE — the cover (the register
+     is read by name), “📌 Set by Mr Chung” (every row in it is), and the
+     topic and the school, which are on the bookcase card below. It keeps
+     the level, the subject, the help level and whether it has been
+     started, because those are what a register is read FOR — and it keeps
+     BOTH WARNINGS, which a tidier row would have been the first to drop.
+   ===================================================================== */
+var ASSIGN_OPEN_KEY = 'tutorAssignOpen';
+var assignOpen = (function () {
+  try { return localStorage.getItem(ASSIGN_OPEN_KEY) === '1'; } catch (e) { return false; }
+})();
+function setAssignOpen(v) {
+  assignOpen = !!v;
+  try { localStorage.setItem(ASSIGN_OPEN_KEY, assignOpen ? '1' : '0'); } catch (e) {}
+  renderAssignments();
+}
+function toggleAssignOpen() { setAssignOpen(!assignOpen); }
+
+/* HOW MANY SET PAPERS NEED THE TEACHER. Pure, and it reads
+   `assignmentUntaggedNote` rather than asking about the level and the
+   subject itself: the header's ⚠ and the row's own warning then cannot
+   disagree about what an untagged paper is — a count that says “1 needs
+   attention” over a list where nothing is flagged is worse than no count. */
+function assignAttention(list) {
+  return (list || []).filter(function (a) {
+    return !!(a && (a.pdfMissing || assignmentUntaggedNote(a)));
+  }).length;
+}
+
 /* One SET worksheet's card — on a student's shelf before they start it, and
    in the teacher's class list. ONE node for both, so the shelf and the list
-   can never disagree about what a set paper says or does. */
-function setCardNode(a) {
+   can never disagree about what a set paper says or does. `opts.row` is the
+   teacher's compact register; with no opts it is the card it always was. */
+function setCardNode(a, opts) {
+  var row = !!(opts && opts.row);
   var mine = myCopyOf(a);
   var card = document.createElement('div');
-  card.className = 'wsCard setCard';
-  card.appendChild(coverNode(a));
+  card.className = 'wsCard setCard' + (row ? ' setRow' : '');
+  if (!row) card.appendChild(coverNode(a));
   var h = document.createElement('h3');
   h.textContent = a.name || 'Worksheet';
   card.appendChild(h);
   var meta = document.createElement('div');
   meta.className = 'wsMeta';
-  meta.appendChild(chipNode('📌 Set by ' + setterName(), 'chip chipSet'));
+  if (!row) meta.appendChild(chipNode('📌 Set by ' + setterName(), 'chip chipSet'));
   meta.appendChild(chipNode((a.guidanceLocked ? '🔒 ' : '💡 ') +
     guidanceLabel(a.guidance || HINT_DEFAULT), 'chip chipGrade'));
   if (a.level) meta.appendChild(chipNode(levelLabel(a.level), 'chip chipLevel'));
   if (a.subject) meta.appendChild(chipNode(subjectLabel(a.subject), 'chip'));
-  if (a.topic) meta.appendChild(chipNode('📖 ' + a.topic, 'chip chipTopic'));
-  if (a.school) meta.appendChild(chipNode('🏫 ' + a.school, 'chip chipSchool'));
+  if (!row && a.topic) meta.appendChild(chipNode('📖 ' + a.topic, 'chip chipTopic'));
+  if (!row && a.school) meta.appendChild(chipNode('🏫 ' + a.school, 'chip chipSchool'));
   if (mine && mine.score && mine.score.attempted) {
     meta.appendChild(chipNode('✅ ' + mine.score.correct + '/' + mine.score.attempted, 'chip chipScore'));
   }
   if (!mine) meta.appendChild(chipNode('✨ Not opened yet', 'chip chipNew'));
   card.appendChild(meta);
-  var when = document.createElement('div');
-  when.className = 'hint';
-  when.textContent = (a.pageCount ? a.pageCount + ' page' + (a.pageCount === 1 ? '' : 's') + ' · ' : '') +
-    (mine ? 'You have started this' : 'Not started yet');
-  card.appendChild(when);
+  if (!row) {
+    var when = document.createElement('div');
+    when.className = 'hint';
+    when.textContent = (a.pageCount ? a.pageCount + ' page' + (a.pageCount === 1 ? '' : 's') + ' · ' : '') +
+      (mine ? 'You have started this' : 'Not started yet');
+    card.appendChild(when);
+  }
   if (a.pdfMissing) {
     var warn = document.createElement('div');
     warn.className = 'hint assignWarn';
@@ -19472,11 +19577,34 @@ function renderAssignments() {
   sec.classList.toggle('hidden', !show);
   box.innerHTML = '';
   if (!show) return;
-  var grid = document.createElement('div');
-  grid.className = 'wsGrid';
-  list.forEach(function (a) { grid.appendChild(setCardNode(a)); });
-  box.appendChild(grid);
+  // THE HEADER IS PAINTED WHETHER THE BODY IS OR NOT. Folded, it is the
+  // only thing on the screen that says how many papers are set and whether
+  // any of them needs the teacher, so it is the half that may never go.
+  var cnt = $('assignCount');
+  if (cnt) cnt.textContent = list.length + ' paper' + (list.length === 1 ? '' : 's');
+  var need = assignAttention(list);
+  var flag = $('assignFlag');
+  if (flag) {
+    flag.classList.toggle('hidden', !need);
+    flag.textContent = '⚠ ' + need + ' need' + (need === 1 ? 's' : '') + ' attention';
+  }
+  var car = $('assignCaret');
+  if (car) car.textContent = assignOpen ? '▾' : '▸';
+  var tog = $('assignToggle');
+  if (tog) {
+    tog.setAttribute('aria-expanded', assignOpen ? 'true' : 'false');
+    tog.title = assignOpen ? 'Fold this list away' : 'Show every worksheet set for your students';
+  }
+  var body = $('assignBody');
+  if (body) body.classList.toggle('hidden', !assignOpen);
+  // FOLDED TOO: the ⚠ above is worked out from what this finds, so a
+  // section nobody has opened still reports a paper that has lost its file.
   checkAssignmentPdfs();
+  if (!assignOpen) return;
+  var rows = document.createElement('div');
+  rows.className = 'setRows';
+  list.forEach(function (a) { rows.appendChild(setCardNode(a, { row: true })); });
+  box.appendChild(rows);
 }
 
 /* THE TEACHER IS TOLD WHICH SET WORKSHEETS HAVE LOST THEIR FILE. A set
@@ -22610,6 +22738,7 @@ $('whoAmI').addEventListener('click', function () {
 
 $('uploadBtn').addEventListener('click', openUploadModal);
 $('setAllBtn').addEventListener('click', setAllWorksheets);
+$('assignToggle').addEventListener('click', toggleAssignOpen);
 $('upCancel').addEventListener('click', function () { $('uploadModal').classList.remove('open'); });
 $('upGo').addEventListener('click', function () { $('fileInput').click(); });
 $('upKeyBtn').addEventListener('click', function () { $('upKeyInput').click(); });
