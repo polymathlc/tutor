@@ -3235,6 +3235,59 @@ ok('…and both actually ASK for the second mark rather than only ruling on it',
    /you may give a SECOND spot/.test(HINT_SYS_SRC) &&
    /Write a SECOND pointer marker/.test(LIVE_SYS_SRC),
    'every rule about a pair and nothing that says to write one is a feature nobody reaches');
+/* 👉 AND THE SAME HOLE WAS UNDER THE FIRST MARK. Every pin above reads
+   what the prompts RULE about a gesture, and both of them ruled at length
+   — the shapes, the grid, the pair, the cap, the refusal — while neither
+   ever said to DRAW one. The pointing paragraph opened by describing a
+   field, the working paragraph ended on a reason to leave it out, and the
+   hint REQUEST never mentioned "point" at all. So a model read three
+   opt-outs and no instruction, and the tutor that can draw boxes almost
+   never drew one, on a build whose every other pin was green. */
+ok('…and both ASK for the FIRST mark, not only for the second',
+   /ALMOST EVERY HINT IS ABOUT SOMETHING PRINTED ON THE PAGE/.test(HINT_SYS_SRC) &&
+   /belongs on almost/.test(HINT_SYS_SRC) && /is NOT a rare extra/.test(HINT_SYS_SRC) &&
+   /ALMOST EVERY REPLY IS ABOUT SOMETHING PRINTED ON AN ATTACHED PAGE/.test(LIVE_SYS_SRC) &&
+   /belongs on almost every one of them and is NOT a rare extra/.test(LIVE_SYS_SRC),
+   'a prompt that only rules on a mark is a tutor that never draws one');
+ok('…and both name the everyday things worth marking',
+   /the word that decides the question/.test(HINT_SYS_SRC) &&
+   /the word that decides the question/.test(LIVE_SYS_SRC) &&
+   /the row of the table/.test(HINT_SYS_SRC) && /the row of the table/.test(LIVE_SYS_SRC),
+   'an abstract condition is one a model reads as rarely true; an example is a trigger');
+/* …and the OPT-OUT is narrowed to the one thing it means. "If you cannot
+   place it exactly" and "if you are not sure" read as a general escape
+   hatch, and a model that is never certain takes it every time. The refusal
+   is still there — `tutorPointsMake` and `_markAt` refuse an unreadable
+   position whatever the prompt says — so narrowing the wording cannot put
+   a finger anywhere the code would have allowed it before. */
+ok('…and neither opt-out is left as a general escape hatch',
+   /The ONE reason to leave "point" out/.test(HINT_SYS_SRC) &&
+   /The ONE reason to leave the marker out/.test(LIVE_SYS_SRC) &&
+   /A short hint is not a reason/.test(HINT_SYS_SRC) &&
+   /A short reply is not a reason/.test(LIVE_SYS_SRC),
+   '"if you are not sure" is a door a model that is never sure walks through every time');
+ok('…and both ask for WORKING on a question that has steps in it',
+   /WRITE IT on any question that has a calculation or a chain of/.test(HINT_SYS_SRC) &&
+   /WRITE the working too/.test(LIVE_SYS_SRC) &&
+   /genuinely no working to show/.test(HINT_SYS_SRC) &&
+   /genuinely no working to show/.test(LIVE_SYS_SRC),
+   'a teacher explaining a calculation writes it down; "only when it would help more than words" is a no');
+/* …and the method rung is STILL the gate on it. Asking harder for working
+   must not reach past the ladder: `tutorWorkShow` refuses it again anyway,
+   because a prompt is not a lock, but a prompt that stopped saying so is a
+   model inventing the field on a worksheet whose parent switched it off. */
+ok('…and the ladder still gates the working, in the prompt as well as the code',
+   /Include "work" ONLY when the request says the method/.test(HINT_SYS_SRC),
+   'a prompt is not a lock, and one that stops mentioning the lock invites the field anyway');
+/* …and NOTHING of this reached the typed chat. `livePointStrip` is called
+   from `liveFlush` and nowhere else, so the chat panel has no marker
+   consumer at all — marker syntax in CHAT_SYS would print "[[point p3
+   412,300 underline]]" to the student as part of the answer. */
+const CHAT_SYS_SRC = between('var CHAT_SYS =', 'async function sendChat(', 'the typed chat system prompt');
+ok('…and the typed chat is left alone, because nothing there strips a marker',
+   (html.match(/livePointStrip\(/g) || []).length === 2 &&
+   !/\[\[/.test(CHAT_SYS_SRC) && !/\[\[/.test(between('function worksheetContextRule()', '/* ================= Live tutoring', 'the shared worksheet rule')),
+   'a marker written into the typed chat is read by nothing and printed to the student');
 ok('…and the live prompt bounds the run of markers it may write',
    /At most THREE pointer markers and at most ONE working marker/.test(LIVE_SYS_SRC),
    'an unbounded run is a page under magenta');
@@ -3751,6 +3804,13 @@ ok('THE FALSE LINE IS GONE',
    'the band puts the tap two fifths down, so "near the top" pointed the model at the question BEFORE it');
 ok('…and the ring is described as the exact spot instead',
    /The magenta RING drawn on the pictures is the exact spot the student tapped/.test(LADDER_SRC));
+ok('the hint REQUEST asks for the mark, not only the system prompt',
+   /Include "point": mark the ONE spot/.test(LADDER_SRC) &&
+   /Include "work" on any question with a calculation/.test(LADDER_SRC),
+   'the field was described in the system prompt and requested by nobody, so it was rarely written');
+ok('…and it still refuses the working where the ladder does',
+   /Do NOT include "work": the student\\'s help level stops before the method/.test(LADDER_SRC),
+   'asking harder for working must not reach past the rung the parent switched off');
 ok('…and the request says which question that makes it, both ways round',
    /the question whose number and wording the ring sits inside/.test(LADDER_SRC) &&
    /the question DIRECTLY ABOVE the ring/.test(LADDER_SRC) &&

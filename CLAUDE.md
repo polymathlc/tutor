@@ -3783,6 +3783,63 @@ the two in step; a fix to either belongs in both.
   tool table for the same reason.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 👉 A PROMPT THAT ONLY RULES ON A MARK NEVER DRAWS ONE (v1.47.0)
+
+The `POINTING AT THE PAGE` / `MARKING TWO PLACES AT ONCE` / `WRITING WORKING ON THE PAGE`
+paragraphs of **`HINT_SYS`**, the two `Include "point"` / `Include "work"` lines
+**`hintLadderFor`** pushes, and the 👉 / ✍️ paragraphs of `runLiveDelegation`'s system
+prompt (search `ALMOST EVERY HINT IS ABOUT SOMETHING PRINTED` and `ALMOST EVERY REPLY IS ABOUT
+SOMETHING PRINTED`).
+
+*“You say my tutor can draw boxes, but it doesn't really annotate when helping students.”* It
+could. It almost never did — **and nothing was wrong with the drawing.** 👉 v1.30.0 built the
+finger, ✍️ v1.31.0 the working, ① ② v1.45.0 the pair, and every pin over all three was green.
+
+- **THE FAULT WAS THAT NEITHER PROMPT EVER ASKED.** Both RULED at length — the four shapes, the
+  0–1000 grid, the pair and its numbering, the cap of three, the refusal to guess — and this
+  file's own 👉 section had already named exactly that failure about the SECOND mark
+  (*“A prompt carrying every rule about a pair and nothing that says to write one is this half
+  quietly not existing”*). **The same hole was under the FIRST mark and nobody looked**, because
+  every check here reads what the prompts rule. `HINT_SYS`'s pointing paragraph opened by
+  DESCRIBING a field, its working paragraph ENDED on a reason to leave it out, and
+  **`hintLadderFor` — the message that asks for each rung by name — never mentioned `point` at
+  all**. A model read three opt-outs and no instruction.
+- **THE DEFAULT IS STATED FIRST, AND WITH ITS REASON.** *Almost every reply is about something
+  printed on the page, so a mark belongs on almost every one of them.* A child who is stuck
+  usually cannot FIND the thing being talked about — which is most of what being stuck is, the
+  framing 👉's own section has always used — so the sentence without the finger is half the help.
+- **AN EXAMPLE IS A TRIGGER; A CONDITION IS NOT.** *“When your reply is about one spot”* is read as
+  rarely true. The number that was missed, the word that decides the question (*total*, *each*,
+  *difference*, *not*), the units, the row of the table, the label on the diagram, the part read
+  past — those are met on nearly every question, and both prompts now list them.
+- **THE OPT-OUT IS THE HALF THAT HAD TO BE NARROWED, NOT REMOVED.** *“If you cannot place it
+  exactly”* and *“if you are not sure”* are doors a model that is never quite sure walks through
+  every time. The ONE reason is that the position cannot be **read off the teal grid**; a short
+  reply is not a reason and neither is the spot seeming obvious. **Removing it instead would be
+  the other fault**: a finger on the wrong question is worse than no finger at all, and that
+  sentence stays in both prompts.
+- **ASKING HARDER CANNOT PUT A FINGER ANYWHERE UNSAFE, and that is why this is a prompt change
+  and nothing else.** `tutorPointsMake` → `_markAt` still REFUSES a position it cannot place
+  rather than clamping it, `tutorPointShow` still caps at `POINT_MAX`, `tutorWorkShow` still asks
+  the LADDER again, and `tutorWorkLines` still refuses a block whose last line carries no `?`.
+  Every guard is downstream of the prompt, so the worst a keener model can do is be refused.
+- **THE METHOD RUNG IS STILL THE GATE ON WORKING, IN THE PROMPT AS WELL AS THE CODE.**
+  `Include "work" ONLY when the request says the method rung was asked for` stays word for word:
+  a prompt is not a lock, but one that stops mentioning the lock invites the field on a worksheet
+  whose parent switched that rung off.
+- **THE TYPED CHAT IS DELIBERATELY UNTOUCHED.** `livePointStrip` is called from `liveFlush` and
+  nowhere else, so the chat panel has NO marker consumer: marker syntax in `CHAT_SYS` would print
+  *“[[point p3 412,300 underline]]”* to the student as part of the answer. The harness pins that
+  neither `CHAT_SYS` nor the shared `worksheetContextRule` carries a `[[`.
+- **FIVE OF THE NEW PINS GO RED ON v1.46.0 AND GREEN HERE**, which is what makes them checks
+  rather than ticks. The three that are green on both are INVARIANTS — the ladder gate, the
+  method-rung wording and the untouched chat — and are there for the next change, not for this
+  one.
+- Run **`node tools/tutor-tests.mjs`**, **`node --test tools/live-tutor-tests.mjs`** and
+  **`cd functions && node --test test/*.test.js`** after touching any of it — **and watch one
+  live session and ask for one hint**: whether a mark is really drawn, and where it lands, is the
+  one thing reading the source cannot check.
+
 ## 🐛 THREE NAMES THE FILE CALLED AND DID NOT HAVE (v1.46.0)
 
 **`bindTextEditNode`** (beside `commitActiveTextEdit` — search `A NODE ALREADY OUT OF THE
@@ -4525,6 +4582,23 @@ and nothing on any screen says what changed.
   flashes on every word the child writes or covers the answer it is helping with. Read
   `liveWorkSpec`'s position from the whole marker and the digits in "3 units = 12" become a
   coordinate. And paint a line with `innerHTML` and model output is markup on a child's page.
+- After touching **👉 whether the tutor ASKS for a mark at all** (the `POINTING AT THE PAGE`,
+  `MARKING TWO PLACES AT ONCE` or `WRITING WORKING ON THE PAGE` paragraphs of `HINT_SYS`, the
+  `Include "point"` / `Include "work"` lines `hintLadderFor` pushes, or the 👉 / ✍️ paragraphs of
+  `runLiveDelegation`'s system prompt), run `node tools/tutor-tests.mjs` **and ask for one hint on
+  a real page and watch one live session**. Every failure here is silent and the app answers
+  perfectly: **go back to only RULING on a mark and the tutor stops drawing one**, which is the
+  reported fault and which every source-level pin was green over for seventeen versions — the
+  shapes, the grid, the pair, the cap and the refusal were all pinned, and nothing pinned that
+  either prompt said to DRAW. Let the opt-out widen back to *“if you are not sure”* and a model
+  that is never quite sure takes it on every reply; remove the opt-out instead and a finger lands
+  on the wrong question, which is worse than no finger at all. Stop naming the everyday things
+  worth marking and the condition reads as rarely true again. Drop `Include "point"` from the
+  hint REQUEST and the field is described by the system prompt and asked for by nobody, which is
+  how it was. Let the working's `ONLY when the request says the method rung was asked for` go and
+  a child on *Nudges only* is handed the method written on their paper. And put marker syntax
+  into `CHAT_SYS` or `worksheetContextRule` and *“open bracket open bracket point p three”* is
+  printed into the typed chat, where nothing strips it.
 - After touching **① ② the PAIR of marks** (`POINT_MAX`, `POINT_BADGE_R`, `POINT_BADGE_TEXT`,
   `tutorPoints`, `tutorPointsMake`, `tutorPointBadgeAt`, `tutorPointShow`'s list arm, the `group` /
   `mine` split or the badge in `renderTutorPointOn`, `liveMarkApply`'s `batch`, the `pointMarks`
