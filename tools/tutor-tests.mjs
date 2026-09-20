@@ -264,6 +264,40 @@ eq('…its feedback goes with it', blank.feedback, '');
 eq('…but the marks it was worth stand, awarded 0', blank.marks, '0/2');
 eq('…and the telling-off with it', blank.feedback, '');
 
+/* =====================================================================
+   🕳 …and the ONE blank that IS a mistake
+   ---------------------------------------------------------------------
+   The rule above does not move: a skipped question still gets no verdict,
+   no feedback and no cross, and the report still counts it blank. What
+   changes is whether it reaches the MISTAKE BOOK, and BOTH directions of
+   that are silent. File none of them and the questions a child is most
+   stuck on are quietly lost, on a screen saying the book is up to date.
+   File the tail as well and the book fills with questions nobody has
+   failed at, which is a book nobody opens twice.
+   ===================================================================== */
+const paper = str => str.split('').map(c => ({ marked: c === 'a', verdict: c === 'a' ? 'wrong' : '' }));
+const skips = str => paper(str).map((it, i, all) => (S.markSkipped(all, i) ? i : -1)).filter(i => i >= 0);
+
+eq('a blank with an answered question after it was SKIPPED', skips('a.a'), [1]);
+/* It is the LAST answered question that ends the paper, never the next
+   one: "is the question after this answered?" files only the final blank
+   of a run and loses every one before it. */
+eq('a RUN of blanks before an answer is every one of them', skips('a..a'), [1, 2]);
+eq('the blanks at the END are the tail — out of time, not stuck', skips('aa..'), []);
+eq('…and a paper blank from question one is all tail', skips('....'), []);
+eq('gone past, then stopped: only the first is filed', skips('a.a..'), [1]);
+eq('an attempted question is never a skip, whatever its verdict',
+   S.markSkipped([{ marked: true, verdict: 'wrong' }, { marked: true, verdict: 'correct' }], 0), false);
+/* A CORRECT answer ends the tail just as a wrong one does. The test is
+   whether they CARRIED ON past the blank; how the questions after it went
+   has nothing to do with it. */
+eq('a correct answer after a blank makes it a skip too',
+   S.markSkipped([{ marked: false, verdict: '' }, { marked: true, verdict: 'correct' }], 0), true);
+eq('the tail is measured from the last answered question', S.markLastAnswered(paper('a..a..')), 3);
+eq('a paper nobody attempted has none', S.markLastAnswered(paper('...')), -1);
+eq('…and nothing at all is not a crash',
+   [S.markLastAnswered(), S.markSkipped(undefined, 0), S.markSkipped([], 3)], [-1, false, false]);
+
 const written = S._markFields({ studentAnswer: '1.4', verdict: 'PARTIAL', marks: '1/2', feedback: 'Nearly.' });
 eq('a written answer is marked', written.marked, true);
 eq('the verdict is read case-insensitively', written.verdict, 'partial');
@@ -1190,6 +1224,43 @@ ok('the practice session does too', /questionNodes\(m, 'prac'\)/.test(html));
 ok('and so does the printed sheet', /questionNodes\(m, 'sheet'\)/.test(html));
 ok('✂️ Crop is offered only where the picture is actually on screen',
    /if \(m\.imagePath && tier !== 'blocks'\)/.test(html));
+
+/* 🕳 A BLANK THEY WENT PAST IS FILED TOO, and the FLAG is what says so:
+   the document carries no verdict and no feedback to infer it from, so a
+   card left to guess would read an unjudged ANSWER as a skip the day one is
+   ever filed. */
+ok('a blank the student went past is filed beside the wrong answers',
+   /\} else if \(markSkipped\(marking\.items, i\)\) \{/.test(FILING),
+   'the one blank that belongs in the book');
+ok('…gathered in ONE walk, so the loop never decides it a second time',
+   /var it = due\[i\]\.it;\n\s*var skipped = due\[i\]\.skipped;/.test(FILING));
+ok('…and the document carries which it was', /\n      skipped: skipped,/.test(FILING));
+ok('…and the toast names them rather than folding them in with the crosses',
+   /you skipped past/.test(FILING),
+   'a book that quietly grew is one nobody trusts');
+/* A SKIPPED QUESTION MUST NOT WEAR THE RED OF A WRONG ANSWER. That is the
+   cross the marking refuses to put on a blank, moved into the book — and a
+   child reading it is told they got wrong a question they never tried. */
+ok('the card colours a skipped question apart from a wrong one',
+   /mistSkipped\(m\) \? ' mSkip' : m\.verdict === 'partial' \? ' mPartial' : ' mWrong'/.test(html));
+ok('…and its chip says Skipped, not Not quite', /v\.className = 'verdict mSkip';/.test(html));
+ok('…and ONE predicate decides it on every surface',
+   (html.match(/function mistSkipped\(/g) || []).length === 1,
+   'two readings is a card coloured one way and searched another');
+ok('a skipped card says how it got into the book', /You went past this one/.test(html),
+   'no answer of its own and no feedback: without a word it is a bare question among marked ones');
+/* A blank below the top help level comes back with a place to START where
+   its answer would be (`markBlankRule`) — and a skipped question meets that
+   case far more often than a wrong one ever did. */
+ok('…and its explanation is labelled for what it is',
+   /boxNode\(m\.answer \? 'Why' : 'Where to start', m\.explanation, 'whyBox'\)/.test(html));
+/* "A big improvement on last time" said to a child who left it blank is
+   praise for something that never happened. */
+ok('the practice marker is told a skipped question was never attempted',
+   /else if \(mistSkipped\(m\)\) lines\.push\('They LEFT THIS QUESTION BLANK/.test(html));
+ok('…and the prompt knows both cases', /Where it says they LEFT IT BLANK/.test(html));
+ok('"skipped" finds them in the book', /skipped blank went past not attempted/.test(html),
+   'a skipped card has no answer and no feedback, so it has least of its own to be found by');
 
 /* Everything in this app's mistake book is stored as a PATH and resolved on
    demand, so a download URL stored here would be the one row the deleting

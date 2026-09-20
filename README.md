@@ -12,6 +12,48 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.34.0 — 🕳 A question they skipped past is a mistake too
+
+**A blank is never marked wrong. That rule has not moved, and it is not what this is about.**
+
+Until now the mistake book took every `wrong` and every `partial` and nothing else, on the reasoning
+that a question nobody attempted is not a question anybody failed. That is right about *some*
+blanks and plainly wrong about the rest — and telling them apart needs nothing the marking did not
+already know.
+
+**A blank with answered questions AFTER it is not the same thing as a blank at the end of the
+paper.** A student who reaches question 7, cannot do it, and goes on to answer 8 and 9 has said
+something out loud: they do not know how. A student whose last four are blank has run out of time,
+or put the pen down. The first belongs in the book more than most of what was in it; the second
+does not belong there at all.
+
+So `markLastAnswered` finds the last question the student really attempted, and every blank **before**
+it is filed. Everything after it is the tail, however long it runs.
+
+- **It is the LAST answered question, never the next one.** Asking *"is the question after this one
+  answered?"* files only the final blank of a run and quietly loses every one before it — and a run
+  of three skipped questions in a row is exactly the case worth catching.
+- **A correct answer ends the tail just as a wrong one does.** The test is whether they carried on
+  past the blank; how the questions after it went has nothing to do with it.
+- **Nothing about the marking changed.** No verdict, no feedback, no red cross — the marks chip
+  still says what was there to be had, the report still counts it blank, and the score is still out
+  of what was attempted. A cross on an untouched question is still the one mistake this app must
+  never make.
+- **So the card is indigo, not red**, with a **⬜ Skipped** chip and a line saying *"You left this
+  blank and answered questions after it, so it is here to try again."* — a skipped card has no
+  answer of its own and no feedback, so without a word on it it is a bare question sitting among
+  marked ones with nothing to say how it got there.
+- **Below the top help level its explanation is labelled *Where to start*** rather than *Why*: a
+  blank comes back with a nudge where its answer would be, and a skipped question meets that far
+  more often than a wrong one ever did.
+- **The practice marker is told there was no first attempt.** Left unsaid, *"a big improvement on
+  last time"* is praise to a child who never wrote anything, for something that never happened.
+- Searching **skipped** finds them, ✓ *I can do this now* clears them, and the ✂️ crop, the 🧩
+  rebuild, the printed practice sheet and the syllabus filing all work exactly as they do for
+  everything else in the book.
+
+---
+
 ## v1.33.1 — 🚀 Merging is what deploys the server half
 
 **The live card said *"Up to 1 hour"* and the tutor still answered *"You have used today's live

@@ -1228,8 +1228,46 @@ still came back, it simply went on making the mistake the teacher had already co
 (search `The mistake book`).
 
 - **Filing is AUTOMATIC.** A mistake book that has to be remembered is an empty mistake book. Every
-  `wrong` and `partial` lands in `users/{uid}/mistakes/{id}` with a picture; a blank never does — a
-  question nobody attempted is not a mistake.
+  `wrong` and `partial` lands in `users/{uid}/mistakes/{id}` with a picture — and since v1.34.0 so
+  does every blank the student went PAST (🕳 below).
+- **🕳 A BLANK WITH ANSWERED QUESTIONS AFTER IT IS THE ONE BLANK THAT IS A MISTAKE** (v1.34.0 —
+  `markLastAnswered` / **`markSkipped`** beside `_markFields`, the `due` walk and the `skipped`
+  field in `fileMistakes`, **`mistSkipped`** beside `mistPlace`, and the `.mSkip` CSS). A student
+  who reaches question 7, cannot do it, and goes on to answer 8 and 9 has said plainly that they do
+  not know how; a student whose LAST four are blank has run out of time or put the pen down. Filing
+  the tail would be a book of questions nobody has failed at; filing NEITHER — which is what this
+  app did until v1.34.0 — loses the questions a child is most stuck on, on a screen saying the book
+  is up to date.
+  - **`markLastAnswered` IS THE WHOLE TEST, and it is the LAST answered question rather than the
+    next.** Everything after it is the tail however long; every blank before it was gone past,
+    including a RUN of them — *"is the question after this one answered?"* files only the last of a
+    run and silently loses the rest. A **correct** answer ends the tail exactly as a wrong one
+    does: the test is whether they CARRIED ON, not how what came after went.
+  - **IT READS THE ORDER OF `marking.items`, WHICH IS PAPER ORDER** — the batches are read in page
+    order and `_markFoldRows` appends, so an index IS a position on the paper. Sort by question
+    number instead and 10 comes before 2 on any paper numbered as papers are, filing the wrong half
+    of it on cards that each look perfectly ordinary.
+  - **NOTHING ABOUT THE MARKING MOVES.** `_markFields` still drops the verdict, the feedback and
+    the cross on a blank; the marks chip still says what was there to be had; the report still
+    counts it blank and the diagnostic still rates over what was ATTEMPTED. **A red cross on an
+    untouched question is still the one mistake this app must never make** — which is why the card
+    is INDIGO with a *⬜ Skipped* chip rather than the red of a wrong answer, and why the whole
+    thing is a field on the mistake rather than a fourth verdict.
+  - **`skipped` IS A FLAG ON THE DOCUMENT AND `mistSkipped` IS ITS ONE READER.** The row carries no
+    verdict and no feedback to infer it from, so a surface left to guess would read an unjudged
+    ANSWER as a skip the day one is ever filed. A mistake written before v1.34.0 carries no flag and
+    is exactly what it always was.
+  - **A SKIPPED CARD SAYS HOW IT GOT THERE.** It has nothing in the two boxes a marked card fills,
+    so without a word on it it is a bare question sitting among marked ones. Its explanation is
+    labelled *Where to start* rather than *Why* when there is no answer beside it — below the top
+    help level a blank comes back with a nudge where its answer would be (`markBlankRule`), and a
+    skipped question meets that case far more often than a wrong one ever did.
+  - **THE PRACTICE MARKER IS TOLD THERE WAS NO FIRST ATTEMPT.** `PRAC_SYS` opens *"after getting it
+    wrong"*; unqualified, *"a big improvement on last time"* is praise to a child who left it blank
+    for something that never happened.
+  - **They come out of the SAME rebuild ration** (`MB_BUILD_MAX`, 10 a paper), so a paper with a
+    dozen unanswered questions spends it sooner and the rest land on tier ③ — which is what
+    🧩 Set it out again is for.
 - **`mistakeKey` is `docId | page | number`**, so marking the same worksheet twice does not file the
   same question twice, and a re-read that words the question slightly differently still matches.
 - **The picture is the WHOLE PAGE, honestly.** The marking knows which page a question is on and
@@ -3177,6 +3215,23 @@ the two in step; a fix to either belongs in both.
   SHRINK the clock — and a student watches the timer run past its own
   limit, which reads as the app being broken rather than as a longer
   lesson.
+- After touching **🕳 which blanks are mistakes** (`markLastAnswered`, `markSkipped`, the `due`
+  walk or the `skipped` field in `fileMistakes`, `mistSkipped`, the card's `mSkip` class or chip,
+  the *You went past this one* note, the `m.answer ? 'Why' : 'Where to start'` label, the
+  `mistSkipped` line in `mistHaystack` or `pracCheck`, `PRAC_SYS`'s blank clause, or the `.mSkip`
+  CSS), run `node tools/tutor-tests.mjs`. **Both directions are silent and the book still paints.**
+  Stop filing skipped blanks and the questions a child is most stuck on are lost again, on a screen
+  saying the book is up to date; file the TAIL as well and it fills with questions nobody has
+  failed at, which is a book nobody opens twice. Measure the tail from the NEXT question rather than
+  the LAST answered one and a run of blanks files only its final question, losing every one before
+  it. Sort by question number instead of reading `marking.items` in order and 10 comes before 2,
+  filing the wrong half of the paper. Let a skipped card wear `mWrong` and it is the red cross on an
+  untouched question that the whole marking path is built not to make. Infer the skip from the
+  absence of a verdict rather than reading the flag and an unjudged ANSWER becomes a skip the day
+  one is filed. Drop the note on the card and it is a bare question with nothing saying how it got
+  into the book; drop the line in `pracCheck` and the marker congratulates a child on improving on
+  an attempt they never made. And touch `_markFields`, the report's counts or the diagnostic while
+  you are here and a blank is marked wrong after all — none of them moves.
 - After touching **📕 the filed mistake book** (`mistPlace`, `mistSubjectKey`,
   `mistTopicKey`, `mistHaystack`, `mistSearchTerms`, `mistSearchHit`,
   `mistMatches`, `mistCompare`, `mistakesShown`, `mistGroups`, `mistFacet`,
