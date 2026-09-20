@@ -12,6 +12,29 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.42.0 — 🅣 The text box works with a finger, and 🧽 the eraser looks like an eraser
+
+**Two things reported, and the first one is a real bug.**
+
+**🅣 Tapping the page with the text tool did nothing** — on an iPad or a phone, with a finger.
+Pencil-only mode is on by default (it is what keeps a resting palm from writing across the
+worksheet), and the text tool had been filed with the tools that leave a *mark by dragging*. So a
+finger with 🅣 in hand was handed to the pan engine and the tap never reached the tool at all: the
+button simply did nothing, with nothing on screen to say why. It worked with an Apple Pencil and
+with a mouse, which is why it looked so random.
+
+Placing a text box is a **tap** — it drags nothing and makes no ink — so it now sits with 💡 Ask
+for a hint, 🎤 Say your answer and 🖱️ Select, which a finger has always been allowed to make.
+A resting palm still cannot abuse it: a palm-sized contact starts nothing at all, and a stray
+empty box is thrown away the moment you tap elsewhere.
+
+**🧽 The eraser was an adhesive bandage.** There is no eraser in the emoji set, so 🩹 had been
+standing in for one — and that is exactly what it read as. It is now **drawn**: a classic pink
+school eraser with its blue end and a couple of rubbed-out crumbs underneath. Drawn, it says
+eraser on every device, and no phone's emoji font can re-draw it as something else.
+
+---
+
 ## v1.41.0 — 📌 The set list folds away
 
 **📌 Set for the class** was a wall of cover cards above the bookcase — every paper set for the

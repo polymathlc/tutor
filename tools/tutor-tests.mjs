@@ -5620,13 +5620,41 @@ ok('…and the pointer is released when the real one lifts',
    /activePointerId = null;/.test(ENDS),
    'a pointer never released locks every later touch out of the page');
 
-/* 💡 hint, 🎤 speak and 🖱️ select are deliberately NOT draw tools: those are
-   a tap and a drag of something already on the page, and a finger doing
-   either is not a palm about to ruin the worksheet. */
-ok('the pen and the eraser are tools a finger must not drive',
-   S.isDrawTool('pen') && S.isDrawTool('highlight') && S.isDrawTool('eraser') && S.isDrawTool('text'));
+/* 💡 hint, 🎤 speak, 🖱️ select and — since v1.42.0 — 🅣 text are deliberately
+   NOT draw tools: those are a TAP, and a finger making one is not a palm
+   about to ruin the worksheet. Handing them to the pan engine is what makes
+   them unusable without a pencil, which is precisely what 🅣 was. */
+ok('a tool that leaves a MARK by dragging is one a finger must not drive',
+   ['pen', 'highlight', 'line', 'arrow', 'rect', 'ellipse', 'eraser'].every(t => S.isDrawTool(t)));
 ok('…and the hint, the mic and select are not',
    !S.isDrawTool('hint') && !S.isDrawTool('speak') && !S.isDrawTool('select'));
+ok('🅣 THE TEXT TOOL IS A TAP, so a finger may make one — the reported fault',
+   !S.isDrawTool('text'),
+   'pencil-only mode is ON by default, so in the draw list the 🅣 button silently did nothing on an iPad');
+const TEXTTAP = between("if (tool === 'text') {", '// Everything else draws.', 'the text tap');
+ok('…and placing a box really IS a tap: it captures no pointer and drags nothing',
+   /startTextBox\(p, pt\);/.test(TEXTTAP) &&
+   !/claimPointer|setPointerCapture/.test(TEXTTAP),
+   'a tool that only taps has no business being rejected as one that draws');
+ok('a stray empty box is a tap that changed its mind, so a palm can leave nothing behind',
+   /if \(!String\(a\.text \|\| ''\)\.trim\(\)\) \{[\s\S]{0,160}annotations\.filter/.test(html));
+ok('…and a palm-sized patch still starts nothing at all',
+   /if \(isPalmTouch\(e\)\) \{ e\.preventDefault\(\); return; \}/.test(DOWN));
+
+/* 🧽 THE ERASER LOOKS LIKE AN ERASER. There is none in the emoji set, so
+   🩹 — an adhesive BANDAGE — was standing in for one and read as one. */
+const ERASER_BTN = between('<button class="toolBtn" data-tool="eraser"', '</button>', 'the eraser button');
+ok('the eraser is DRAWN rather than stood in for by an emoji',
+   /<svg class="toolIco"/.test(ERASER_BTN) && !/\u{1FA79}/u.test(html),
+   'no vendor’s emoji font can re-draw an SVG as something else');
+ok('…with flat fills and no id, gradient or filter, like every other drawing here',
+   !/\sid=/.test(ERASER_BTN) && !/Gradient|filter=/.test(ERASER_BTN));
+ok('…and it is sized in CSS rather than by the button’s font-size',
+   /\.toolIco \{ width: 21px; height: 21px;/.test(html));
+ok('…and it still carries its name for a screen reader',
+   /aria-label="Eraser"/.test(ERASER_BTN) && /aria-hidden="true"/.test(ERASER_BTN));
+ok('…and it is still the eraser TOOL, wired by data-tool like the rest',
+   /data-tool="eraser"/.test(ERASER_BTN));
 
 const NAV = between('function navBind() {', '/* Two-finger double-tap', 'the navigation engine');
 ok('the engine is bound in CAPTURE, ahead of the page overlay',
