@@ -1794,6 +1794,60 @@ knew who was looking at it.**
   on a child's shelf is something nothing on the screen would ever explain.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 📌 THE SET LIST IS FOLDED AWAY (v1.41.0)
+
+`ASSIGN_OPEN_KEY` / `assignOpen` / `setAssignOpen` / `toggleAssignOpen` / **`assignAttention`**,
+the `opts.row` branch of **`setCardNode`** and the header half of **`renderAssignments`** (search
+`THE SET LIST IS FOLDED AWAY`), plus `#assignToggle` / `#assignCaret` / `#assignCount` /
+`#assignFlag` / `#assignBody` in the markup and the `.assignToggle` / `.setRows` /
+`.wsCard.setRow` CSS.
+
+📌 **Set for the class** was a wall of cover cards ABOVE the bookcase — every paper set for the
+centre, at every level, at full size — and for the TEACHER every one of them is **the same paper
+twice**: their own upload stands on their own shelf below wearing the 📌 chip that says the class
+has it. A term's worth of papers was several screens of duplicates before the bookcase began,
+which is the reported fault in the teacher's own words — *“the assigned files appearing like this
+makes everything so unsightly, make a way to shelf them so they can't be seen while I can still
+access them.”* **That bullet in the 📚 WOODEN SHELVES section is extended by this one**: the list
+is still the teacher's alone and still the one place a paper is taken off, it simply starts folded.
+
+- **THE HEADER IS THE SWITCH, and it is FOLDED BY DEFAULT.** One control, on the thing it opens —
+  a second control elsewhere is one nobody finds. The choice is remembered PER DEVICE
+  (`localStorage`, like every other preference here), and **a device that refuses storage gets the
+  DEFAULT, which is folded**: the tidy screen is the one an iPad in Lockdown Mode gets too, which
+  is the opposite of the usual direction and deliberate — the default here IS what was asked for.
+- **A FOLDED SECTION MUST STILL SHOUT, and that is the whole thing that makes hiding it safe.**
+  The header carries the COUNT, and a ⚠ naming how many papers have **lost their PDF** or reach
+  **no shelf** — the two faults only the teacher can put right and the only reason to open the
+  list at all. So `checkAssignmentPdfs()` runs whether the body is drawn or not, and the count is
+  painted BEFORE the fold returns. Fold them out of sight silently and a paper no child can open
+  sits set for a term with nothing on any screen saying so, which is strictly worse than the wall
+  of cards this replaced.
+- **`assignAttention` READS `assignmentUntaggedNote` RATHER THAN ASKING ABOUT THE LEVEL AND THE
+  SUBJECT ITSELF.** The header's ⚠ and the row's own warning then cannot disagree about what an
+  untagged paper is — a header reading *“1 needs attention”* over a list where nothing is flagged
+  is worse than no count. A paper is counted ONCE however many ways it is broken.
+- **NOTHING IS TAKEN AWAY.** It is still every active assignment at EVERY level, so it FOLDS
+  rather than being narrowed by the 🗂 shelf scope — narrowed, it would hide the P6 paper the
+  teacher came to withdraw, and this is the ONE place `unpushWorksheet` is reached.
+- **OPEN, IT IS A REGISTER RATHER THAN A SHELF — and that is ONE BRANCH inside the ONE node**
+  (`setCardNode(a, { row: true })`), never a second renderer. The row and the card can never
+  disagree about what a set paper DOES, because both end at the same two buttons and the same two
+  warnings. **Called with nothing it is byte-for-byte the card the student's shelf has always
+  drawn**, which is what made this safe to ship over a live home screen — the property
+  `shelfGroups(opts)` already carries, and the harness pins it.
+- **THE ROW DROPS ONLY WHAT SAYS NOTHING HERE** — the cover (a register is read by name), “📌 Set
+  by Mr Chung” (every line in it is), and the topic and the school, which are on the bookcase card
+  below. It keeps the level, the subject, the help level and whether it has been started, because
+  those are what a register is read FOR — **and it keeps BOTH WARNINGS**, which a tidier row would
+  have been the first to drop and which are the reason the section exists.
+- **A flagged row is TALLER on purpose.** `.assignWarn` is `flex: 1 1 100%` inside the row, so the
+  warning wraps to a line of its own and the buttons to another; a warning squeezed into the line
+  with the chips is one nobody reads.
+- **A teacher with nothing set still sees no section at all**, folded or not — the rule
+  `renderAssignments` has always followed.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 🎓 A SHELF BELONGS TO ONE CLASS (v1.40.0)
 
 **`shelfFitsClass`** / `shelfClassLabel` / **`shelfPaperOf`** / **`shelfDropOk`** /
@@ -2124,10 +2178,12 @@ default in `openUploadModal` and the `got.level && got.subject` gate in `handleU
   and is stamped by its set date, so `shelfGroups` files it exactly as it files an opened paper. It
   FILTERS NOTHING — `sets` arrives narrowed by `assignmentsForMe`. `shelfNode` draws an entry with
   `set` through `setCardNode` and everything else through `wsCardNode`, and adds `booklet` to both.
-- **THE "📌 SET FOR THE CLASS" SECTION IS THE TEACHER'S ALONE.** A student's set papers stand on their
-  shelves, opened or not, so a second list of the same papers above the shelves is the same paper
-  twice. `renderAssignments` paints an empty list for anyone but the admin; the teacher's list is
-  every active assignment at every level, which is where one is taken off.
+- **THE "📌 SET FOR THE CLASS" SECTION IS THE TEACHER'S ALONE — and since v1.41.0 it is FOLDED
+  AWAY by default (📌 above).** A student's set papers stand on their shelves, opened or not, so a
+  second list of the same papers above the shelves is the same paper twice. `renderAssignments`
+  paints an empty list for anyone but the admin; the teacher's list is every active assignment at
+  every level, which is where one is taken off — so it folds rather than being narrowed, and its
+  header goes on carrying the count and the ⚠ while it is shut.
 - **THE WOOD IS DRAWN, NEVER DOWNLOADED.** Layered gradients on `.shelf` and `.shelfPlank`, the timber's
   colours in `--wood*` custom properties on the shelf so the board, the plank and the uprights are one
   piece of wood. A picture of grain is one more request on a school wifi that blocks half of them, and
@@ -3587,6 +3643,29 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📌 the folded set list** (`ASSIGN_OPEN_KEY`, `assignOpen`,
+  `setAssignOpen`, `toggleAssignOpen`, `assignAttention`, the `opts.row` branch of
+  `setCardNode`, the header half of `renderAssignments`, `#assignToggle` /
+  `#assignCaret` / `#assignCount` / `#assignFlag` / `#assignBody`, or the
+  `.assignToggle` / `.setRows` / `.wsCard.setRow` CSS), run
+  `node tools/tutor-tests.mjs` **and look at the home screen**. Every failure
+  here is silent and the screen still paints. **Drop the count or the ⚠ from
+  the header and a paper no child can open sits set for a term behind a folded
+  section with nothing anywhere saying so** — which is strictly worse than the
+  wall of cards this replaced; move `checkAssignmentPdfs()` below the fold's
+  early return and the ⚠ never learns a file has gone at all. Let
+  `assignAttention` stop reading `assignmentUntaggedNote` and the header starts
+  counting papers the rows do not flag. Open it by default — or let a refused
+  `localStorage` fall to OPEN — and the wall of cover cards the teacher asked
+  to be rid of is back on exactly the devices that cannot turn it off. Narrow
+  the list by the shelf scope instead of folding it and the P6 paper somebody
+  came to withdraw is not on the screen they came to withdraw it from. Write a
+  second renderer beside `setCardNode` and the register quietly stops offering
+  “Take off the list”, which is the one thing this section is for; let
+  `setCardNode(a)` with no opts stop being byte-for-byte the card it was and
+  every student's shelf changes with it. And drop either warning from the row —
+  the first thing a tidier row would do — and the two faults only the teacher
+  can fix are invisible in the one list that reports them.
 - After touching **🎓 a shelf's class** (`shelfFitsClass`, `shelfClassLabel`,
   `shelfPaperOf`, `shelfDropOk`, `shelfClassOptions`, `fillUploadShelves`, the
   `level` / `subject` `shelfNorm` keeps, the narrowing in `shelfGroups` or in

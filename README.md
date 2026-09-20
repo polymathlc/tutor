@@ -12,6 +12,33 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.41.0 — 📌 The set list folds away
+
+**📌 Set for the class** was a wall of cover cards above the bookcase — every paper set for the
+centre, at every level, at full size. A term's worth of papers was several screens of them before
+the bookcase even began, and for the teacher every one of them was **the same paper twice**: their
+own upload is standing on their own shelf below with a 📌 chip on it already.
+
+**The section folds now, and it is folded by default.** What is left is one line:
+
+> ▸ **📌 Set for the class**  ·  24 papers  ·  ⚠ 2 need attention
+
+- **The header is the switch.** Tap it to open, tap it again to fold it away, and the choice is
+  remembered on that device. There is no second control to find.
+- **A folded section still shouts.** The count is on the header whether the list is drawn or not,
+  and so is a ⚠ when a set paper has **lost its PDF** or **has no level or subject** — the two
+  things only the teacher can put right, and the only reason to open the list at all. A paper no
+  child can open can no longer sit set for a term with nothing anywhere saying so.
+- **Nothing is taken away.** It is still every active assignment at every level, and it is still the
+  one place a worksheet is taken off the class list — so it folds rather than being narrowed by the
+  level and subject picker, which would hide the P6 paper you came to withdraw.
+- **Open, it is a register rather than a shelf.** One line a paper: the name, the class it is for,
+  the help level it goes out with, whether anybody has started it, and the same two buttons. The
+  cover, “📌 Set by Mr Chung” (every line in it is), the topic and the school are dropped — they
+  are all on the bookcase card below. Both warnings stay, in full.
+
+---
+
 ## v1.40.0 — 🎓 A shelf belongs to ONE class
 
 **A folder made under P6 · Mathematics stays there.** Shelves used to be plain labels with no class

@@ -3862,7 +3862,214 @@ ok('the refusal names the level it was set for and the student it is not',
 ok('…and an untagged one is refused in its own words',
    /without a level and subject/.test(S.assignmentNotMineText({ id: 'a0', name: 'old one' })));
 ok('the class list is the TEACHER\'s and is drawn from the filtered list',
-   /var list = isAdmin\(currentUser\) \? assignmentsForMe\(\) : \[\];[\s\S]{0,500}list\.forEach\(function \(a\) \{ grid\.appendChild\(setCardNode\(a\)\); \}\);/.test(html));
+   /var list = isAdmin\(currentUser\) \? assignmentsForMe\(\) : \[\];/.test(html) &&
+   /list\.forEach\(function \(a\) \{ rows\.appendChild\(setCardNode\(a, \{ row: true \}\)\); \}\);/.test(html));
+
+/* =====================================================================
+   📌 THE SET LIST IS FOLDED AWAY (v1.41.0)
+   ---------------------------------------------------------------------
+   Every failure here is silent and the home screen still paints. Fold it
+   without the count and the ⚠ and a paper no child can open sits set for
+   a term with nothing anywhere saying so; open it by default and the wall
+   of cover cards the teacher asked to be rid of is back; let the compact
+   ROW drift from the CARD and the register quietly stops offering “Take
+   off the list” — which is the one thing this section exists for.
+   ===================================================================== */
+section('📌 The set list is folded away');
+
+const SRC_ASSIGN = between('var ASSIGN_OPEN_KEY =',
+  '/* THE TEACHER IS TOLD WHICH SET WORKSHEETS HAVE LOST THEIR FILE.', 'the folded set list') +
+  '\n' + between('function assignmentUntaggedNote(a) {',
+  '\n/* 📌 HAS THIS PAPER REACHED THE CLASS?', 'the untagged note');
+
+/* A DOM small enough to read and real enough to answer the one question a
+   regex cannot: does the compact ROW still carry both warnings and both
+   buttons? */
+function mkEl(tag) {
+  const el = { tag, className: '', textContent: '', title: '', disabled: false,
+               kids: [], attrs: {}, ev: [], html: '' };
+  el.classList = {
+    add: c => { if (!el.classList.contains(c)) el.className = (el.className + ' ' + c).trim(); },
+    remove: c => { el.className = el.className.split(/\s+/).filter(x => x && x !== c).join(' '); },
+    toggle: (c, on) => { if (on) el.classList.add(c); else el.classList.remove(c); },
+    contains: c => el.className.split(/\s+/).indexOf(c) >= 0
+  };
+  el.appendChild = k => { el.kids.push(k); return k; };
+  el.setAttribute = (k, v) => { el.attrs[k] = v; };
+  el.addEventListener = (t, f) => { el.ev.push([t, f]); };
+  Object.defineProperty(el, 'innerHTML', { get: () => el.html, set: v => { el.html = v; el.kids = []; } });
+  return el;
+}
+function flat(el) { return [el].concat(el.kids.reduce((a, k) => a.concat(flat(k)), [])); }
+function textsOf(el) { return flat(el).map(n => String(n.textContent || '')).filter(Boolean); }
+function classesOf(el) { return flat(el).map(n => n.className).filter(Boolean); }
+
+const asgDom = {
+  assignList: mkEl('div'), assignSection: mkEl('div'), assignBody: mkEl('div'),
+  assignCount: mkEl('span'), assignFlag: mkEl('span'), assignCaret: mkEl('span'),
+  assignToggle: mkEl('button')
+};
+asgDom.assignSection.className = 'hidden';
+asgDom.assignBody.className = 'hidden';
+const asgStore = new Map();
+let asgList = [];
+let asgChecked = 0;
+const asgSand = {
+  console, JSON, Math, String, Number, Array, Object, Boolean, RegExp,
+  document: { createElement: mkEl },
+  localStorage: {
+    getItem: k => (asgStore.has(k) ? asgStore.get(k) : null),
+    setItem: (k, v) => { asgStore.set(k, String(v)); },
+    removeItem: k => { asgStore.delete(k); }
+  },
+  $: id => asgDom[id] || null,
+  currentUser: { email: 'chungzhikai@gmail.com' },
+  isAdmin: u => !!u && u.email === 'chungzhikai@gmail.com',
+  myCopyOf: a => (a && a.startedCopy) || null,
+  coverNode: () => { const c = mkEl('div'); c.className = 'wsCover'; return c; },
+  chipNode: (t, cls) => { const c = mkEl('span'); c.className = cls; c.textContent = t; return c; },
+  setterName: () => 'Mr Chung',
+  guidanceLabel: () => 'Show me how',
+  HINT_DEFAULT: 'method',
+  levelLabel: v => v, subjectLabel: () => 'Science',
+  startAssignment: () => {}, unpushWorksheet: () => {},
+  assignmentsForMe: () => asgList,
+  checkAssignmentPdfs: () => { asgChecked++; }
+};
+vm.createContext(asgSand);
+vm.runInContext(SRC_ASSIGN, asgSand, { filename: 'index.html' });
+const A = asgSand;
+
+/* ---- Folded by default, and remembered per device ---- */
+ok('the list is FOLDED by default — the wall of cover cards is what was asked to go',
+   A.assignOpen === false);
+ok('…and a device that refuses storage gets that same default',
+   /catch \(e\) \{ return false; \}/.test(SRC_ASSIGN));
+A.setAssignOpen(true);
+ok('opening it is remembered per device', asgStore.get('tutorAssignOpen') === '1');
+A.setAssignOpen(false);
+ok('…and so is folding it again', asgStore.get('tutorAssignOpen') === '0');
+ok('a write that throws never stops the fold',
+   /try \{ localStorage\.setItem\(ASSIGN_OPEN_KEY/.test(SRC_ASSIGN));
+
+/* ---- What a folded header still says ---- */
+const okPaper = { id: 'a1', name: 'P5 SA2', level: 'P5', subject: 'science' };
+const noFile  = { id: 'a2', name: 'Lost one', level: 'P5', subject: 'science', pdfMissing: true };
+const noClass = { id: 'a3', name: 'Untagged' };
+eq('nothing needs attention when every paper is tagged and its file is there',
+   A.assignAttention([okPaper]), 0);
+eq('a paper whose PDF has gone needs attention', A.assignAttention([okPaper, noFile]), 1);
+eq('…and so does one on no shelf', A.assignAttention([okPaper, noFile, noClass]), 2);
+eq('a paper is counted ONCE however many ways it is broken',
+   A.assignAttention([{ id: 'a4', name: 'both', pdfMissing: true }]), 1);
+eq('an empty list needs nothing', A.assignAttention([]), 0);
+eq('…and neither does no list at all', A.assignAttention(null), 0);
+ok('the ⚠ reads the SAME note the row prints, so the two can never disagree',
+   /a\.pdfMissing \|\| assignmentUntaggedNote\(a\)/.test(SRC_ASSIGN));
+
+asgList = [okPaper, noFile, noClass];
+asgChecked = 0;
+A.assignOpen = false;
+A.renderAssignments();
+ok('a folded section still says how many papers are set',
+   asgDom.assignCount.textContent === '3 papers', asgDom.assignCount.textContent);
+ok('…and still shouts when one of them needs the teacher',
+   asgDom.assignFlag.textContent === '⚠ 2 need attention' &&
+   !asgDom.assignFlag.classList.contains('hidden'), asgDom.assignFlag.textContent);
+ok('…and the PDF check runs whether the body is drawn or not', asgChecked === 1);
+ok('folded, the body is hidden and NOTHING is drawn into it',
+   asgDom.assignBody.classList.contains('hidden') && asgDom.assignList.kids.length === 0);
+ok('the caret says which way it is', asgDom.assignCaret.textContent === '▸');
+ok('…and so does aria-expanded', asgDom.assignToggle.attrs['aria-expanded'] === 'false');
+
+asgList = [okPaper];
+A.renderAssignments();
+ok('one paper is not "1 papers"', asgDom.assignCount.textContent === '1 paper');
+ok('…and nothing needing attention hides the ⚠ rather than saying "0"',
+   asgDom.assignFlag.classList.contains('hidden'));
+
+asgList = [];
+A.renderAssignments();
+ok('a teacher with nothing set sees no section at all, folded or not',
+   asgDom.assignSection.classList.contains('hidden'));
+
+/* ---- Open, it is a register ---- */
+asgList = [okPaper, noFile, noClass];
+A.setAssignOpen(true);
+ok('opening it draws the rows', asgDom.assignList.kids.length === 1 &&
+   asgDom.assignList.kids[0].className === 'setRows' &&
+   asgDom.assignList.kids[0].kids.length === 3);
+ok('…and unhides the body', !asgDom.assignBody.classList.contains('hidden'));
+ok('…and turns the caret', asgDom.assignCaret.textContent === '▾');
+ok('…and says so to a screen reader', asgDom.assignToggle.attrs['aria-expanded'] === 'true');
+
+const setRow = asgDom.assignList.kids[0].kids[0];
+const setCard = A.setCardNode(okPaper);
+ok('a ROW is a setCard wearing setRow', setRow.className === 'wsCard setCard setRow');
+ok('…and the CARD with no opts is byte-for-byte the one the shelf has always drawn',
+   setCard.className === 'wsCard setCard');
+ok('the card keeps its cover; the row drops it — a register is read by name',
+   classesOf(setCard).indexOf('wsCover') >= 0 && classesOf(setRow).indexOf('wsCover') < 0);
+ok('…and the card keeps "📌 Set by Mr Chung" while the row, where every line is, does not',
+   textsOf(setCard).some(t => /Set by Mr Chung/.test(t)) &&
+   !textsOf(setRow).some(t => /Set by Mr Chung/.test(t)));
+ok('BOTH still name the paper',
+   textsOf(setCard).indexOf('P5 SA2') >= 0 && textsOf(setRow).indexOf('P5 SA2') >= 0);
+ok('…and both still say which class it is for and what help it gives',
+   ['P5', 'Science'].every(t => textsOf(setRow).indexOf(t) >= 0) &&
+   textsOf(setRow).some(t => /Show me how/.test(t)));
+ok('…and both still offer Start it AND Take off the list',
+   ['Start it', 'Take off the list'].every(t => textsOf(setRow).indexOf(t) >= 0) &&
+   ['Start it', 'Take off the list'].every(t => textsOf(setCard).indexOf(t) >= 0));
+
+const rowLost = asgDom.assignList.kids[0].kids[1];
+const rowUntagged = asgDom.assignList.kids[0].kids[2];
+ok('THE ROW KEEPS THE WARNING A TIDIER ROW WOULD HAVE DROPPED FIRST — the lost PDF',
+   textsOf(rowLost).some(t => /no longer in Storage/.test(t)) &&
+   classesOf(rowLost).some(c => /assignWarn/.test(c)));
+ok('…and the one about reaching no shelf',
+   textsOf(rowUntagged).some(t => /on no student’s shelf/.test(t)) &&
+   classesOf(rowUntagged).some(c => /assignWarn/.test(c)));
+ok('…and a paper with no file cannot be started from the row either',
+   flat(rowLost).some(n => n.textContent === 'Start it' && n.disabled === true));
+
+/* A student never reaches this list at all, but they DO reach `setCardNode`
+   through their own shelf — so the node must go on standing down there. */
+A.currentUser = { email: 'kid@example.com' };
+const kidCard = A.setCardNode(okPaper);
+ok('a student\'s shelf card is never offered Take off the list',
+   textsOf(kidCard).indexOf('Take off the list') < 0 &&
+   textsOf(kidCard).indexOf('Start it') >= 0);
+A.currentUser = { email: 'chungzhikai@gmail.com' };
+
+/* ---- The wiring and the markup ---- */
+ok('the header IS the switch — one control, and it is bound once',
+   (html.match(/\$\('assignToggle'\)\.addEventListener\('click', toggleAssignOpen\);/g) || []).length === 1);
+ok('the markup carries the button, the caret, the count and the ⚠',
+   /<button class="assignToggle" id="assignToggle"[^>]*aria-controls="assignBody">/.test(html) &&
+   /id="assignCaret"/.test(html) && /id="assignCount"/.test(html) && /id="assignFlag"/.test(html));
+ok('…and the blurb, the list and its spacer are all INSIDE the body that folds',
+   /<div id="assignBody" class="hidden">[\s\S]{0,900}<div id="assignList"><\/div>[\s\S]{0,120}<\/div>\n\s*<\/div>/.test(html));
+ok('the section is still the ONE place a worksheet is taken off the class list',
+   /off\.addEventListener\('click', function \(\) \{ unpushWorksheet\(a\.id\); \}\);/.test(html));
+ok('the row and the fold have styles of their own rather than borrowing the grid\'s',
+   /\.setRows \{ display: flex; flex-direction: column;/.test(html) &&
+   /\.wsCard\.setRow \{/.test(html) && /\.assignToggle \{/.test(html));
+ok('…and a flagged row\'s warning wraps to a line of its own',
+   /\.wsCard\.setRow \.assignWarn \{ flex: 1 1 100%;/.test(html));
+
+/* The order inside the render is the whole safety story: the header is
+   painted, the check is fired, and only THEN does the fold return early. */
+const asgRender = between('function renderAssignments() {',
+  '\n/* THE TEACHER IS TOLD WHICH SET', 'renderAssignments');
+ok('the header is painted BEFORE the fold returns',
+   asgRender.indexOf("$('assignCount')") < asgRender.indexOf('if (!assignOpen) return;') &&
+   asgRender.indexOf("$('assignFlag')") < asgRender.indexOf('if (!assignOpen) return;'));
+ok('…and so is the PDF check, or a folded list never learns a file has gone',
+   asgRender.indexOf('checkAssignmentPdfs();') < asgRender.indexOf('if (!assignOpen) return;'));
+ok('…and a non-admin still gets nothing, before any of it',
+   asgRender.indexOf('isAdmin(currentUser) ? assignmentsForMe()') <
+   asgRender.indexOf("$('assignCount')"));
 const startGate = html.slice(html.indexOf('async function startAssignment'),
                              html.indexOf('async function startAssignment') + 900);
 ok('Start it asks the strict rule again in the handler, before anything is written',
