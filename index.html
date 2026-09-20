@@ -742,6 +742,7 @@
   .verdict.mPartial { background: #FDF4E3; color: #7A5410; border-color: #E7BD72; }
   .verdict.mWrong { background: #FCEDEB; color: #8C2E1D; border-color: #EFC6BF; }
   .verdict.mBlank { background: var(--bg-soft); color: var(--ink-faint); border-color: var(--line); }
+  .verdict.mSkip { background: #EEF0FA; color: #36409A; border-color: #C8CFEE; }
   .ansMarks { font-size: 0.73rem; font-weight: 700; color: var(--ink-soft); }
   .ansMarks.avail { font-weight: 400; color: var(--ink-faint); }
   .ansTopic {
@@ -820,6 +821,10 @@
   }
   .mistCard.mWrong { border-left-color: #E53935; }
   .mistCard.mPartial { border-left-color: #E8A54B; }
+  /* Indigo, deliberately neither of the other two: not the red of a wrong
+     answer, which a skipped question is not, and not the grey of `.mBlank`,
+     which disappears on a shelf of coloured cards. */
+  .mistCard.mSkip { border-left-color: #5C6BC0; }
   .mistShot {
     display: block; width: 100%; max-height: 240px; object-fit: contain;
     background: var(--bg-soft); border-bottom: 1px solid var(--line); cursor: zoom-in;
@@ -2279,7 +2284,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.33.1';
+var APP_VERSION = 'v1.34.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -9763,6 +9768,50 @@ function _markFields(r) {
   };
 }
 
+/* =====================================================================
+   🕳 THE ONE BLANK THAT IS A MISTAKE — a question they went PAST
+
+   "A blank is NEVER marked wrong" is the rule the whole marking path is
+   built on, and nothing here touches it: a skipped question still comes
+   back with no verdict, no feedback and no cross, the marks chip still says
+   what was there to be had, and the report still counts it blank. What it
+   gets is a place in the MISTAKE BOOK.
+
+   A BLANK WITH ANSWERED QUESTIONS AFTER IT IS NOT THE SAME THING AS A BLANK
+   AT THE END OF THE PAPER. A student who reaches question 7, cannot do it,
+   and goes on to answer 8 and 9 has said something plainly: they do not
+   know how. A student whose last four are blank has run out of time, or put
+   the pen down — and filing those would be a book full of questions nobody
+   has failed at, which is the same as a book nobody opens. Filing NEITHER,
+   which is what this app did until v1.34.0, quietly loses the questions a
+   child is most stuck on, on a screen that says the book is up to date.
+
+   `markLastAnswered` IS THE WHOLE TEST, and it is the LAST one rather than
+   the next: everything after it is the tail however long, and every blank
+   before it was gone past — including a run of them, which "is the NEXT
+   question answered?" would file only the last of.
+
+   IT READS THE ORDER OF `marking.items`, WHICH IS PAPER ORDER. The batches
+   are read in page order and `_markFoldRows` appends, so an index IS a
+   position on the paper. Sorting by question number instead would put 10
+   before 2 on any paper numbered as papers are, and file the wrong half of
+   it — on cards that would each look perfectly ordinary.
+   ===================================================================== */
+function markLastAnswered(items) {
+  var last = -1;
+  (items || []).forEach(function (it, i) { if (it && it.marked) last = i; });
+  return last;
+}
+/* THE ONE PREDICATE, so the filing and the harness cannot disagree about
+   which blanks were skipped. A question that was ATTEMPTED is never one of
+   them whatever its verdict: it has a verdict of its own, and two rules
+   that can both claim a question are two rules that will. */
+function markSkipped(items, i) {
+  var it = (items || [])[i];
+  if (!it || it.marked) return false;
+  return i < markLastAnswered(items);
+}
+
 /* `pageNums` is the REAL page number of each picture that was attached, in
    the order they were attached. It is passed rather than worked out from an
    index because the two stopped being the same thing the day answer-key
@@ -11954,10 +12003,20 @@ function mistakesCollRef() {
 async function fileMistakes() {
   if (!currentUser || !currentDocId) return;
   var context = { epoch: wsEpoch, docId: currentDocId, uid: currentUser.uid };
-  var wrong = marking.items.filter(function (it) {
-    return it.marked && (it.verdict === 'wrong' || it.verdict === 'partial');
+  /* WHAT GOES IN THE BOOK: every wrong or partly-right answer, and every
+     blank the student went PAST (🕳 above). ONE walk, in paper order, each
+     entry carrying whether it was skipped — asking `!it.marked` again inside
+     the loop would be a second reading of a rule that is decided here, and
+     the day an unjudged ANSWER is ever filed the two would disagree. */
+  var due = [];
+  marking.items.forEach(function (it, i) {
+    if (it.marked) {
+      if (it.verdict === 'wrong' || it.verdict === 'partial') due.push({ it: it, skipped: false });
+    } else if (markSkipped(marking.items, i)) {
+      due.push({ it: it, skipped: true });
+    }
   });
-  if (!wrong.length) return;
+  if (!due.length) return;
   var coll = mistakesCollRef();
   var have = {};
   mistakes.forEach(function (m) { have[m.key] = 1; });
@@ -11965,10 +12024,11 @@ async function fileMistakes() {
   // inside `_mbBuildBlocks`, so a paper where every question is wrong costs
   // ten vision calls and then quietly falls back to the tiers under it.
   _mbBuildBudget = MB_BUILD_MAX;
-  var filed = 0;
-  for (var i = 0; i < wrong.length; i++) {
+  var filed = 0, wentPast = 0;
+  for (var i = 0; i < due.length; i++) {
     if (!mistakeContextOK(context)) break;
-    var it = wrong[i];
+    var it = due[i].it;
+    var skipped = due[i].skipped;
     var key = mistakeKey(currentDocId, it);
     if (have[key]) continue;
     have[key] = 1;
@@ -11997,6 +12057,13 @@ async function fileMistakes() {
       explanation: it.explanation || '',
       feedback: it.feedback || '',
       verdict: it.verdict,
+      /* WHY IT IS IN THE BOOK when there is no verdict to say so. A skipped
+         blank is filed exactly as the marking left it — no verdict, no
+         feedback, no cross — so this flag is the only thing that can tell a
+         card, a search or a practice session that it was gone past rather
+         than got wrong. A mistake filed before v1.34.0 carries none and
+         reads as what it always was. */
+      skipped: skipped,
       marks: it.marks || '',
       topic: it.topic || '',
       // Where the question files, so the book can one day be read by
@@ -12044,12 +12111,18 @@ async function fileMistakes() {
         catch (e) { console.warn('Mistake picture could not be recorded', e); }
       }
       filed++;
+      if (skipped) wentPast++;
     } catch (e) { console.warn('Mistake could not be filed', e); }
   }
   rbForgetPages();
   if (filed && mistakeContextOK(context)) {
     await loadMistakes(true);
-    toast('📕 ' + filed + ' question' + (filed === 1 ? '' : 's') + ' added to your mistake book.', 4500);
+    /* THE SKIPPED ONES ARE NAMED. They are new in v1.34.0 and they are the
+       ones a student did not know they had "got wrong", so a count that
+       folded them in with the crosses would be a book that had quietly
+       grown with nothing anywhere saying why. */
+    toast('📕 ' + filed + ' question' + (filed === 1 ? '' : 's') + ' added to your mistake book' +
+          (wentPast ? ' — ' + wentPast + ' you skipped past' : '') + '.', 5000);
   }
 }
 
@@ -15676,7 +15749,11 @@ function questionNodes(m, kind, opts) {
 
 function mistakeCard(m) {
   var card = document.createElement('div');
-  card.className = 'mistCard' + (m.verdict === 'partial' ? ' mPartial' : ' mWrong') +
+  /* A SKIPPED QUESTION MUST NOT WEAR THE RED OF A WRONG ANSWER. That is the
+     same cross the marking refuses to put on a blank, moved into the book —
+     and a child reading it would be told they got wrong a question they
+     never attempted. */
+  card.className = 'mistCard' + (mistSkipped(m) ? ' mSkip' : m.verdict === 'partial' ? ' mPartial' : ' mWrong') +
     (pracSel[m.id] ? ' picked' : '');
   if (m.cleared) card.style.opacity = '.62';
 
@@ -15720,8 +15797,13 @@ function mistakeCard(m) {
     meta.appendChild(c);
   });
   var v = document.createElement('span');
-  v.className = 'verdict ' + (m.verdict === 'partial' ? 'mPartial' : 'mWrong');
-  v.textContent = m.verdict === 'partial' ? '🟡 Almost' : '❌ Not quite';
+  if (mistSkipped(m)) {
+    v.className = 'verdict mSkip';
+    v.textContent = '⬜ Skipped';
+  } else {
+    v.className = 'verdict ' + (m.verdict === 'partial' ? 'mPartial' : 'mWrong');
+    v.textContent = m.verdict === 'partial' ? '🟡 Almost' : '❌ Not quite';
+  }
   meta.appendChild(v);
   body.appendChild(meta);
 
@@ -15760,10 +15842,22 @@ function mistakeCard(m) {
   /* The QUESTION, whichever tier it is — but never the picture the card
      already carries above, which `questionNodes` knows not to repeat. */
   questionNodes(m, 'card', { noPic: true }).forEach(function (n) { body.appendChild(n); });
+  /* A SKIPPED CARD HAS NOTHING IN THE TWO BOXES A MARKED ONE FILLS — no
+     answer to show back, no feedback, because nothing was attempted. So
+     without a word here it is a bare question sitting in a book of marked
+     ones with nothing anywhere saying how it got in. */
+  if (mistSkipped(m)) {
+    body.appendChild(boxNode('You went past this one',
+      'You left this blank and answered questions after it, so it is here to try again.', 'youBox'));
+  }
   if (m.studentAnswer) body.appendChild(boxNode('What you wrote', m.studentAnswer, 'youBox'));
   if (m.feedback) body.appendChild(boxNode('Chung GPT says', m.feedback, 'whyBox'));
   if (m.answer) body.appendChild(boxNode('The answer', m.answer, 'ansBox'));
-  if (m.explanation) body.appendChild(boxNode('Why', m.explanation, 'whyBox'));
+  /* A blank below the top help level came back with a place to START where
+     its answer would be (`markBlankRule`), so "Why" would be a heading over
+     an answer that is not there — the rule the marking card already carries,
+     and one a skipped question meets far more often than a wrong one. */
+  if (m.explanation) body.appendChild(boxNode(m.answer ? 'Why' : 'Where to start', m.explanation, 'whyBox'));
   card.appendChild(body);
 
   var foot = document.createElement('div');
@@ -15885,6 +15979,15 @@ var mistTopic = 'all';
 var mistLo = 'all';
 var mistQuery = '';
 
+/* 🕳 A BLANK THE STUDENT WENT PAST. The ONE predicate every surface in
+   the book reads — the card's colour, its chip, the note on it, the search
+   and the practice session's prompt — so not one of them can decide for
+   itself that a question with no verdict was skipped. `markSkipped` decides
+   it ONCE, at filing time; this only ever reports what was filed, so a
+   mistake written before v1.34.0 carries no flag and is exactly what it has
+   always been. */
+function mistSkipped(m) { return !!(m && m.skipped); }
+
 /* WHERE A MISTAKE FILES. Memoised on the row, which is safe because
    `loadMistakes` replaces every object wholesale — a stale placement can
    only ever outlive the read that made it. */
@@ -15945,7 +16048,11 @@ function mistHaystack(m) {
   var bits = [
     m.number ? 'q' + m.number : '', m.docName, levelLabel(m.level), subjectLabel(m.subject),
     p.topic, p.lo, p.loTitle, p.loText,
-    m.question, m.studentAnswer, m.answer, m.feedback, m.explanation, m.topic
+    m.question, m.studentAnswer, m.answer, m.feedback, m.explanation, m.topic,
+    /* So "skipped" FINDS them. A skipped card carries no answer of its own
+       and no feedback, so it is the one kind of card with almost nothing to
+       be searched by. */
+    mistSkipped(m) ? 'skipped blank went past not attempted' : ''
   ];
   mistakeBlocks(m).forEach(function (b) { if (b.type === 'text') bits.push(b.text); });
   mistakeOptions(m).forEach(function (o) { bits.push(o.label); bits.push(o.text); });
@@ -16149,7 +16256,9 @@ var PRAC_SYS =
   '"verdict" is "correct" when their answer would earn full marks, "partial" when it is right as far as it goes ' +
   'but is missing a required step, unit, keyword or one part of a two-part question, and "wrong" otherwise. ' +
   '"feedback" is 1 to 3 sentences spoken TO the student: what they got right, exactly where it went wrong, and ' +
-  'what to do instead. They got this question wrong once already, so say what has IMPROVED as well. Never be ' +
+  'what to do instead. Where the message says what they put the FIRST time, they got it wrong once already — say ' +
+  'what has IMPROVED as well. Where it says they LEFT IT BLANK, this is their first real attempt at it: never ' +
+  'refer to a previous try, and say what they have got right NOW. Never be ' +
   'unkind and never be vague. Plain text only — no markdown, no bullets, no line breaks.';
 
 async function pracCheck() {
@@ -16176,6 +16285,11 @@ async function pracCheck() {
     if (m.explanation) lines.push('Why: ' + m.explanation);
     if (m.studentAnswer) lines.push('What they put the FIRST time, which was ' + (m.verdict || 'wrong') +
       ': ' + m.studentAnswer);
+    /* A SKIPPED QUESTION HAS NO FIRST ATTEMPT, and a marker told nothing
+       assumes there was one: "a big improvement on last time" said to a
+       child who left it blank is praise for something that never happened,
+       and it tells them the app has not noticed. */
+    else if (mistSkipped(m)) lines.push('They LEFT THIS QUESTION BLANK the first time — they did not attempt it at all.');
     lines.push('What they have written NOW: ' + mine);
     var raw = await window.askGemini(lines.join('\n'), {
       system: PRAC_SYS + aiGrounding('mark') + tutorMethodRule(),
