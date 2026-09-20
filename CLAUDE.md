@@ -3783,6 +3783,75 @@ the two in step; a fix to either belongs in both.
   tool table for the same reason.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 🐛 THREE NAMES THE FILE CALLED AND DID NOT HAVE (v1.46.0)
+
+**`bindTextEditNode`** (beside `commitActiveTextEdit` — search `A NODE ALREADY OUT OF THE
+DOCUMENT`), **`renderStylusBtn`** (beside `setStylusOnly`), the comment standing where
+`attachTouchNavigation` used to be, the single `#stylusBtn` and its single click handler, and
+the widened census in `tools/tutor-tests.mjs` with the new **`tools/browser-check.mjs`**.
+
+*"Still cannot type with text box."* 🅣 v1.42.0 was right and was not enough: underneath it, three
+functions this file CALLS had gone missing in a branch squash. **This is the same class of fault
+💾 v1.43.0 documents — a name the source says and that does not RESOLVE — and it is the third
+time.**
+
+- **`bindTextEditNode` IS CALLED FROM `annNode`, so the FIRST TAP THREW INSIDE `renderOverlay`.**
+  The annotation was pushed and `editingId` set, and then the render died before the box was
+  drawn or focused — so **every later `renderOverlay` threw too**, because `editingId` stays set.
+  To a child: tap the page, nothing happens, ever.
+- **`renderStylusBtn` WAS CALLED AT THE TOP LEVEL, WHICH IS THE WORST PLACE FOR IT.** A throw
+  there takes **every line below it**: the one-letter tool shortcuts, Ctrl+Z, Ctrl+S, Escape, the
+  `beforeunload` save and the eight opening render calls. **The page still painted**, because the
+  sign-in callback re-runs the renders — the same reason 💾 the dead save was invisible for
+  forty-eight versions, and the reason nothing on any screen could report it.
+- **`commitDrawing` WAS CALLED BY A SECOND COPY OF THE NAVIGATION ENGINE.** v1.12.0's
+  `attachTouchNavigation` was superseded by `navBind` and never taken out: both bound
+  `#viewerArea`, both drove the global `nav`, and the stale one called a name the current
+  pipeline no longer has. **It was DELETED rather than repaired** — its v1.12.0 body no longer
+  matches the pipeline (the current code pushes the annotation at creation and uses
+  `drawing.node`), so "fixing" it would have been writing a second engine. One engine, one `nav`,
+  one place a gesture is decided.
+- **`overlayRebuilding` HAD NO READER, WHICH IS WHAT THAT MEANT.** It is written by
+  `renderOverlay` and read by exactly one thing — `bindTextEditNode`'s `blur` handler, which is
+  how a rebuild's own blur is told from a child moving on. A counter written and never read is
+  not dead code here; it is the missing half announcing itself.
+- **THE ✍️ BUTTON WAS IN THE MARKUP TWICE, WITH TWO HANDLERS.**
+  `document.getElementById` hands back the FIRST match, so the stale twin was dead markup nobody
+  could find — but **`$('stylusBtn')` resolves to that same element for BOTH wirings**, so the
+  toggle ran twice per press and landed exactly where it started: a ✍️ that toasts at you and
+  changes nothing.
+- **IT SHIPS VISIBLE AND `renderStylusBtn` HIDES IT, never the other way round.** Pencil-only
+  mode is ON by default, so a painter that fails leaving the button hidden is a touchscreen
+  nobody can draw on with a finger and no control anywhere to say so; one that fails leaving it
+  shown is one spare button on a laptop. The harness pins the direction.
+
+### The guard, and why the old one was green the whole time
+
+- **💾 v1.43.0's census asked about the SAVE PATH, and the save path was fine.** It was the text
+  box and the wiring that were broken, so 1,600 checks passed over a build whose 🅣 tool could
+  not be used at all. The census now covers **the text-edit path** and **the whole wiring block,
+  handler bodies included** — a handler calling a name that is not there is a button that throws
+  when it is pressed, which is this fault wearing a different hat.
+- **A WHOLE-FILE census was TRIED AND ABANDONED, and that is worth writing down.** A hand-rolled
+  JS stripper desynchronises on an apostrophe inside a double-quoted string and, fatally, on a
+  **regex literal containing a quote** (`/[^'\\]/`) — after which real names read as missing.
+  Slices whose boundaries are known are honest; a whole-file sweep is a check that cries wolf.
+- **THE PIN READS THE DECLARATION, NEVER THE PROSE.** `function attachTouchNavigation\b`, not the
+  bare word — the comment standing where that IIFE used to be names it on purpose, so a check
+  matching its own documentation would go GREEN on the fault and RED on the fix. That is the rule
+  `LIVE_THROWS` and 🚀 the deploy step already carry, and it fired here on the first run.
+- **`tools/browser-check.mjs` IS THE ONLY HONEST CHECK OF ANY OF IT.** It opens the real page in
+  a real Chromium, asserts nothing threw at load, builds a page the way `loadPdf` does,
+  dispatches a **`pointerType: 'touch'`** pointerdown with 🅣 in hand, and then asserts the box
+  appears, is focused, takes words, GROWS over three lines, commits on blur, survives a
+  `renderOverlay` mid-word, and that a one-letter shortcut still reaches the page — plus one ✍️
+  button that really flips the mode when pressed. **On the broken build 13 of its 17 checks go
+  red and every source-level pin was green**, which is the whole argument for it. It needs a real
+  Chromium, so it skips cleanly when Playwright is absent and is a tool you reach for rather than
+  a gate — like `tools/text-caret-check.mjs`.
+- **EVERY STEP OF IT REPORTS RATHER THAN THROWING.** A harness that crashes on a broken build
+  reads as a broken harness, and the fault then looks like it is in the check.
+
 ## 🅣 A TAP IS NOT A MARK — the text tool, and 🧽 the drawn eraser (v1.42.0)
 
 **`isDrawTool`** (search `WHICH TOOLS A FINGER MUST NOT DRIVE`), and the eraser button's inline
@@ -3924,6 +3993,29 @@ and nothing on any screen says what changed.
   something that is hiding nothing. And remember it between visits and the book
   comes back in an order somebody chose last Tuesday — the rule the filters
   already follow, broken on the one axis that sits beside them.
+- After touching **🐛 the three recovered names** (`bindTextEditNode`,
+  `renderStylusBtn`, `setStylusOnly`, `overlayRebuilding`, the `#stylusBtn`
+  markup or its one click handler, `navBind`, the census slices `TEXT_EDIT` /
+  `WIRING` in `tools/tutor-tests.mjs`, or `tools/browser-check.mjs`), run
+  `node tools/tutor-tests.mjs` **and** `node tools/browser-check.mjs`. **The
+  browser one is not optional and it is not ceremony**: 1,600 source-level
+  checks were green over a build whose text box could not be used at all,
+  because each of them asked what the source SAYS rather than whether the
+  names it says RESOLVE. Let a name the file calls go missing again and the
+  cost depends only on where it is called from — from `annNode` the first tap
+  of 🅣 throws inside `renderOverlay` and no box is ever drawn, from the top
+  level it takes the shortcuts, Ctrl+Z, Ctrl+S, Escape, the `beforeunload`
+  save and the opening renders with it, and in BOTH cases the app still paints
+  because the sign-in callback re-runs the renders. Narrow the census back to
+  the save path and it goes green on exactly this fault again. Match
+  `attachTouchNavigation` as a bare word rather than as a declaration and the
+  pin reads its own comment, so it is red on the fix and green on the fault.
+  Let a second engine, a second `#stylusBtn` or a second click handler back in
+  and pencil-only mode toggles twice per press and changes nothing — a button
+  that plainly works and plainly does not. Ship ✍️ `hidden` and trust the
+  painter to unhide it and a painter that throws leaves a touchscreen nobody
+  can draw on with a finger. And let any step of `browser-check` THROW instead
+  of reporting and a broken build reads as a broken harness.
 - After touching **🅣 which tools a finger may drive, or 🧽 the drawn eraser**
   (`isDrawTool`, the two `stylusOnly && … isDrawTool(tool)` gates, the
   `tool === 'text'` branch of the overlay's `pointerdown`, the eraser button's
