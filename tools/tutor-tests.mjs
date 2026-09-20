@@ -4755,6 +4755,191 @@ section('The bookshelf');
   ok('…and are taken off the paper at upload', /wsMeta\.school = got\.school;\n\s*wsMeta\.topic = got\.topic;/.test(html));
 
   /* =================================================================
+     🎓 A SHELF BELONGS TO ONE CLASS (v1.40.0)
+
+     v1.37.0 made a shelf a LABEL with no class of its own, so “2025
+     papers” stood on every bookcase at once — one shelf, eight classes.
+     That is wrong for the way the centre actually files: a folder made
+     under P6 · Mathematics is a P6 Maths folder, and an empty copy of it
+     standing on P3 · Science is clutter nobody made.
+
+     EVERY FAILURE BELOW IS SILENT and the bookcase still paints, so each
+     one is pinned twice over — the pure predicate, and the reader that
+     has to ask it.
+     ================================================================= */
+  /* `''` MEANS EVERY CLASS, and that direction is the whole migration:
+     every shelf already on a live bookcase carries no level and no
+     subject, so reading `''` as “nowhere” would empty a centre's whole
+     bookcase on the deploy, with every paper on those shelves falling
+     back to “Not on a shelf yet”. */
+  ok('a shelf with no class of its own stands on every class, exactly as it did before v1.40.0',
+     S.shelfFitsClass({ level: '', subject: '' }, 'P6', 'math') &&
+     S.shelfFitsClass({}, 'P3', 'science') &&
+     S.shelfFitsClass({ level: '', subject: '' }, '', ''),
+     'a shelf made before this has no class — read `\'\'` as “nowhere” and the bookcase empties itself');
+  ok('…and a P6 Maths shelf stands on P6 Maths and NOWHERE else',
+     S.shelfFitsClass({ level: 'P6', subject: 'math' }, 'P6', 'math') &&
+     !S.shelfFitsClass({ level: 'P6', subject: 'math' }, 'P5', 'math') &&
+     !S.shelfFitsClass({ level: 'P6', subject: 'math' }, 'P6', 'science') &&
+     !S.shelfFitsClass({ level: 'P6', subject: 'math' }, '', ''));
+  /* The two halves are asked SEPARATELY, so “every P6 shelf” and “every
+     Maths shelf” are both sayable — a shelf is never forced to name both. */
+  ok('a shelf can name one half and leave the other open',
+     S.shelfFitsClass({ level: 'P6', subject: '' }, 'P6', 'math') &&
+     S.shelfFitsClass({ level: 'P6', subject: '' }, 'P6', 'science') &&
+     !S.shelfFitsClass({ level: 'P6', subject: '' }, 'P5', 'science') &&
+     S.shelfFitsClass({ level: '', subject: 'math' }, 'P4', 'math') &&
+     !S.shelfFitsClass({ level: '', subject: 'math' }, 'P4', 'science'));
+  ok('no shelf at all fits nothing', !S.shelfFitsClass(null, 'P6', 'math'));
+  /* A record from a later version — or a level this build has never heard
+     of — reads as EVERY class rather than as a shelf nothing can draw. */
+  eq('the catalogue validates the class against this app\'s own ladder and subjects',
+     S.shelfNorm([{ id: 'a', name: 'A', level: 'P6', subject: 'math' },
+                  { id: 'b', name: 'B', level: 'P9', subject: 'latin' },
+                  { id: 'c', name: 'C' }])
+       .map(s => s.id + ':' + (s.level || '-') + '/' + (s.subject || '-')),
+     ['a:P6/math', 'b:-/-', 'c:-/-']);
+  /* A PAPER CAN NEVER BE LOST BY SHELF BOOKKEEPING — the rule the unknown
+     id already followed, extended to a shelf of another class: the paper
+     falls back onto “Not on a shelf yet” rather than dragging a P6 shelf
+     onto the P5 bookcase. */
+  {
+    const cls = S.shelfNorm([{ id: 'p6m', name: '2025 papers', level: 'P6', subject: 'math', order: 0 },
+                             { id: 'any', name: 'Topicals', order: 1 }]);
+    const papers = [
+      { id: 'a', level: 'P6', subject: 'math', shelf: 'p6m' },
+      { id: 'b', level: 'P5', subject: 'science', shelf: 'p6m' },   // another class's shelf
+      { id: 'c', level: 'P5', subject: 'science', shelf: 'any' }    // a shelf every class shares
+    ];
+    const shelfOf = w => w.shelf || '';
+    eq('a paper wearing another class\'s shelf id is UNSORTED, never on that shelf',
+       S.shelfGroups(papers, { shelves: cls, shelfOf })
+         .map(g => g.level + '|' + g.subject + '|' + (g.shelf || '-') + ':' + g.items.map(w => w.id).join(',')),
+       ['P5|science|any:c', 'P5|science|-:b', 'P6|math|p6m:a']);
+    /* AND THE EMPTY SHELVES ARE NARROWED TOO — that is the reported bug:
+       “when i create p6 shelves, empty shelves are linked to the other
+       levels as well”. */
+    eq('the teacher\'s empty shelves are only the ones this class really has',
+       S.shelfSections(papers, { shelves: cls, shelfOf, now: 0, showEmpty: true,
+                                 scope: { level: 'P5', subject: 'science' } })
+         .filter(x => x.kind === 'shelf').map(x => (x.shelf || '-') + (x.empty ? '!' : '')),
+       ['any', '-'],
+       'the P6 Maths shelf must not stand empty on the P5 Science bookcase');
+    ok('…and a P6 Maths shelf is drawn on the P6 Maths bookcase and on no other',
+       S.shelfSections(papers, { shelves: cls, shelfOf, now: 0, showEmpty: true,
+                                 scope: { level: 'P6', subject: 'math' } })
+         .some(x => x.kind === 'shelf' && x.shelf === 'p6m') &&
+       !S.shelfSections(papers, { shelves: cls, shelfOf, now: 0, showEmpty: true,
+                                  scope: { level: 'P4', subject: 'math' } })
+         .some(x => x.kind === 'shelf' && x.shelf === 'p6m'),
+       'a shelf made under one class standing empty on every other is the whole reported fault');
+    ok('…and a shelf every class shares is still drawn everywhere',
+       ['P3|science', 'P6|math'].every(k => S.shelfSections(papers, {
+         shelves: cls, shelfOf, now: 0, showEmpty: true,
+         scope: { level: k.split('|')[0], subject: k.split('|')[1] }
+       }).some(x => x.kind === 'shelf' && x.shelf === 'any')));
+  }
+  /* CALLED WITH NOTHING, `shelfGroups` IS STILL BYTE-FOR-BYTE WHAT IT WAS.
+     Every centre that has never made a shelf is unaffected, which is the
+     property that makes this safe to ship over a live bookcase. */
+  eq('with no catalogue in hand a paper keeps whatever shelf it carries',
+     S.shelfGroups([{ id: 'a', level: 'P6', subject: 'math', shelf: 'p6m' }],
+                   { shelfOf: w => w.shelf || '' }).map(g => g.shelf),
+     ['p6m']);
+  /* ONE RESOLVER. The mover, the ✎ rename, the 🗂 picker and the drag all
+     ask `shelfPaperOf` — four copies of that walk is four chances to read
+     a `set:` entry's class off the wrong object. */
+  {
+    const keepW = S.worksheets, keepA = S.assignments;
+    S.worksheets = [{ id: 'w1', assignmentId: 'a1', level: 'P5', subject: 'science' },
+                    { id: 'own', level: 'P3', subject: 'science' }];
+    S.assignments = [{ id: 'a1', level: 'P6', subject: 'math' }];
+    eq('a paper of the student\'s own is its own class',
+       (p => p.level + '|' + p.subject)(S.shelfPaperOf('own')), 'P3|science');
+    eq('…and a copy\'s own fields win over the assignment\'s, because it IS the paper being moved',
+       (p => p.level + '|' + p.subject + '|' + p.aid)(S.shelfPaperOf('w1')), 'P5|science|a1');
+    eq('a SET paper that nobody has started is read off the assignment',
+       (p => p.level + '|' + p.subject + '|' + (p.w ? 'w' : '-'))(S.shelfPaperOf('set:a1')), 'P6|math|-');
+    ok('a paper nobody has comes back with neither, which every caller tests',
+       (p => !p.w && !p.live)(S.shelfPaperOf('nope')));
+    /* THE DRAG ASKS BEFORE IT LIGHTS UP: a shelf that highlights and then
+       refuses is worse than one that never highlighted at all. */
+    const keepS = S.shelves;
+    S.shelves = S.shelfNorm([{ id: 'p6m', name: '2025', level: 'P6', subject: 'math', order: 0 },
+                             { id: 'any', name: 'Topicals', order: 1 }]);
+    ok('a shelf refuses the drag it is going to refuse the drop of',
+       S.shelfDropOk('p6m', 'set:a1') && !S.shelfDropOk('p6m', 'own') &&
+       S.shelfDropOk('any', 'own') && !S.shelfDropOk('gone', 'own'));
+    ok('…and “Not on a shelf yet” takes anything, because it is where a refused paper goes',
+       S.shelfDropOk('', 'own') && S.shelfDropOk('', 'nope'));
+    S.shelves = keepS; S.worksheets = keepW; S.assignments = keepA;
+  }
+  /* THE SAME NAME ON TWO CLASSES IS TWO SHELVES. Refusing the second
+     would refuse the very thing this narrowing is for; the same name on
+     the SAME class is still one shelf twice. */
+  ok('the duplicate check is per CLASS, never across the whole bookcase',
+     /x\.name\.toLowerCase\(\) === nm\.toLowerCase\(\) &&\n\s*String\(x\.level \|\| ''\) === s\.level && String\(x\.subject \|\| ''\) === s\.subject/.test(html));
+  /* `undefined` KEEPS the class. Every shelf made before v1.40.0 has
+     none, so a careless `|| ''` is indistinguishable from a deliberate
+     “every class” — and a caller that only wanted to rename would take a
+     shelf's class off it in silence. */
+  ok('a rename that says nothing about the class KEEPS it, rather than taking it off',
+     /var lv = level === undefined \? String\(had\.level \|\| ''\) : String\(level \|\| ''\);/.test(html) &&
+     /var sj = subject === undefined \? String\(had\.subject \|\| ''\) : String\(subject \|\| ''\);/.test(html));
+  ok('…and moving a shelf to another class SAYS what happens to the papers that cannot follow',
+     /Papers that are not ' \+ \(cls \|\| 'on it'\) \+ ' go back to/.test(html));
+  /* REFUSED IN THE MOVER AS WELL AS NARROWED IN THE PICKER. Written
+     without the handler check the write lands, the toast says it moved,
+     and `shelfGroups` reads the id as unsorted on the very next paint —
+     the paper back where it started with nothing on any screen saying why. */
+  ok('the mover refuses a shelf of another class IN THE HANDLER, in words',
+     /if \(sh && !shelfFitsClass\(sh, p\.level, p\.subject\)\) \{/.test(
+       between('async function moveWorksheetToShelf(', '\n/* ---- Which level and subject are in view', 'the mover')));
+  ok('…and the 🗂 picker offers only the shelves the mover would accept',
+     /var mine = shelves\.filter\(function \(sh\) \{ return shelfFitsClass\(sh, pick\.level, pick\.subject\); \}\);/.test(html));
+  /* A SHELF MADE **FOR A PAPER** OPENS ON THAT PAPER'S CLASS, because the
+     paper is moved onto it the instant it is made: on the scope's class
+     instead, a teacher looking at P5 · Science who makes a shelf for a P6
+     Maths paper gets a P5 shelf the move is then refused by, and the shelf
+     they just made stands empty on somebody else's bookcase. */
+  ok('a shelf made FOR a paper opens on that paper\'s class, never on the class in view',
+     /var here = shelfNameThenMove \? shelfPaperOf\(shelfNameThenMove\) : shelfScopeNow\(\);/.test(html) &&
+     /var made = await shelfCreate\(nm, lv, sj\);\n\s*if \(made && mv\) await moveWorksheetToShelf\(mv, made\);/.test(html),
+     'the create and the move it was made for must never disagree about the class');
+  ok('…and COUNTS the ones it left out, so a shelf the teacher made is never silently absent',
+     /var hidden = shelves\.length - mine\.length;/.test(html) &&
+     /belong' \+ \(hidden === 1 \? 's' : ''\) \+ ' to a different class/.test(html));
+  /* THE UPLOAD PICKER IS NARROWED BY THE CLASS BEING UPLOADED TO, and the
+     class is chosen AFTER the dialog was built — so it is refilled on
+     every change, bound ONCE rather than inside `openUploadModal`, which
+     runs on every upload and would stack a listener per opening. */
+  ok('the upload\'s shelf picker is narrowed by the level and subject being uploaded to',
+     /function fillUploadShelves\(\) \{/.test(html) &&
+     /if \(!open && !shelfFitsClass\(sh, lv, sj\)\) return;/.test(html));
+  ok('…and it is refilled when either picker changes, from ONE listener bound once',
+     /\['upLevel', 'upSubject'\]\.forEach\(function \(id\) \{\n\s*var el = \$\(id\);\n\s*if \(el\) el\.addEventListener\('change', function \(\) \{ fillUploadShelves\(\); \}\);/.test(html) &&
+     (html.match(/addEventListener\('change', function \(\) \{ fillUploadShelves\(\); \}\)/g) || []).length === 1);
+  ok('…and with no class chosen yet every shelf is offered, with its own class printed beside it',
+     /var open = !lv \|\| !sj;/.test(html) &&
+     /o\.textContent = '🗂 ' \+ sh\.name \+ \(open && cls \? '  \(' \+ cls \+ '\)' : ''\);/.test(html));
+  ok('…and a shelf that has fallen out of the list is never left SELECTED',
+     /sel\.value = '';\n\s*for \(var i = 0; i < sel\.options\.length; i\+\+\) if \(sel\.options\[i\]\.value === was\) sel\.value = was;/.test(html));
+  /* THE SHELF IS WRITTEN AT CREATION, BEFORE THE READ — which is right, so
+     the paper stands on the right shelf from its first paint. But the
+     level and the subject may only have been settled by the read a moment
+     ago, so a shelf that is not this paper's class is CLEARED and NAMED:
+     a shelf the teacher chose and the bookcase silently ignored is the
+     shape of fault this whole narrowing exists to end. */
+  ok('an upload whose read put it in another class is taken OFF the shelf rather than left wearing it',
+     /if \(chosen && !shelfFitsClass\(chosen, got\.level, got\.subject\)\) \{/.test(html) &&
+     /\.set\(\{ shelf: '' \}, \{ merge: true \}\)/.test(html));
+  ok('…and it is NAMED, on its own and in a pile of ten alike',
+     /if \(solo\) toast\('Uploaded, but not on that shelf: ' \+ shelfSkip/.test(html) &&
+     /if \(out\.shelfSkip\) offShelf\.push\(\{ name: out\.name, why: out\.shelfSkip \}\);/.test(html) &&
+     /if \(offShelf\.length\) msg \+= ' NOT on that shelf: ' \+ blockedList\(offShelf\)/.test(html),
+     'a count on its own leaves the teacher to work out which of ten papers is somewhere they did not put it');
+
+  /* =================================================================
      ✎ RENAMING A PAPER — the class reads the new name, and nothing a
      child has written on it moves. Every failure below is silent: the
      rename lands, the toast says it did, and either the class never sees

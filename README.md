@@ -12,6 +12,35 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.40.0 — 🎓 A shelf belongs to ONE class
+
+**A folder made under P6 · Mathematics stays there.** Shelves used to be plain labels with no class
+of their own, so “2025 papers” stood on every bookcase at once — and an empty copy of every shelf
+turned up under every level and subject, which is the reported fault: *“when I create P6 shelves,
+empty shelves are linked to the other levels as well.”*
+
+A shelf now carries the class it was made for, and stands on that bookcase and nowhere else.
+
+- **Making a shelf asks which class it is for**, on two pickers in the ✎ dialog — a level and a
+  subject. Making one while you are looking at P6 · Mathematics opens on P6 · Mathematics, so the
+  obvious thing needs no thought; making one from a card's 🗂 button opens on **that paper's** class,
+  because the paper is moved onto it the moment it is made.
+- **Leave a box on “Every” and the shelf still stands on every class**, which is exactly what every
+  shelf made before this carries — so **nothing on a live bookcase moves on the deploy**, and a
+  shelf you want pinned to one class is pinned with ✎ Rename rather than deleted and made again.
+- **The same name on two classes is two shelves.** “2025 papers” on P6 · Maths and “2025 papers” on
+  P5 · Science are different piles; the same name on the *same* class is still refused.
+- **A paper can only go on a shelf of its own class**, and the app refuses in words rather than
+  letting a move land and quietly come undone. The drag does not light up a shelf it is going to
+  refuse, the 🗂 picker offers only the shelves the move would accept — and **counts the ones it
+  left out**, so a shelf you made is never just missing — and the upload's shelf picker narrows to
+  the level and subject the pile is being uploaded to.
+- **A paper is never lost by any of this.** A paper still carrying the id of a shelf that is not
+  its class falls back onto *Not on a shelf yet*, exactly as it already did for a shelf that had
+  been deleted. An upload whose level and subject were only settled by the paper read is taken off
+  a shelf it does not belong on **and told so by name**, on its own and in a pile of ten alike.
+- Moving a shelf to a different class says what happens to the papers that cannot follow it.
+
 ## v1.39.0 — ✎ Rename a paper, and the whole class reads the new name
 
 A worksheet was called whatever it was called when it went up, and there was no way to change it.
