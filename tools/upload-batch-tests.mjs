@@ -305,8 +305,20 @@ ok('the dialog is read and shut BEFORE the first await',
 ok('the key is reported against the paper it really landed on',
    /if \(n === 0 && s\.keyFile\) keyOn = out\.name;/.test(html) && /if \(keyOn\) msg \+=/.test(html),
    'done[0] is the first paper that SUCCEEDED — with the first one failed it names a paper that has no key');
+// The LOOP's own body, cut by real markers rather than by a character
+// count — a window sized to today's body is a window the next comment
+// falls outside of, and the pin then goes red on a change that is fine.
+const loopBody = (function () {
+  const i = source.indexOf('for (var n = 0; n < pdfs.length; n++) {');
+  const j = source.indexOf('if (solo) return;', i);
+  if (i === -1 || j === -1) throw new Error('could not find the upload loop');
+  return source.slice(i, j);
+})();
 ok('every paper is caught on its own',
-   /try \{[\s\S]{0,700}\} catch \(e\) \{[\s\S]{0,200}failed\.push\(pdfBaseName\(pdfs\[n\]\)\);/.test(html),
+   /\btry \{/.test(loopBody) && /\} catch \(e\) \{/.test(loopBody) &&
+   loopBody.indexOf('await uploadOne(') > loopBody.indexOf('try {') &&
+   loopBody.indexOf('await uploadOne(') < loopBody.indexOf('} catch (e) {') &&
+   /failed\.push\(pdfBaseName\(pdfs\[n\]\)\);/.test(loopBody.slice(loopBody.indexOf('} catch (e) {'))),
    'one failure that escapes the loop loses every paper after it');
 ok('a batch goes back to the shelf',
    /if \(solo\) return;[\s\S]{0,120}await loadWorksheets\(\);\n\s*showView\('home'\);/.test(html));

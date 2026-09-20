@@ -1794,6 +1794,84 @@ knew who was looking at it.**
   on a child's shelf is something nothing on the screen would ever explain.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 🎓 A SHELF BELONGS TO ONE CLASS (v1.40.0)
+
+**`shelfFitsClass`** / `shelfClassLabel` / **`shelfPaperOf`** / **`shelfDropOk`** /
+`shelfClassOptions` / **`fillUploadShelves`**, the `level` / `subject` kept by `shelfNorm`, the
+narrowing line in **`shelfGroups`** and the one in `shelfSections`' empty-shelf sweep, the class
+arguments on `shelfCreate` / `shelfRename`, the refusal in `moveWorksheetToShelf`, the filter and
+the hidden count in `openShelfPick`, `shelfDropOk` in the `dragover`, the two class pickers in
+`openShelfNameModal` / `shelfNameConfirm`, and the `shelfSkip` on `uploadOne`'s answer with the
+`offShelf` list in `handleUpload` (search `A SHELF BELONGS TO ONE CLASS`).
+
+🗂 v1.37.0 made a shelf **a LABEL with no class of its own** — “2025 papers” was ONE shelf and a
+P5 Science child saw their P5 Science papers on it while a P6 Maths child saw theirs. That reads
+well and is not how the centre files: a folder made under P6 · Mathematics is a P6 Maths folder,
+and **an empty copy of it stood on every other class's bookcase**, which is the reported fault in
+the teacher's own words — *“when i create p6 shelves, empty shelves are linked to the other levels
+as well… a folder created under p6 math stays there only and does not appear anywhere else.”*
+**That bullet in the 🗂 section is superseded by this one**; the scope picker is still the other
+axis, and a section is still a (level, subject, shelf) triple.
+
+- **`shelfFitsClass(s, level, subject)` IS THE ONE PLACE A SHELF'S CLASS IS DECIDED**, and every
+  reader asks it: the grouping, the empty shelves, the 🗂 picker, the mover, the drag and the
+  upload. A second test is a shelf offered by the picker and refused by the mover, or drawn on a
+  bookcase the grouping will not put a paper on — and nothing on any screen would say which.
+- **AN EMPTY LEVEL OR SUBJECT MEANS *EVERY* CLASS, and that direction is the whole migration.**
+  Every shelf already on a live bookcase carries no class at all, so reading `''` as “nowhere”
+  empties a centre's entire bookcase on the deploy, with every paper on those shelves falling back
+  to *Not on a shelf yet*. Nothing is migrated and nothing is rewritten; a shelf that should be
+  pinned to one class is pinned with ✎ Rename. **The two halves are asked SEPARATELY**, so “every
+  P6 shelf” and “every Maths shelf” are both sayable and a shelf is never forced to name both.
+- **A CLASS THIS BUILD HAS NEVER HEARD OF IS *EVERY* CLASS, never a shelf nothing can draw.**
+  `shelfNorm` validates against `LEVELS` and `SUBJECT_OK`, so a record from a later version is a
+  shared shelf rather than one that has silently fallen off the bookcase.
+- **A PAPER CAN NEVER BE LOST BY SHELF BOOKKEEPING**, which is the 🗂 section's own rule extended
+  one step: `shelfGroups` already read an UNKNOWN shelf id as unsorted, and it now reads a shelf of
+  ANOTHER CLASS the same way. So a paper carrying a P6 Maths shelf id onto the P5 bookcase falls
+  back onto *Not on a shelf yet* rather than dragging that shelf onto a class it was never made
+  for. Same one line, same reason.
+- **CALLED WITH NO CATALOGUE, `shelfGroups` IS STILL BYTE-FOR-BYTE WHAT IT WAS**, the property
+  that made v1.37.0 safe to ship over a live bookcase and the one that makes this safe too.
+- **IT IS REFUSED IN THE MOVER AS WELL AS NARROWED IN THE PICKER.** Narrowed alone, a move made
+  from anywhere else — a drag, a stale button, the console — lands, the toast says the paper moved,
+  and `shelfGroups` reads the id as unsorted on the very next paint: the paper back where it
+  started with nothing on any screen saying why. `shelfDropOk` is the **`dragover`'s** own copy of
+  that question, so a shelf never lights up for a drop it is going to refuse — a target that
+  highlights and then says no is worse than one that never highlighted.
+- **`shelfPaperOf(id)` IS THE ONE RESOLVER.** The mover, the ✎ rename, the 🗂 picker and the drag
+  each need “which paper is this id, and what class is it” — four copies of that walk is four
+  chances to read a `set:` entry's class off the wrong object. A copy's OWN fields win over the
+  assignment's, because the copy IS the paper being moved.
+- **THE SAME NAME ON TWO CLASSES IS TWO SHELVES.** `shelfCreate`'s duplicate check is per class:
+  refusing the second would refuse the very thing this narrowing is for. The same name on the SAME
+  class is still one shelf twice.
+- **`undefined` KEEPS A SHELF'S CLASS** (`shelfRename`). Every shelf made before this has none, so
+  a careless `|| ''` is indistinguishable from a deliberate “every class” — and a caller that only
+  wanted to rename would take a shelf's class off it in silence. Moving a shelf to another class
+  SAYS what becomes of the papers that cannot follow it.
+- **A SHELF MADE *FOR* A PAPER OPENS ON THAT PAPER'S CLASS**, never on the class in view, because
+  `shelfNameConfirm` moves the paper onto it the instant it is made. On the scope's class instead,
+  a teacher looking at P5 · Science who makes a shelf for a P6 Maths paper gets a P5 shelf the move
+  is then refused by — and the shelf they just made stands empty on somebody else's bookcase.
+- **THE UPLOAD'S PICKER IS NARROWED BY THE CLASS BEING UPLOADED TO**, and the class is chosen AFTER
+  the dialog was built — so it is refilled on every change, from ONE listener **bound once** beside
+  `fillPickers` rather than inside `openUploadModal`, which runs on every upload and would stack a
+  listener per opening. With NO class chosen (the ✨ read-it-off-the-paper rows) every shelf is
+  offered with its own class printed beside it: nobody has said what these papers are yet, so
+  narrowing would be guessing. A shelf that has fallen out of the list is never left SELECTED — the
+  picker would read as unsorted while holding a shelf id nobody can see.
+- **AND THE SHELF IS CHECKED AGAIN WHEN THE READ HAS SETTLED THE CLASS** (`uploadOne`'s
+  `shelfSkip`). It is written at creation, BEFORE the read — which is right, so the paper stands on
+  the right shelf from its first paint — but the level and the subject may only have been settled a
+  moment ago, so a shelf that is not this paper's class is CLEARED **and NAMED**, on its own and
+  through `handleUpload`'s `offShelf` list in a pile of ten. A shelf the teacher chose and the
+  bookcase silently ignored is the shape of fault this whole narrowing exists to end.
+- **THE 🗂 PICKER COUNTS WHAT IT LEFT OUT.** A teacher who cannot see the shelf they made needs to
+  be told it belongs to another class, not left wondering whether it saved.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it **and look at the home screen** —
+  which shelves stand on which bookcase is the one thing reading the source cannot check.
+
 ## ✎ RENAMING A PAPER — the class reads the new name, and nothing they wrote moves (v1.39.0)
 
 **`worksheetName`** / `WS_NAME_MAX` / **`wsNameClean`** (beside `worksheetShelfId` — search
@@ -1870,12 +1948,14 @@ year's prelims, last year's, the topical drills. So they make their own shelves,
 move papers between them — and **every student of that level and subject reads the same
 arrangement**, because it is not a thing each copy carries.
 
-- **A SHELF IS A LABEL, NOT A CLASS.** It carries no level and no subject: “2025 papers” is ONE
-  shelf, and a P5 Science child sees the P5 Science papers on it while a P6 Maths child sees
-  theirs. A shelf per class would mean making the same shelf eight times, and a teacher who makes
-  it seven times has a class whose papers are somewhere else. The level and the subject are the
-  OTHER axis — the scope picker — and the two compose: a section is a (level, subject, shelf)
-  triple, which is `shelfGroups` doing exactly what it already did with one more dimension.
+- **⚠️ A SHELF WAS A LABEL, NOT A CLASS — SUPERSEDED BY 🎓 v1.40.0, above.** It carried no level
+  and no subject, so “2025 papers” was ONE shelf and a P5 Science child saw their P5 Science
+  papers on it while a P6 Maths child saw theirs. That is not how the centre files, and an EMPTY
+  copy of every shelf stood on every other class's bookcase. A shelf names the class it was made
+  for now (`shelfFitsClass`), and an empty class on it still means every class, which is what
+  keeps every shelf made before v1.40.0 standing exactly where it stands. **The scope picker is
+  still the other axis** and the two still compose: a section is a (level, subject, shelf) triple,
+  which is `shelfGroups` doing exactly what it already did with one more dimension.
 - **`worksheetShelfId` IS THE ONE PLACE A PAPER'S SHELF IS DECIDED, and it reads the ASSIGNMENT
   over the copy.** That is the whole of “the same papers on the same shelves”: a shelf read off
   each copy would only ever govern the students who had not started yet — the exact fault
@@ -3507,6 +3587,43 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **🎓 a shelf's class** (`shelfFitsClass`, `shelfClassLabel`,
+  `shelfPaperOf`, `shelfDropOk`, `shelfClassOptions`, `fillUploadShelves`, the
+  `level` / `subject` `shelfNorm` keeps, the narrowing in `shelfGroups` or in
+  `shelfSections`' empty-shelf sweep, `shelfCreate` / `shelfRename`'s class
+  arguments, the refusal in `moveWorksheetToShelf`, the filter or the hidden
+  count in `openShelfPick`, the `shelfDropOk` in the `dragover`, the two class
+  pickers in `openShelfNameModal` / `shelfNameConfirm`, or `uploadOne`'s
+  `shelfSkip` and `handleUpload`'s `offShelf`), run
+  `node tools/tutor-tests.mjs` **and look at the home screen**. Every failure
+  here is silent and the bookcase still paints. **Read `''` as “nowhere” rather
+  than as “every class” and a centre's whole bookcase empties itself on the
+  deploy** — every shelf made before v1.40.0 has no class, so every paper on
+  every one of them falls back to “Not on a shelf yet”, which is a migration
+  nobody asked for and nothing on any screen explains. Stop narrowing
+  `shelfGroups` and a P6 Maths shelf lands on the P5 bookcase carrying a paper
+  the mover would never have put there; stop narrowing `shelfSections`' empty
+  sweep and the reported bug is back exactly as it was — an empty copy of every
+  shelf under every level. Let `shelfNorm` keep a class this build has never
+  heard of and that shelf is one nothing can ever draw, rather than a shared
+  one. Narrow the picker and NOT the mover and a drag, a stale button or the
+  console lands a write, the toast says the paper moved, and `shelfGroups`
+  reads the id as unsorted on the very next paint — the paper back where it
+  started with nothing saying why; narrow the mover and not the DRAG and a
+  shelf lights up for a drop it is about to refuse. Write a second resolver
+  beside `shelfPaperOf` and a `set:` entry's class is read off the wrong
+  object. Make the duplicate check bookcase-wide again and “2025 papers” can
+  exist on one class only, which is the very thing this narrowing is for; let
+  `shelfRename`'s `undefined` stop KEEPING the class and a plain rename takes a
+  shelf's class off it in silence. Open a shelf made FOR a paper on the SCOPE
+  rather than on that paper's class and the create succeeds, the move it was
+  made for is refused, and the new shelf stands empty on somebody else's
+  bookcase. Bind `fillUploadShelves` inside `openUploadModal` and a listener is
+  stacked per opening; narrow it with no class chosen yet and the teacher is
+  offered nothing while nobody has said what the papers are. And let
+  `uploadOne` leave a paper wearing a shelf of the wrong class — or stop NAMING
+  it — and a shelf the teacher chose is silently ignored by the bookcase, which
+  is the shape of fault the whole narrowing exists to end.
 - After touching **✎ the rename** (`worksheetName`, `wsNameClean`, `WS_NAME_MAX`,
   `renameWorksheet`, `setWsTitle`, `openRenameModal`, `wsNameConfirm`, the ✎ button
   on `wsCardNode`, `#wsNameModal`, or any surface that shows a paper's name), run
