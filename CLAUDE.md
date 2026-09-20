@@ -3572,10 +3572,12 @@ the two in step; a fix to either belongs in both.
   coming. A gesture whose end never arrived would lock every later touch out of
   the page for the rest of the session, so a fresh PRIMARY pointer of the same
   kind clears the stale one (`cancelStaleGesture`) rather than being refused.
-- **`isDrawTool` deliberately excludes 💡 hint, 🎤 speak and 🖱️ select.** Those
-  are a tap and a drag of something already on the page; a finger doing either
-  is not a palm about to ruin the worksheet, and handing them to the pan engine
-  would make them unusable without a pencil.
+- **`isDrawTool` deliberately excludes 💡 hint, 🎤 speak, 🖱️ select and — since
+  v1.42.0 — 🅣 text (🅣 above).** Those are a tap and a drag of something already
+  on the page; a finger doing either is not a palm about to ruin the worksheet,
+  and handing them to the pan engine would make them unusable without a pencil.
+  **The test is whether the tool leaves a MARK BY DRAGGING**, which is what 🅣
+  was mis-filed against.
 - **A SECOND FINGER MEANS NAVIGATE, AND THE INK IS NOT THE PRICE.** Under 300ms
   the stroke is an accidental dot and is thrown away (`abortYoungStroke`); over
   it, the stroke is real work — it is COMMITTED as one undo step and the two
@@ -3600,6 +3602,42 @@ the two in step; a fix to either belongs in both.
   are wired and lit by that attribute. `S` toggles it, and is handled before the
   tool table for the same reason.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
+## 🅣 A TAP IS NOT A MARK — the text tool, and 🧽 the drawn eraser (v1.42.0)
+
+**`isDrawTool`** (search `WHICH TOOLS A FINGER MUST NOT DRIVE`), and the eraser button's inline
+SVG with its `.toolIco` rule.
+
+*“The text box on the tutor app does not work.”* It did not — **with a finger**. It worked
+perfectly with an Apple Pencil and with a mouse, which is what made it read as random rather than
+as anything reportable.
+
+- **PENCIL-ONLY MODE IS ON BY DEFAULT, AND `isDrawTool` IS WHAT IT READS.** A finger on a tool in
+  that list is handed to the pan engine and never reaches the overlay at all. 🅣 was in the list,
+  so on the iPads these worksheets are written on the button did NOTHING, silently.
+- **THE RULE THIS BROKE WAS ALREADY WRITTEN, one section up**: *“`isDrawTool` deliberately
+  excludes 💡 hint, 🎤 speak and 🖱️ select… handing them to the pan engine would make them
+  unusable without a pencil.”* 🅣 belongs with them and was simply left out: it captures no
+  pointer, drags nothing and makes no ink — `startTextBox` runs and returns. **The test is whether
+  the tool leaves a MARK BY DRAGGING**, not whether it puts something on the page.
+- **A PALM STILL CANNOT ABUSE IT, and that is what makes this safe.** A palm-sized contact patch
+  starts nothing at all (`isPalmTouch`, at the very top of `pointerdown`), a rejected contact is
+  kept out until it lifts, and a stray empty box is swept by `commitActiveTextEdit` — *“a tap that
+  changed its mind”*. There is nothing a palm can do here that survives the next tap.
+- **THE COST IS ONE-FINGER PAN WHILE 🅣 IS IN HAND**, which is the same price 💡, 🎤 and 🖱️ have
+  always paid, and it was already being paid *while a box was being typed in* (the nav engine's
+  own `&& !editingId`). Two fingers still pan and pinch, and the margins either side of the page
+  still scroll.
+- **🧽 THE ERASER IS DRAWN, and that is not decoration.** There is no eraser in the emoji set, so
+  🩹 — an adhesive BANDAGE — was standing in for one and read as one on every device. An emoji is
+  a vendor's picture of a word; **an SVG is the picture**, and no phone's font can re-draw it as
+  something else. It follows 🤖 CHUNG GPT'S FACE's rule — **flat fills, no `id`, no gradient, no
+  filter** — and is sized by `.toolIco` rather than by the button's `font-size`, so it carries the
+  same weight beside the emoji everywhere and sits readably on the pale `--accent` of the lit
+  state as well as on white.
+- Run **`node tools/tutor-tests.mjs`** and **`node --test tools/writing-tests.mjs`** after touching
+  any of it — **and tap the page with a finger**, which is the one thing reading the source could
+  not check and is exactly how this shipped.
 
 ## ✍️ A TABLET PEN MUST NOT PICK THE WRITING UP (v1.36.0)
 
@@ -3643,6 +3681,23 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **🅣 which tools a finger may drive, or 🧽 the drawn eraser**
+  (`isDrawTool`, the two `stylusOnly && … isDrawTool(tool)` gates, the
+  `tool === 'text'` branch of the overlay's `pointerdown`, the eraser button's
+  SVG or the `.toolIco` rule), run `node tools/tutor-tests.mjs` and
+  `node --test tools/writing-tests.mjs` **and tap the page with a FINGER**.
+  That last one is not optional: this shipped broken because every check —
+  source, harness and a mouse — passes on a tool a touchscreen cannot reach.
+  **Put 🅣 back in `isDrawTool` and the text box silently stops working on
+  every iPad in the centre**, which is the reported fault; take the ERASER or
+  the pen out and a resting palm rubs a worksheet out or writes across it,
+  which is far worse. Let the text branch capture a pointer or drag anything
+  and it is a mark after all and belongs back in the list. Stop sweeping the
+  empty box, or let a palm-sized patch through, and a hand resting on the page
+  leaves boxes on it. And go back to an emoji for the eraser and there is
+  still no eraser in that set, so whatever is chosen reads as a bandage, a
+  sponge or a bin — while an `id`, a gradient or a filter in the drawing is
+  the rule 🤖 Chung GPT's face already documents, broken on a second surface.
 - After touching **📌 the folded set list** (`ASSIGN_OPEN_KEY`, `assignOpen`,
   `setAssignOpen`, `toggleAssignOpen`, `assignAttention`, the `opts.row` branch of
   `setCardNode`, the header half of `renderAssignments`, `#assignToggle` /

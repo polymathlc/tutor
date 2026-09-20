@@ -315,6 +315,11 @@
   }
   .toolBtn:hover { background: var(--bg-soft); }
   .toolBtn.active { background: var(--accent); border-color: var(--accent-strong); }
+  /* A tool drawn as SVG rather than set as a glyph. It is sized here and not
+     by `font-size`, so it is the same weight beside the emoji on every
+     device — and its own colours sit on the pale --accent of the lit state
+     as readably as they do on white. */
+  .toolIco { width: 21px; height: 21px; display: block; }
   .swatch { width: 24px; height: 24px; border-radius: 7px; border: 2px solid var(--bg);
             box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
   .swatch.on { box-shadow: 0 0 0 2px var(--accent-deep); }
@@ -1826,7 +1831,13 @@
           <button class="toolBtn" data-tool="arrow" title="Arrow (A)">↗</button>
           <button class="toolBtn" data-tool="rect" title="Box (R)">▭</button>
           <button class="toolBtn" data-tool="ellipse" title="Circle (O)">◯</button>
-          <button class="toolBtn" data-tool="eraser" title="Eraser — drag across ink to rub it out (E)">🩹</button>
+          <!-- A DRAWN eraser. There is no eraser in the emoji set, so an
+               adhesive BANDAGE was standing in for one, and that is exactly
+               what it read as. Drawn, it says eraser on every device and no
+               vendor's emoji font can re-draw it as something else. Flat
+               fills, no id, no gradient, no filter: the rule 🤖 CHUNG GPT'S
+               FACE states, and the reason a picture is never downloaded here. -->
+          <button class="toolBtn" data-tool="eraser" aria-label="Eraser" title="Eraser — drag across ink to rub it out (E)"><svg class="toolIco" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g transform="rotate(-30 12 9.2)"><rect x="3.4" y="5" width="7" height="8.4" rx="2" fill="#9DBBDD" stroke="#5D82AC" stroke-width="1.3" stroke-linejoin="round"/><path d="M8.4 5 H18.6 A2 2 0 0 1 20.6 7 V11.4 A2 2 0 0 1 18.6 13.4 H8.4 Z" fill="#F4A0A8" stroke="#C9636D" stroke-width="1.3" stroke-linejoin="round"/></g><path d="M3.6 19.8 H9.6 M12.4 19.8 H15.2" fill="none" stroke="#8A8A84" stroke-width="1.7" stroke-linecap="round"/></svg></button>
           <button class="toolBtn" data-tool="select" title="Select and move (V)">🖱️</button>
           <!-- Pencil-only mode. No data-tool: it is a MODE, not a tool, and
                the tool buttons are wired and lit by that attribute. -->
@@ -2482,7 +2493,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.41.0';
+var APP_VERSION = 'v1.42.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -5654,13 +5665,27 @@ function isPalmTouch(e) {
   return e.pointerType === 'touch' && (e.width > PALM_CONTACT || e.height > PALM_CONTACT);
 }
 
-/* The tools a finger must NOT drive while pencil-only mode is on. 💡 hint,
-   🎤 speak and 🖱️ select are deliberately absent: those are a tap and a drag
-   of something already on the page, and a finger doing either is not a palm
-   about to ruin the worksheet. */
+/* WHICH TOOLS A FINGER MUST NOT DRIVE in pencil-only mode — the ones that
+   leave a MARK by dragging, and only those. A finger on one of these pans
+   the page instead, so the pencil stays the only thing that writes.
+
+   🅣 TEXT IS NOT ONE OF THEM, and leaving it in here is the whole of the
+   “the text box does not work” fault (v1.42.0). Placing a box is a TAP: it
+   captures no pointer, drags nothing and makes no ink — `startTextBox` runs
+   and returns. But pencil-only mode is ON BY DEFAULT, so with 🅣 in hand a
+   finger was handed to the pan engine and the tap reached no tool at all:
+   on the iPad these worksheets are written on the button simply did
+   nothing, with nothing on any screen saying why. That is the failure this
+   list's own rule already names for 💡 hint, 🎤 speak and 🖱️ select —
+   “handing them to the pan engine would make them unusable without a
+   pencil” — and 🅣 belongs with them for exactly the same reason.
+
+   A palm cannot abuse it: a palm-sized patch starts nothing (`isPalmTouch`),
+   a rejected contact stays out until it lifts, and a stray empty box is
+   removed by `commitActiveTextEdit` — “a tap that changed its mind”. */
 function isDrawTool(t) {
   return t === 'pen' || t === 'highlight' || t === 'line' || t === 'arrow' ||
-         t === 'rect' || t === 'ellipse' || t === 'text' || t === 'eraser';
+         t === 'rect' || t === 'ellipse' || t === 'eraser';
 }
 
 function setStylusOnly(on, quiet) {
