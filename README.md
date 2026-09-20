@@ -12,6 +12,51 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.47.0 — 👉 The tutor actually draws on the page now
+
+*“You say my tutor can draw boxes, but it doesn’t really annotate when helping students.”*
+
+It could, and it almost never did — and the reason was not in the drawing at all. Everything that
+puts a magenta circle, underline, box or arrow on a worksheet has been there since v1.30.0, and
+the working a teacher pencils in the margin since v1.31.0. What was missing was the **asking**.
+
+Both prompts ruled on a mark at length — the four shapes, the 0–1000 grid, the pair and its ① ②,
+the cap of three, the refusal to guess — and **neither of them ever said to draw one**. The hint’s
+pointing paragraph opened by describing a field; its working paragraph ended on a reason to leave
+it out; and the hint’s own request, the message that actually asks for each rung by name, never
+mentioned `point` at all. So the model read three opt-outs and no instruction, and did what
+anybody would: left it out.
+
+**Now both prompts ask.**
+
+- **A mark is the ordinary reply, not a rare extra.** Both say so in the first line, and both say
+  why: a child who is stuck usually cannot *find* the thing you are talking about, so a sentence
+  on its own leaves them hunting for it — which is most of what being stuck is.
+- **They name the everyday things worth marking**: the number that was missed, the word that
+  decides the question (*total*, *each*, *difference*, *not*), the units, the row of the table,
+  the label on the diagram, the part of the question that was read past. An abstract condition is
+  one a model reads as rarely true; an example is a trigger.
+- **The opt-out is narrowed to the one thing it means.** *“If you cannot place it exactly”* and
+  *“if you are not sure”* are doors a model that is never quite sure walks through every time. The
+  reason to leave a mark out is that its position cannot be **read off the teal grid** — nothing
+  else. A short reply is not a reason, and neither is the spot seeming obvious.
+- **Working is asked for on any question with steps in it**, because setting the first lines out
+  on the paper is exactly what a teacher does with a pencil while they explain.
+
+**Nothing about the safety of a mark moved.** The finger still points at the question and never at
+the answer or where it goes. A position that cannot be placed on the page is still *refused*
+rather than clamped, so asking harder cannot put a finger anywhere the code would not already
+have allowed it. Working still sits on the **method rung** and is refused again when the page
+draws it, because a prompt is not a lock — and it still stops one step short, with a `?` on the
+last line, or the whole block is thrown away. Three marks is still the cap.
+
+**The typed chat is deliberately untouched.** Marker syntax is stripped only on the live path, so
+a `[[point p3 412,300 underline]]` written into a chat reply would be read out to the student as
+part of the answer. The harness pins that it stays out.
+
+**Five of the new checks go red on v1.46.0 and green here**, which is what makes them checks
+rather than ticks.
+
 ## v1.46.0 — 🅣 The text box works again, and three lost functions are back
 
 **"Still cannot type with text box."** v1.42.0 took 🅣 out of the pencil-only tool list, which was
