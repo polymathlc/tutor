@@ -12,6 +12,27 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.36.0 — ✍️ A tap on your writing no longer moves it
+
+The same stylus fix as Ans Key v1.101.0, so a pen behaves the same way in both
+apps. Both failures are silent — the page goes on drawing and nothing on any
+screen says what changed.
+
+- **A tap selects without nudging the writing.** A stylus tip is never
+  perfectly still: it wobbles a pixel or two as it touches down, and a graphics
+  tablet reports absolute positions, so what the hand meant as a tap on a
+  stroke arrived as a tap *and* a small drag — the act of selecting a stroke
+  moved it. A grab becomes a *move* only once the pointer has really travelled,
+  measured in screen pixels so it means the same distance at every zoom. A tap
+  no longer costs an undo step that undoes nothing, and no longer marks the
+  worksheet as having unsaved changes.
+- **The pen's barrel button no longer breaks the stroke you are writing.** It
+  sits exactly where the fingers grip, and squeezing it mid-word fired a second
+  `pointerdown` carrying the same pointer id as the tip already down — so the
+  one-pointer-at-a-time guard could not see it, and it abandoned the stroke in
+  progress to start a fresh gesture. Only the primary button starts anything
+  now, whatever the pointer is; the eraser end of a pen arrived the same way.
+
 ## v1.35.0 — 🖼 The question is redrawn, and 📕 the teacher can see the book
 
 Three things, and the first two are one thing: a mistake in the book should look like a question

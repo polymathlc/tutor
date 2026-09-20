@@ -3239,6 +3239,47 @@ the two in step; a fix to either belongs in both.
   tool table for the same reason.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## ✍️ A TABLET PEN MUST NOT PICK THE WRITING UP (v1.36.0)
+
+`DRAG_SLOP_PX` / **`dragStarted`** (beside `PALM_CONTACT` — search `A GRAB IS
+NOT YET A MOVE`), the `e.button > 0` line at the top of the overlay's
+`pointerdown`, and the `cx` / `cy` / `dragged` fields on `moving`.
+**`polymathlc/anskey` carries the same fixes — ship a change to both.**
+
+Reported on a Wacom against Ans Key: *"when I'm writing it's very easy to
+suddenly select strokes and move them instead of continuing writing."* Two of
+the three causes are here too, and both are silent — the page goes on drawing
+and nothing on any screen says what changed.
+
+- **A GRAB IS NOT YET A MOVE.** A stylus tip is never perfectly still: it
+  wobbles a pixel or two as it touches down, and a graphics tablet reports
+  absolute positions, so what the hand meant as a tap on a stroke arrived as a
+  tap AND a small drag — the act of SELECTING a stroke moved it. `moving` used
+  to translate on any non-zero delta at all. `dragStarted` holds it until the
+  pointer has really travelled.
+- **THE THRESHOLD IS SCREEN PIXELS, NEVER PAGE UNITS**, and that is the whole
+  point of it: page units are a hair at 400% and most of a centimetre at
+  fit-width, so the same tremor would be swallowed on one worksheet and move the
+  ink on the next.
+- **`moved` AND `dragged` ARE DIFFERENT THINGS.** `moved` says the threshold was
+  crossed (it is `dragStarted`'s own flag); `dragged` says the ink really went
+  somewhere, and it is that one the undo push, `setDirty` and the redo-stack
+  sweep read — a threshold crossed with nothing translated must not cost a
+  Ctrl+Z that undoes nothing.
+- **ONLY THE PRIMARY BUTTON STARTS ANYTHING, WHATEVER THE POINTER IS.** A
+  tablet pen's barrel button sits where the fingers grip, and squeezing it
+  mid-word fires a second `pointerdown` with the **SAME pointerId** as the tip
+  already down — so the one-pointer-at-a-time guard cannot see it, and it
+  abandoned the stroke in progress to start a fresh gesture. The old test asked
+  `e.button !== 0` for a MOUSE only. The eraser end of a pen (button 5) arrives
+  the same way.
+- **THE THIRD CAUSE IS NOT HERE, AND MUST NOT ARRIVE.** Ans Key carried a
+  `dblclick` fallback on the overlay that called `setTool('select')`, so two
+  quick marks landing on existing ink silently turned the pen into the select
+  tool. This app has no `dblclick` handler at all and the harness pins that it
+  stays that way: a double-tap while a drawing tool is in hand is two marks.
+- Run **`node --test tools/writing-tests.mjs`** after touching any of it.
+
 ## House rules
 - After touching **🚀 the deploy workflow or the CI checks**
   (`.github/workflows/deploy-functions.yml`, the `node --test
@@ -3672,6 +3713,23 @@ the two in step; a fix to either belongs in both.
   model output is markup on the page. And let a hole and its blank disagree
   and the box asks for a word it cannot check, which reads as a child getting
   it wrong.
+- After touching **✍️ the stylus guards** (`DRAG_SLOP_PX`, `dragStarted`, the
+  `e.button > 0` line in `pointerdown`, or the `cx` / `cy` / `dragged` fields on
+  `moving`), run `node --test tools/writing-tests.mjs` **and write on a page
+  with a stylus**. Every failure is silent and the page goes on drawing. Drop
+  the drag threshold and the act of SELECTING a stroke nudges the child's
+  writing out of place, because no pen taps perfectly still. Measure it in PAGE
+  units and it is a hair when zoomed in and most of a centimetre when zoomed
+  out, so a tremor moves the ink on one worksheet and a deliberate drag does
+  nothing on the next. Hang the undo push on `moved` rather than on `dragged`
+  and every tap costs a Ctrl+Z that undoes nothing and a save that saves
+  nothing. Go back to testing `e.button` for a MOUSE only and the pen's barrel
+  button — which sits exactly where the fingers grip — abandons the stroke being
+  written and starts a fresh gesture under the hand, carrying the same
+  pointerId, so the one-pointer guard never sees it. And add a `dblclick`
+  handler to the overlay that can reach `setTool` and this app grows Ans Key's
+  old fault: two quick marks on existing ink turn the pen into the select tool,
+  with the toolbar still showing the pen.
 - After touching **✍️ the stylus, the palm and the fingers** (`stylusOnly`,
   `PALM_CONTACT`, `isPalmTouch`, `isDrawTool`, `claimPointer`,
   `cancelStaleGesture`, `abortYoungStroke`, `commitTouchStrokeForNav`, `nav`,
