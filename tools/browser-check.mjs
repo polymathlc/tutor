@@ -228,6 +228,318 @@ const mid = await page.evaluate(() => {
 ok('…but the rebuild\'s own blur does not close a box mid-word', mid.stillEditing === true,
    mid.why || 'overlayRebuilding exists for this one test and nothing else');
 
+
+/* =====================================================================
+   📎 A PASTED PICTURE, AND NO WINDOW ROUND IT
+   ---------------------------------------------------------------------
+   Reading the source can say the frame is gone. Only a browser can say the
+   picture is really on the page, really picks up, really resizes by a corner
+   and really refuses to move once it is locked — and that the page shows
+   NOTHING round it while nobody is holding it, which is the whole request.
+   ===================================================================== */
+console.log('\n📎 A pasted picture is the picture and nothing else');
+
+/* Everything below needs a page, a pdfDoc (`pasteGoesToWorksheet` refuses
+   without one) and the select tool. A 2 : 1 picture, so a corner drag that
+   kept the ratio is visible in the numbers rather than being a guess. */
+await page.evaluate(async () => {
+  window.__pic = (function () {
+    const cv = document.createElement('canvas');
+    cv.width = 80; cv.height = 40;
+    const cx = cv.getContext('2d');
+    cx.fillStyle = '#c00080'; cx.fillRect(0, 0, 80, 40);
+    const url = cv.toDataURL('image/png');
+    const bin = atob(url.split(',')[1]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new File([bytes], 'pic.png', { type: 'image/png' });
+  })();
+  try { commitActiveTextEdit(); } catch (e) {}
+  annotations = [];
+  pdfDoc = {};
+  setTool('select');
+  renderAllOverlays();
+});
+
+/* THE REAL LISTENER, through a real ClipboardEvent — so `pasteGoesToWorksheet`
+   and the image sniffing are exercised rather than stepped over. */
+const pasted = await page.evaluate(async () => {
+  const dt = new DataTransfer();
+  dt.items.add(window.__pic);
+  document.dispatchEvent(new ClipboardEvent('paste', {
+    clipboardData: dt, bubbles: true, cancelable: true
+  }));
+  // The listener does not await its own work.
+  for (let i = 0; i < 60 && !annotations.length; i++) await new Promise(r => setTimeout(r, 25));
+  const a = annotations[0];
+  return {
+    n: annotations.length,
+    type: a && a.type,
+    ratio: a && a.ratio,
+    hasSrc: !!(a && a.src),
+    selected: selectedId === (a && a.id),
+    tool: tool
+  };
+});
+ok('Ctrl+V really puts a picture on the page', pasted.n === 1 && pasted.type === 'image',
+   'saw ' + pasted.n + ' annotation(s), type ' + pasted.type);
+ok('…carrying the picture and its own shape',
+   pasted.hasSrc && Math.abs((pasted.ratio || 0) - 2) < 0.02, 'ratio=' + pasted.ratio);
+ok('…selected, with the tool that moves it in hand',
+   pasted.selected && pasted.tool === 'select');
+
+/* NO WINDOW. The old card was a heading bar, a border and a coloured spine;
+   what is asked for is the picture. So: one child, an <img>, and nothing
+   painted round it. */
+const bare = await page.evaluate(() => {
+  const g = document.querySelector('g[data-id="' + annotations[0].id + '"]');
+  const box = g && g.querySelector('.pastePic');
+  const img = box && box.querySelector('img');
+  if (!box || !img) return { drawn: false };
+  const cs = getComputedStyle(box);
+  const ics = getComputedStyle(img);
+  return {
+    drawn: true,
+    children: box.children.length,
+    tag: img.tagName,
+    bg: cs.backgroundColor,
+    border: cs.borderTopWidth + ' ' + cs.borderLeftWidth,
+    shadow: cs.boxShadow,
+    fit: ics.objectFit,
+    draggable: img.draggable,
+    chrome: g.querySelectorAll('button, .aiNoteHead, .aiNoteTitle').length
+  };
+});
+ok('the picture is drawn', bare.drawn);
+ok('…as ONE <img> and nothing else',
+   bare.children === 1 && bare.tag === 'IMG' && bare.chrome === 0,
+   JSON.stringify(bare));
+ok('…with no background, no border and no shadow round it',
+   /rgba\(0, 0, 0, 0\)|transparent/.test(bare.bg || '') &&
+   bare.border === '0px 0px' && bare.shadow === 'none',
+   JSON.stringify(bare));
+ok('…fitted rather than stretched', bare.fit === 'contain', bare.fit);
+ok('…and the browser’s own image drag switched off', bare.draggable === false);
+
+/* WHAT IT WEARS WHILE IT IS HELD, and only while it is held. */
+const held = await page.evaluate(() => {
+  const svg = pages[0].svg;
+  const withSel = {
+    handles: svg.querySelectorAll('[data-handle]').length,
+    tools: svg.querySelectorAll('.picTool').length
+  };
+  selectedId = null;
+  renderAllOverlays();
+  const without = {
+    handles: svg.querySelectorAll('[data-handle]').length,
+    tools: svg.querySelectorAll('.picTool').length
+  };
+  selectedId = annotations[0].id;
+  renderAllOverlays();
+  return { withSel, without };
+});
+ok('a selected picture grows four corner handles and its own two buttons',
+   held.withSel.handles === 8 && held.withSel.tools === 2,
+   JSON.stringify(held.withSel) + ' (4 visible handles + 4 finger-sized twins)');
+ok('…and tapping away leaves NOTHING on the page but the picture',
+   held.without.handles === 0 && held.without.tools === 0,
+   JSON.stringify(held.without));
+
+/* The row is a transparent strip WIDER than the two buttons in it, and a
+   transparent div still swallows taps: without `pointer-events: none` on it a
+   band above every selected picture catches the stylus and the page cannot be
+   written on there. */
+const strip = await page.evaluate(() => {
+  const row = pages[0].svg.querySelector('.picTools');
+  const btns = row ? row.querySelectorAll('.picTool') : [];
+  const btn = btns[btns.length - 1];
+  if (!row || !btn) return { got: false };
+  const rr = row.getBoundingClientRect(), br = btn.getBoundingClientRect();
+  // A point on the row, well past the last button.
+  const x = Math.min(rr.right - 2, br.right + 24), y = rr.top + rr.height / 2;
+  const hit = document.elementFromPoint(x, y);
+  return { got: true, onRow: !!(hit && hit.closest && hit.closest('.picTools')) };
+});
+ok('the empty part of the button row does not swallow a tap',
+   strip.got && strip.onRow === false, JSON.stringify(strip));
+
+/* ---- Moving it ---- */
+/* The pointerdown has to land on the REAL element — the picture's own <img>,
+   or a corner handle — because the select tool reads `e.target` to decide what
+   was tapped, and a down on the bare SVG deselects everything. The move and the
+   up go to the svg, which is where the listeners are. */
+async function drag(from, to, id) {
+  const missing = await page.evaluate(({ from, to, id }) => {
+    const svg = pages[0].svg;
+    const pic = annotations.find(a => a.type === 'image');
+    const target = svg.querySelector(id || ('g[data-id="' + (pic && pic.id) + '"] img'));
+    if (!target) return id || 'the picture';
+    const o = n => ({ bubbles: true, cancelable: true, clientX: n.x, clientY: n.y,
+                      pointerId: 21, pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1 });
+    target.dispatchEvent(new PointerEvent('pointerdown', o(from)));
+    svg.dispatchEvent(new PointerEvent('pointermove', o(to)));
+    svg.dispatchEvent(new PointerEvent('pointerup', Object.assign(o(to), { buttons: 0 })));
+    return '';
+  }, { from, to, id });
+  if (missing) ok('the drag had something to grab (' + missing + ')', false);
+  await page.waitForTimeout(80);
+}
+/* A page unit is a CLIENT pixel only while the svg is drawn at its own viewBox
+   size. `geom()` measures the conversion rather than assuming it — the two
+   coordinate systems are the trap the text caret's own section documents at
+   length, and a harness that mixes them reports a working drag as a failure. */
+async function geom() {
+  return page.evaluate(() => {
+    const p = pages[0], r = p.svg.getBoundingClientRect(), a = annotations[0];
+    const kx = r.width / p.baseW, ky = r.height / p.baseH;
+    return { x: a.x, y: a.y, w: a.w, h: a.h, kx, ky,
+             cx: r.x + (a.x + a.w / 2) * kx, cy: r.y + (a.y + a.h / 2) * ky,
+             sx: r.x + (a.x + a.w) * kx, sy: r.y + (a.y + a.h) * ky };
+  });
+}
+const centreOf = await geom();
+/* It is NOT 1 here — this page is fitted to the viewer's width, so a page unit
+   is about 1.09 client pixels, and every drag below would be that much out if
+   it went on assuming otherwise. What has to hold is that the conversion is
+   measurable and UNIFORM: a skewed overlay would put every client point below
+   somewhere else on the page, in a way nothing else here would catch. */
+ok('the page-to-client scale is measurable and the same on both axes',
+   centreOf.kx > 0.05 && centreOf.kx < 20 && Math.abs(centreOf.kx - centreOf.ky) < 0.01,
+   'kx ' + centreOf.kx.toFixed(3) + ' · ky ' + centreOf.ky.toFixed(3));
+await drag({ x: centreOf.cx, y: centreOf.cy }, { x: centreOf.cx + 40, y: centreOf.cy + 25 });
+const moved = await page.evaluate(() => ({ x: annotations[0].x, y: annotations[0].y }));
+/* The client delta converted back into page units: what has to be true is that
+   the picture followed the pointer, in both directions, by the distance the
+   pointer really travelled. */
+const dx = moved.x - centreOf.x, dy = moved.y - centreOf.y;
+ok('dragging the picture moves it',
+   Math.abs(dx - 40 / centreOf.kx) < 2 && Math.abs(dy - 25 / centreOf.ky) < 2,
+   JSON.stringify({ from: [centreOf.x, centreOf.y], to: moved, by: [dx, dy] }));
+
+/* ---- Resizing it, by a corner, keeping its shape ---- */
+const preSize = await geom();
+await drag({ x: preSize.sx, y: preSize.sy },
+           { x: preSize.sx - 90 * preSize.kx, y: preSize.sy - 45 * preSize.ky },
+           '[data-handle="se"]');
+const sized = await page.evaluate(() => {
+  const a = annotations[0];
+  return { w: a.w, h: a.h, x: a.x, y: a.y, ratio: a.ratio };
+});
+ok('dragging a corner resizes it', sized.w < preSize.w - 40,
+   preSize.w + ' → ' + sized.w);
+ok('…keeping the picture’s own shape', Math.abs(sized.w / sized.h - 2) < 0.05,
+   sized.w + ' x ' + sized.h + ' = ' + (sized.w / sized.h).toFixed(3));
+ok('…anchored to the opposite corner, so it does not creep away',
+   Math.abs(sized.x - preSize.x) < 0.02 && Math.abs(sized.y - preSize.y) < 0.02,
+   JSON.stringify({ was: [preSize.x, preSize.y], now: [sized.x, sized.y] }));
+
+/* And the two SINGLE-AXIS drags, which is the whole reason the scale is a
+   projection onto the shape's own diagonal: whichever way the corner is
+   pulled, the picture has to answer. A "larger axis wins" rule leaves the
+   first of these dead and a "smaller axis wins" rule the second, and a handle
+   that does nothing reads as a feature that does not work. */
+const inFrom = await geom();
+await drag({ x: inFrom.sx, y: inFrom.sy }, { x: inFrom.sx - 60 * inFrom.kx, y: inFrom.sy },
+           '[data-handle="se"]');
+const pulledIn = await page.evaluate(() => ({ w: annotations[0].w, h: annotations[0].h }));
+ok('…and a corner pulled straight IN along the long edge still shrinks it',
+   pulledIn.w < inFrom.w - 8 && Math.abs(pulledIn.w / pulledIn.h - 2) < 0.05,
+   inFrom.w + ' → ' + pulledIn.w);
+
+const outFrom = await geom();
+await drag({ x: outFrom.sx, y: outFrom.sy }, { x: outFrom.sx + 60 * outFrom.kx, y: outFrom.sy },
+           '[data-handle="se"]');
+const pulledOut = await page.evaluate(() => ({ w: annotations[0].w, h: annotations[0].h }));
+ok('…and one pulled straight OUT along it still grows it',
+   pulledOut.w > outFrom.w + 8 && Math.abs(pulledOut.w / pulledOut.h - 2) < 0.05,
+   outFrom.w + ' → ' + pulledOut.w);
+
+/* ---- 🔒 Locked in position ---- */
+const locked = await page.evaluate(() => {
+  const btns = Array.from(pages[0].svg.querySelectorAll('.picTool'));
+  const lock = btns.find(b => b.textContent === '🔒');
+  if (!lock) return { pressed: false };
+  lock.click();
+  const a = annotations[0];
+  return {
+    pressed: true, locked: !!a.locked,
+    handles: pages[0].svg.querySelectorAll('[data-handle]').length,
+    tools: pages[0].svg.querySelectorAll('.picTool').length,
+    unlockShown: Array.from(pages[0].svg.querySelectorAll('.picTool')).some(b => b.textContent === '🔓'),
+    selected: selectedId === a.id,
+    box: { x: a.x, y: a.y, w: a.w, h: a.h }
+  };
+});
+ok('the 🔒 button is there and locks it', locked.pressed && locked.locked === true);
+ok('…and a locked picture has no handles to drag', locked.handles === 0, 'saw ' + locked.handles);
+ok('…but keeps its row, now offering 🔓', locked.tools === 2 && locked.unlockShown);
+ok('…and is still SELECTED, or the 🔓 could never be reached', locked.selected === true);
+
+const lockedDrag = await page.evaluate(async () => {
+  const r = pages[0].svg.getBoundingClientRect();
+  const a = annotations[0];
+  return { cx: r.x + a.x + a.w / 2, cy: r.y + a.y + a.h / 2 };
+});
+await drag({ x: lockedDrag.cx, y: lockedDrag.cy }, { x: lockedDrag.cx + 60, y: lockedDrag.cy + 60 });
+const stillThere = await page.evaluate(() => {
+  const a = annotations[0];
+  return { x: a.x, y: a.y, w: a.w, h: a.h };
+});
+ok('a locked picture does not move when it is dragged',
+   JSON.stringify(stillThere) === JSON.stringify(locked.box),
+   JSON.stringify(locked.box) + ' → ' + JSON.stringify(stillThere));
+
+/* The eraser is the reason locking is worth having: rubbing a stroke off a
+   picture must not take the picture with it. */
+const erased = await page.evaluate(() => {
+  const svg = pages[0].svg;
+  const r = svg.getBoundingClientRect();
+  const a = annotations[0];
+  erasing = { page: pages[0], snap: snapshot(), removed: false, lastX: 0, lastY: 0 };
+  const x = r.x + a.x + a.w / 2, y = r.y + a.y + a.h / 2;
+  eraseAlong(x, y, x, y);
+  erasing = null;
+  return { n: annotations.length, removed: !annotations.some(q => q.type === 'image') };
+});
+ok('…and the eraser steps over it', erased.removed === false, 'annotations left: ' + erased.n);
+
+/* A lock nothing can undo is a picture nobody can take off the page. */
+const removed = await page.evaluate(() => {
+  const x = Array.from(pages[0].svg.querySelectorAll('.picTool')).find(b => b.textContent === '✕');
+  if (!x) return { pressed: false };
+  x.click();
+  return { pressed: true, left: annotations.filter(a => a.type === 'image').length };
+});
+ok('a locked picture can still be removed from its own ✕',
+   removed.pressed && removed.left === 0, JSON.stringify(removed));
+
+/* THE FLATTENED PAGE is what the marking run reads, what goes into the mistake
+   book and what comes out of the printer. A picture missing from it is a page
+   the AI marks that the student is not looking at. */
+const flat = await page.evaluate(async () => {
+  annotations = [];
+  await pasteImageOntoPage(window.__pic);
+  await annPicsReady();
+  const drawn = [];
+  const ctx = {
+    save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {},
+    strokeRect() {}, ellipse() {}, fillText() {}, measureText: () => ({ width: 10 }),
+    setLineDash() {}, drawImage(img, x, y, w, h) { drawn.push([Math.round(w), Math.round(h)]); }
+  };
+  drawAnnsOnCtx(ctx, 1, 1, annotations, 1);
+  const a = annotations[0];
+  return { drawn: drawn, box: [Math.round(a.w), Math.round(a.h)] };
+});
+ok('the picture is in the page the AI reads', flat.drawn.length === 1,
+   JSON.stringify(flat));
+ok('…fitted to its own box, not stretched to it',
+   flat.drawn.length === 1 &&
+   Math.abs(flat.drawn[0][0] / flat.drawn[0][1] - 2) < 0.05 &&
+   flat.drawn[0][0] <= flat.box[0] + 1 && flat.drawn[0][1] <= flat.box[1] + 1,
+   JSON.stringify(flat));
+
+await page.evaluate(() => { annotations = []; selectedId = null; renderAllOverlays(); });
+
 /* One-letter tool shortcuts live BELOW `renderStylusBtn()` in the file, so a
    throw there took the whole keyboard with it. */
 console.log('\nThe keyboard is wired up');

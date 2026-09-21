@@ -701,6 +701,49 @@
   .annText[contenteditable="true"] { background: rgba(255,224,178,.28); border-radius: 3px; }
   .handFont { font-family: 'Comic Sans MS', 'Segoe Print', cursive; }
 
+  /* ---------- 📎 A PASTED PICTURE HAS NO WINDOW ROUND IT ----------
+     A picture pasted onto the page is the PICTURE and nothing else: no
+     heading, no border, no background, no buttons. A window round it is a
+     window over the printed question beside it, and it reads as a screenshot
+     dropped on top of the page rather than as part of it. Everything it needs
+     while it is being handled is drawn only while it is SELECTED (see
+     `renderPicChromeOn`), so there is nothing at all to draw at rest.
+
+     `contain`, never `fill`: a corner drag keeps the picture's own shape (see
+     `applyPicHandle`), so the two agree — and a picture that somehow lost its
+     ratio letterboxes rather than stretching. */
+  .pastePic { display: block; width: 100%; height: 100%; }
+  .pastePic img {
+    display: block; width: 100%; height: 100%; object-fit: contain;
+    /* An <img> is natively draggable AND natively selectable, and both fight
+       the drag that MOVES it: one starts the browser's own drag of the image
+       file, the other paints a blue selection over the picture the moment a
+       stylus travels across it. */
+    -webkit-user-drag: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  /* The selected picture's own row — 🔒 lock it, ✕ take it off. Sized in
+     SCREEN pixels from the JS (÷ the zoom, the same trick the hint pin uses),
+     so it is the same size to aim at whatever the page is zoomed to. */
+  /* `pointer-events: none` on the ROW and `auto` on the buttons. The row is a
+     transparent strip wider than the two buttons in it, and a transparent div
+     still swallows taps — so without this a band above every selected picture
+     catches the stylus and the page cannot be written on there. */
+  .picTools {
+    display: flex; align-items: center; font-family: var(--font);
+    pointer-events: none;
+  }
+  .picTool {
+    pointer-events: auto;
+    display: grid; place-items: center; height: 100%; padding: 0 0.28em;
+    border-radius: 6px; cursor: pointer; font-family: var(--font);
+    line-height: 1; font-size: 1em;
+    color: var(--ink); background: #fff; border: 2px solid var(--accent-deep);
+    box-shadow: 0 1px 4px rgba(0,0,0,.22);
+  }
+  .picTool:hover { background: var(--accent); }
+
   /* ---------- The hint pin ----------
      A numbered dot dropped on the page where a hint was asked for, so the
      card in the panel and the question on the paper stay tied together once
@@ -2495,7 +2538,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.47.0';
+var APP_VERSION = 'v1.48.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -4753,6 +4796,14 @@ function renderOverlay(p) {
   renderMarksOn(p);
   renderTutorPointOn(p);
   renderTutorWorkOn(p);
+  /* 📎 A SELECTED PICTURE'S handles and its 🔒 / ✕ row, drawn LAST so a hint
+     pin or a tick landing on the same corner cannot sit over the handle the
+     student is aiming at. This is the only chrome a pasted picture ever has,
+     and it is on screen only while the picture is the one in hand. */
+  if (selectedId && selectedId !== editingId) {
+    var picSel = annotations.find(function (a) { return a.id === selectedId; });
+    if (picSel && picSel.page === p.num && annPastePic(picSel)) renderPicChromeOn(p, picSel);
+  }
 }
 
 function annNode(a) {
@@ -4823,6 +4874,10 @@ function annNode(a) {
     fo.appendChild(div);
     g.appendChild(fo);
     if (editingId === a.id) bindTextEditNode(div, a.id);
+  } else if (a.type === 'image') {
+    // 📎 A pasted picture — the picture and nothing else. See the section
+    // above for why it carries no frame and how it is handled.
+    g.appendChild(pastePicNode(a));
   }
   return g;
 }
@@ -4915,6 +4970,13 @@ function drawAnnsOnCtx(ctx, kx, ky, anns, pageNum) {
         ctx.fillText(line, x, top + half + asc);
         top += lineH;
       });
+    } else if (a.type === 'image') {
+      /* 📎 THE PASTED PICTURE HAS TO BE IN THE PICTURE THE AI READS, or the
+         marking run marks a page the student is not looking at — and it has to
+         be FITTED inside its box exactly as `object-fit: contain` fits it on
+         screen, or the printed sheet and the screen disagree about a picture
+         nobody has looked at twice. */
+      drawPastePicOn(ctx, kx, ky, a);
     }
     ctx.restore();
   });
@@ -5113,6 +5175,7 @@ function eventPoint(e, p, rect) {
 
 var drawing = null;   // { page, ann, svgNode, _d, _dCount, ptrType, startT }
 var moving = null;    // { page, id, snap, lastX, lastY, cx, cy, moved, dragged }
+var resizingPic = null;  // { page, id, handle, snap, cx, cy, moved, sized } — 📎 a picture's corner
 var erasing = null;   // { page, snap, removed }
 
 /* Keep the page's saved ink, text, hints and marks in the DOM while writing.
@@ -5237,7 +5300,13 @@ function annSizeKindOfTool(t) { return ANN_FONT_TOOLS[t] ? 'font' : 'stroke'; }
    to resize out from under the caret. */
 function annSizeTarget() {
   if (!selectedId || selectedId === editingId) return null;
-  return annotations.find(function (x) { return x.id === selectedId; }) || null;
+  var a = annotations.find(function (x) { return x.id === selectedId; }) || null;
+  /* 📎 A PASTED PICTURE HAS NO STROKE AND NO FONT, so the control stands down
+     and describes the pen instead. Left through, it would report `strokeW` as
+     the picture's size and then write a `width` onto it that nothing ever
+     reads — a control saying something untrue about what is selected. */
+  if (annPastePic(a)) return null;
+  return a;
 }
 
 function annSizeKind() {
@@ -5358,6 +5427,11 @@ function eraseAlong(x1, y1, x2, y2) {
     if (!host) continue;
     var id = host.getAttribute('data-id');
     if (!annotations.some(function (q) { return q.id === id; })) continue;
+    /* 📎 A LOCKED picture is part of the page now. Rubbing out a stroke drawn
+       on top of one must not take the picture with it — that is the accident
+       locking exists to prevent, and by the time it is noticed the picture has
+       gone. */
+    if (annLockedId(id)) continue;
     annotations = annotations.filter(function (q) { return q.id !== id; });
     if (selectedId === id) selectedId = null;
     erasing.removed = true;
@@ -5776,14 +5850,16 @@ function cancelStaleGesture(restoreTouch) {
     annotations = annotations.filter(function (x) { return x.id !== an.id; });
     if (pg) renderOverlay(pg);
   }
-  if (restoreTouch && (erasing || moving)) {
-    var gesture = erasing || moving;
+  if (restoreTouch && (erasing || moving || resizingPic)) {
+    var gesture = erasing || moving || resizingPic;
     annotations = JSON.parse(gesture.snap);
     if (moving && moving.dragged && undoStack[undoStack.length - 1] === moving.snap) undoStack.pop();
+    if (resizingPic && resizingPic.sized && undoStack[undoStack.length - 1] === resizingPic.snap) undoStack.pop();
     renderOverlay(gesture.page);
   }
   erasing = null;
   moving = null;
+  resizingPic = null;
   activePointerId = null;
   activePointerType = null;
   activePointerTarget = null;
@@ -6130,6 +6206,23 @@ function attachOverlayHandlers(p) {
       commitActiveTextEdit();
     }
 
+    /* 📎 A PICTURE'S CORNER HANDLE, and it is checked before every tool.
+       The handles live in a `g[data-picchrome]` of their own rather than inside
+       the picture's `g[data-id]`, so a tap on one would otherwise `closest` to
+       nothing and DESELECT the very picture being resized. */
+    var picH = e.target.getAttribute && e.target.getAttribute('data-handle');
+    if (picH && tool === 'select' && selectedId) {
+      var picA = annotations.find(function (x) { return x.id === selectedId; });
+      if (picA && annPastePic(picA) && !annLocked(picA)) {
+        e.preventDefault();
+        claimPointer(e);
+        try { svg.setPointerCapture(e.pointerId); } catch (err) {}
+        resizingPic = { page: p, id: selectedId, handle: picH, snap: snapshot(),
+                        cx: e.clientX, cy: e.clientY, moved: false, sized: false };
+        return;
+      }
+    }
+
     // 💡 and 🎤 are TAPS, not marks, so a finger is welcome to make them
     // even in pencil-only mode — a child asking for a hint should not have
     // to find their stylus first.
@@ -6180,6 +6273,11 @@ function attachOverlayHandlers(p) {
       renderAllOverlays();
       if (!id) return;
       e.preventDefault();
+      /* 📎 A LOCKED picture SELECTS — so the 🔓 that unlocks it is on screen —
+         and is not picked up. Returning before the pointer is claimed leaves
+         the page free to scroll under the finger, which is what a pinned
+         picture should feel like. */
+      if (annLockedId(id)) return;
       claimPointer(e);
       try { svg.setPointerCapture(e.pointerId); } catch (err) {}
       moving = { page: p, id: id, snap: snapshot(), lastX: pt.x, lastY: pt.y, cx: e.clientX, cy: e.clientY, moved: false };
@@ -6238,6 +6336,18 @@ function attachOverlayHandlers(p) {
       erasing.lastY = e.clientY;
       return;
     }
+    if (resizingPic && resizingPic.page === p) {
+      // The same tap-is-not-a-drag rule the move follows: a pen tip wobbles as
+      // it touches down, and nudging a picture's corner while only trying to
+      // grab it is the same fault from the other end.
+      if (!dragStarted(resizingPic, e)) return;
+      var ra = annotations.find(function (x) { return x.id === resizingPic.id; });
+      if (!ra) { resizingPic = null; return; }
+      if (!resizingPic.sized) { resizingPic.sized = true; pushUndo(resizingPic.snap); }
+      applyPicHandle(ra, resizingPic.handle, eventPoint(e, p));
+      renderOverlay(p);
+      return;
+    }
     if (moving && moving.page === p) {
       // A tap is not a drag: the ink must not shift under a stylus that was
       // only ever tapped down on it to select it. `moved` says the threshold
@@ -6279,6 +6389,12 @@ function attachOverlayHandlers(p) {
     if (erasing && erasing.page === p) {
       if (erasing.removed) { pushUndo(erasing.snap); setDirty(true); }
       erasing = null;
+      renderOverlay(p);
+      return;
+    }
+    if (resizingPic && resizingPic.page === p) {
+      if (resizingPic.sized) setDirty(true);
+      resizingPic = null;
       renderOverlay(p);
       return;
     }
@@ -6325,7 +6441,7 @@ function attachOverlayHandlers(p) {
   });
   svg.addEventListener('pointerleave', function (e) {
     if (svg.hasPointerCapture && svg.hasPointerCapture(e.pointerId)) return;
-    if (drawing || erasing || moving) endStroke(e);
+    if (drawing || erasing || moving || resizingPic) endStroke(e);
   });
 }
 
@@ -6336,10 +6452,541 @@ function translateAnn(a, dx, dy) {
     a.x1 = round2(a.x1 + dx); a.y1 = round2(a.y1 + dy);
     a.x2 = round2(a.x2 + dx); a.y2 = round2(a.y2 + dy);
   } else {
+    // An `image` moves through here too — it is x/y/w/h like a rect.
     a.x = round2((a.x || 0) + dx);
     a.y = round2((a.y || 0) + dy);
   }
 }
+
+/* =====================================================================
+   📎 A PICTURE PASTED ONTO THE PAGE — AND NO WINDOW ROUND IT
+   ---------------------------------------------------------------------
+   Copy a picture anywhere — a diagram out of a textbook, a screenshot, a
+   photo off a phone — and Ctrl+V puts it on the worksheet page you are
+   looking at. Dropping one on the page does the same.
+
+   IT IS THE PICTURE AND NOTHING ELSE. No heading, no border, no background,
+   no buttons: a window round a picture is a window over the printed question
+   beside it, and it reads as a screenshot dropped on top of the page rather
+   than as part of it. What it can do is what a picture should be able to do —
+   selected with a tap, moved by dragging it, resized by its corners, and 🔒
+   LOCKED IN POSITION, after which writing on it, rubbing a stroke off it and
+   erasing across it all leave it exactly where it is. Everything it needs
+   while it is being handled is drawn only WHILE IT IS SELECTED, so at rest the
+   page shows the picture and nothing else.
+
+   IT IS A NEW ANNOTATION TYPE, `image`, and that is the one thing here worth
+   being careful about — this file's own rule is that a type has to be taught
+   to every renderer and every reader, and the one that gets missed is silent.
+   All of them: `annNode` (the screen), `drawAnnsOnCtx` (the picture the AI
+   reads, the mistake book and the printer), `annBounds` / `annFrame` (x/y/w/h,
+   so the marking measures it where it is), `translateAnn` (its `else` branch
+   moves x/y), the hit test and the eraser (both find `g[data-id]`), the
+   handles below, and `annSizeTarget`, which stands DOWN for a picture — the
+   size control writes a stroke width, and a picture has no stroke.
+
+   THE PICTURE IS ORDINARY INK, deliberately: it saves with the worksheet, it
+   undoes, it is composited into the page the AI marks, it goes into the
+   mistake book and it prints. `Ans Key` (polymathlc/anskey) carries the same
+   feature over its own annotation engine under the same names — ship a change
+   to the shape to both.
+
+   THE DECODED PICTURE IS CACHED, and it has to be: `drawAnnsOnCtx` is
+   SYNCHRONOUS (nine callers, several of them sync themselves), so it can only
+   draw a picture that is already decoded. `annPicWarm` is therefore called
+   from `annNode` — the overlay renders every picture on every page it draws —
+   and awaited at the moment of the paste, so the cache is warm long before any
+   composite can be taken. KNOWN LIMIT, and it is why `printWorksheet` awaits
+   `annPicsReady()`: a composite taken in the first milliseconds after a page
+   is rendered would be missing a picture that had not finished decoding, and
+   on paper that is unrecoverable. */
+var PASTE_IMG_MAX_PX = 1600;   // a worksheet page is ~600pt wide; this is generous
+var PASTE_IMG_QUALITY = 0.9;   // a pasted screenshot is often text — 0.82 goes soft
+var PASTE_CASCADE = 14;        // page units each further picture is stepped by
+var PASTE_MIN_PX = 24;         // the floor a picture may be dragged down to
+var PIC_HANDLE_PX = 7;         // a corner handle, in SCREEN pixels
+var PIC_HIT_PX = 18;           // its invisible twin, big enough for a finger
+var PIC_BTN_PX = 26;           // the 🔒 / ✕ row, in screen pixels (the hint pin's size)
+
+/* THE TWO QUESTIONS, ASKED IN ONE PLACE EACH. Both are asked from half a dozen
+   surfaces, and a surface that answered one its own way would be the one that
+   quietly disagreed. A locked picture is still SELECTABLE — or the 🔓 that
+   unlocks it could never be reached — and still REMOVABLE from its own ✕,
+   because that is a deliberate act aimed at exactly this picture rather than
+   an accident of writing near it. A lock nothing can undo is a picture nobody
+   can take off the page. */
+function annPastePic(a) { return !!(a && a.type === 'image'); }
+function annLocked(a) { return !!(a && a.locked); }
+function annLockedId(id) {
+  return annLocked(annotations.find(function (x) { return x.id === id; }));
+}
+
+/* A CORNER DRAG KEEPS A PICTURE'S OWN SHAPE, and the scale is the drag
+   PROJECTED ONTO THE SHAPE'S OWN DIAGONAL rather than whichever axis happens
+   to have travelled further. Taking the LARGER refuses to shrink a wide
+   picture dragged straight in along its long edge — its height never changed,
+   so the scale never changes and the handle appears dead; taking the SMALLER
+   refuses to grow one the same way. Both read as a handle that does nothing,
+   which is worse than no handle. The projection answers to either axis, is
+   EXACT on a true diagonal drag, and is idempotent — a point already on the
+   diagonal projects to itself, which is what lets it run on every pointermove
+   with no start snapshot to keep. It is pure and shared with
+   `polymathlc/anskey`; keep the two in step. */
+function picFitRatio(dx, dy, ratio, minW, minH) {
+  var w = Math.abs(dx), h = Math.abs(dy);
+  if (!(ratio > 0)) return { w: Math.max(minW, w), h: Math.max(minH, h) };
+  var t = (w * ratio + h) / (ratio * ratio + 1);
+  w = t * ratio; h = t;
+  // Whichever floor bites harder decides, and the shape is kept either way.
+  if (w < minW) { w = minW; h = minW / ratio; }
+  if (h < minH) { h = minH; w = minH * ratio; }
+  return { w: w, h: h };
+}
+
+/* ---- The decoded pictures ----
+   One Image per data URL, kept for the session. Bounded, because a worksheet
+   worked on all afternoon can collect more pictures than anybody wants held
+   in memory — and the cache is only ever a convenience: a src that has fallen
+   out of it is warmed again by the very next render of that page. */
+var PIC_CACHE_MAX = 24;
+var annPics = {};
+var annPicOrder = [];
+function annPicWarm(src) {
+  if (!src || typeof src !== 'string') return null;
+  if (annPics[src]) return annPics[src];
+  if (annPicOrder.length >= PIC_CACHE_MAX) {
+    var oldest = annPicOrder.shift();
+    if (oldest !== src) delete annPics[oldest];
+  }
+  var img = new Image();
+  img.decoding = 'sync';
+  annPics[src] = img;
+  annPicOrder.push(src);
+  img.src = src;
+  return img;
+}
+/* The picture only when it is really drawable. A half-decoded one handed to
+   `ctx.drawImage` throws, and one broken picture must never cost the whole
+   composite the ink drawn beside it. */
+function annPicFor(src) {
+  var img = annPics[src];
+  if (!img) { annPicWarm(src); return null; }
+  return (img.complete && img.naturalWidth > 0) ? img : null;
+}
+/* Every picture on the worksheet, decoded — or given up on. Awaited before
+   the one capture that cannot be taken again: the printer. */
+function annPicsReady() {
+  var waits = [];
+  annotations.forEach(function (a) {
+    if (!annPastePic(a) || !a.src) return;
+    var img = annPicWarm(a.src);
+    if (!img || (img.complete && img.naturalWidth > 0)) return;
+    waits.push(new Promise(function (resolve) {
+      var done = false;
+      function fin() { if (!done) { done = true; resolve(); } }
+      img.addEventListener('load', fin, { once: true });
+      img.addEventListener('error', fin, { once: true });
+      // A picture that will never decode must not hold the print dialog shut.
+      setTimeout(fin, 4000);
+    }));
+  });
+  return Promise.all(waits);
+}
+
+/* A phone photo is several megabytes of data URL, and a worksheet's
+   annotations are re-written on every auto-save — so it is redrawn to
+   something a page can actually use. Ported from Ans Key, argument for
+   argument: the quality is OPTIONAL and defaults to the 0.82 that app's other
+   callers get, or a shared fix silently changes what they store. */
+function shrinkImageDataUrl(dataUrl, maxPx, quality) {
+  maxPx = maxPx || 640;
+  quality = quality || 0.82;
+  return new Promise(function (resolve) {
+    var img = new Image();
+    img.onload = function () {
+      try {
+        var f = Math.min(1, maxPx / Math.max(img.width, img.height));
+        // Small enough already: handed back UNTOUCHED, which is also the one
+        // path on which a transparent PNG keeps its transparency.
+        if (f >= 1 && dataUrl.length < 200000) { resolve(dataUrl); return; }
+        var cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.round(img.width * f));
+        cv.height = Math.max(1, Math.round(img.height * f));
+        var cx = cv.getContext('2d');
+        cx.fillStyle = '#fff';
+        cx.fillRect(0, 0, cv.width, cv.height);
+        cx.drawImage(img, 0, 0, cv.width, cv.height);
+        resolve(cv.toDataURL('image/jpeg', quality));
+      } catch (e) { resolve(dataUrl); }
+    };
+    img.onerror = function () { resolve(dataUrl); };
+    img.src = dataUrl;
+  });
+}
+
+/* The picture's own width ÷ height. One that will not decode falls back to a
+   portrait-ish box rather than throwing — a box with a broken picture in it is
+   still one the student can rub out. */
+function imageRatio(src) {
+  return new Promise(function (resolve) {
+    var img = new Image();
+    img.onload = function () { resolve(img.width && img.height ? img.width / img.height : 0.75); };
+    img.onerror = function () { resolve(0.75); };
+    img.src = src;
+  });
+}
+
+/* Where a pasted picture goes and how big it is — the ONE place a ratio
+   becomes a box, so what lands on the page and what the harness checks are the
+   same arithmetic.
+
+   THE BOX **IS** THE PICTURE: nothing is added for a heading, so the box's own
+   shape is the picture's. Never taller or wider than the page it is going onto
+   (a picture that overhangs the paper cannot be dragged back into view), and
+   stepped down the page for each picture already there — a second paste
+   landing exactly on the first reads as a paste that did nothing. The step
+   cycles, so a long run never walks off the corner. */
+function pastePicBox(page, ratio, index) {
+  var pw = page.baseW || 600, ph = page.baseH || 800;
+  var r = Math.max(0.15, ratio || 0.75);
+  var w = Math.min(420, pw * 0.62);
+  var h = Math.round(w / r);
+  if (h > ph * 0.82) {
+    h = Math.round(ph * 0.82);
+    w = Math.max(PASTE_MIN_PX, Math.round(h * r));
+  }
+  w = Math.max(PASTE_MIN_PX, Math.min(w, pw - 8));
+  h = Math.max(PASTE_MIN_PX, Math.min(h, ph - 8));
+  var step = (index || 0) % 6;
+  var x = Math.round(pw * 0.5 - w / 2) + step * PASTE_CASCADE;
+  var y = Math.round(ph * 0.22) + step * PASTE_CASCADE;
+  return {
+    x: round2(Math.max(4, Math.min(pw - w - 4, x))),
+    y: round2(Math.max(4, Math.min(ph - h - 4, y))),
+    w: round2(w), h: round2(h)
+  };
+}
+
+/* WHERE A PASTE BELONGS, and it is the difference between this feature and one
+   that is worse than not having it. Typing is the commonest thing anybody is
+   doing when they press Ctrl+V, so a text box being written, a search box, a
+   dialog and the maths pad all keep their own paste. Text on the clipboard is
+   never claimed at all. */
+function pasteGoesToWorksheet(e) {
+  if (view !== 'ws') return false;
+  if (!pdfDoc || !pages.length) return false;
+  if (editingId) return false;          // a text annotation is being typed into
+  if (document.querySelector('.modalBack.open')) return false;
+  var spots = [(e && e.target) || null, document.activeElement];
+  for (var i = 0; i < spots.length; i++) {
+    var t = spots[i];
+    if (!t || !t.closest) continue;
+    if (t.closest('input, textarea, select, [contenteditable="true"]')) return false;
+    if (t.closest('.modalBack, #buddy, #kwQuiz, #mthPad')) return false;
+  }
+  return true;
+}
+
+/* The picture, onto the page in view. ONE door, so the clipboard and a dropped
+   file cannot drift into placing pictures differently. */
+async function pasteImageOntoPage(file) {
+  if (!file || !/^image\//.test(file.type || '')) return 0;
+  var page = visiblePage() || pages[0];
+  if (!page) { toast('Open a worksheet first.'); return 0; }
+
+  var raw = await new Promise(function (resolve) {
+    var fr = new FileReader();
+    fr.onload = function (ev) { resolve(ev.target.result); };
+    fr.onerror = function () { resolve(null); };
+    fr.readAsDataURL(file);
+  });
+  if (!raw) { toast('That picture could not be read.'); return 0; }
+
+  var src = await shrinkImageDataUrl(raw, PASTE_IMG_MAX_PX, PASTE_IMG_QUALITY);
+  var ratio = await imageRatio(src);
+  // The worksheet may have been closed while the picture was being read.
+  if (view !== 'ws' || !pages.some(function (q) { return q.num === page.num; })) return 0;
+
+  var step = annotations.filter(function (x) {
+    return x.page === page.num && annPastePic(x);
+  }).length;
+  var box = pastePicBox(page, ratio, step);
+
+  pushUndo();
+  var a = {
+    id: newAnnId(), page: page.num, type: 'image',
+    x: box.x, y: box.y, w: box.w, h: box.h,
+    /* The picture's own shape, so a corner drag scales it instead of
+       stretching it. */
+    ratio: round2(Math.max(0.05, ratio || 0.75)),
+    src: src, ts: Date.now()
+  };
+  annPicWarm(src);
+  annotations.push(a);
+  selectedId = a.id;
+  // The select tool is what moves and resizes it, so a paste hands it over —
+  // a picture that landed and could not be picked up reads as one that is
+  // stuck to the page.
+  if (tool !== 'select') setTool('select');
+  renderAllOverlays();
+  setDirty(true);
+  return page.num;
+}
+
+/* Every image on the clipboard, in the order it arrived. A screenshot is one;
+   a selection copied out of a document can be several. */
+async function pasteImagesFromClipboard(dt) {
+  var files = [];
+  var items = dt && dt.items;
+  if (items) {
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' && /^image\//.test(items[i].type || '')) {
+        var f = items[i].getAsFile();
+        if (f) files.push(f);
+      }
+    }
+  }
+  if (!files.length && dt && dt.files) {
+    for (var j = 0; j < dt.files.length; j++) {
+      if (/^image\//.test(dt.files[j].type || '')) files.push(dt.files[j]);
+    }
+  }
+  if (!files.length) return 0;
+  var done = 0, onPage = 0;
+  for (var k = 0; k < files.length; k++) {
+    var landed = await pasteImageOntoPage(files[k]);
+    if (landed) { done++; onPage = onPage || landed; }
+  }
+  if (done) {
+    toast(done === 1
+      ? 'Picture pasted onto page ' + onPage + ' — drag it about, drag a corner to resize, or 🔒 Lock it in position.'
+      : done + ' pictures pasted onto page ' + onPage + ' — tap one to move, resize or lock it.', 4600);
+  }
+  return done;
+}
+
+/* ---- The picture on screen ----
+   `draggable = false` is not decoration: an <img> is natively draggable, so
+   without it a mouse drag on the picture starts the browser's own drag of the
+   image FILE instead of moving it on the page. `contain`, never `fill`: the
+   corner drag keeps the shape, and a picture that somehow lost its ratio must
+   letterbox rather than stretch. */
+function pastePicNode(a) {
+  var fr = annFrame(a);
+  var fo = el('foreignObject', {
+    x: fr.x, y: fr.y,
+    width: Math.max(PASTE_MIN_PX, fr.w || PASTE_MIN_PX),
+    height: Math.max(PASTE_MIN_PX, fr.h || PASTE_MIN_PX)
+  });
+  fo.style.overflow = 'visible';
+  var box = document.createElement('div');
+  box.className = 'pastePic';
+  if (a.src) {
+    annPicWarm(a.src);
+    var img = document.createElement('img');
+    img.src = a.src;
+    img.alt = 'Pasted picture';
+    img.draggable = false;
+    box.appendChild(img);
+  }
+  fo.appendChild(box);
+  return fo;
+}
+
+/* ---- The picture in the flattened page ----
+   This is what the marking run reads, what goes into the mistake book and what
+   comes out of the printer, so it has to put the picture where the screen puts
+   it: FITTED inside its own box, exactly as `object-fit: contain` does, never
+   stretched to it. */
+function drawPastePicOn(ctx, kx, ky, a) {
+  var img = a.src ? annPicFor(a.src) : null;
+  if (!img) return;
+  var fr = annFrame(a);
+  var bw = Math.max(1, fr.w * kx), bh = Math.max(1, fr.h * ky);
+  var f = Math.min(bw / img.naturalWidth, bh / img.naturalHeight);
+  var iw = img.naturalWidth * f, ih = img.naturalHeight * f;
+  try {
+    ctx.drawImage(img, fr.x * kx + (bw - iw) / 2, fr.y * ky + (bh - ih) / 2, iw, ih);
+  } catch (e) { /* a tainted or half-decoded picture costs the picture, not the ink */ }
+}
+
+/* ---- What a selected picture wears ----
+   Four corner handles and a two-button row, both sized in SCREEN pixels
+   (÷ scale, the same trick the hint pins use) so they are the same size to aim
+   at whatever the page is zoomed to. Drawn ONLY while the picture is selected,
+   which is what lets the picture itself have no chrome at all.
+
+   A LOCKED picture gets the row and NO handles: a handle on a pinned picture
+   is a handle that lies. */
+function renderPicChromeOn(p, a) {
+  var fr = annFrame(a);
+  var sc = Math.max(0.25, scale);
+  var g = el('g', { 'data-picchrome': a.id });
+
+  if (!annLocked(a)) {
+    [['nw', fr.x, fr.y], ['ne', fr.x + fr.w, fr.y],
+     ['sw', fr.x, fr.y + fr.h], ['se', fr.x + fr.w, fr.y + fr.h]].forEach(function (h) {
+      g.appendChild(el('circle', {
+        cx: h[1], cy: h[2], r: PIC_HANDLE_PX / sc, 'data-handle': h[0],
+        fill: '#fff', stroke: '#1E88E5', 'stroke-width': 2 / sc
+      }));
+      // A big invisible twin, so a finger can grab it and not only a pencil.
+      var hit = el('circle', {
+        cx: h[1], cy: h[2], r: PIC_HIT_PX / sc, 'data-handle': h[0],
+        fill: 'transparent', stroke: 'none'
+      });
+      g.appendChild(hit);
+    });
+  }
+
+  var rowH = PIC_BTN_PX / sc;
+  var rowW = 120 / sc;
+  // Above the picture, unless there is no room up there — then just inside its
+  // own top edge, so the row is always on the page and always reachable.
+  var ry = fr.y - rowH - 4 / sc;
+  if (ry < 2) ry = fr.y + 2 / sc;
+  var rx = Math.max(2, fr.x);
+  var fo = el('foreignObject', { x: rx, y: ry, width: rowW, height: rowH });
+  fo.style.overflow = 'visible';
+  /* The strip is WIDER than the two buttons in it, and both a foreignObject
+     and the transparent div inside it still swallow taps — so without this a
+     band above every selected picture catches the stylus and the page cannot
+     be written on there. The buttons put `pointer-events` back on. */
+  fo.style.pointerEvents = 'none';
+  var row = document.createElement('div');
+  row.className = 'picTools';
+  row.style.height = rowH + 'px';
+  row.style.fontSize = (rowH * 0.42) + 'px';
+  row.style.gap = (rowH * 0.15) + 'px';
+  [[annLocked(a) ? '🔓' : '🔒',
+    annLocked(a) ? 'Unlock it — it can be dragged and resized again'
+                 : 'Lock it in position — writing on it and rubbing a stroke off it leave it where it is',
+    function () { togglePictureLock(a.id); }],
+   ['✕', 'Take this picture off the page', function () { removePictureAnn(a.id); }]
+  ].forEach(function (spec) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'picTool';
+    b.textContent = spec[0];
+    b.title = spec[1];
+    b.style.minWidth = rowH + 'px';
+    // The overlay's own pointerdown must not see these, or tapping 🔒 starts
+    // a drag of the very picture it is about to pin down.
+    b.addEventListener('pointerdown', function (ev) { ev.stopPropagation(); });
+    b.addEventListener('click', function (ev) { ev.stopPropagation(); spec[2](); });
+    row.appendChild(b);
+  });
+  fo.appendChild(row);
+  g.appendChild(fo);
+  p.svg.appendChild(g);
+}
+
+/* Resize by a corner. The corner OPPOSITE the one being dragged is the anchor
+   and the new box is built FROM it rather than from the pointer: clamped up to
+   the floor, `Math.min(anchor, pt)` puts the box's own edge past the pointer
+   and the picture creeps away under the drag.
+
+   A PICTURE KEEPS ITS SHAPE. The drag is driven by whichever axis has
+   travelled further and the other follows `a.ratio`, so a corner scales the
+   picture instead of stretching it — there is no frame here to letterbox a
+   distortion away out of sight. */
+function applyPicHandle(a, h, pt) {
+  if (annLocked(a)) return;
+  var ax = (h === 'nw' || h === 'sw') ? a.x + a.w : a.x;
+  var ay = (h === 'nw' || h === 'ne') ? a.y + a.h : a.y;
+  var fit = picFitRatio(pt.x - ax, pt.y - ay, a.ratio, PASTE_MIN_PX, PASTE_MIN_PX);
+  a.x = round2((h === 'ne' || h === 'se') ? ax : ax - fit.w);
+  a.y = round2((h === 'sw' || h === 'se') ? ay : ay - fit.h);
+  a.w = round2(fit.w);
+  a.h = round2(fit.h);
+}
+
+/* `delete` rather than `= false`: every annotation is written out on every
+   auto-save, so an inert `locked: false` on each picture is bytes on the wire
+   that mean nothing. */
+function togglePictureLock(id) {
+  var a = annotations.find(function (x) { return x.id === id; });
+  if (!a) return;
+  pushUndo();
+  if (a.locked) delete a.locked; else a.locked = true;
+  selectedId = id;
+  renderAllOverlays();
+  setDirty(true);
+  toast(a.locked
+    ? '🔒 Locked in position — write over it freely; it stays put.'
+    : '🔓 Unlocked — drag it about, or drag a corner to resize.');
+}
+
+/* A locked picture can still be removed, deliberately, from its own ✕. */
+function removePictureAnn(id) {
+  if (!annotations.some(function (x) { return x.id === id; })) return;
+  pushUndo();
+  annotations = annotations.filter(function (x) { return x.id !== id; });
+  if (selectedId === id) selectedId = null;
+  renderAllOverlays();
+  setDirty(true);
+}
+
+/* A picture DROPPED on the worksheet goes through the very same door, so the
+   clipboard and a dropped file cannot drift into placing pictures differently.
+   `dragover` must preventDefault or the browser refuses the drop outright. */
+(function () {
+  /* EVERY DOM CALL HERE IS DEFENSIVE, the rule the live block already carries:
+     the harnesses run slices of this file in a vm with a mock document, and a
+     `getElementById` that is not there takes the whole slice down — which
+     reads as the writing engine being broken rather than as a missing stub. */
+  if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+  var area = document.getElementById('viewerArea');
+  if (!area || !area.addEventListener) return;
+  function hasPic(dt) {
+    if (!dt) return false;
+    if (dt.items) {
+      for (var i = 0; i < dt.items.length; i++) {
+        if (dt.items[i].kind === 'file' && /^image\//.test(dt.items[i].type || '')) return true;
+      }
+    }
+    if (dt.files && dt.files.length) {
+      for (var j = 0; j < dt.files.length; j++) {
+        if (/^image\//.test(dt.files[j].type || '')) return true;
+      }
+    }
+    // Dragging a picture out of another tab reports its types and no files
+    // until the drop, so a `dragover` that refused it would refuse every
+    // cross-tab drag.
+    return !!(dt.types && Array.prototype.indexOf.call(dt.types, 'Files') !== -1);
+  }
+  area.addEventListener('dragover', function (e) {
+    if (view !== 'ws' || !pages.length || !hasPic(e.dataTransfer)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  area.addEventListener('drop', function (e) {
+    if (view !== 'ws' || !pages.length || !hasPic(e.dataTransfer)) return;
+    e.preventDefault();
+    pasteImagesFromClipboard(e.dataTransfer);
+  });
+})();
+
+document.addEventListener('paste', function (e) {
+  if (!pasteGoesToWorksheet(e)) return;
+  var dt = e.clipboardData;
+  if (!dt) return;
+  var hasImage = false;
+  if (dt.items) {
+    for (var i = 0; i < dt.items.length; i++) {
+      if (dt.items[i].kind === 'file' && /^image\//.test(dt.items[i].type || '')) hasImage = true;
+    }
+  }
+  if (!hasImage && dt.files && dt.files.length) {
+    for (var j = 0; j < dt.files.length; j++) {
+      if (/^image\//.test(dt.files[j].type || '')) hasImage = true;
+    }
+  }
+  if (!hasImage) return;   // text on the clipboard is not this feature's
+  e.preventDefault();
+  pasteImagesFromClipboard(dt);
+});
+
 
 
 /* =====================================================================
@@ -9893,6 +10540,11 @@ async function printWorksheet(withKey) {
   $('printModal').classList.remove('open');
   commitActiveTextEdit();
   toast('Getting the pages ready…', 20000);
+  /* 📎 Every pasted picture decoded FIRST. `drawAnnsOnCtx` is synchronous, so a
+     picture that has not finished decoding is simply left out of the page it
+     composites — recoverable everywhere else, and on paper a gap nobody
+     notices until the sheet is in front of them. */
+  try { await annPicsReady(); } catch (e) {}
   var sheet = $('printSheet');
   sheet.innerHTML = '';
   try {
