@@ -1425,7 +1425,8 @@ still came back, it simply went on making the mistake the teacher had already co
 / `annPicWarm` / `annPicFor` / **`annPicsReady`** / `shrinkImageDataUrl` / `imageRatio` /
 **`pastePicBox`** / **`pasteGoesToWorksheet`** / **`pasteImageOntoPage`** /
 `pasteImagesFromClipboard` / **`pastePicNode`** / **`drawPastePicOn`** / **`renderPicChromeOn`** /
-**`applyPicHandle`** / `togglePictureLock` / `removePictureAnn` / `resizingPic` (search
+**`applyPicHandle`** / **`picFitRatio`** / `togglePictureLock` / `removePictureAnn` /
+`resizingPic` (search
 `📎 A PICTURE PASTED ONTO THE PAGE`), plus the `.pastePic` / `.picTools` / `.picTool` CSS, the
 `image` branch of `annNode` and of `drawAnnsOnCtx`, the chrome at the foot of `renderOverlay`, the
 handle / lock guards in `pointerdown`, `pointermove`, `endStroke`, `cancelStaleGesture` and
@@ -1462,6 +1463,17 @@ feature under the same names — ship a change to the shape to both.**
   moment it lands), and the box is built from the ANCHOR — the corner opposite the one being
   dragged — rather than from the pointer: clamped up to the floor, `Math.min(anchor, pt)` puts the
   box's own edge past the pointer and the picture creeps away under the drag.
+- **`picFitRatio` IS THE ONE PLACE THAT ARITHMETIC LIVES, AND THE SCALE IS THE DRAG PROJECTED ONTO
+  THE SHAPE'S OWN DIAGONAL** (v1.48.1) — never whichever axis happens to have travelled further.
+  Taking the LARGER refuses to shrink a wide picture pulled straight in along its long edge: its
+  height never changed, so the scale never changes and **the corner appears dead**. Taking the
+  SMALLER does the same to one pulled straight out. Both read as a handle that does nothing, which
+  is worse than no handle at all — and it is the shipped fault v1.48.0's own browser check caught.
+  The projection answers to either axis, is EXACT on a true diagonal drag, and is IDEMPOTENT,
+  which is what lets it run on every pointermove with no start snapshot kept. **THE FLOOR KEEPS
+  THE SHAPE TOO** (whichever of `minW` / `minH` bites harder decides), or a picture dragged down
+  to nothing comes back a square. It is pure, so the harness pins it without a DOM, and it is
+  shared byte for byte with `polymathlc/anskey`.
 - **`annLocked` IS ONE FLAG READ IN ONE PLACE, and four surfaces ask it.** A locked picture is part
   of the page: the eraser steps over it (**rubbing out a stroke drawn ON a picture must not take
   the picture with it** — that is the accident locking exists to prevent, and by the time it is
@@ -4072,7 +4084,7 @@ and nothing on any screen says what changed.
 - After touching **📎 the pasted picture** (`annPastePic`, `annLocked`, `annLockedId`,
   `annPicWarm`, `annPicFor`, `annPicsReady`, `shrinkImageDataUrl`, `imageRatio`, `pastePicBox`,
   `pasteGoesToWorksheet`, `pasteImageOntoPage`, `pasteImagesFromClipboard`, `pastePicNode`,
-  `drawPastePicOn`, `renderPicChromeOn`, `applyPicHandle`, `togglePictureLock`,
+  `drawPastePicOn`, `renderPicChromeOn`, `applyPicHandle`, `picFitRatio`, `togglePictureLock`,
   `removePictureAnn`, `resizingPic`, the `image` branch of `annNode` or `drawAnnsOnCtx`, the
   chrome at the foot of `renderOverlay`, the handle / lock guards in `pointerdown` /
   `pointermove` / `endStroke` / `cancelStaleGesture` / `eraseAlong`, the `annPicsReady()` in
@@ -4089,7 +4101,14 @@ and nothing on any screen says what changed.
   prints as a gap. Put the handle check after the tool branches and a tap on a corner `closest`es
   to nothing and DESELECTS the picture being resized. Build the resize from the pointer rather
   than the anchor and the picture creeps away under a drag that hits the floor. Drop `a.ratio`
-  from it and a corner stretches the picture, which there is no frame left to hide. Let the row
+  from it and a corner stretches the picture, which there is no frame left to hide. Take the
+  projection out of `picFitRatio` and go back to whichever axis travelled further, and a wide
+  picture pulled straight in along its long edge does not move at all: the height never changed,
+  so the scale never changes and **the corner reads as a handle that does nothing** — which is
+  exactly how v1.48.0 shipped. Take the SMALLER instead and the same corner refuses to grow it.
+  Drop the floor's own ratio and a picture dragged down to nothing comes back a square. And write
+  that arithmetic a second time at either call site and the two apps — which share it byte for
+  byte — drift apart on the one thing a teacher can see happening under their hand. Let the row
   swallow taps — `pointer-events` on the foreignObject or on `.picTools` — and a band above every
   selected picture catches the stylus. Miss any one of the four `annLocked` guards and the lock
   is a button that does nothing on that surface alone; the eraser's is the one that costs the

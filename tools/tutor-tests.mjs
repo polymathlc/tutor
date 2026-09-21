@@ -6468,7 +6468,7 @@ const pmod = new Function(`
   var annotations = [];
   function round2(n) { return Math.round(n * 100) / 100; }
   ` + PIC_SRC + `
-  return { pastePicBox, applyPicHandle, annPastePic, annLocked, PASTE_MIN_PX };
+  return { pastePicBox, applyPicHandle, annPastePic, annLocked, picFitRatio, PASTE_MIN_PX };
 `)();
 const A4 = { num: 1, baseW: 595, baseH: 842 };
 
@@ -6523,6 +6523,44 @@ r = pic({ locked: true });
 pmod.applyPicHandle(r, 'se', { x: 400, y: 400 });
 ok('a LOCKED picture is not resized at all',
    r.w === 200 && r.h === 100 && r.x === 100 && r.y === 100, JSON.stringify(r));
+
+/* THE SCALE IS THE DRAG PROJECTED ONTO THE SHAPE'S OWN DIAGONAL, and these are
+   why. Whichever way the corner is pulled the picture has to ANSWER: a "larger
+   axis wins" rule leaves a wide picture dead when it is pulled straight in
+   along its long edge (the height never moved, so the scale never moves) and a
+   "smaller axis wins" rule leaves it dead when pulled straight out — and a
+   handle that does nothing reads as a feature that does not work. On a true
+   diagonal it must be EXACT, and it must be IDEMPOTENT, because it runs on
+   every single pointermove with no start snapshot kept. Shared byte for byte
+   with `polymathlc/anskey`. */
+let fit = pmod.picFitRatio(200, 100, 2, 24, 24);
+ok('a drag straight down the diagonal comes back exact',
+   Math.abs(fit.w - 200) < 0.001 && Math.abs(fit.h - 100) < 0.001, JSON.stringify(fit));
+ok('…so running it again changes nothing',
+   JSON.stringify(pmod.picFitRatio(fit.w, fit.h, 2, 24, 24)) === JSON.stringify(fit));
+const pulledIn = pmod.picFitRatio(140, 100, 2, 24, 24);
+const pulledOut = pmod.picFitRatio(260, 100, 2, 24, 24);
+ok('a corner pulled straight IN along the long edge still shrinks',
+   pulledIn.w < 195, JSON.stringify(pulledIn));
+ok('…and one pulled straight OUT along it still grows',
+   pulledOut.w > 205, JSON.stringify(pulledOut));
+ok('…and both keep the picture’s shape',
+   Math.abs(pulledIn.w / pulledIn.h - 2) < 0.001 && Math.abs(pulledOut.w / pulledOut.h - 2) < 0.001);
+/* THE FLOOR KEEPS THE SHAPE TOO, or a picture dragged down to nothing comes
+   back as a square. Whichever floor bites harder is the one that decides. */
+fit = pmod.picFitRatio(2, 2, 2, 24, 24);
+ok('the floor keeps the picture’s shape',
+   Math.abs(fit.w / fit.h - 2) < 0.001 && fit.w >= 24 && fit.h >= 24, JSON.stringify(fit));
+fit = pmod.picFitRatio(2, 2, 0.25, 24, 24);
+ok('…whichever way round the picture is',
+   Math.abs(fit.w / fit.h - 0.25) < 0.001 && fit.w >= 24 && fit.h >= 24, JSON.stringify(fit));
+ok('a negative drag is read by its distance',
+   Math.abs(pmod.picFitRatio(-200, -100, 2, 24, 24).w - 200) < 0.001);
+ok('a picture with no stored ratio is resized freely',
+   JSON.stringify(pmod.picFitRatio(300, 50, 0, 24, 24)) === JSON.stringify({ w: 300, h: 50 }));
+ok('the resize reads `picFitRatio` rather than carrying its own arithmetic',
+   /var fit = picFitRatio\(pt\.x - ax, pt\.y - ay, a\.ratio, PASTE_MIN_PX, PASTE_MIN_PX\);/.test(html)
+   && (html.match(/function picFitRatio\(/g) || []).length === 1);
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'

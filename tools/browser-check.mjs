@@ -384,29 +384,42 @@ async function drag(from, to, id) {
   if (missing) ok('the drag had something to grab (' + missing + ')', false);
   await page.waitForTimeout(80);
 }
-const centreOf = await page.evaluate(() => {
-  const r = pages[0].svg.getBoundingClientRect();
-  const a = annotations[0];
-  return { x: r.x + a.x + a.w / 2, y: r.y + a.y + a.h / 2, before: { x: a.x, y: a.y } };
-});
-await drag({ x: centreOf.x, y: centreOf.y }, { x: centreOf.x + 40, y: centreOf.y + 25 });
+/* A page unit is a CLIENT pixel only while the svg is drawn at its own viewBox
+   size. `geom()` measures the conversion rather than assuming it — the two
+   coordinate systems are the trap the text caret's own section documents at
+   length, and a harness that mixes them reports a working drag as a failure. */
+async function geom() {
+  return page.evaluate(() => {
+    const p = pages[0], r = p.svg.getBoundingClientRect(), a = annotations[0];
+    const kx = r.width / p.baseW, ky = r.height / p.baseH;
+    return { x: a.x, y: a.y, w: a.w, h: a.h, kx, ky,
+             cx: r.x + (a.x + a.w / 2) * kx, cy: r.y + (a.y + a.h / 2) * ky,
+             sx: r.x + (a.x + a.w) * kx, sy: r.y + (a.y + a.h) * ky };
+  });
+}
+const centreOf = await geom();
+/* It is NOT 1 here — this page is fitted to the viewer's width, so a page unit
+   is about 1.09 client pixels, and every drag below would be that much out if
+   it went on assuming otherwise. What has to hold is that the conversion is
+   measurable and UNIFORM: a skewed overlay would put every client point below
+   somewhere else on the page, in a way nothing else here would catch. */
+ok('the page-to-client scale is measurable and the same on both axes',
+   centreOf.kx > 0.05 && centreOf.kx < 20 && Math.abs(centreOf.kx - centreOf.ky) < 0.01,
+   'kx ' + centreOf.kx.toFixed(3) + ' · ky ' + centreOf.ky.toFixed(3));
+await drag({ x: centreOf.cx, y: centreOf.cy }, { x: centreOf.cx + 40, y: centreOf.cy + 25 });
 const moved = await page.evaluate(() => ({ x: annotations[0].x, y: annotations[0].y }));
-/* Measured as a PROPORTION of the drag rather than in page units: the overlay
-   is scaled to whatever width the page is fitted at, so 40 client pixels is
-   40 page units only by luck. What has to be true is that it followed the
-   pointer, in both directions, by the shape of the drag it was given. */
-const dx = moved.x - centreOf.before.x, dy = moved.y - centreOf.before.y;
+/* The client delta converted back into page units: what has to be true is that
+   the picture followed the pointer, in both directions, by the distance the
+   pointer really travelled. */
+const dx = moved.x - centreOf.x, dy = moved.y - centreOf.y;
 ok('dragging the picture moves it',
-   dx > 4 && dy > 4 && Math.abs(dx / dy - 40 / 25) < 0.12,
-   JSON.stringify({ from: centreOf.before, to: moved, dx: dx, dy: dy }));
+   Math.abs(dx - 40 / centreOf.kx) < 2 && Math.abs(dy - 25 / centreOf.ky) < 2,
+   JSON.stringify({ from: [centreOf.x, centreOf.y], to: moved, by: [dx, dy] }));
 
 /* ---- Resizing it, by a corner, keeping its shape ---- */
-const preSize = await page.evaluate(() => {
-  const a = annotations[0];
-  const r = pages[0].svg.getBoundingClientRect();
-  return { w: a.w, h: a.h, hx: r.x + a.x + a.w, hy: r.y + a.y + a.h, ax: a.x, ay: a.y };
-});
-await drag({ x: preSize.hx, y: preSize.hy }, { x: preSize.hx - 90, y: preSize.hy - 10 },
+const preSize = await geom();
+await drag({ x: preSize.sx, y: preSize.sy },
+           { x: preSize.sx - 90 * preSize.kx, y: preSize.sy - 45 * preSize.ky },
            '[data-handle="se"]');
 const sized = await page.evaluate(() => {
   const a = annotations[0];
@@ -417,8 +430,29 @@ ok('dragging a corner resizes it', sized.w < preSize.w - 40,
 ok('…keeping the picture’s own shape', Math.abs(sized.w / sized.h - 2) < 0.05,
    sized.w + ' x ' + sized.h + ' = ' + (sized.w / sized.h).toFixed(3));
 ok('…anchored to the opposite corner, so it does not creep away',
-   Math.abs(sized.x - preSize.ax) < 0.02 && Math.abs(sized.y - preSize.ay) < 0.02,
-   JSON.stringify({ was: [preSize.ax, preSize.ay], now: [sized.x, sized.y] }));
+   Math.abs(sized.x - preSize.x) < 0.02 && Math.abs(sized.y - preSize.y) < 0.02,
+   JSON.stringify({ was: [preSize.x, preSize.y], now: [sized.x, sized.y] }));
+
+/* And the two SINGLE-AXIS drags, which is the whole reason the scale is a
+   projection onto the shape's own diagonal: whichever way the corner is
+   pulled, the picture has to answer. A "larger axis wins" rule leaves the
+   first of these dead and a "smaller axis wins" rule the second, and a handle
+   that does nothing reads as a feature that does not work. */
+const inFrom = await geom();
+await drag({ x: inFrom.sx, y: inFrom.sy }, { x: inFrom.sx - 60 * inFrom.kx, y: inFrom.sy },
+           '[data-handle="se"]');
+const pulledIn = await page.evaluate(() => ({ w: annotations[0].w, h: annotations[0].h }));
+ok('…and a corner pulled straight IN along the long edge still shrinks it',
+   pulledIn.w < inFrom.w - 8 && Math.abs(pulledIn.w / pulledIn.h - 2) < 0.05,
+   inFrom.w + ' → ' + pulledIn.w);
+
+const outFrom = await geom();
+await drag({ x: outFrom.sx, y: outFrom.sy }, { x: outFrom.sx + 60 * outFrom.kx, y: outFrom.sy },
+           '[data-handle="se"]');
+const pulledOut = await page.evaluate(() => ({ w: annotations[0].w, h: annotations[0].h }));
+ok('…and one pulled straight OUT along it still grows it',
+   pulledOut.w > outFrom.w + 8 && Math.abs(pulledOut.w / pulledOut.h - 2) < 0.05,
+   outFrom.w + ' → ' + pulledOut.w);
 
 /* ---- 🔒 Locked in position ---- */
 const locked = await page.evaluate(() => {

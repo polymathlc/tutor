@@ -2538,7 +2538,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.48.0';
+var APP_VERSION = 'v1.48.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -6521,6 +6521,28 @@ function annLockedId(id) {
   return annLocked(annotations.find(function (x) { return x.id === id; }));
 }
 
+/* A CORNER DRAG KEEPS A PICTURE'S OWN SHAPE, and the scale is the drag
+   PROJECTED ONTO THE SHAPE'S OWN DIAGONAL rather than whichever axis happens
+   to have travelled further. Taking the LARGER refuses to shrink a wide
+   picture dragged straight in along its long edge — its height never changed,
+   so the scale never changes and the handle appears dead; taking the SMALLER
+   refuses to grow one the same way. Both read as a handle that does nothing,
+   which is worse than no handle. The projection answers to either axis, is
+   EXACT on a true diagonal drag, and is idempotent — a point already on the
+   diagonal projects to itself, which is what lets it run on every pointermove
+   with no start snapshot to keep. It is pure and shared with
+   `polymathlc/anskey`; keep the two in step. */
+function picFitRatio(dx, dy, ratio, minW, minH) {
+  var w = Math.abs(dx), h = Math.abs(dy);
+  if (!(ratio > 0)) return { w: Math.max(minW, w), h: Math.max(minH, h) };
+  var t = (w * ratio + h) / (ratio * ratio + 1);
+  w = t * ratio; h = t;
+  // Whichever floor bites harder decides, and the shape is kept either way.
+  if (w < minW) { w = minW; h = minW / ratio; }
+  if (h < minH) { h = minH; w = minH * ratio; }
+  return { w: w, h: h };
+}
+
 /* ---- The decoded pictures ----
    One Image per data URL, kept for the session. Bounded, because a worksheet
    worked on all afternoon can collect more pictures than anybody wants held
@@ -6872,16 +6894,11 @@ function applyPicHandle(a, h, pt) {
   if (annLocked(a)) return;
   var ax = (h === 'nw' || h === 'sw') ? a.x + a.w : a.x;
   var ay = (h === 'nw' || h === 'ne') ? a.y + a.h : a.y;
-  var nw = Math.max(PASTE_MIN_PX, Math.abs(pt.x - ax));
-  var nh = Math.max(PASTE_MIN_PX, Math.abs(pt.y - ay));
-  if (a.ratio > 0) {
-    if (nw / a.ratio >= nh) nh = Math.max(PASTE_MIN_PX, nw / a.ratio);
-    else nw = Math.max(PASTE_MIN_PX, nh * a.ratio);
-  }
-  a.x = round2((h === 'ne' || h === 'se') ? ax : ax - nw);
-  a.y = round2((h === 'sw' || h === 'se') ? ay : ay - nh);
-  a.w = round2(nw);
-  a.h = round2(nh);
+  var fit = picFitRatio(pt.x - ax, pt.y - ay, a.ratio, PASTE_MIN_PX, PASTE_MIN_PX);
+  a.x = round2((h === 'ne' || h === 'se') ? ax : ax - fit.w);
+  a.y = round2((h === 'sw' || h === 'se') ? ay : ay - fit.h);
+  a.w = round2(fit.w);
+  a.h = round2(fit.h);
 }
 
 /* `delete` rather than `= false`: every annotation is written out on every
