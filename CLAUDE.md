@@ -1418,6 +1418,85 @@ still came back, it simply went on making the mistake the teacher had already co
   catch names the real cause.
 - **The child's work stays here.** Nothing from this app is written into any question bank.
 
+## 📎 A PICTURE PASTED ONTO THE PAGE — AND NO WINDOW ROUND IT (v1.48.0)
+
+`PASTE_IMG_MAX_PX` / `PASTE_IMG_QUALITY` / `PASTE_CASCADE` / `PASTE_MIN_PX` / `PIC_HANDLE_PX` /
+`PIC_HIT_PX` / `PIC_BTN_PX` / **`annPastePic`** / **`annLocked`** / `annLockedId` / `PIC_CACHE_MAX`
+/ `annPicWarm` / `annPicFor` / **`annPicsReady`** / `shrinkImageDataUrl` / `imageRatio` /
+**`pastePicBox`** / **`pasteGoesToWorksheet`** / **`pasteImageOntoPage`** /
+`pasteImagesFromClipboard` / **`pastePicNode`** / **`drawPastePicOn`** / **`renderPicChromeOn`** /
+**`applyPicHandle`** / `togglePictureLock` / `removePictureAnn` / `resizingPic` (search
+`📎 A PICTURE PASTED ONTO THE PAGE`), plus the `.pastePic` / `.picTools` / `.picTool` CSS, the
+`image` branch of `annNode` and of `drawAnnsOnCtx`, the chrome at the foot of `renderOverlay`, the
+handle / lock guards in `pointerdown`, `pointermove`, `endStroke`, `cancelStaleGesture` and
+`eraseAlong`, the `await annPicsReady()` in `printWorksheet`, and the `#viewerArea` drop handler.
+
+Ctrl+V puts a picture on the page you are looking at; dropping one does the same. It is **the
+picture and nothing else** — no heading, no border, no background, no buttons — because a window
+round a picture is a window over the printed question beside it, and it reads as a screenshot
+dropped on top of the page rather than as part of it. **`polymathlc/anskey` carries the same
+feature under the same names — ship a change to the shape to both.**
+
+- **IT IS A NEW ANNOTATION TYPE, AND THAT IS THE ONE THING HERE WORTH BEING CAREFUL ABOUT.** This
+  file's own rule is that a type must be taught to every renderer and every reader, and the one
+  that gets missed is silent. All of them: `annNode` (the screen), `drawAnnsOnCtx` (**the picture
+  the AI marks from, the mistake book and the printer**), `annBounds` / `annFrame` (x/y/w/h, so the
+  marking measures it where it is), `translateAnn`'s `else` branch, the hit test and the eraser
+  (both find `g[data-id]`), the handles below, and `annSizeTarget` — which stands DOWN for a
+  picture, because the size control writes a stroke width and a picture has no stroke.
+- **EVERYTHING IT WEARS IS DRAWN ONLY WHILE IT IS SELECTED** (`renderPicChromeOn`, called at the
+  FOOT of `renderOverlay` so a hint pin or a tick cannot sit over the handle being aimed at). That
+  is what makes "no window" and "it has controls" both true at once: a frameless picture with a
+  permanent 🔒 badge on it is a frame with one button in it.
+- **THE HANDLES AND THE ROW ARE SIZED IN SCREEN PIXELS** (`÷ scale`, the trick `renderPinsOn`
+  already uses), so they are the same size to aim at at fit-width and at 400%. Each handle has a
+  finger-sized invisible twin, the rule Ans Key's own handles carry.
+- **THE ROW IS TRANSPARENT TO TAPS AND THE BUTTONS ARE NOT** (`pointer-events` on the
+  foreignObject AND on `.picTools`, `auto` on `.picTool`). The strip is wider than the two buttons
+  in it, and both a foreignObject and a transparent div still swallow a tap — so without this a
+  band above every selected picture catches the stylus and the page cannot be written on there.
+- **THE HANDLE CHECK COMES BEFORE EVERY TOOL** in `pointerdown`. The handles live in a
+  `g[data-picchrome]` of their own rather than inside the picture's `g[data-id]`, so a tap on one
+  would otherwise `closest` to nothing and DESELECT the very picture being resized.
+- **A PICTURE KEEPS ITS SHAPE ON A CORNER DRAG** (`applyPicHandle`, from the `ratio` stored the
+  moment it lands), and the box is built from the ANCHOR — the corner opposite the one being
+  dragged — rather than from the pointer: clamped up to the floor, `Math.min(anchor, pt)` puts the
+  box's own edge past the pointer and the picture creeps away under the drag.
+- **`annLocked` IS ONE FLAG READ IN ONE PLACE, and four surfaces ask it.** A locked picture is part
+  of the page: the eraser steps over it (**rubbing out a stroke drawn ON a picture must not take
+  the picture with it** — that is the accident locking exists to prevent, and by the time it is
+  noticed the picture has gone), the select tool does not pick it up, `applyPicHandle` refuses it,
+  and no handles are drawn on it at all.
+- **A LOCKED PICTURE IS STILL SELECTABLE AND STILL REMOVABLE.** Selectable, or the 🔓 that unlocks
+  it could never be reached; removable from its own ✕, because that is a deliberate act aimed at
+  exactly this picture. **A lock nothing can undo is a picture nobody can take off the page.** The
+  flag is DELETED rather than written false — every annotation is written out on every auto-save.
+- **THE DECODED PICTURE IS CACHED, AND IT HAS TO BE.** `drawAnnsOnCtx` is SYNCHRONOUS (nine
+  callers, several of them sync themselves), so it can only draw a picture that is already decoded.
+  `annPicWarm` is called from `annNode` — the overlay renders every picture on every page it draws
+  — and awaited at the paste, so the cache is warm long before any composite is taken. **KNOWN
+  LIMIT, and it is why `printWorksheet` awaits `annPicsReady()`**: a composite taken in the first
+  milliseconds after a page is rendered would be missing a picture that had not finished decoding,
+  and on paper that is a gap nobody notices until the sheet is in front of them.
+- **THE PICTURE IS FITTED, NEVER STRETCHED, IN BOTH RENDERERS** — `object-fit: contain` on screen
+  and `Math.min(bw / w, bh / h)` in the flatten. Stretched on paper and contained on screen is a
+  difference nobody sees until the sheet is in front of a class.
+- **`pasteGoesToWorksheet` IS THE ONE PLACE A PASTE IS CLAIMED**, and it is the difference between
+  this feature and one that is worse than not having it: typing is the commonest thing anybody is
+  doing when they press Ctrl+V, so a text annotation being written, an input, a dialog, the buddy
+  and the two floating boxes all keep their own paste. **Text on the clipboard is never claimed at
+  all.** A picture DROPPED on the page goes through the same door, and its `dragover` must
+  `preventDefault` or the browser refuses the drop outright.
+- **EVERY DOM CALL IS DEFENSIVE**, the rule the live block already carries: the drop wiring runs at
+  the top level and the harnesses run slices of this file in a vm with a mock document, so a
+  `getElementById` that is not there would take the whole slice down.
+- **`tools/tutor-tests.mjs` CUTS THE REAL PREDICATES** rather than stubbing them, so a guard that
+  changes meaning changes there too.
+- Run **`node tools/tutor-tests.mjs`**, **`node --test tools/writing-tests.mjs`** and
+  **`node tools/browser-check.mjs`** after touching any of it. **The browser one is not optional**:
+  whether the picture really lands, really picks up, really resizes by a corner and really refuses
+  to move once it is locked is the one thing reading the source cannot check.
+
 ## The annotation engine is Ans Key's
 **The SHAPES are, and for a long time only the shapes were** — the input
 pipeline was this app's own until v1.12.0, and that is the half a child
@@ -1425,7 +1504,10 @@ feels. See **✍️ WRITING ON THE PAGE WITH A STYLUS** below for the pipeline;
 this section is the data.
 
 The annotation SHAPES are that app's exactly, so ink written here means the same thing there:
-`pen` / `highlight` / `rect` / `ellipse` / `line` / `arrow` / `text`.
+`pen` / `highlight` / `rect` / `ellipse` / `line` / `arrow` / `text` — and, since v1.48.0,
+**`image`**: a pasted picture (see 📎 below). Ans Key carries that one as a kind of its own
+`ainote` rather than as a type, because it already had the machinery; the SHAPE of the record and
+everything it can do are the same in both, and a change to either belongs in both.
 
 - **`a.heads` and `a.dash` are ABSENT on everything already saved, and the fallbacks are what keep
   those worksheets right.** `annHeads` falls back to the TYPE (an `arrow` has always had a head at
@@ -3987,6 +4069,34 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📎 the pasted picture** (`annPastePic`, `annLocked`, `annLockedId`,
+  `annPicWarm`, `annPicFor`, `annPicsReady`, `shrinkImageDataUrl`, `imageRatio`, `pastePicBox`,
+  `pasteGoesToWorksheet`, `pasteImageOntoPage`, `pasteImagesFromClipboard`, `pastePicNode`,
+  `drawPastePicOn`, `renderPicChromeOn`, `applyPicHandle`, `togglePictureLock`,
+  `removePictureAnn`, `resizingPic`, the `image` branch of `annNode` or `drawAnnsOnCtx`, the
+  chrome at the foot of `renderOverlay`, the handle / lock guards in `pointerdown` /
+  `pointermove` / `endStroke` / `cancelStaleGesture` / `eraseAlong`, the `annPicsReady()` in
+  `printWorksheet`, the `#viewerArea` drop handler, or the `.pastePic` / `.picTools` / `.picTool`
+  CSS), run `node tools/tutor-tests.mjs`, `node --test tools/writing-tests.mjs` **and**
+  `node tools/browser-check.mjs`. **The browser one is not optional and it is not ceremony**:
+  every source-level pin here passes on a build where the picture never appears, never picks up
+  or never resizes, because each of them asks what the source SAYS. Miss the `image` branch of
+  `annNode` and there is no picture on screen at all; miss it in `drawAnnsOnCtx` and the picture
+  is on the screen and missing from the page the AI marks, from the mistake book and from the
+  printer — the app then marks a page the student is not looking at, silently. Let
+  `drawAnnsOnCtx` STRETCH it rather than fit it and screen and paper disagree about a picture
+  nobody looks at twice. Drop the `annPicsReady()` from the printer and a picture still decoding
+  prints as a gap. Put the handle check after the tool branches and a tap on a corner `closest`es
+  to nothing and DESELECTS the picture being resized. Build the resize from the pointer rather
+  than the anchor and the picture creeps away under a drag that hits the floor. Drop `a.ratio`
+  from it and a corner stretches the picture, which there is no frame left to hide. Let the row
+  swallow taps — `pointer-events` on the foreignObject or on `.picTools` — and a band above every
+  selected picture catches the stylus. Miss any one of the four `annLocked` guards and the lock
+  is a button that does nothing on that surface alone; the eraser's is the one that costs the
+  picture. Make a locked picture unselectable and the 🔓 can never be reached; make it
+  undeletable and it can never come off the page. And let `pasteGoesToWorksheet` claim a paste
+  while a text box is being typed into and the picture lands on the worksheet instead of in the
+  box — the one way this feature is worse than not having it.
 - After touching **📕 when a mistake is filed** (`fileMistakes`'s `opts` /
   `markedOnly` / `quiet` / its returned counts, `markRation`, the per-batch
   `await fileMistakes({ marked: true, quiet: true })` in `runMarking`, its

@@ -66,6 +66,10 @@ const SRC_CORE   = between('/* ================= Small helpers =================
                            BAR + '\n   THE ANNOTATION ENGINE', 'the helpers, the ladder and the grounding');
 const SRC_ANN    = between('/* Unrotated frame of an x/y/w/h annotation.',
                            '/* ================= Undo / redo ================= */', 'the annotation shapes');
+/* 📎 The two predicates every surface asks about a pasted picture. Cut for
+   real rather than stubbed, so a guard that changes meaning changes here. */
+const SRC_PIC    = between("function annPastePic(a) { return !!(a && a.type === 'image'); }",
+                           '/* ---- The decoded pictures ----', 'the picture predicates');
 const SRC_KEY    = between(BAR + '\n   🔑 THE ANSWER KEY', BAR + '\n   THE STUDY BUDDY', 'the answer key');
 const SRC_BUDDY  = between('var hints = [];', BAR + '\n   THE SCREENS', 'the buddy');
 const SRC_SIZE   = between('/* ================= HOW BIG THE MARK IS =================',
@@ -162,7 +166,7 @@ const sandbox = {
   Map, Set, AbortController
 };
 vm.createContext(sandbox);
-vm.runInContext(SRC_DEADLINES + '\n' + SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
+vm.runInContext(SRC_DEADLINES + '\n' + SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_PIC + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
                 '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
                 '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER + '\n' + SRC_GUIDE +
                 '\n' + SRC_REBUILD + '\n' + SRC_TIERS + '\n' + SRC_MIRROR + '\n' + SRC_QNODES + '\n' + SRC_PALM +
@@ -6367,6 +6371,158 @@ ok('the vendor name is read from the ONE engine door',
    'a second reading of the engine state is how the badge says Gemini while ChatGPT is answering');
 ok('…and the student side is still Chung GPT, from a literal',
    /function aiEngineName\(\) \{ return 'Chung GPT'; \}/.test(html));
+
+
+/* =====================================================================
+   📎 A PICTURE PASTED ONTO THE PAGE — AND NO WINDOW ROUND IT
+   ---------------------------------------------------------------------
+   A picture is a new annotation TYPE, and this file's own rule is that a
+   type has to be taught to every renderer and every reader — the one that
+   gets missed is silent. These are the readers, checked by name, plus the
+   geometry and the resize run for real.
+
+   What reading the source CANNOT check is whether the picture really lands,
+   picks up, resizes and refuses to move once it is locked. That is
+   `tools/browser-check.mjs`, and it is not optional here.
+   ===================================================================== */
+section('📎 A pasted picture');
+
+/* EVERY RENDERER AND EVERY READER. Miss one and the fault is silent in its
+   own way: no picture on screen, a blank where it should be in the page the
+   AI marks, or a box measured at the top of the page. */
+ok('the screen draws it', /\} else if \(a\.type === 'image'\) \{\s*\n[\s\S]{0,220}?g\.appendChild\(pastePicNode\(a\)\);/.test(html));
+ok('the flattened page draws it too — what the AI marks, the mistake book and the printer',
+   /\} else if \(a\.type === 'image'\) \{[\s\S]{0,500}?drawPastePicOn\(ctx, kx, ky, a\);/.test(html));
+ok('…FITTED to its box, exactly as `object-fit: contain` fits it on screen',
+   /Math\.min\(bw \/ img\.naturalWidth, bh \/ img\.naturalHeight\)/.test(html),
+   'stretched on paper and contained on screen is a difference nobody sees until the sheet is in front of a class');
+ok('it moves through translateAnn’s x/y branch', /An `image` moves through here too/.test(html));
+ok('the printer waits for every picture to decode',
+   /try \{ await annPicsReady\(\); \} catch \(e\) \{\}/.test(html),
+   'drawAnnsOnCtx is synchronous; a picture still decoding is simply left out, and on paper that is a gap nobody notices');
+
+/* NO WINDOW. The whole request in one check: what is drawn is the picture. */
+const picNode = between('function pastePicNode(a) {', '/* ---- The picture in the flattened page ----', 'pastePicNode');
+ok('what is drawn is one <img> in a bare box',
+   /className = 'pastePic'/.test(picNode) && /createElement\('img'\)/.test(picNode));
+ok('…with no heading, no title and no buttons on it',
+   !/button|Head|Title|border|background/i.test(picNode));
+ok('…and the browser’s own image drag switched off', /img\.draggable = false/.test(picNode));
+ok('the stylesheet gives it no frame at all',
+   /\.pastePic \{ display: block; width: 100%; height: 100%; \}/.test(html) &&
+   /\.pastePic img \{[\s\S]{0,420}?object-fit: contain/.test(html));
+/* The controls have to exist somewhere, and a frameless picture has no
+   heading to put them on — so they are drawn only while it is SELECTED. */
+ok('its handles and its 🔒 / ✕ row are drawn only while it is selected',
+   /if \(picSel && picSel\.page === p\.num && annPastePic\(picSel\)\) renderPicChromeOn\(p, picSel\);/.test(html));
+ok('…and sized in SCREEN pixels, so they are the same to aim at at every zoom',
+   /r: PIC_HANDLE_PX \/ sc/.test(html) && /var rowH = PIC_BTN_PX \/ sc;/.test(html));
+/* A transparent div still swallows taps, and the row is wider than the two
+   buttons in it. */
+ok('the row itself is transparent to taps', /fo\.style\.pointerEvents = 'none';/.test(html) &&
+   /\.picTool \{\s*\n\s*pointer-events: auto;/.test(html));
+
+/* 🔒 LOCKED IN POSITION. Five surfaces ask one predicate. */
+ok('a lock is one flag, read in one place',
+   /function annLocked\(a\) \{ return !!\(a && a\.locked\); \}/.test(html));
+ok('the eraser steps over a locked picture', /if \(annLockedId\(id\)\) continue;/.test(html),
+   'rubbing a stroke off a picture must not take the picture with it');
+ok('the select tool selects it and does not pick it up',
+   /if \(annLockedId\(id\)\) return;/.test(html));
+ok('the resize refuses it', /function applyPicHandle\(a, h, pt\) \{\s*\n\s*if \(annLocked\(a\)\) return;/.test(html));
+ok('…and no handles are drawn on it at all', /if \(!annLocked\(a\)\) \{\s*\n\s*\[\['nw'/.test(html));
+ok('the lock flag is DELETED rather than written false',
+   /if \(a\.locked\) delete a\.locked; else a\.locked = true;/.test(html),
+   'an inert `locked: false` on every picture is bytes on the wire that mean nothing');
+ok('a locked picture can still be removed from its own ✕',
+   /function removePictureAnn\(id\)/.test(html),
+   'a lock nothing can undo is a picture nobody can take off the page');
+
+/* The size control writes a stroke width, and a picture has no stroke. */
+ok('the size control stands down for a picture', /if \(annPastePic\(a\)\) return null;/.test(html));
+
+/* WHERE A PASTE BELONGS is the difference between this feature and one that
+   is worse than not having it. */
+const pasteDoor = between('function pasteGoesToWorksheet(e) {', '/* The picture, onto the page in view.', 'the paste door');
+ok('a paste while typing keeps its own paste',
+   /input, textarea, select, \[contenteditable="true"\]/.test(pasteDoor));
+ok('…and so does a dialog, the buddy and the floating boxes',
+   /\.modalBack, #buddy, #kwQuiz, #mthPad/.test(pasteDoor));
+ok('…and a text annotation being written', /if \(editingId\) return false;/.test(pasteDoor));
+ok('text on the clipboard is never claimed at all',
+   /if \(!hasImage\) return;   \/\/ text on the clipboard is not this feature's/.test(html));
+ok('a picture DROPPED on the page goes through the same door',
+   /area\.addEventListener\('drop'[\s\S]{0,260}?pasteImagesFromClipboard\(e\.dataTransfer\)/.test(html));
+ok('…and its `dragover` preventDefaults, or the browser refuses the drop',
+   /area\.addEventListener\('dragover'[\s\S]{0,220}?e\.preventDefault\(\);/.test(html));
+/* The harnesses run slices of this file in a vm with a mock document. */
+ok('the drop wiring is defensive about the document',
+   /typeof document\.getElementById !== 'function'\) return;/.test(html));
+
+/* ---------- the geometry and the resize, run for real ---------- */
+const PIC_SRC = between('var PASTE_IMG_MAX_PX = 1600;', '/* THE TWO QUESTIONS, ASKED IN ONE PLACE EACH.', 'paste constants') +
+  SRC_PIC +
+  between('function pastePicBox(page, ratio, index) {', '/* WHERE A PASTE BELONGS,', 'pastePicBox') +
+  between('function applyPicHandle(a, h, pt) {', "/* `delete` rather than `= false`", 'applyPicHandle');
+const pmod = new Function(`
+  var annotations = [];
+  function round2(n) { return Math.round(n * 100) / 100; }
+  ` + PIC_SRC + `
+  return { pastePicBox, applyPicHandle, annPastePic, annLocked, PASTE_MIN_PX };
+`)();
+const A4 = { num: 1, baseW: 595, baseH: 842 };
+
+/* THE BOX **IS** THE PICTURE: nothing is added for a heading, so the box's own
+   shape has to be the picture's. */
+const wide = pmod.pastePicBox(A4, 16 / 9, 0);
+const tall = pmod.pastePicBox(A4, 3 / 4, 0);
+ok('a wide picture gets a wide box', wide.w > wide.h, JSON.stringify(wide));
+ok('a tall picture gets a tall box', tall.h > tall.w, JSON.stringify(tall));
+ok('the box matches the picture’s own ratio',
+   Math.abs(wide.w / wide.h - 16 / 9) < 0.02 && Math.abs(tall.w / tall.h - 3 / 4) < 0.02,
+   JSON.stringify([wide, tall]));
+/* NEVER OFF THE PAPER: a picture that overhangs cannot be dragged back on. */
+for (let i = 0; i < 12; i++) {
+  const b = pmod.pastePicBox(A4, [0.2, 1, 8, 16 / 9][i % 4], i);
+  ok('picture ' + i + ' lands wholly on the page',
+     b.x >= 0 && b.y >= 0 && b.x + b.w <= A4.baseW && b.y + b.h <= A4.baseH, JSON.stringify(b));
+}
+/* A SECOND PICTURE MUST NOT LAND ON THE FIRST, or Ctrl+V reads as having done
+   nothing and gets pressed again. */
+const first = pmod.pastePicBox(A4, 1, 0), second = pmod.pastePicBox(A4, 1, 1);
+ok('the second picture is stepped off the first', first.x !== second.x || first.y !== second.y);
+ok('…and the cascade comes back round rather than walking off the corner',
+   JSON.stringify(pmod.pastePicBox(A4, 1, 6)) === JSON.stringify(first));
+/* A wide thin picture is a perfectly ordinary thing to paste. */
+const panorama = pmod.pastePicBox(A4, 8, 0);
+ok('a panorama keeps its shape', Math.abs(panorama.w / panorama.h - 8) < 0.2, JSON.stringify(panorama));
+
+function pic(o) { return Object.assign({ type: 'image', ratio: 2, x: 100, y: 100, w: 200, h: 100 }, o); }
+let r = pic();
+pmod.applyPicHandle(r, 'se', { x: 400, y: 400 });
+ok('a corner drag keeps the picture’s shape', Math.abs(r.w / r.h - 2) < 0.02, JSON.stringify(r));
+ok('…anchored to the opposite corner', r.x === 100 && r.y === 100, JSON.stringify(r));
+r = pic();
+pmod.applyPicHandle(r, 'nw', { x: 0, y: 0 });
+ok('…and the bottom-right holds still for a top-left drag',
+   Math.abs(r.x + r.w - 300) < 0.02 && Math.abs(r.y + r.h - 200) < 0.02 && Math.abs(r.w / r.h - 2) < 0.02,
+   JSON.stringify(r));
+r = pic();
+pmod.applyPicHandle(r, 'ne', { x: 400, y: 0 });
+ok('…the bottom-left for the top-right', r.x === 100 && Math.abs(r.y + r.h - 200) < 0.02, JSON.stringify(r));
+r = pic();
+pmod.applyPicHandle(r, 'sw', { x: 0, y: 400 });
+ok('…and the top-right for the bottom-left', Math.abs(r.x + r.w - 300) < 0.02 && r.y === 100, JSON.stringify(r));
+/* Clamped up to the floor, `Math.min(anchor, pt)` puts the box's own edge past
+   the pointer and the picture creeps away under the drag. */
+r = pic();
+pmod.applyPicHandle(r, 'se', { x: 101, y: 101 });
+ok('a drag past the floor stops at the floor and does not creep',
+   r.x === 100 && r.y === 100 && r.w >= pmod.PASTE_MIN_PX && r.h >= pmod.PASTE_MIN_PX, JSON.stringify(r));
+r = pic({ locked: true });
+pmod.applyPicHandle(r, 'se', { x: 400, y: 400 });
+ok('a LOCKED picture is not resized at all',
+   r.w === 200 && r.h === 100 && r.x === 100 && r.y === 100, JSON.stringify(r));
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'
