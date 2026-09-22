@@ -21,11 +21,23 @@ jobs:
         run: node tools/check-syntax.mjs
       - name: Check tutoring, key readiness and live behaviour
         run: node --test tools/*-tests.mjs
-      # The live tutor's LIMITS, its refund and its session length are in
-      # `functions/`, and these tests had never run here at all — so the half
-      # of the app that decides whether a child gets a lesson was the half
-      # nothing checked. No `npm ci`: the three suites touch only
-      # `live-service` / `live-repository` / `live-provider`, which are pure,
-      # so the check needs no lockfile and cannot rot on a registry blip.
-      - name: Check the live tutoring functions
+      - name: Verify the function dependency lock with the deployment runtime
+        run: npm ci --prefix functions --ignore-scripts --no-audit --no-fund
+      - name: Check tutoring and adventure functions
         run: node --test functions/test/*.test.js
+  adventure-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare browser checks
+        run: |
+          npm install --no-save --ignore-scripts playwright@1.62.1
+          npx playwright install --with-deps chromium
+      - name: Check adventure layouts and interactions
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/adventure-browser-check.mjs

@@ -12,6 +12,9 @@ const WebSocket = require('ws');
 const { createLiveService } = require('./live-service');
 const { createRepository } = require('./live-repository');
 const { createProvider } = require('./live-provider');
+const { createGameService } = require('./gamification-service');
+const { createGameRepository } = require('./gamification-repository');
+const { createGameProvider } = require('./gamification-provider');
 
 initializeApp();
 const openaiKey = defineSecret('OPENAI_API_KEY');
@@ -34,3 +37,13 @@ exports.studyBuddyLiveCleanup = onSchedule({
   timeZone: 'Asia/Singapore', timeoutSeconds: 180, maxInstances: 1,
   memory: '256MiB', retryCount: 3, minBackoffSeconds: 10, maxBackoffSeconds: 60
 }, service.sweep);
+
+const gameService = createGameService({
+  auth: getAuth(), appCheck: getAppCheck(), repository: createGameRepository(getFirestore()),
+  provider: createGameProvider({ apiKey: () => openaiKey.value() }),
+  report: code => logger.warn(code)
+});
+exports.studyBuddyGame = onRequest({
+  region: 'us-central1', secrets: [openaiKey], timeoutSeconds: 60,
+  maxInstances: 5, concurrency: 20, memory: '256MiB', invoker: 'public'
+}, gameService.handler);

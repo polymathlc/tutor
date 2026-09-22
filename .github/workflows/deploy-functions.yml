@@ -15,7 +15,7 @@
 # Functions Developer roles. Until it is set this job RUNS THE TESTS AND
 # SKIPS THE DEPLOY with a warning, rather than failing: a red tick on every
 # merge is a red tick people learn to ignore.
-name: Deploy live tutoring functions
+name: Deploy tutoring and adventure functions
 
 on:
   push:
@@ -25,6 +25,7 @@ on:
       - 'firebase.json'
       - '.firebaserc'
       - '.github/workflows/deploy-functions.yml'
+      - 'tools/gamification-rules.mjs'
   workflow_dispatch:        # …and a deploy can be asked for by hand, for the first one
 
 permissions:
@@ -78,9 +79,12 @@ jobs:
           # SCOPED TO THIS CODEBASE, AND NEVER `--force`. `mathgen--app` is
           # SHARED: the Maths repo's askOpenAi / askKimi live on the same
           # project. `functions:study-buddy-live` is what keeps this deploy to
-          # the two functions this repo owns, and leaving `--force` off means
+          # the functions this repo owns, and leaving `--force` off means
           # a run that wants to DELETE anything stops and says so rather than
           # quietly taking another app's function off the project.
+          npm install --prefix "$RUNNER_TEMP/firebase-cli" --no-audit --no-fund firebase-tools@14
+          node tools/gamification-rules.mjs \
+            --firebase-tools "$RUNNER_TEMP/firebase-cli/node_modules/firebase-tools" --apply
           npx --yes firebase-tools@14 deploy \
             --only 'functions:study-buddy-live' \
             --project mathgen--app \

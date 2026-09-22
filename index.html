@@ -1843,8 +1843,10 @@
   @media print { #mthPad { display: none !important; } }
   .buddyTabs .bTab { min-width: 0; padding-left: 7px; padding-right: 7px; }
 </style>
+<link rel="stylesheet" href="adventure.css?v=1.54.0">
+<link rel="stylesheet" href="adventure-shell.css?v=1.54.0">
 </head>
-<body>
+<body class="adventure-enabled">
 
 <div id="app">
 
@@ -1866,6 +1868,7 @@
       </div>
     </div>
     <span id="whoAmI"></span>
+    <button class="btn adventureNav" id="adventureNav" type="button" hidden title="Your companion and achievements">✦ Adventure</button>
     <button class="btn hidden" id="mistakesBtn" title="Every question you got wrong, kept in one place">📕 Mistakes</button>
     <button class="btn hidden" id="peopleBtn" title="Everyone who has signed in, and whether they are enrolled">👥 People</button>
   <button class="btn hidden" id="notesBtn" title="The teaching notes every answer and every hint is grounded in">📚 Notes</button>
@@ -1886,7 +1889,9 @@
       <main>
 
         <div class="card hidden" id="signedOutCard">
-          <h2>Chung GPT, on your own worksheets</h2>
+          <div class="adventureLandingArt" aria-hidden="true"><img src="assets/companions/orbit-welcome.webp" width="240" height="240" alt="" onerror="this.hidden=true"><span class="adventureSpark sparkOne">✦</span><span class="adventureSpark sparkTwo">✧</span></div>
+          <span class="adventureEyebrow">SMALL STEPS. BIG DISCOVERIES.</span>
+          <h2>Your next adventure<br>starts with a question.</h2>
           <p class="sub" style="margin-top:8px">
             Upload a worksheet as a PDF and work through it here. <span class="aiName">Chung GPT</span> gives you
             hints — what the question is really asking, the concept behind it, the keywords your answer needs —
@@ -1899,6 +1904,9 @@
         </div>
 
         <div id="homeSignedIn" class="hidden">
+          <div id="adventureSubjectBar" class="adventureSubjectBar" hidden><label for="adventureSubject">Your adventure</label><select id="adventureSubject" aria-label="Adventure subject"></select></div>
+          <section id="adventureHome" aria-label="Your learning adventure"></section>
+          <div class="adventureRewardLine"><span id="adventureRewardStatus" role="status" hidden></span><button id="adventureRetry" class="btn btnSm btnGhost" type="button" title="Refresh progress and retry pending rewards">↻ Sync progress</button></div>
           <div id="assignSection" class="hidden">
             <div class="sectionHead assignHead">
               <button class="assignToggle" id="assignToggle" aria-expanded="false" aria-controls="assignBody">
@@ -2014,6 +2022,7 @@
         <aside id="buddy">
           <div class="buddyHead">
             <div class="bWho" id="bWho"></div>
+            <img class="adventureTutorAccent" data-adventure-companion="thinking" src="assets/companions/orbit-thinking.webp" width="43" height="43" alt="" onerror="this.hidden=true">
             <button class="btn btnSm btnGhost" id="buddyClose" title="Hide Chung GPT">✕</button>
           </div>
           <div class="buddyTabs">
@@ -2090,6 +2099,7 @@
     <!-- ============ MISTAKE BOOK ============ -->
     <div class="view" id="mistakeView">
       <main>
+        <div class="adventureComeback"><img data-adventure-companion="encourage" src="assets/companions/orbit-encourage.webp" width="110" height="110" alt="" onerror="this.hidden=true"><div><span class="adventureEyebrow">THE COMEBACK CORNER</span><h3>Every mistake is a new beginning.</h3><p>Try it again, find your way, and celebrate how far you have come. Your next breakthrough could be right here.</p></div></div>
         <div class="sectionHead">
           <h2>📕 My mistake book</h2>
           <span class="spacer"></span>
@@ -2620,7 +2630,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.53.0';
+var APP_VERSION = 'v1.54.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -11309,6 +11319,7 @@ function markProgress(done, total, text) {
 }
 
 async function runMarking() {
+  var adventureContext = typeof StudyAdventure !== 'undefined' ? StudyAdventure.capture(wsMeta.subject) : null;
   if (!pages.length) { toast('Open a worksheet first.'); return; }
   if (marking.running || _markFiling) { toast(_markFiling ? 'Your marks are ready. The mistake book is still saving…' : 'Chung GPT is still marking — one moment…'); return; }
   // At the top help level an untouched worksheet is a legitimate run — that
@@ -11411,6 +11422,7 @@ async function runMarking() {
       if (run !== _markRun || epoch !== wsEpoch) return;
     }
     marking.runAt = Date.now();
+    if (typeof StudyAdventure !== 'undefined') StudyAdventure.marked(marking.items, adventureContext);
     usageNote('mark', docName || '');
     var uc = markTally();
     var um = markMarkTally();
@@ -18331,6 +18343,7 @@ async function pracCheck() {
   if (!prac || prac.busy) return;
   var m = pracCurrent();
   if (!m) return;
+  var adventureContext = typeof StudyAdventure !== 'undefined' ? StudyAdventure.capture(m.subject) : null;
   var el = $('pracAnswer');
   var mine = String((el ? el.value : prac.typed) || '').trim();
   // A blank is not a wrong answer here either — it has simply not been
@@ -18374,6 +18387,7 @@ async function pracCheck() {
   prac.done++;
   usageNote('practice', m.docName || '');
   if (prac.result && prac.result.verdict === 'correct') usageAdd('practiceRight', 1);
+  if (prac.result && prac.result.verdict && typeof StudyAdventure !== 'undefined') StudyAdventure.practice(m, mine, adventureContext);
   if (prac.result && prac.result.verdict === 'correct') {
     prac.right++;
     /* Getting it right is what the book is FOR, so a correct retry files it
@@ -20243,7 +20257,7 @@ function renderWorksheets() {
   if (!entries.length) {
     var pad = document.createElement('div');
     pad.className = 'emptyPad';
-    pad.innerHTML = '<div class="padIcon">📄</div>' +
+    pad.innerHTML = '<img class="adventureEmpty" src="assets/companions/pip-welcome.webp" width="116" height="116" alt="" onerror="this.hidden=true">' +
       '<div class="padTitle">No worksheets yet</div>' +
       '<div class="padSub">Upload a PDF and start working through it with Chung GPT beside you.</div>';
     box.appendChild(pad);
@@ -23269,6 +23283,7 @@ function rosterSettled() {
   var done = _rosterDone;
   _rosterDone = null;
   if (done) done();
+  if (typeof StudyAdventure !== 'undefined') StudyAdventure.sync();
 }
 function rosterReady() {
   if (!_rosterWait) return Promise.resolve();
@@ -24309,6 +24324,7 @@ function openPersonUsage(id) {
   body.appendChild(sub);
 
   var u = r.usage;
+  if (typeof StudyAdventure !== 'undefined') StudyAdventure.teacherControls(r, body);
   /* A book with something in it is something to show, whatever the counts
      say: an account from before 📈 usage existed has no counters at all,
      and returning early on it would hide the one thing worth reading. */
@@ -24678,6 +24694,7 @@ function renderAuth() {
   $('whoAmI').style.cursor = canSwitch ? 'pointer' : '';
   applyNotesVisibility();
   refreshAiEngineNames();
+  if (typeof StudyAdventure !== 'undefined') StudyAdventure.sync();
 }
 
 function signIn() {
@@ -24704,6 +24721,7 @@ if (auth) auth.onAuthStateChanged(function (user) {
   liveTutor.transcript = [];
   renderLiveTutor();
   currentUser = user || null;
+  if (typeof StudyAdventure !== 'undefined') StudyAdventure.reset();
   // Whatever the last account had is dropped first, listeners included — one
   // left running would go on feeding one account's notes to the next person
   // to sign in on the same device.
@@ -25601,5 +25619,7 @@ async function askGeminiDirect(prompt, { maxOutputTokens = 512, temperature = 0.
 }
 </script>
 
+<script src="adventure-ui.js?v=1.54.0"></script>
+<script src="adventure.js?v=1.54.0"></script>
 </body>
 </html>
