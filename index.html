@@ -602,6 +602,8 @@
      and it has to READ as a different shelf, because every paper on it is
      also standing on one of the shelves below. */
   .shelf.shelfRecent { --wood: #6F7C8C; --wood-dark: #4A5563; --wood-light: #94A1AF; --wood-edge: #39434F; }
+  /* 🗄 The Backup shelf is darker timber — stored away, not this term's. */
+  .shelf.shelfBackup { --wood: #5E4B3C; --wood-dark: #3F3128; --wood-light: #7A6452; --wood-edge: #2E241D; }
   /* Where a dragged booklet will land. */
   .shelf.shelfDrop { outline: 3px dashed #FFE2A8; outline-offset: 4px; }
   .shelfItem.shelfDragging { opacity: .42; }
@@ -2618,7 +2620,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.52.0';
+var APP_VERSION = 'v1.53.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -19439,6 +19441,30 @@ function worksheetShelfId(w, list, loaded) {
   return String(w.shelf || '');
 }
 
+/* 🗄 THE BACKUP SHELF (v1.53.0) — a student's copy of a paper the
+   teacher has since taken off the class list (or deleted outright).
+
+   The copy is the STUDENT'S: their ink, their hints, their marking, under
+   their own uid, and nothing the teacher does on their side touches it.
+   But the shelf it stood on is read off the ASSIGNMENT (`worksheetShelfId`),
+   so a withdrawn paper fell back onto whatever the copy happened to carry,
+   mixed in with this term's papers as though it were still set — or, to a
+   child scanning for it, as though it had gone. It stands on a shelf of its
+   own at the foot of the bookcase instead, named for what it is.
+
+   `loaded` is load-bearing exactly as it is for the shelf and the name: a
+   list that has not arrived yet is NOT proof the paper was withdrawn, and
+   a read that failed leaves `assignmentsLoaded` false — so a network blip
+   never moves a whole class's work into Backup. The teacher's own copies
+   are never "backup": they are the papers, set or not. */
+var SHELF_BACKUP_ID = 'backup';
+var SHELF_BACKUP_TITLE = '🗄 Backup — papers taken off the class list';
+function worksheetIsBackup(w, list, loaded) {
+  if (!w || w.set || !w.assignmentId || !loaded) return false;
+  var aid = w.assignmentId;
+  return !(list || []).some(function (x) { return x && x.id === aid; });
+}
+
 /* 📄 WHAT A PAPER IS CALLED — the ONE place a name is decided, and the
    whole of “rename it once and it is renamed on every shelf in the class”.
 
@@ -19572,6 +19598,14 @@ function shelfSections(entries, opts) {
   var seen = (entries || []).filter(function (w) { return w && shelfInScope(w, scope); });
   var out = [];
   var recent = shelfRecentItems(seen, opts);
+  /* 🗄 Withdrawn papers are taken out BEFORE the grouping and stand on one
+     shelf of their own, LAST — never filtered away. With no `backupOf` this
+     is byte-for-byte what it was. 🕒 Recently opened still reads `seen`
+     whole: it is a view, and a paper worked on last night belongs there
+     whichever shelf it lives on. */
+  var backupOf = typeof opts.backupOf === 'function' ? opts.backupOf : null;
+  var backup = backupOf ? seen.filter(function (w) { return backupOf(w); }) : [];
+  if (backup.length) seen = seen.filter(function (w) { return backup.indexOf(w) === -1; });
   if (recent.length) {
     out.push({
       kind: 'recent', shelf: SHELF_RECENT_ID, level: '', subject: '',
@@ -19621,6 +19655,13 @@ function shelfSections(entries, opts) {
       items: g.items
     });
   });
+  if (backup.length) {
+    backup.sort(shelfCompare);
+    out.push({
+      kind: 'backup', shelf: SHELF_BACKUP_ID, level: '', subject: '', year: '',
+      title: SHELF_BACKUP_TITLE, items: backup
+    });
+  }
   return out;
 }
 
@@ -20216,6 +20257,9 @@ function renderWorksheets() {
     shelves: shelves,
     scope: shelfScopeNow(),
     shelfOf: function (w) { return worksheetShelfId(w, assignments, assignmentsLoaded); },
+    // 🗄 A student's started copy of a withdrawn paper — never the teacher's.
+    backupOf: isAdmin(currentUser) ? null
+      : function (w) { return worksheetIsBackup(w, assignments, assignmentsLoaded); },
     showEmpty: isAdmin(currentUser),
     now: Date.now()
   });
@@ -20394,9 +20438,12 @@ function shelfOrderSlot(targetId) {
 
 function shelfNode(g) {
   var teacher = isAdmin(currentUser);
-  var recent = g.kind === 'recent';
+  // 🗄 The Backup shelf is a VIEW like 🕒 Recently opened: nothing is
+  // dragged onto it, arranged or renamed, so it takes the same exemptions.
+  var backupShelf = g.kind === 'backup';
+  var recent = g.kind === 'recent' || backupShelf;
   var shelf = document.createElement('section');
-  shelf.className = 'shelf' + (recent ? ' shelfRecent' : '');
+  shelf.className = 'shelf' + (backupShelf ? ' shelfBackup' : recent ? ' shelfRecent' : '');
   var head = document.createElement('div');
   head.className = 'shelfHead';
   /* 🗂 THE GRIP — where a WHOLE shelf is picked up, and the only drag
@@ -20508,7 +20555,7 @@ function shelfNode(g) {
     // 🕒 On the recently-opened shelf a card also says how long ago it was
     // worked on and WHICH shelf it really lives on, because that shelf is
     // a view: the paper is still standing in its own place further down.
-    var card = w.set ? setCardNode(w.set) : wsCardNode(w, recent ? {
+    var card = w.set ? setCardNode(w.set) : wsCardNode(w, (recent && !backupShelf) ? {
       ago: g.stamps ? g.stamps[i] : 0,
       shelfName: shelfLabel(shelves, worksheetShelfId(w, assignments, assignmentsLoaded))
     } : null);
@@ -20803,7 +20850,16 @@ async function loadAssignments() {
     // `orderBy` on different fields needs a composite index, and a student
     // whose list is empty because an index was never built has no way of
     // knowing that is why. Sorted here instead.
-    var snap = await db.collection(ASSIGN_COLLECTION).where('active', '==', true).limit(60).get();
+    //
+    // 🐛 NO LIMIT (v1.53.0). This read carried `.limit(60)` with no order,
+    // and Firestore then returns the FIRST 60 BY DOCUMENT ID — a random id,
+    // so once a centre had more than sixty papers set, every new paper was
+    // a coin toss: in the list, or silently on NO student's shelf. The
+    // teacher's own card said so only in a chip — "⬦ Not set for the class"
+    // beside a button reading "📌 Set — take it off" — because both screens
+    // read the same truncated list. A cap on who sees what is a paper the
+    // class never got; the whole list is read.
+    var snap = await db.collection(ASSIGN_COLLECTION).where('active', '==', true).get();
     var out = [];
     snap.forEach(function (d) {
       // 🗂 The shelf catalogue shares this collection, because that is the
@@ -21258,7 +21314,7 @@ async function unpushWorksheet(id) {
   // would be work taken away rather than an assignment withdrawn.
   toast(stale
     ? 'That paper was already off the class list — the card was out of date. It has gone now.'
-    : 'Taken off the class list. Anyone who already started it keeps their copy.', 7000);
+    : 'Taken off the class list. Anyone who already started it keeps their copy and their working, on a 🗄 Backup shelf.', 8000);
 }
 
 /* =====================================================================
@@ -21808,7 +21864,11 @@ async function loadWorksheets() {
     // on different fields needs a composite index in the console, and a
     // student whose list is empty because an index was never built has no
     // way of knowing that is why. Sorted here instead.
-    var snap = await db.collection(COLLECTION).where('ownerUid', '==', currentUser.uid).limit(200).get();
+    // 🐛 NO LIMIT (v1.53.0), for `loadAssignments`' reason: an unordered
+    // `.limit(200)` keeps the first 200 BY DOCUMENT ID, so past it a
+    // student's own paper — with their working on it — simply vanished from
+    // their shelf, with nothing on any screen saying it was still there.
+    var snap = await db.collection(COLLECTION).where('ownerUid', '==', currentUser.uid).get();
     var out = [];
     snap.forEach(function (d) {
       var w = d.data() || {};

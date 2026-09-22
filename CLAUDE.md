@@ -2081,6 +2081,26 @@ knew who was looking at it.**
   on a child's shelf is something nothing on the screen would ever explain.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 📌 EVERY SET PAPER REACHES THE CLASS, and 🗄 THE BACKUP SHELF (v1.53.0)
+
+`loadAssignments` / `loadWorksheets` (no `.limit()`), **`worksheetIsBackup`** / `SHELF_BACKUP_ID` /
+`SHELF_BACKUP_TITLE` beside `worksheetShelfId`, the `backupOf` option of **`shelfSections`**, the
+`kind: 'backup'` branch of `shelfNode`, and the `.shelf.shelfBackup` timber.
+
+- **NEITHER LIST READ MAY CARRY A CAP.** The class list was `.limit(60)` with no order, so
+  Firestore returned the first sixty BY DOCUMENT ID — random — and past sixty set papers every new
+  one was on the class's shelves or on nobody's by chance. The teacher's card read *⬦ Not set for
+  the class* beside *📌 Set — take it off*, because both screens read the same truncated list. The
+  student's own list had `.limit(200)`, which drops a child's paper, working and all. The harness
+  pins that neither query has a `.limit(`.
+- **A STUDENT'S COPY OF A WITHDRAWN PAPER STANDS ON 🗄 BACKUP, LAST, and is never filtered away.**
+  `worksheetIsBackup` is a copy with an `assignmentId` that is not in the LOADED active list —
+  `loaded` is load-bearing: a list not yet arrived, or a failed read (`assignmentsLoaded` false),
+  must never move a class's work into Backup. Never the teacher's own copies; never an unstarted
+  set entry. With no `backupOf`, `shelfSections` is byte-for-byte what it was. It is a VIEW like
+  🕒 Recently opened: no drop target, no ✎ 🗑 ▲ ▼.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 📌 TAKING A PAPER OFF THE CLASS LIST (v1.52.0)
 
 **`docMissingError`** and **`unpushWorksheet`** (search `TAKING A PAPER OFF THE CLASS LIST`), and

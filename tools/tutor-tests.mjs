@@ -5110,7 +5110,7 @@ eq('a newer copy WITH work on it stays, whatever came before it',
 eq('copies of different assignments are not each other\'s duplicates',
    S.duplicateBlankCopies([c('n2', { assignmentId: 'a6' }), c('n1')]), []);
 const loadWs = html.slice(html.indexOf('async function loadWorksheets'),
-                          html.indexOf('async function loadWorksheets') + 2200);
+                          html.indexOf('async function loadWorksheets') + 3200);
 ok('loadWorksheets drops only what duplicateBlankCopies names, the document alone, and never the PDF',
    /var dupes = duplicateBlankCopies\(out\);/.test(loadWs) &&
    /db\.collection\(COLLECTION\)\.doc\(w\.id\)\.delete\(\)/.test(loadWs) &&
@@ -5119,6 +5119,18 @@ ok('…before the list is filtered, so a duplicate the student can see is gone f
    loadWs.indexOf('duplicateBlankCopies(out)') < loadWs.indexOf('worksheets = out.filter(canSeeWorksheet)'));
 S.assignments = [];
 S.currentUser = null;
+/* 🐛 v1.53.0 — THE CLASS LIST WAS CAPPED AT SIXTY. An unordered
+   `.limit(60)` returns the first sixty BY DOCUMENT ID, so past sixty set
+   papers every new one was a coin toss: on the class's shelves or on
+   nobody's, with the teacher's card reading "Not set for the class"
+   beside "📌 Set — take it off". Neither read may carry a cap. */
+{
+  const la = html.slice(html.indexOf('async function loadAssignments'), html.indexOf('async function loadAssignments') + 2600);
+  ok('the class list is read WHOLE — no .limit() on the assignments query',
+     /collection\(ASSIGN_COLLECTION\)\.where\('active', '==', true\)\.get\(\)/.test(la) && !/\.limit\(/.test(la.replace(/\/\/.*$/gm, '')));
+  ok('…and a student\'s own papers are read whole too — no .limit() on their worksheets',
+     /where\('ownerUid', '==', currentUser\.uid\)\.get\(\)/.test(loadWs) && !/\.limit\(/.test(loadWs.replace(/\/\/.*$/gm, '')));
+}
 
 section('Who is working right now');
 S.myStudents = [{ name: 'Ana', level: 'P5', subject: 'science' },
@@ -5585,7 +5597,7 @@ section('The bookshelf');
   ok('the row is the scroller and snaps to a paper', /\.shelfRow \{[^}]*scroll-snap-type: x mandatory/.test(html) && /\.shelfItem \{[^}]*scroll-snap-align: center/.test(html));
   ok('the wheel is posed off the scroll, one paint a frame', /row\.addEventListener\('scroll', kick, \{ passive: true \}\)/.test(html) && /requestAnimationFrame\(run\)/.test(html));
   ok('the home screen is built from shelfSections over EVERY paper the student has',
-     /var entries = shelfEntries\(worksheets, assignmentsForMe\(\)\);[\s\S]{0,1400}var sections = shelfSections\(entries, \{[\s\S]{0,400}\}\);[\s\S]{0,2400}box\.appendChild\(shelfNode\(sec\)\);/.test(html));
+     /var entries = shelfEntries\(worksheets, assignmentsForMe\(\)\);[\s\S]{0,1400}var sections = shelfSections\(entries, \{[\s\S]{0,700}\}\);[\s\S]{0,2400}box\.appendChild\(shelfNode\(sec\)\);/.test(html));
   /* 📅 …and the year plates are inserted INSIDE that one loop, off the
      order `shelfSections` has already put the sections in. A second walk
      to place the racks is a second ordering, and the two would disagree
@@ -5622,7 +5634,7 @@ section('The bookshelf');
   eq('a set worksheet whose level nobody has answered is still an entry (the filter is the caller\'s)',
      S.shelfEntries([], [{ id: 'a9', name: 'x' }]).map(e => e.id), ['set:a9']);
   ok('the shelf draws a set entry with the set card and every card as a booklet',
-     /var card = w\.set \? setCardNode\(w\.set\) : wsCardNode\(w, recent \? \{[\s\S]{0,260}\} : null\);\n\s*card\.classList\.add\('booklet'\);/.test(html));
+     /var card = w\.set \? setCardNode\(w\.set\) : wsCardNode\(w, \(recent && !backupShelf\) \? \{[\s\S]{0,260}\} : null\);\n\s*card\.classList\.add\('booklet'\);/.test(html));
   ok('a set worksheet not opened yet says so on its cover',
      /if \(!mine\) meta\.appendChild\(chipNode\('✨ Not opened yet', 'chip chipNew'\)\);/.test(html));
   ok('the set record carries the topic and the school the shelf files by',
@@ -5886,6 +5898,37 @@ section('The bookshelf');
        .some(x => x.kind === 'shelf' && !x.items.length));
   ok('nothing at all is no shelves rather than a page of empty ones',
      S.shelfSections([], { shelves: cat, shelfOf, now: T }).length === 0);
+  /* 🗄 v1.53.0 — A STUDENT'S COPY OF A WITHDRAWN PAPER STANDS ON THE
+     BACKUP SHELF, never vanishes. */
+  {
+    const live = [{ id: 'a1' }];
+    eq('a copy whose assignment is still set is not backup',
+       S.worksheetIsBackup({ id: 'c1', assignmentId: 'a1' }, live, true), false);
+    eq('a copy whose assignment has gone IS backup',
+       S.worksheetIsBackup({ id: 'c2', assignmentId: 'gone' }, live, true), true);
+    eq('…but NOT while the list has not arrived (or the read failed) — a blip must not move a class\'s work',
+       S.worksheetIsBackup({ id: 'c2', assignmentId: 'gone' }, [], false), false);
+    eq('a student\'s own upload and an unstarted set entry are never backup',
+       [S.worksheetIsBackup({ id: 'own' }, live, true),
+        S.worksheetIsBackup({ id: 'set:x', set: { id: 'x' }, assignmentId: 'x' }, live, true)], [false, false]);
+    const papers = [
+      { id: 'c1', assignmentId: 'a1', level: 'P5', subject: 'science', updatedAt: 1 },
+      { id: 'c2', assignmentId: 'gone', level: 'P5', subject: 'science', updatedAt: 2 }
+    ];
+    const secs = S.shelfSections(papers, { shelves: [], now: 0,
+      backupOf: w => S.worksheetIsBackup(w, live, true) });
+    const last = secs[secs.length - 1];
+    ok('the withdrawn copy stands on ONE backup shelf, LAST, and on no other shelf',
+       last.kind === 'backup' && last.items.map(w => w.id).join() === 'c2' &&
+       !secs.slice(0, -1).some(sec => sec.items.some(w => w.id === 'c2')));
+    ok('…and nothing is lost: every paper is on exactly one shelf',
+       secs.filter(sec => sec.kind !== 'recent').reduce((n, sec) => n + sec.items.length, 0) === 2);
+    eq('with no backupOf the sections are byte-for-byte what they were',
+       JSON.stringify(S.shelfSections(papers, { shelves: [], now: 0 })),
+       JSON.stringify(S.shelfSections(papers, { shelves: [], now: 0, backupOf: null })));
+    ok('the home screen asks it for a STUDENT only',
+       /backupOf: isAdmin\(currentUser\) \? null\s*: function \(w\) \{ return worksheetIsBackup\(w, assignments, assignmentsLoaded\); \}/.test(html));
+  }
 
   /* ⑦ THE RULES THAT CANNOT BE READ OFF A PURE FUNCTION, against the file.
         The catalogue lives in a collection whose Firestore rules already
