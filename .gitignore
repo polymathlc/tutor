@@ -9,3 +9,5 @@ package-lock.json
 
 # Scratch probes written while investigating a measurement by hand.
 tools/_*.mjs
+firebase-debug.log
+firebase-debug.*.log

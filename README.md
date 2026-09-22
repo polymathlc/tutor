@@ -12,6 +12,31 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.54.0 — Study Adventure
+
+Meet **Orbit, Pip and Nova**: three original companions with twelve transparent
+illustrations, gentle reactions and a warm dashboard across desktop and iPad.
+Practice earns personal XP, levels, daily quests, achievement badges and unlocked
+companions and frames. Correcting a previously recorded mistake earns comeback XP;
+asking for help never loses points. Reduced-motion preferences are respected.
+
+The optional **weekly league** compares learners in the same approved level and
+subject. In **People → a learner → Weekly league membership**, the teacher approves
+or revokes membership; students then choose whether to join. Only generated aliases
+and companions appear to classmates. Weekly groups reset on Monday in Singapore,
+while personal XP stays. The teacher's home has a separate community welcome.
+
+Rewards are independently checked by a new authenticated server function, with
+question deduplication, atomic awards, daily caps and protected database records.
+Browser-written activity counts are not leaderboard evidence. Existing work is not
+backfilled. If checking cannot connect, the worksheet remains usable and pending
+rewards can be retried with **Sync progress** during the current session.
+
+See [reward rules and deployment](docs/gamification.md) and
+[character artwork and prompts](docs/character-art.md).
+
+---
+
 ## v1.53.0 — 📌 Every paper you set reaches the class, and 🗄 withdrawn work goes to Backup
 
 Papers set for the class were not reaching students' accounts. **The class list was read with a

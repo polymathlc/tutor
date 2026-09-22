@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)([^>]*)>([\s\S]*?)<\/script>/g)];
@@ -14,6 +15,9 @@ try {
     execFileSync(process.execPath, ['--check', file], { stdio: 'inherit' });
   }
   console.log(`${scripts.length} inline scripts passed syntax checks.`);
+  for (const file of ['adventure.js', 'adventure-ui.js']) {
+    execFileSync(process.execPath, ['--check', fileURLToPath(new URL('../' + file, import.meta.url))], { stdio: 'inherit' });
+  }
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });
 }
