@@ -365,12 +365,15 @@ what the app TOLD the model about the picture, not in anything it drew.**
 ## ✍️ THE TUTOR WRITES WORKING ON THE PAGE (v1.31.0)
 
 `WORK_RUNG` / `WORK_LINES_MAX` / `WORK_CHARS_MAX` / `WORK_SIZE` / `WORK_LEAD` / `WORK_CHAR_W` /
-`WORK_PAD` / `tutorWork` / **`tutorWorkAllowed`** / **`tutorWorkLines`** / **`tutorWorkMake`** /
-**`tutorWorkGeom`** / **`tutorWorkShow`** / `tutorWorkClear` / `syncTutorWork` /
+`WORK_PAD` / **`WORK_MAX_W`** / `tutorWork` / **`tutorWorkAllowed`** / **`tutorWorkLines`** /
+**`tutorWorkMake`** / **`tutorWorkSteps`** / `tutorWorkMore` / **`tutorWorkNext`** /
+`tutorWorkRestart` / **`tutorWorkGeom`** / **`tutorWorkShow`** / `tutorWorkClear` /
+`syncTutorWork` / **`renderWorkStep`** /
 **`tutorMarksClear`** / **`renderTutorWorkOn`** (search `THE TUTOR WRITES WORKING ON THE PAGE`),
 the live half — **`LIVE_MARK_RE`** / **`liveWorkSpec`** / **`liveMarkApply`** and the marker LOOP
 at the head of `liveFlush` — the `work` field of `HINT_SYS` / `hintLadderFor` / `askHintAt`, the
-button on `hintCard`, `.tutorWork` in the stylesheet, and `renderTutorWorkOn(p)` inside
+button on `hintCard`, `.tutorWork` and **`#workStep`** in the stylesheet, the **`#workStep`** chip
+beside `#mthPad`, the step arm of **`floatBoxLayout`**, and `renderTutorWorkOn(p)` inside
 `renderOverlay`.
 
 *"Human teachers can do working on the paper to help the students."* They do — two or three lines
@@ -423,6 +426,61 @@ finish it themselves. So the tutor writes it, on a hint and while it is talking 
 - **`tutorWorkMake`'s `answerOk` defaults to STRICT**, so a caller that forgets it gets the answer
   that cannot hand over the answer. Every call site passes `mthAnswerAllowed()` — the ladder is
   read in the ONE place that reads it, never tested a second time here.
+
+### ▸ ONE STEP AT A TIME, IN A SMALLER NOTE (v1.49.0)
+
+The block was drawn WHOLE — six lines at 44 characters, which at the old text height was a note
+most of the way across the paper AND the entire method handed over in one go. **A tutor does not
+write the method out and walk away**: they write a line, the child works, and the next line goes
+down when it is asked for. So the block is still MADE whole and is REVEALED one line at a time.
+
+- **`tutorWorkSteps(w)` IS THE ONE PLACE HOW MANY ARE SHOWING IS DECIDED**, and the renderer, the
+  chip and both advancers read it rather than each doing the arithmetic. **A step that is not a
+  number shows EVERYTHING**, which is the safe way to be wrong here: a note one line too long is
+  still the method, and one showing none is an empty box drawn on a child's paper.
+- **THE MAKER STAYS STEP-FREE AND `tutorWorkShow` STAMPS THE 1**, exactly as it stamps the epoch
+  and `made` — the split `tutorPointMake` already makes. That is what lets a hint keep the WHOLE
+  method on `h.work`, save it into the body, and put it back months later **at line one**; a block
+  with the step baked in comes back already half read. It is also why a block that has never been
+  SHOWN draws all of its lines: nothing has begun revealing it, so there is nothing to hold back.
+- **NEITHER ADVANCER SETS A TIMER**, the whole section's rule. The next line goes down when the
+  student asks for it and not a moment sooner, because the pause between two steps is the part
+  they are meant to be doing the work in. Each returns whether it really MOVED, so a caller never
+  leaves a control up that would do nothing.
+- **THE WIDTH IS MEASURED ON THE WHOLE BLOCK AND THE HEIGHT ON WHAT SHOWS.** Sized to the revealed
+  lines alone the note would change width on every step and shuffle sideways under a child reading
+  it; growing only DOWNWARDS is what makes the stepping read as one note filling in rather than as
+  a new note each time.
+- **…AND THE CORNER IS CLAMPED AGAINST THE BLOCK'S FULL HEIGHT**, never against the part showing.
+  Clamped against what is drawn, a note near the foot of the page is pushed UPWARDS a line at a
+  time as it fills in — the note crawling up the paper while it is read. Room for every line is
+  reserved from the first, so the top-left never moves.
+- **THE STEP IS PART OF THE DRAWN NODE'S IDENTITY** (`w.made + ':' + tutorWorkSteps(w) + ':' +
+  zoom`). The rule above leaves a node alone while its `data-work` still matches, so a `want`
+  built from the stamp and the zoom alone leaves the note showing one line for ever while the
+  chip counts up beside it.
+- **THE NOTE SAYS THERE IS MORE**, and that is not decoration. It takes no pointer, so the thing
+  that ADVANCES it is elsewhere on the screen — and a child who has read one line and been shown
+  nothing to say a second exists has been handed a method that stops in the middle, which reads
+  as the tutor having finished.
+- **`#workStep` IS THE ONE CONTROL THAT FILLS IT IN, AND IT IS BOTH SURFACES' AT ONCE.** A button
+  on the hint card would leave live mode with no way to ask for the next line; this is drawn from
+  `syncTutorWork`, so a step moved anywhere repaints it — a step moved without the chip repainted
+  is a chip counting a line that is not there. **`pointer-events: none` on the BAR and `auto` on
+  the button** is the split the picture tools carry and is load-bearing for the same reason: the
+  bar is wider than the button in it. **A one-line note gets no chip at all** — there is nothing
+  to reveal — and at the last step it offers the note AGAIN rather than vanishing, because a
+  control that disappears at the moment it finished is one nobody can find a second time.
+- **IT STANDS BOTTOM-RIGHT**, the one corner the other floating things leave free: the orb, the
+  🧩 keyword check and the ✏️ maths pad are all bottom-left, and the subtitles and the mic bar are
+  bottom-centre. On a phone those boxes go full width, so **`floatBoxLayout` lifts the chip clear
+  of whichever one is open** exactly as it lifts the subtitles — that function already reads both
+  boxes, and a chip buried under the maths pad is the one control that fills the working in,
+  unreachable.
+- **BOTH PROMPTS ARE TOLD THE LINES ARE REVEALED ONE AT A TIME**, and that is not a nicety: a
+  model that does not know it writes half a step per line, or two steps on one, and the note then
+  reads as nonsense until the last line is down. They ask for at most FOUR lines of at most 34
+  characters, and say fewer and shorter is better.
 
 ### The live marker, and why it is a RUN
 
@@ -1597,13 +1655,41 @@ literal rather than a `var` assigned up there.
   is worse than one that spends a call finding out. The mark expires by itself
   after `AI_DOWN_MS` and a success clears it. `sort` is stable, so the
   preference order survives underneath the down-marking.
-- **NO TEMPERATURE AND NO MODEL ARE SENT TO A SERVER ROUTE.** A reasoning
-  model runs only at its own default temperature and one sent is a **400** —
-  not a worse answer, no answer at all — and the server chooses the model
-  anyway. `thinkingLevel` is deliberately not translated either. And **nothing
-  names a model to Kimi**: Moonshot renames its flagship every release, this
-  app has no box to correct a stale id in, and the function falls back to its
-  own current one when the client names none.
+- **NO TEMPERATURE IS SENT TO A SERVER ROUTE.** A reasoning model runs only at
+  its own default and one sent is a **400** — not a worse answer, no answer at
+  all. `thinkingLevel` is deliberately not translated either.
+- **⚡ THE MODEL IS SENT TO CHATGPT AND NOT TO KIMI**, and the asymmetry is the
+  point. `OPENAI_MODEL` is **`gpt-6-astra`**, named ONCE — the centre teaches on
+  it and says so, and an id that goes stale is one line in this file rather than
+  a redeploy of a Cloud Function shared with five other apps. **Nothing names a
+  model to Kimi**: Moonshot renames its flagship every release, this app has no
+  box to correct a stale id in, and that function falls back to its own current
+  one when the client names none. **It is a REQUEST, not a guarantee**, and that
+  is what makes it safe to send: the function validates the name and falls back
+  when it does not know this one, so a rename upstream is a worse model for a
+  while rather than a dead app.
+- **⚡ WHICH ENGINE LEADS CAN DEPEND ON THE TASK, AND EXACTLY ONE TASK ASKS**
+  (`AI_TASK_ENGINE`, `aiEngineOrder(task)`, `askGemini(…, { task: 'teach' })`).
+  **TEACHING** — the 💡 hint ladder, the 🎧 live reply and the ✏️ maths pad's two
+  calls, the ones that write the working and the steps a child reads — leads
+  with ChatGPT whatever `config/admin.aiEngine` says, because that is the model
+  this teaching was written and checked against. **THE OTHER ENGINES STAY
+  BEHIND IT** rather than being taken away, which is the whole shape of this
+  loop: an OpenAI account out of credit is a slower hint from Gemini, never no
+  hint at all. **An unknown task falls back to the centre's own setting**, so a
+  typo can never take the AI off every device at once. Everything else — the
+  marking run, the chat, the mistake reader, the key read — is untouched.
+  **The CENSUS in `tools/tutor-tests.mjs` is the half that matters**: it reads
+  the call sites out of the file and fails BOTH ways — a teaching call that
+  stops naming the task goes quietly back to the shared engine while every
+  screen still says ChatGPT, and a marking call that STARTS naming it puts
+  thirty students' papers on a bill nobody asked for. It resolves the enclosing
+  function at **column 0 only**, because the live reply declares `liveFlush`
+  inside itself and above its own call.
+- **THE PANEL SAYS BOTH ORDERS AND NAMES THE MODEL.** An app whose hints and
+  working come from one engine while its marking comes from another looks, from
+  every other screen, exactly like one that does not — which is how a whole term
+  goes by on the engine nobody chose.
 - **WHEN NOTHING ANSWERS, EVERY ROUTE IS NAMED.** The first error is kept as
   `cause`, but the message lists them all — reporting one hides the rest, and
   *"Gemini: your billing account has exceeded its monthly spending cap"* sends
@@ -4081,6 +4167,51 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **▸ the working's steps or its size** (`WORK_SIZE`, `WORK_LEAD`, `WORK_PAD`,
+  `WORK_LINES_MAX`, `WORK_CHARS_MAX`, `WORK_MAX_W`, `tutorWorkSteps`, `tutorWorkMore`,
+  `tutorWorkNext`, `tutorWorkRestart`, `tutorWorkGeom`'s width / height / clamp split,
+  `tutorWorkShow`'s `step: 1`, the `tutorWorkSteps(w)` in `renderTutorWorkOn`'s `want`, the
+  `g0.more` row, `renderWorkStep`, `syncTutorWork`, the step arm of `floatBoxLayout`, `#workStep`
+  or its CSS), run `node tools/tutor-tests.mjs`, `node --test tools/live-tutor-tests.mjs` **and**
+  `node tools/browser-check.mjs`. **The browser one is not optional**: whether the note really
+  appears, whether pressing the chip really puts the next line down, and whether the chip is over
+  the page without swallowing what a child writes through it are the three things reading the
+  source cannot check. Every failure here is silent and the note still draws. Put the size, the
+  line cap or the width cap back up and it is a panel across the child's paper again, which is
+  the reported fault; drop `WORK_MAX_W` and a generous character width and a long line between
+  them draw a note nearly the width of the page. Stop stamping `step: 1` in the door and the
+  whole method is handed over in one go — the OTHER half of what was reported — while every
+  geometry check stays green; bake the step into the MAKER instead and a hint's saved block comes
+  back months later already half read. Size the WIDTH from the revealed lines and the note
+  shuffles sideways under a child reading it; clamp against the DRAWN height rather than the full
+  one and a note near the foot of the page crawls upwards a line at a time. Leave the step out of
+  the node's identity and the note sits on line one for ever while the chip counts up beside it —
+  the overlay leaves a node alone while its `data-work` matches. Drop the "▾ step 2 of 3" row and
+  a child reads a method that stops in the middle, which reads as the tutor having finished. Give
+  the chip `pointer-events: auto` on the BAR and a strip over the worksheet eats a stylus stroke;
+  take it off the BUTTON and the one control that fills the working in cannot be pressed at all.
+  Paint it from anywhere but `syncTutorWork` and a step moves with the chip still counting the
+  line before it; drop it from `floatBoxLayout` and a phone buries it under the maths pad. And
+  let either prompt stop saying the lines are REVEALED ONE AT A TIME and a model writes half a
+  step per line, so the note reads as nonsense until the last line is down.
+- After touching **⚡ which engine the TEACHING runs on** (`OPENAI_MODEL`, `AI_TASK_ENGINE`,
+  `aiEngineOrder`'s `task`, `askOpenAiServer`'s `{ model: OPENAI_MODEL }`, `askKimiServer`,
+  `askGemini`'s `opts.task`, the `task: 'teach'` on any call site, `teachOrder` / `openAiModel` in
+  `window.aiEngines`, or `renderEngineBody`'s teaching lines), run
+  `node tools/tutor-tests.mjs`. Both directions are silent and both cost real money. A teaching
+  call that stops naming the task goes quietly back to whatever the centre's shared setting says,
+  while the panel and this file both still promise ChatGPT — that is the reported fault arriving
+  through its own fix. A marking, chat or key-reading call that STARTS naming it puts thirty
+  students' papers on the paid engine with nothing on any screen saying it happened. That is what
+  the census exists to catch on the NEXT call site rather than the last one, and a name added to
+  its list is a decision about the bill — so resolve the enclosing function at column 0 only, or
+  the live reply files itself under the `liveFlush` declared inside it and the census goes green
+  over a call it never checked. Take the other engines out from behind ChatGPT and an OpenAI
+  account out of credit is no hint at all rather than a slower one; let an unknown task fall
+  through to an empty order and a typo takes the AI off every device at once. Send the model to
+  KIMI as well and the first Moonshot rename is a 404 on every backup call, in an app with no box
+  to correct it in. And type `gpt-6-astra` at a call site as well as in the constant and there
+  are two ids to keep in step, one of them somewhere nobody looks.
 - After touching **📎 the pasted picture** (`annPastePic`, `annLocked`, `annLockedId`,
   `annPicWarm`, `annPicFor`, `annPicsReady`, `shrinkImageDataUrl`, `imageRatio`, `pastePicBox`,
   `pasteGoesToWorksheet`, `pasteImageOntoPage`, `pasteImagesFromClipboard`, `pastePicNode`,

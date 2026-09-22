@@ -12,6 +12,34 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.49.0 — The working goes down one step at a time, in a smaller note
+
+Two things were wrong with the working the tutor writes on the page, and they were the same
+thing twice: **it was too big, and it was all of it at once.**
+
+**The note is smaller.** The text height, the line step and the padding all came down, a line is
+34 characters instead of 44, a block is four lines instead of six, and a new cap stops it ever
+running more than a little over half way across the paper. A three-line note that used to cover
+most of the page is now a note in the margin, which is what a teacher writes.
+
+**And it goes down ONE STEP AT A TIME.** A tutor does not write the method out and walk away:
+they write a line, the child works, and the next line goes down when it is asked for. So the
+first line appears on its own, the note says `▾ step 1 of 3` underneath it, and a small
+**▸ Next step** chip in the corner of the screen puts the next one down. At the end it offers
+the whole thing again from the start.
+
+It works the same way on a 💡 hint and while the 🎧 live tutor is talking, because both go through
+the one door — and the note still never becomes ink, still comes off the page the moment the
+tutor moves on, and still stops one step short of the answer.
+
+**The teaching now runs on ChatGPT `gpt-6-astra`.** The hint ladder, the live reply and the two
+✏️ maths-pad calls — the ones that write the working and the steps a child reads — lead with it
+whatever engine the centre has chosen, with Gemini and Kimi still behind them, so an account out
+of credit is a slower hint rather than no hint. The admin's engine panel says so and names the
+model.
+
+---
+
 ## v1.48.1 — A corner drag answers whichever way you pull it
 
 A pasted picture keeps its own shape on a corner drag, and the scale is now the

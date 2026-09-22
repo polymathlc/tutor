@@ -540,6 +540,123 @@ ok('…fitted to its own box, not stretched to it',
 
 await page.evaluate(() => { annotations = []; selectedId = null; renderAllOverlays(); });
 
+/* =====================================================================
+   ✍️ THE TUTOR'S WORKING REALLY DRAWS, AND REALLY STEPS
+   The harness pins the arithmetic — it is pure, so it can. What it cannot
+   ask is whether the note appears on the paper at all, whether pressing
+   the chip puts the next line down, and whether the chip is over the page
+   without swallowing what a child writes through it. That is this.
+   ===================================================================== */
+console.log('\n✍️ The tutor’s working goes down one step at a time');
+const wk = await page.evaluate(() => {
+  wsMeta.guidance = 'method';        // the method rung is what working sits on
+  const spec = { at: [300, 120], lines: ['3 units = 12', '1 unit = 12 ÷ 3', '5 units = ?'] };
+  const made = tutorWorkMake(spec, 1, false);
+  const shown = tutorWorkShow(made);
+  const g = pages[0].svg.querySelector('g[data-work]');
+  const box = g && g.querySelector('rect');
+  return {
+    shown: shown,
+    made: !!made && made.lines.length === 3 && !('step' in made),
+    drawn: !!g,
+    texts: g ? [...g.querySelectorAll('text')].map(t => t.textContent) : [],
+    w: box ? Number(box.getAttribute('width')) : 0,
+    h: box ? Number(box.getAttribute('height')) : 0
+  };
+});
+ok('the note is drawn on the page', wk.shown && wk.drawn, JSON.stringify(wk));
+ok('…with its FIRST line only, and a word saying there is more',
+   wk.texts.length === 2 && wk.texts[0] === '3 units = 12' && /step 1 of 3/.test(wk.texts[1]),
+   JSON.stringify(wk.texts));
+/* THE PAGE IS 600 × 800 HERE. A note more than half across it, or a fifth
+   of the way down it, is the size this version exists to undo. */
+ok('…and it is a small note rather than a panel',
+   wk.w > 0 && wk.w < 600 * 0.6 && wk.h < 800 * 0.09,
+   JSON.stringify({ w: Math.round(wk.w), h: Math.round(wk.h), page: '600×800' }));
+
+const chip = await page.evaluate(() => {
+  const bar = document.getElementById('workStep');
+  const btn = bar && bar.querySelector('button');
+  return {
+    up: !!bar && !bar.hidden,
+    count: bar ? (bar.textContent || '') : '',
+    barTaps: bar ? getComputedStyle(bar).pointerEvents : '',
+    btnTaps: btn ? getComputedStyle(btn).pointerEvents : ''
+  };
+});
+ok('the chip is up and says which step it is on', chip.up && /Step 1 of 3/.test(chip.count),
+   JSON.stringify(chip));
+/* THE LOAD-BEARING HALF: the bar is wider than the button in it and it sits
+   over a page a child writes on with a stylus. */
+ok('…the bar itself cannot swallow a stroke', chip.barTaps === 'none', chip.barTaps);
+ok('…and the button in it can still be pressed', chip.btnTaps === 'auto', chip.btnTaps);
+
+await page.click('#workStep button');
+await page.waitForTimeout(80);
+const step2 = await page.evaluate(() => {
+  const g = pages[0].svg.querySelector('g[data-work]');
+  const box = g && g.querySelector('rect');
+  return {
+    texts: g ? [...g.querySelectorAll('text')].map(t => t.textContent) : [],
+    w: box ? Number(box.getAttribute('width')) : 0,
+    h: box ? Number(box.getAttribute('height')) : 0,
+    x: box ? Number(box.getAttribute('x')) : 0,
+    y: box ? Number(box.getAttribute('y')) : 0,
+    count: (document.getElementById('workStep').textContent || '')
+  };
+});
+ok('pressing it puts the NEXT line down',
+   step2.texts[0] === '3 units = 12' && step2.texts[1] === '1 unit = 12 ÷ 3' && /step 2 of 3/.test(step2.texts[2]),
+   JSON.stringify(step2.texts));
+ok('…and the chip counts up with it', /Step 2 of 3/.test(step2.count), step2.count);
+ok('…and the note grew DOWNWARDS and nowhere else',
+   step2.h > wk.h && Math.abs(step2.w - wk.w) < 0.001,
+   JSON.stringify({ was: Math.round(wk.h), now: Math.round(step2.h) }));
+
+await page.click('#workStep button');
+await page.waitForTimeout(80);
+const step3 = await page.evaluate(() => {
+  const g = pages[0].svg.querySelector('g[data-work]');
+  const box = g && g.querySelector('rect');
+  return {
+    texts: g ? [...g.querySelectorAll('text')].map(t => t.textContent) : [],
+    x: box ? Number(box.getAttribute('x')) : 0,
+    y: box ? Number(box.getAttribute('y')) : 0,
+    label: (document.getElementById('workStep').querySelector('button') || {}).textContent || ''
+  };
+});
+ok('the last line ends the note, with no "more to come" left on it',
+   step3.texts.length === 3 && step3.texts[2] === '5 units = ?',
+   JSON.stringify(step3.texts));
+ok('…and its top-left corner never moved through any of it',
+   Math.abs(step3.x - step2.x) < 0.001 && Math.abs(step3.y - step2.y) < 0.001,
+   'a note that crawls about the page while it is read is worse than one drawn whole');
+ok('…and the chip offers it again rather than vanishing', /From the start/.test(step3.label), step3.label);
+
+await page.click('#workStep button');
+await page.waitForTimeout(80);
+const back = await page.evaluate(() => ({
+  texts: [...pages[0].svg.querySelectorAll('g[data-work] text')].map(t => t.textContent),
+  count: (document.getElementById('workStep').textContent || '')
+}));
+ok('…and it really does go back to the first line',
+   back.texts.length === 2 && /step 1 of 3/.test(back.texts[1]) && /Step 1 of 3/.test(back.count),
+   JSON.stringify(back.texts));
+
+/* IT IS NEVER INK — the rule the whole section turns on. */
+const notInk = await page.evaluate(() => annotations.length);
+ok('none of it ever became an annotation', notInk === 0,
+   'the next marking run would read the tutor’s own working as the student’s');
+
+await page.evaluate(() => { tutorMarksClear(); });
+await page.waitForTimeout(60);
+const gone = await page.evaluate(() => ({
+  note: !!pages[0].svg.querySelector('g[data-work]'),
+  chip: !document.getElementById('workStep').hidden
+}));
+ok('the tutor moving on takes the note AND the chip away', !gone.note && !gone.chip,
+   JSON.stringify(gone));
+
 /* One-letter tool shortcuts live BELOW `renderStylusBtn()` in the file, so a
    throw there took the whole keyboard with it. */
 console.log('\nThe keyboard is wired up');
