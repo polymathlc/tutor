@@ -3929,9 +3929,10 @@ ok('…and it is the marking’s own reader that says so',
 ok('a page number that is not a page is refused',
    wkMake([100, 100], ['1 unit = ?'], false) !== null &&
    S.tutorWorkMake({ at: [100, 100], lines: ['1 unit = ?'] }, 0, false) === null);
-ok('the maker carries NO epoch, so a hint can put its own back months later',
-   !/epoch/.test(between('function tutorWorkMake(spec, page, answerOk)', 'function tutorWorkGeom(', 'the working maker')) &&
-   /epoch: wsEpoch/.test(WORK_SRC));
+ok('the maker carries NO epoch and NO step, so a hint puts its own back months later at line one',
+   !/epoch|\bstep\b/.test(between('function tutorWorkMake(spec, page, answerOk)', '/* ONE STEP AT A TIME', 'the working maker')) &&
+   /epoch: wsEpoch/.test(WORK_SRC) && /step: 1, epoch: wsEpoch/.test(WORK_SRC),
+   'a block with the step baked into it comes back already half read');
 ok('a caller that forgets the answer rung gets the STRICT answer',
    S.tutorWorkMake({ at: [100, 100], lines: ['1 unit = 4'] }, 1) === null,
    'the safe default is the one that cannot hand over the answer');
@@ -3952,6 +3953,148 @@ ok('…and as tall as it has rows',
    wkGeom([100, 100], ['a', 'b', 'c ?']).h > wkGeom([100, 100], ['a ?']).h);
 ok('a geometry with no page is refused rather than drawn at nothing',
    S.tutorWorkGeom({ at: { x: 1, y: 1 }, lines: ['?'] }, 0, 100) === null);
+
+/* =====================================================================
+   ✍️ ONE STEP AT A TIME, IN A SMALLER NOTE
+   A tutor writes a line, the child works, and the next line goes down when
+   it is asked for. The block used to be drawn whole — six lines at 44
+   characters, which at the old text height was a note most of the way
+   across the paper AND the entire method handed over in one go.
+   ===================================================================== */
+section('The tutor\'s working, one step at a time');
+
+/* THE NOTE IS SMALLER, and it is pinned against the numbers it replaced
+   rather than merely "being a number": every one of these was raised once
+   and a note that creeps back to the old size is the reported fault
+   returning with every check still green. */
+ok('the note is drawn smaller than it was',
+   S.WORK_SIZE < 0.032 && S.WORK_LEAD < 1.5 && S.WORK_PAD < 0.7,
+   'the text height, the line step and the padding all came down');
+ok('…and holds fewer, shorter lines',
+   S.WORK_LINES_MAX < 6 && S.WORK_CHARS_MAX < 44,
+   'four short steps is a margin note; six long ones is the whole solution');
+ok('…and can never run across the page',
+   S.WORK_MAX_W <= 0.6 && /Math\.min\(W \* WORK_MAX_W,/.test(WORK_SRC),
+   'a generous character width and a long line between them drew a note nearly the width of the paper');
+/* THE CAP IS A GUARD, NOT A SQUEEZE: a full-length line at the shipped size
+   has to come out INSIDE it, or every note in the app is clipped. */
+const wkWidest = S.tutorWorkGeom(
+  S.tutorWorkMake({ at: [100, 20], lines: ['x'.repeat(S.WORK_CHARS_MAX - 2) + ' ?'] }, 1, true), 1000, 1400);
+ok('…and a full-length line still fits inside that cap',
+   wkWidest.w < 1000 * S.WORK_MAX_W - 0.001,
+   'the cap must bite only on a page narrower than these worksheets, or every note clips: ' + wkWidest.w);
+/* AND IT REALLY IS SMALLER ON THE PAGE, measured rather than asserted. */
+const wkNow = S.tutorWorkGeom(
+  S.tutorWorkMake({ at: [100, 100], lines: ['3 units = 12', '1 unit = 12 ÷ 3', '5 units = ?'] }, 1, true), 1000, 1400);
+ok('a three-line note is a fraction of the page it used to cover',
+   wkNow.w < 1000 * 0.45 && wkNow.h < 1400 * 0.1,
+   JSON.stringify({ w: Math.round(wkNow.w), h: Math.round(wkNow.h) }));
+
+/* THE MAKER MAKES THE WHOLE METHOD; THE DOOR STARTS IT AT LINE ONE. */
+const wkThree = () => S.tutorWorkMake({ at: [100, 100], lines: ['a', 'b', 'c ?'] }, 1, false);
+ok('a block that has never been SHOWN draws all of its lines',
+   S.tutorWorkSteps(wkThree()) === 3,
+   'nothing has begun revealing it, so there is nothing to hold back');
+ok('a step that is not a number shows everything',
+   S.tutorWorkSteps({ lines: ['a', 'b'], step: 'two' }) === 2 &&
+   S.tutorWorkSteps({ lines: ['a', 'b'], step: 0 }) === 2,
+   'a note one line too long is still the method; one showing none is an empty box on a child’s paper');
+ok('…and a step past the end is the end',
+   S.tutorWorkSteps({ lines: ['a', 'b'], step: 99 }) === 2);
+ok('an empty block has no steps at all', S.tutorWorkSteps({ lines: [] }) === 0 && S.tutorWorkSteps(null) === 0);
+
+S.wsMeta.guidance = 'method';
+ok('the ONE door starts the note at its FIRST line',
+   S.tutorWorkShow(wkThree()) === true && S.tutorWork.step === 1 && S.tutorWorkSteps(S.tutorWork) === 1,
+   'the whole method drawn at once is the method handed over rather than shown');
+ok('…so a hint’s saved block puts itself back at line one months later',
+   !('step' in wkThree()),
+   'a block with the step baked in comes back already half read');
+ok('there is more to come, and the advancer says so',
+   S.tutorWorkMore() === true && S.tutorWorkNext() === true && S.tutorWorkSteps(S.tutorWork) === 2);
+ok('…and it stops at the last line rather than counting past it',
+   S.tutorWorkNext() === true && S.tutorWorkSteps(S.tutorWork) === 3 &&
+   S.tutorWorkMore() === false && S.tutorWorkNext() === false,
+   'a control that reports a move it did not make is a button that does nothing');
+ok('…and the whole note can be read again from the start',
+   S.tutorWorkRestart() === true && S.tutorWorkSteps(S.tutorWork) === 1 && S.tutorWorkRestart() === false);
+
+/* THE GEOMETRY GROWS DOWNWARDS AND NOWHERE ELSE. */
+const wkAt = (ls, step) => {
+  const w = S.tutorWorkMake({ at: [300, 300], lines: ls }, 1, true);
+  w.step = step;
+  return S.tutorWorkGeom(w, 1000, 1400);
+};
+const wkS1 = wkAt(['3 units = 12', '1 unit = 12 ÷ 3', '5 units = ?'], 1);
+const wkS3 = wkAt(['3 units = 12', '1 unit = 12 ÷ 3', '5 units = ?'], 3);
+ok('the note is TALLER at step three than at step one',
+   wkS3.h > wkS1.h && wkS1.lines.length === 1 && wkS3.lines.length === 3,
+   'growing downwards is what makes the stepping read as one note filling in');
+ok('…and exactly as WIDE, so it never shuffles sideways under a child reading it',
+   Math.abs(wkS1.w - wkS3.w) < 0.001,
+   'the width is measured on the WHOLE block and the height on what shows');
+ok('…and its top-left corner never moves',
+   Math.abs(wkS1.x - wkS3.x) < 0.001 && Math.abs(wkS1.y - wkS3.y) < 0.001);
+/* THE CLAMP IS AGAINST THE BLOCK'S FULL HEIGHT. Clamped against what is
+   DRAWN, a note near the foot of the page is pushed upwards a line at a
+   time as it fills in — the note crawling up the paper while it is read. */
+const wkFoot = step => {
+  const w = S.tutorWorkMake({ at: [980, 100], lines: ['a', 'b', 'c', 'd ?'] }, 1, true);
+  w.step = step;
+  return S.tutorWorkGeom(w, 1000, 1400);
+};
+const wkLowA = wkFoot(1);
+const wkLowB = wkFoot(4);
+ok('a note near the foot of the page does not crawl upwards as it fills in',
+   /if \(y \+ full > H\) y = H - full;/.test(WORK_SRC) &&
+   wkLowA.y < 1400 * 0.98 &&            // the clamp really bit, or this proves nothing
+   Math.abs(wkLowA.y - wkLowB.y) < 0.001 && wkLowB.y + wkLowB.h <= 1400.001,
+   JSON.stringify({ one: Math.round(wkLowA.y), four: Math.round(wkLowB.y) }));
+ok('a bottom-corner note still lands ON the page at every step',
+   [1, 2, 3, 4].every(k => {
+     const g = S.tutorWorkGeom(Object.assign(S.tutorWorkMake({ at: [995, 995], lines: ['a', 'b', 'c', 'd ?'] }, 1, true), { step: k }), 1000, 1400);
+     return g.x >= 0 && g.y >= 0 && g.x + g.w <= 1000.001 && g.y + g.h <= 1400.001;
+   }));
+
+/* THE NOTE SAYS THERE IS MORE. It takes no pointer, so the thing that
+   advances it is elsewhere on the screen — and a child shown one line with
+   nothing to say a second exists has been handed a method that stops in the
+   middle, which reads as the tutor having finished. */
+ok('the note reports which step it is on while more remain',
+   wkS1.more === true && wkS1.done === 1 && wkS1.total === 3 &&
+   /if \(g0\.more\) \{/.test(WORK_SRC) && /' of ' \+ g0\.total/.test(WORK_SRC));
+ok('…and says nothing once it is finished', wkS3.more === false);
+ok('the step is part of the drawn node’s identity',
+   /w\.made \+ ':' \+ tutorWorkSteps\(w\) \+ ':'/.test(WORK_SRC),
+   'a `want` built from the stamp and the zoom alone leaves the note on one line for ever while the chip counts up');
+
+/* THE CHIP — the ONE control that fills the note in. */
+ok('the chip can never swallow a stroke',
+   /#workStep \{[^}]*pointer-events: none;/.test(html) && /#workStep button \{ pointer-events: auto;/.test(html),
+   'the bar is wider than the buttons in it, and it sits over a page a child writes on with a stylus');
+ok('a ONE-line note gets no chip at all',
+   /w\.lines && w\.lines\.length > 1/.test(WORK_SRC),
+   'there is nothing to reveal, so a control offering to reveal it does nothing');
+ok('the chip is repainted wherever the step moves, from the ONE sync',
+   /function syncTutorWork\(\) \{ pages\.forEach\(renderTutorWorkOn\); renderWorkStep\(\); \}/.test(WORK_SRC),
+   'a step moved without the chip repainted is a chip counting a line that is not there');
+ok('…and it offers the note again rather than vanishing at the last step',
+   /From the start/.test(WORK_SRC) && /tutorWorkRestart\(\)/.test(WORK_SRC));
+ok('the chip is lifted clear of the maths pad and the keyword check on a phone',
+   /if \(step\) step\.style\.bottom = \(h && phone\) \? up : '';/.test(html),
+   'a chip buried under the maths pad is the one control that fills the working in, unreachable');
+ok('every DOM call in the chip is defensive',
+   /typeof \$ === 'function' \? \$\('workStep'\) : null/.test(WORK_SRC),
+   'the harnesses run slices of this file with a mock document');
+
+/* BOTH PROMPTS ASK FOR STEPS, and both are told the lines are revealed one
+   at a time — a model that does not know that writes half a step per line. */
+ok('HINT_SYS says the lines are revealed one at a time',
+   /REVEALED ONE AT A TIME/.test(HINT_SYS_SRC) && /At most 4 lines, at most 34 characters each/.test(HINT_SYS_SRC));
+ok('…and the live prompt says it too',
+   /REVEALED ONE AT A TIME/.test(LIVE_SYS_SRC) && /at most 4 lines, at most 34 characters each/.test(LIVE_SYS_SRC));
+ok('…and the ladder’s own request asks for four short lines, stepped',
+   /at most FOUR short/.test(LADDER_SRC) && /ONE AT A TIME/.test(LADDER_SRC));
 
 /* THE TWO PRODUCERS. */
 ok('the hint ladder asks for working only where the ladder allows it',
@@ -6265,11 +6408,90 @@ ok('the button is a MODE, not a tool',
    — the app carries on looking exactly as it did that morning.
    ===================================================================== */
 ok('`window.askGemini` is still the ONE door, and it goes through the loop',
-   /window\.askGemini = async function askGemini\([^)]*\) \{\s*return aiAskWith\(prompt, opts, aiEngineOrder\(\)\);/.test(html),
+   /window\.askGemini = async function askGemini\([^)]*\) \{\s*return aiAskWith\(prompt, opts, aiEngineOrder\(opts\.task\)\);/.test(html),
    'a door that calls askGeminiDirect again is every call site back on one engine, with no backup at all');
 ok('…and `askGeminiDirect` is reached only through the dispatcher',
    (html.match(/askGeminiDirect\(prompt, opts\)/g) || []).length === 1,
    'a second call site past _aiRun is a call that still dies on the cap with nothing saying why');
+
+/* =====================================================================
+   🤖 THE TEACHING RUNS ON CHATGPT ASTRA 6
+   The hint ladder, the live reply and the maths pad are the three calls
+   that write the working and the steps a child reads, and the centre
+   teaches on `gpt-6-astra`. Everything else — the marking run, the chat,
+   the mistake reader — is untouched and still leads with whatever the
+   centre's own `config/admin.aiEngine` says.
+   Both directions are silent: a teaching call that stops naming the task
+   quietly goes back to the shared engine while every screen still says
+   ChatGPT, and a marking call that STARTS naming it puts thirty students'
+   papers on a bill nobody asked for.
+   ===================================================================== */
+ok('the model is named ONCE, and it is gpt-6-astra',
+   /const OPENAI_MODEL = "gpt-6-astra";/.test(html) &&
+   (html.match(/"gpt-6-astra"/g) || []).length === 1,
+   'a model id typed at a call site is one that goes stale somewhere nobody looks');
+ok('…and it is SENT to ChatGPT',
+   /function askOpenAiServer\(prompt, opts\) \{ return _aiServerAsk\("askOpenAi", prompt, opts, \{ model: OPENAI_MODEL \}\); \}/.test(html),
+   'the server picking for itself is the centre teaching on whatever that function happens to default to');
+ok('…and NOT to Kimi, which renames its flagship every release',
+   /function askKimiServer\(prompt, opts\) \{ return _aiServerAsk\("askKimi", prompt, opts\); \}/.test(html),
+   'this app has no box to correct a stale Moonshot id in, so the function falls back to its own');
+ok('no temperature is sent to a server route either',
+   !/temperature:/.test(between('async function _aiServerAsk(', '/* A reasoning model', 'the server call')),
+   'a reasoning model runs only at its own, and one sent is a 400 rather than a worse answer');
+
+ok('the teaching task leads with ChatGPT',
+   /const AI_TASK_ENGINE = \{ teach: "openai" \};/.test(html) &&
+   /const first = \(task && AI_TASK_ENGINE\[task\]\) \|\| _aiPreferred;/.test(html));
+ok('…and the other engines stay BEHIND it rather than being taken away',
+   /\[first\]\.concat\(AI_ENGINES\.filter\(e => e !== first\)\)/.test(html),
+   'an OpenAI account out of credit must be a slower hint from Gemini, never no hint at all');
+ok('…and an unknown task falls back to the centre’s own setting',
+   /\(task && AI_TASK_ENGINE\[task\]\) \|\| _aiPreferred/.test(html),
+   'a typo must never take the AI off every device at once');
+ok('the panel reports the teaching order and the model',
+   /teachOrder: aiEngineOrder\("teach"\)/.test(html) && /openAiModel: OPENAI_MODEL/.test(html),
+   'an app whose teaching runs on a different engine from its marking looks exactly like one that does not');
+
+/* THE CENSUS. It reads the call sites out of the file rather than trusting
+   anybody to remember, and it fails in BOTH directions — which is the half
+   that matters, because the next call site is the one nobody will think
+   about. A name added to this list is a decision about the bill. */
+const TEACH_CALLS = new Set([
+  'hintLadderFor',    // 💡 the hint ladder — writes the rungs and the working
+  'mthWorkCheck',     // ✏️ the maths pad's next step
+  'mthModelBuild',    // 📐 the drawn bar model, on the same method rung
+  'runLiveDelegation' // 🎧 the spoken reply — writes the working markers
+]);
+const askSites = [];
+for (let i = html.indexOf('window.askGemini('); i >= 0; i = html.indexOf('window.askGemini(', i + 1)) {
+  /* THE ENCLOSING FUNCTION IS THE NEAREST TOP-LEVEL DECLARATION ABOVE THE
+     CALL — matched at column 0, never anywhere indented. The live reply
+     declares `liveFlush` inside itself and above its own call, so a scan
+     that took the nearest declaration of ANY kind would file that call
+     under the nested helper: a name nobody would think to put on the list
+     below, and a census quietly green over a call it never checked. */
+  const m = [...html.slice(0, i).matchAll(/^(?:async )?function ([A-Za-z_$][\w$]*)\s*\(/gm)].pop();
+  /* The options object runs to the first line that closes the call. The
+     window is generous because the live reply's system prompt alone is
+     several thousand characters, and a window that stopped short of the
+     options would read every one of them as untagged. */
+  const tail = html.slice(i, i + 20000);
+  const end = tail.search(/\n\s*\}\);/);
+  askSites.push({ fn: m ? m[1] : '(top level)', opts: tail.slice(0, end < 0 ? 20000 : end) });
+}
+ok('every teaching call names the task', (() => {
+  const missing = askSites.filter(c => TEACH_CALLS.has(c.fn) && !/task: 'teach'/.test(c.opts)).map(c => c.fn);
+  return missing.length === 0 || missing.join(', ');
+})() === true, 'a teaching call that stops naming it goes back to the shared engine with nothing on screen saying so');
+ok('…and nothing else does', (() => {
+  const extra = askSites.filter(c => !TEACH_CALLS.has(c.fn) && /task: 'teach'/.test(c.opts)).map(c => c.fn);
+  return extra.length === 0 || extra.join(', ');
+})() === true, 'every student-facing call on the paid engine is a bill nobody asked for');
+ok('…and all four of them are really there',
+   askSites.filter(c => TEACH_CALLS.has(c.fn)).length === TEACH_CALLS.size,
+   'a renamed function leaves a stale name on the list and the census going green over nothing: ' +
+   askSites.map(c => c.fn).join(', '));
 ok('the backups are SERVER-KEYED and there is no key box',
    /askOpenAi/.test(html) && /askKimi/.test(html) && !/type="password"/.test(html),
    'this app is opened by children on shared iPads — a key field here is a key typed on the wrong device');
