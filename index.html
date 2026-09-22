@@ -2571,7 +2571,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.49.0';
+var APP_VERSION = 'v1.49.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -22283,11 +22283,15 @@ function renderEngineBody() {
            'written and checked against — and fall back through ' +
            escHtml(st.teachOrder.slice(1).join(', ')) + ' exactly as everything else does.</p>';
     }
-    if (st.openAiModel) {
-      h += '<p class="sub" style="margin-top:10px">ChatGPT is asked for <b>' + escHtml(st.openAiModel) +
-           '</b>. The Cloud Function falls back to its own current model if it does not know that name, so a ' +
-           'rename upstream is a worse model for a while rather than a dead app.</p>';
-    }
+    /* WHICH MODEL, read back off the reply rather than named here — so it
+       is what really answered, and it corrects itself the moment the shared
+       function moves. Silence before the first call is the honest answer. */
+    var mOpen = st.models && st.models.openai;
+    h += '<p class="sub" style="margin-top:10px">' + (mOpen
+      ? 'ChatGPT last answered on <b>' + escHtml(mOpen) + '</b>.'
+      : 'ChatGPT has not been asked yet this session, so the model it runs is not known here.') +
+      ' The <code>askOpenAi</code> function in the Maths repo chooses it, deliberately — a page that could ' +
+      'name a model could name an expensive one, and the bill is the centre’s.</p>';
     if (st.last) {
       h += '<p class="sub" style="margin-top:10px">The last answer came from <b>' + escHtml(st.last) + '</b>' +
            (st.fellBack ? ', after an earlier route refused.' : '.') + '</p>';
@@ -24497,20 +24501,20 @@ const AI_ENGINES = ["gemini", "openai", "kimi"];
 const AI_ROUTE_LABEL = { gemini: "Gemini", openai: "ChatGPT (server key)", kimi: "Kimi (server key)" };
 const AI_ENGINE_VENDOR = { gemini: "Gemini", openai: "ChatGPT", kimi: "Kimi" };
 
-/* \ud83e\udd16 THE MODEL IS NAMED, ONCE, AND IT IS SENT.
-   Every other field on the server call is deliberately absent — no
-   temperature, because a reasoning model runs only at its own and one sent
-   is a 400 rather than a worse answer; and no model for Kimi, because
-   Moonshot renames its flagship every release and this app has no box to
-   correct a stale id in. ChatGPT is the opposite case on both counts: the
-   centre teaches on `gpt-6-astra` and says so, and an id that goes stale
-   here is one line in this file rather than a redeploy of a Cloud Function
-   shared with five other apps.
-   IT IS A REQUEST, NOT A GUARANTEE, and that is what makes it safe to send:
-   the function validates the name and falls back to its own current model
-   when it does not know this one, so a rename upstream costs a worse model
-   for a while and never a dead app. */
-const OPENAI_MODEL = "gpt-6-astra";
+/* \ud83e\udd16 WHICH MODEL ANSWERED IS READ BACK, NEVER NAMED HERE.
+   The centre teaches on ChatGPT `gpt-6-astra`, and the ONE place that is
+   decided is the `askOpenAi` Cloud Function in `polymathlc/math` — which
+   picks the model SERVER-SIDE on purpose, because a client that could name
+   a model could name an expensive one and the bill is the centre's. So
+   nothing here asks for one: a field this app sent would be ignored, and a
+   constant mirroring the server's would go stale in silence the first time
+   that function was redeployed — leaving the admin's panel confidently
+   naming a model nothing had used for months.
+   BOTH CALLABLES RETURN THE MODEL THEY REALLY USED, so the panel reports a
+   fact rather than an intention, and it corrects itself the moment the
+   server moves. Before the first call it knows nothing and says so — the
+   rule that whole panel is built on. */
+const _aiModel = { openai: "", kimi: "" };
 
 /* WHICH ENGINE LEADS CAN DEPEND ON THE TASK, and exactly one task asks:
    TEACHING — the hint ladder, the live reply and the maths pad, the three
@@ -24583,18 +24587,22 @@ async function _aiServerAsk(name, prompt, opts, extra) {
   }, extra || {}));
   const text = res && res.data && res.data.text;
   if (typeof text !== "string" || !text.trim()) throw new Error("The " + name + " route returned an unexpected response shape.");
+  /* A reply that carries no model leaves the last one it DID carry alone
+     rather than blanking it: "the server stopped saying" and "nothing has
+     answered yet" are different things, and only one of them is worth
+     printing as a gap. */
+  const used = res.data.model;
+  if (typeof used === "string" && used.trim()) _aiModel[name === "askKimi" ? "kimi" : "openai"] = used.trim();
   return text.trim();
 }
-/* A reasoning model runs only at its own default temperature, so NO
-   TEMPERATURE is sent at all: one would be a 400 rather than a worse
-   answer. `thinkingLevel` is deliberately not translated either — an
-   argument a model does not know is a failed call.
-   THE MODEL IS SENT TO CHATGPT AND NOT TO KIMI, and the asymmetry is the
-   point: the centre teaches on `gpt-6-astra` and names it, while Moonshot
-   renames its flagship every release and this app has no box to correct a
-   stale id in — so the Kimi function falls back to its own current one when
-   the client names nothing. */
-function askOpenAiServer(prompt, opts) { return _aiServerAsk("askOpenAi", prompt, opts, { model: OPENAI_MODEL }); }
+/* NOTHING IS SENT TO A SERVER ROUTE BUT THE ASK. No temperature — a
+   reasoning model runs only at its own default and one sent is a 400 rather
+   than a worse answer. No model either, to EITHER of them: both functions
+   choose server-side on purpose, so a name from here is at best ignored and
+   at worst a client deciding what the centre is billed for.
+   `thinkingLevel` is deliberately not translated — an argument a model does
+   not know is a failed call. */
+function askOpenAiServer(prompt, opts) { return _aiServerAsk("askOpenAi", prompt, opts); }
 function askKimiServer(prompt, opts) { return _aiServerAsk("askKimi", prompt, opts); }
 
 function _aiRun(engine, prompt, opts) {
@@ -24667,7 +24675,7 @@ window.aiEngines = function aiEngines() {
        panel says both orders and names the model rather than leaving it to
        be assumed. */
     teachOrder: aiEngineOrder("teach").map(e => AI_ROUTE_LABEL[e] || e),
-    openAiModel: OPENAI_MODEL,
+    models: Object.assign({}, _aiModel),
     last: _aiLast.engine ? (AI_ROUTE_LABEL[_aiLast.engine] || _aiLast.engine) : "",
     fellBack: !!_aiLast.fellBack,
     why: Object.assign({}, _aiWhy),

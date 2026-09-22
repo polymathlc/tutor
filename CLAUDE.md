@@ -1658,16 +1658,20 @@ literal rather than a `var` assigned up there.
 - **NO TEMPERATURE IS SENT TO A SERVER ROUTE.** A reasoning model runs only at
   its own default and one sent is a **400** — not a worse answer, no answer at
   all. `thinkingLevel` is deliberately not translated either.
-- **⚡ THE MODEL IS SENT TO CHATGPT AND NOT TO KIMI**, and the asymmetry is the
-  point. `OPENAI_MODEL` is **`gpt-6-astra`**, named ONCE — the centre teaches on
-  it and says so, and an id that goes stale is one line in this file rather than
-  a redeploy of a Cloud Function shared with five other apps. **Nothing names a
-  model to Kimi**: Moonshot renames its flagship every release, this app has no
-  box to correct a stale id in, and that function falls back to its own current
-  one when the client names none. **It is a REQUEST, not a guarantee**, and that
-  is what makes it safe to send: the function validates the name and falls back
-  when it does not know this one, so a rename upstream is a worse model for a
-  while rather than a dead app.
+- **⚡ NO MODEL IS SENT TO EITHER SERVER ROUTE, AND WHICH ONE ANSWERED IS READ
+  BACK.** The centre teaches on ChatGPT **`gpt-6-astra`**, and the ONE place
+  that is decided is the `askOpenAi` Cloud Function in `polymathlc/math`, which
+  picks it **server-side on purpose** — *"a client that could name a model could
+  name an expensive one, and the bill is the centre's"*, in that file's own
+  words. So a model named here is ignored on the way out, and **a constant
+  mirroring the server's would go stale in silence on the way back**, leaving
+  the admin's panel confidently naming a model nothing had used for months.
+  Both callables **return** the model they really used, so `_aiModel` records it
+  and the panel reports a FACT rather than an intention — and corrects itself the
+  moment that function moves. **A reply carrying no model leaves the last one
+  alone**: "the server stopped saying" and "nothing has answered yet" are
+  different things, and only one is worth printing as a gap. The harness pins
+  that **no model id is a VALUE anywhere in this file**.
 - **⚡ WHICH ENGINE LEADS CAN DEPEND ON THE TASK, AND EXACTLY ONE TASK ASKS**
   (`AI_TASK_ENGINE`, `aiEngineOrder(task)`, `askGemini(…, { task: 'teach' })`).
   **TEACHING** — the 💡 hint ladder, the 🎧 live reply and the ✏️ maths pad's two
@@ -4208,10 +4212,12 @@ and nothing on any screen says what changed.
   the live reply files itself under the `liveFlush` declared inside it and the census goes green
   over a call it never checked. Take the other engines out from behind ChatGPT and an OpenAI
   account out of credit is no hint at all rather than a slower one; let an unknown task fall
-  through to an empty order and a typo takes the AI off every device at once. Send the model to
-  KIMI as well and the first Moonshot rename is a 404 on every backup call, in an app with no box
-  to correct it in. And type `gpt-6-astra` at a call site as well as in the constant and there
-  are two ids to keep in step, one of them somewhere nobody looks.
+  through to an empty order and a typo takes the AI off every device at once. Name a model to
+  EITHER server route and it is a page deciding what the centre is billed for — both functions
+  choose server-side on purpose and ignore it anyway. And mirror the server's id into a constant
+  here and the panel goes on naming it for months after that shared function was redeployed, with
+  nothing anywhere able to say so: read it back off the reply, which is what both callables
+  return it for.
 - After touching **📎 the pasted picture** (`annPastePic`, `annLocked`, `annLockedId`,
   `annPicWarm`, `annPicFor`, `annPicsReady`, `shrinkImageDataUrl`, `imageRatio`, `pastePicBox`,
   `pasteGoesToWorksheet`, `pasteImageOntoPage`, `pasteImagesFromClipboard`, `pastePicNode`,
