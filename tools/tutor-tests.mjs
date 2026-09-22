@@ -4750,6 +4750,130 @@ ok('the class list is the TEACHER\'s and is drawn from the filtered list',
    /list\.forEach\(function \(a\) \{ rows\.appendChild\(setCardNode\(a, \{ row: true \}\)\); \}\);/.test(html));
 
 /* =====================================================================
+   📌 TAKING A PAPER OFF THE CLASS LIST  (v1.52.0)
+   ---------------------------------------------------------------------
+   Reported: the button answered “Could not take it off the list: No
+   document to update: …/tutorWorksheets/<id>” every single time, so the
+   card could not be got rid of at all — and the take-off had in fact
+   happened, because the write that failed was the SECOND one.
+
+   So this is run for real against a Firestore that can be told to refuse
+   whichever of the two writes we like: the whole fault is about which
+   write failed, what the app then said, and what it repainted afterwards,
+   and a regex over the source can see none of the three.
+   ===================================================================== */
+section('📌 Taking a paper off the class list');
+
+const SRC_UNPUSH = between('function docMissingError(e) {', 'var ASSIGN_OPEN_KEY =',
+  'taking a paper off the class list');
+
+async function unpushRun(opts) {
+  opts = opts || {};
+  const writes = [];
+  const order = [];
+  const said = [];
+  const sand = {
+    console: { warn() {}, error() {}, log() {} },
+    String, RegExp, Boolean, Object, Array, JSON, Math,
+    isAdmin: u => !!u && u.email === 'chungzhikai@gmail.com',
+    currentUser: 'user' in opts ? opts.user : { email: 'chungzhikai@gmail.com' },
+    ASSIGN_COLLECTION: 'tutorAssignments',
+    COLLECTION: 'tutorWorksheets',
+    assignRulesHint: () => 'PASTE-THIS-RULE',
+    worksheets: opts.worksheets || [],
+    toast: m => { said.push(String(m)); },
+    loadAssignments: async () => { order.push('load'); },
+    renderWorksheets: () => { order.push('paint'); },
+    db: {
+      collection: c => ({
+        doc: () => ({
+          update: async () => {
+            writes.push(c);
+            const e = (opts.fail || {})[c];
+            if (e) throw e;
+          }
+        })
+      })
+    }
+  };
+  vm.createContext(sand);
+  vm.runInContext(SRC_UNPUSH, sand, { filename: 'index.html' });
+  await sand.unpushWorksheet('w1');
+  return { writes, order, said: said.join(' | '), sand };
+}
+
+const UP_NOT_FOUND = {
+  code: 'not-found',
+  message: 'No document to update: projects/mathgen--app/databases/(default)/documents/tutorWorksheets/5TgQjEkzhz6zlp51WXXJ'
+};
+const UP_DENIED = { code: 'permission-denied', message: 'Missing or insufficient permissions.' };
+
+/* ---- What “the document is not there” is, and what it is not ---- */
+const UP0 = (await unpushRun({})).sand;
+ok('a `not-found` code is a document that has gone', UP0.docMissingError({ code: 'not-found' }) === true);
+ok('…and so is Firestore’s own wording for it, which is what was reported',
+   UP0.docMissingError({ message: UP_NOT_FOUND.message }) === true);
+ok('a REFUSED write is not a missing document — that one really did fail',
+   UP0.docMissingError(UP_DENIED) === false);
+ok('…and neither is a missing PDF: `object-not-found` is `pdfMissingError`’s question',
+   UP0.docMissingError({ code: 'storage/object-not-found', message: 'Object does not exist.' }) === false);
+ok('nothing at all is not a missing document', UP0.docMissingError(null) === false);
+
+/* ---- The reported fault ---- */
+const UP1 = await unpushRun({
+  fail: { tutorWorksheets: UP_NOT_FOUND },
+  worksheets: [{ id: 'w1', pushed: true }]
+});
+ok('THE REPORTED FAULT: the teacher’s own copy has been deleted, and the take-off SUCCEEDS',
+   !/Could not take it off/.test(UP1.said) && /Taken off the class list/.test(UP1.said), UP1.said);
+eq('both writes are still attempted, the assignment first — it is the take-off',
+   UP1.writes, ['tutorAssignments', 'tutorWorksheets']);
+eq('…and the screen is put right even though the housekeeping write threw',
+   UP1.order, ['load', 'paint']);
+ok('…and the copy’s own flag is cleared in memory whatever the write said',
+   UP1.sand.worksheets[0].pushed === false);
+
+/* ---- The ordering, which is why the card stayed on the shelf ---- */
+const UP2 = await unpushRun({ worksheets: [{ id: 'w1', pushed: true }] });
+eq('THE LIST IS RELOADED BEFORE THE BOOKCASE IS REPAINTED, or the set card is drawn ' +
+   'from the very list that still holds it', UP2.order, ['load', 'paint']);
+
+/* ---- The assignment write IS the outcome ---- */
+const UP3 = await unpushRun({ fail: { tutorAssignments: UP_DENIED } });
+eq('a refused assignment write stops there — the copy is never touched', UP3.writes, ['tutorAssignments']);
+eq('…and nothing is repainted over a take-off that did not happen', UP3.order, []);
+ok('…and the refusal names the rule to paste rather than only “failed”',
+   /PASTE-THIS-RULE/.test(UP3.said), UP3.said);
+const UP3b = await unpushRun({ fail: { tutorAssignments: { message: 'network blip' } } });
+ok('any other failure is still named as itself',
+   /Could not take it off the list: network blip/.test(UP3b.said), UP3b.said);
+
+/* ---- A card out of date ---- */
+const UP4 = await unpushRun({ fail: { tutorAssignments: UP_NOT_FOUND } });
+ok('an assignment that has ALREADY gone is a card out of date, never a failure',
+   /already off the class list/.test(UP4.said) && !/Could not take it off/.test(UP4.said), UP4.said);
+eq('…and the screen is still put right', UP4.order, ['load', 'paint']);
+
+/* ---- It is the teacher’s, refused in the handler ---- */
+const UP5 = await unpushRun({ user: { email: 'kid@example.com' } });
+eq('a student presses it and nothing is written', UP5.writes, []);
+eq('…and nothing is repainted', UP5.order, []);
+
+/* ---- The record is kept, and that is load-bearing ---- */
+ok('THE RECORD IS KEPT, NEVER DELETED: `worksheetReadByClass` reads whether it EXISTS to ' +
+   'decide the class still shares the PDF, so a hard delete takes the file away from every ' +
+   'student who had already started',
+   /\.update\(\{ active: false \}\)/.test(SRC_UNPUSH) &&
+   !/ASSIGN_COLLECTION\)\.doc\(id\)\.delete\(\)/.test(SRC_UNPUSH));
+
+/* ---- Setting one has the same ordering, for the same reason ---- */
+ok('📌 SETTING a paper reloads the list before it repaints the bookcase too, or the card it ' +
+   'has just set goes on reading “Not set for the class”',
+   /await loadAssignments\(\);\n\s*renderWorksheets\(\);/.test(
+     between('await db.collection(COLLECTION).doc(w.id).update({ pushed: true });',
+             'var shelfOf =', 'the push’s repaint')));
+
+/* =====================================================================
    📌 THE SET LIST IS FOLDED AWAY (v1.41.0)
    ---------------------------------------------------------------------
    Every failure here is silent and the home screen still paints. Fold it

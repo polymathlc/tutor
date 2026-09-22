@@ -2081,6 +2081,54 @@ knew who was looking at it.**
   on a child's shelf is something nothing on the screen would ever explain.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 📌 TAKING A PAPER OFF THE CLASS LIST (v1.52.0)
+
+**`docMissingError`** and **`unpushWorksheet`** (search `TAKING A PAPER OFF THE CLASS LIST`), and
+the `await loadAssignments(); renderWorksheets();` at the foot of **`pushWorksheet`**.
+
+**Take off the list** answered *“Could not take it off the list: No document to update:
+…/documents/tutorWorksheets/&lt;id&gt;”* — and answered it EVERY time, so the card could not be got
+rid of at all. Two faults, and both are silent.
+
+- **THE WRITE THAT FAILED WAS THE SECOND ONE, AND THE FIRST HAD ALREADY LANDED.** `active: false`
+  on the ASSIGNMENT *is* the take-off; `pushed: false` on the TEACHER'S OWN copy is a local mirror
+  of it, and one `try` round both reported a take-off that really happened as a failure. **The
+  card this was reported on is the one card where that copy cannot exist**: `shelfEntries` draws
+  the teacher's OWN card whenever their copy is there (their upload carries the assignment's id),
+  so a `setCardNode` on the teacher's bookcase means the copy has been deleted — the one card that
+  can show the button with no copy behind it was the one card the button could never work on. The
+  flag is best effort now, which costs nothing: **`worksheetSetState` reads the assignment LIVE**
+  and falls back to `w.pushed` only before the list has arrived.
+- **THE BOOKCASE WAS REPAINTED BEFORE THE LIST WAS RELOADED.** `renderWorksheets()` ran ahead of
+  `await loadAssignments()`, so it was drawn from the very list that still held the paper: the set
+  card stayed on the shelf and the teacher's own card went on saying *📌 Set for the class* until
+  something else happened to repaint. A take-off that reports success and changes nothing on the
+  screen is the fault 📌 v1.29.0 exists to answer, upside down. **`pushWorksheet` had the same
+  ordering the other way round** — the card it had just set read *⬦ Not set for the class* — so
+  both now reload the list and then repaint.
+- **THE ASSIGNMENT WRITE IS THE OUTCOME AND EVERYTHING AFTER IT IS HOUSEKEEPING.** That split is
+  the whole fix: a refused assignment write stops there, names the reason and carries
+  `assignRulesHint()` when it is a refusal (the rule `pushWorksheet` already follows); a refused
+  copy write is a `console.warn` and nothing else.
+- **AN ASSIGNMENT THAT HAS ALREADY GONE IS A CARD OUT OF DATE, NEVER A FAILURE.** What the teacher
+  pressed for is already true, so it is said as such and the screen is still put right — rather
+  than an error repeated for ever about something that has happened.
+- **`docMissingError` IS DELIBERATELY NOT A LOOSE `/not-found/`.** Storage answers
+  `object-not-found` for a missing PDF and that is `pdfMissingError`'s question, on a different
+  wire with a different remedy; this one is `code === 'not-found'` or Firestore's own *No document
+  to update* wording, and nothing else.
+- **AND THERE IS DELIBERATELY NO HARDER DELETE THAN THIS**, which is the question the next person
+  asks. The record is KEPT (`active: false`) rather than removed, because **`worksheetReadByClass`
+  reads whether it EXISTS** to decide the teacher's own copy still shares its PDF with the class:
+  delete it and deleting that copy takes the file away from every student who had already started,
+  which is exactly the fault v1.23.1 fixed. The PDF is left standing for the same reason, and the
+  teacher cannot read another account's copies to know whether anybody still needs it. **Off the
+  list the paper is invisible on every screen**, which is what “remove it” has to mean here.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it. The pins RUN the real function
+  against a Firestore that can be told to refuse whichever of the two writes it likes — the whole
+  fault is about which write failed, what the app then said and what it repainted, and a regex
+  over the source can see none of the three.
+
 ## 📌 THE SET LIST IS FOLDED AWAY (v1.41.0)
 
 `ASSIGN_OPEN_KEY` / `assignOpen` / `setAssignOpen` / `toggleAssignOpen` / **`assignAttention`**,
@@ -4389,6 +4437,27 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📌 taking a paper off the class list** (`docMissingError`,
+  `unpushWorksheet`, or the `await loadAssignments(); renderWorksheets();`
+  at the foot of `pushWorksheet`), run `node tools/tutor-tests.mjs`. Both
+  directions are silent. **Put the copy's `pushed` write back inside the
+  assignment's own `try` and a take-off that really happened is reported as
+  a failure for ever** — on the one card it matters, because a set card on
+  the teacher's own bookcase means their copy has already been deleted,
+  which is the reported bug. Repaint the bookcase before the list is
+  reloaded and the card stays on the shelf after a take-off that worked,
+  and the teacher's own card goes on saying “📌 Set for the class”; do it in
+  `pushWorksheet` and the card it has just set reads “⬦ Not set for the
+  class”. Let a REFUSED assignment write carry on and the screen is
+  repainted over a take-off that did not happen, with the paper still set
+  for the class; stop naming the rules hint and a one-line Firestore fix
+  reads as “failed”. Loosen `docMissingError` to `/not-found/` and it
+  swallows Storage's `object-not-found`, so a missing PDF is reported as a
+  card out of date. And **hard-delete the assignment record instead of
+  writing `active: false` and `worksheetReadByClass` can no longer tell
+  that the class shares that PDF** — the teacher's own copy then deletes
+  the one file every student who had already started is reading, which is
+  the fault v1.23.1 fixed.
 - After touching **📅 a shelf's year** (`SHELF_YEAR_RE`, `shelfYearOf`,
   `shelfYearRank`, `shelfYearsIn`, `shelfRacked`, `shelfRackTitle`,
   `shelfRackId`, `shelfWhereLabel`, `shelfYearOptions`, `shelfRackNode`,
