@@ -743,6 +743,111 @@ ok('…and still reads the history the broken one left behind',
 ok('…and adds the two rather than reporting only the newer',
    counters.both === 61, 'got ' + counters.both);
 
+/* =====================================================================
+   📅 A SHELF STANDS IN A YEAR'S RACK — the plate, and the jump chips
+   ---------------------------------------------------------------------
+   Every pin in the harness asks what the source SAYS. Whether the plate
+   is really on the page, whether there is one chip per rack, and whether
+   pressing one really moves the page are the three things only a browser
+   can answer — and all three are exactly what was asked for.
+   ===================================================================== */
+const rack = await page.evaluate(async () => {
+  const host = document.createElement('div');
+  host.style.cssText = 'height:300px;overflow:auto';
+  document.body.appendChild(host);
+
+  const cat = shelfNorm([
+    { id: 'a', name: 'WA1', year: '2025', order: 0 },
+    { id: 'b', name: 'WA1', year: '2026', order: 1 },
+    { id: 'c', name: 'Topical', order: 2 }
+  ]);
+  const shelfOf = w => w.shelf || '';
+  const papers = [
+    { id: 'p1', level: 'P5', subject: 'science', shelf: 'a' },
+    { id: 'p2', level: 'P5', subject: 'science', shelf: 'b' },
+    { id: 'p3', level: 'P5', subject: 'science', shelf: 'c' }
+  ];
+  const secs = shelfSections(papers, { shelves: cat, shelfOf, now: Date.now() });
+
+  /* Drawn exactly as `renderWorksheets` draws it: the chips, then a plate
+     wherever the year changes, then the shelf. */
+  const chips = shelfYearChips(secs);
+  if (chips) host.appendChild(chips);
+  let last = null;
+  secs.forEach(sec => {
+    if (sec.kind === 'shelf') {
+      const y = shelfYearOf({ year: sec.year });
+      if (last !== y) { last = y; host.appendChild(shelfRackNode(y)); }
+    }
+    const sh = document.createElement('div');
+    sh.className = 'shelf';
+    sh.style.height = '220px';
+    sh.textContent = sec.title;
+    host.appendChild(sh);
+  });
+
+  const plates = [...host.querySelectorAll('.shelfRack')];
+  const chipEls = chips ? [...chips.querySelectorAll('.shelfYearChip')] : [];
+
+  /* A plate that is in the document and invisible is a plate nobody has. */
+  const seen = plates.filter(p => {
+    const r = p.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 && getComputedStyle(p).display !== 'none';
+  });
+
+  /* Pressing a chip must really move the page. */
+  host.scrollTop = 0;
+  const before = host.scrollTop;
+  const target = chipEls.find(c => c.textContent === 'Undated');
+  if (target) target.click();
+  /* `scrollIntoView` is ASYNCHRONOUS when it is smooth, which it is
+     unless the student asked for reduced motion — read straight back it
+     reports the scroll that has not happened yet, which reads as a chip
+     that does nothing. */
+  await new Promise(r => setTimeout(r, 700));
+  const after = host.scrollTop;
+
+  /* …and a bookcase nobody has filed grows no plate and no chips at all. */
+  const flatSecs = shelfSections(papers.map(p => ({ ...p, shelf: 'c' })),
+                                 { shelves: cat, shelfOf, now: Date.now() });
+  const flatChips = shelfYearChips(flatSecs);
+
+  const out = {
+    plates: plates.map(p => p.textContent),
+    ids: plates.map(p => p.id),
+    visible: seen.length,
+    chips: chipEls.map(c => c.textContent),
+    moved: after > before,
+    flatRacked: shelfRacked(flatSecs),
+    flatChips: !!flatChips,
+    /* The plate is drawn in the app's ink, not the timber's — a heading in
+       the same wood as the shelves under it reads as another shelf. */
+    plateBg: plates[0] ? getComputedStyle(plates[0]).backgroundImage : ''
+  };
+  host.remove();
+  return out;
+});
+
+ok('one year plate per rack, newest first, undated last',
+   JSON.stringify(rack.plates) === JSON.stringify(['📅 2026', '📅 2025', '🗂 Undated']),
+   JSON.stringify(rack.plates));
+ok('…and every one of them is really on the page', rack.visible === 3,
+   rack.visible + ' of ' + rack.plates.length + ' had a box');
+ok('…each with the id its chip jumps to',
+   JSON.stringify(rack.ids) === JSON.stringify(['shelfRack_2026', 'shelfRack_2025', 'shelfRack_none']),
+   JSON.stringify(rack.ids));
+ok('one chip per rack, in the same order',
+   JSON.stringify(rack.chips) === JSON.stringify(['2026', '2025', 'Undated']),
+   JSON.stringify(rack.chips));
+/* The whole point of the racks is that every year is still on the one
+   page, so what is needed is a way DOWN to a rack rather than a filter. */
+ok('pressing a chip really scrolls to that rack', rack.moved);
+ok('a bookcase nobody has filed grows no plate…', !rack.flatRacked);
+ok('…and no chips either', !rack.flatChips);
+ok('the plate is drawn in the app’s own ink, never in the timber',
+   !/gradient/.test(rack.plateBg) || rack.plateBg === 'none',
+   rack.plateBg);
+
 await browser.close();
 console.log('\n' + (fail ? '✗ ' + fail + ' failed, ' + pass + ' passed' : '✓ all ' + pass + ' passed'));
 process.exit(fail ? 1 : 0);

@@ -2135,6 +2135,109 @@ is still the teacher's alone and still the one place a paper is taken off, it si
   `renderAssignments` has always followed.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## 📅 A SHELF STANDS IN A YEAR'S RACK (v1.51.0)
+
+`SHELF_YEAR_RE` / `SHELF_YEAR_BACK` / `SHELF_YEAR_ON` / `SHELF_UNDATED_TITLE` / **`shelfYearOf`** /
+`shelfYearRank` / **`shelfYearsIn`** / **`shelfRacked`** / `shelfRackTitle` / `shelfRackId` /
+`shelfWhereLabel` / `shelfYearOptions`, the `year` kept by `shelfNorm` and **written by
+`shelfSave`**, the year arm of **`shelfGroupCompare`**, the `g.year` resolved in **`shelfGroups`**,
+the `year` on `shelfSections`' sections and on its empty-shelf sweep, the rack loop in
+`renderWorksheets` with **`shelfRackNode`** / **`shelfYearChips`** / `shelfScrollToRack`, the
+`year` argument on `shelfCreate` / `shelfRename`, `#shelfNameYear` in the ✎ dialog, and the
+`.shelfRack` / `.shelfYears` / `.shelfYearChip` CSS (search `A SHELF STANDS IN A YEAR'S RACK`).
+
+🗂 The year was a **WORD ON THE PLATE** and nothing else — “2025 WA1”, “2025 WA2”, “2025 EOY” — so
+adding 2024 and 2026 made one flat run of a dozen shelves with nothing to tell one year from the
+next and nothing to scroll between, which is the reported fault in the teacher's own words:
+*“i want to be able to add 2026 and 2024 and so on and scroll to them, they should have their
+individual vertical racks of papers.”* A shelf names its year now and the bookcase is stacked into
+one rack per year.
+
+- **AN EMPTY YEAR MEANS *EVERY* YEAR, and that direction is the whole migration** — the rule
+  🎓 `shelfFitsClass` already carries. Every shelf on a live bookcase has no year, so reading `''`
+  as “nowhere” empties a centre's entire bookcase into a rack nothing draws, on the deploy, with
+  nothing to migrate it back. A year this build does not accept reads as every year for the same
+  reason: a shelf on the undated rack is one a teacher can see and re-file, where one filed under a
+  year nothing draws has quietly left the bookcase.
+- **⚠️ THE YEAR IS A RACK, NOT A RULE ABOUT PAPERS, and that is what keeps this small enough to be
+  safe.** A paper has no year, so nothing here narrows what may go ON a shelf: `shelfFitsClass`,
+  `shelfDropOk` and `moveWorksheetToShelf` are untouched, and the harness pins that they never
+  learn the word. The CLASS axis decides what a shelf may hold; the YEAR axis only decides where
+  the shelf itself stands. **A year that could refuse a paper would be a second way to lose one**,
+  which is the thing the whole shelf section is built not to do.
+- **`shelfYearOf` IS THE ONE PLACE A SHELF'S YEAR IS READ**, the way `shelfFitsClass` is the one
+  place its class is decided — and every reader asks it: the normaliser, the grouping, the sections,
+  the renderer, the chips, both dialogs and both pickers.
+- **THE YEAR IS THE OUTERMOST THING A GROUP IS ORDERED BY** (`shelfGroupCompare`), or the same year
+  turns up again under every level and there is no “individual vertical rack” to scroll to at all.
+  Newest first, because that is the year being taught, and the undated rack is **always last** —
+  the rule the unsorted shelf already follows. The ranks are compared with `<` rather than `a - b`
+  for `shelfRank`'s reason: both are `Infinity` for an undated shelf, `Infinity − Infinity` is NaN,
+  and a NaN comparator leaves the whole bookcase in whatever order the engine's sort produced.
+- **A GROUP'S YEAR IS ITS SHELF'S, resolved after the grouping rather than made part of the key.** A
+  shelf has ONE year, so the year can never split a group — and with no catalogue every group is
+  undated, which is what keeps **`shelfGroups()` called with nothing byte-for-byte the grouping it
+  has always been**. It is set BEFORE the sort, which is what reads it.
+- **NOTHING IS RACKED UNTIL SOMETHING IS FILED** (`shelfRacked`). With every shelf undated — which
+  is every bookcase in the centre until somebody files one — a heading reading “Undated” over the
+  whole page says nothing at all, so none is drawn and the home screen is byte-for-byte the
+  bookcase this app had before years existed. Same property that made 🗂 the shelves and 🎓 the
+  class axis safe to ship over a live one.
+- **THE PLATES ARE PLACED BY THE SAME LOOP THAT DRAWS THE SHELVES**, off the order `shelfSections`
+  has already put them in. A second walk to place the racks is a second ordering, and the two would
+  disagree the first time a shelf moved — a 2026 plate over a 2025 shelf, on a page that otherwise
+  looks perfectly arranged.
+- **THE CHIPS ARE A WAY *DOWN*, NEVER A FILTER, and they are stateless on purpose.** Every year is
+  still on the one page, which is the point: a filter would hide the papers a teacher is comparing
+  this year's against, and a remembered year is one somebody set last Tuesday that comes back and
+  empties the screen. They are built from the **SECTIONS** rather than from the catalogue, so a chip
+  can never offer to jump to a rack that is not drawn — a shelf of another class, or one the scope
+  narrowed away, is not a rack. Under two racks none is drawn: one chip that scrolls to the top of
+  the page is furniture.
+- **THE PLATE IS DRAWN IN THE APP'S OWN INK, NOT THE TIMBER'S.** It is the label on the front of the
+  bookcase rather than part of it, and a heading in the same wood as the shelves under it reads as
+  another shelf.
+- **A SHELF'S OWN TITLE NEVER REPEATS ITS YEAR.** It is written once on the plate above, and
+  repeating it down every shelf under it is exactly the noise the `scoped` rule already drops the
+  class prefix to avoid.
+- **AN EMPTY SHELF WEARS ITS OWN YEAR**, or the same shelf stands on the undated rack while empty
+  and on 2026 the moment a paper lands on it — the bookcase disagreeing with itself about where a
+  shelf is.
+- **`undefined` KEEPS THE YEAR** (`shelfRename`), the rule the class beside it carries: a caller that
+  only wants to rename must not be able to un-date a shelf in silence, and every shelf made before
+  this has none, so a careless `|| ''` is indistinguishable from a deliberate “every year”. **A
+  re-rack moves no paper** and the toast says so — unlike a class change, there is nothing to fall
+  off.
+- **“WA1” ON THE 2025 RACK AND “WA1” ON THE 2026 RACK ARE TWO SHELVES.** The duplicate check is per
+  class AND per year; refusing the second would refuse the very thing this exists for.
+- **A NEW SHELF OPENS ON “Every year”, deliberately.** The racks are a VIEW rather than a scope, so
+  nothing on the screen says which year the teacher is working in and there is nothing to guess
+  from — and the calendar year is a guess, not an answer: pinned to it by default, a shelf meant for
+  every year disappears under one rack nobody chose. Blank is also what every shelf already carries,
+  so the default is the status quo and choosing a year is the deliberate act it should be.
+- **THE PICKER OFFERS A WINDOW ROUND THIS YEAR *PLUS* EVERY YEAR ALREADY ON THE BOOKCASE.** Without
+  the second half, opening ✎ on a 2019 shelf offers every year but its own and silently un-dates it
+  on save.
+- **`shelfClassLabel` IS DELIBERATELY LEFT ALONE** and `shelfWhereLabel` is the year-and-class one.
+  That function is what the “belongs to a different class” sentences read, and a year in those would
+  be saying something they do not mean.
+
+### 🐛 …and the class a shelf was pinned to never reached Firestore
+
+Found while adding the year to the same record. 🎓 v1.40.0 gave every shelf a class, and
+**`shelfSave` wrote `{ id, name, order, createdAt }`** — so the class lived in memory behind
+`shelves = clean` and was thrown away on the wire. A shelf pinned to P6 · Mathematics stood there
+perfectly until the page was reloaded and then belonged to every class again, with nothing on any
+screen saying so.
+
+- **EVERY FIELD `shelfNorm` READS HAS TO BE WRITTEN, or it is a field that only exists until the
+  next refresh.** The harness pins that literally — it takes the KEYS off a normalised shelf and
+  fails on any one the writer does not name — so the next field added to the catalogue cannot come
+  back as this bug wearing a different word.
+- Run **`node tools/tutor-tests.mjs`** and **`node tools/browser-check.mjs`** after touching any of
+  it **and look at the home screen** — whether the plate really stands over its own rack, and
+  whether a chip really moves the page, is the one thing reading the source cannot check.
+
 ## 🎓 A SHELF BELONGS TO ONE CLASS (v1.40.0)
 
 **`shelfFitsClass`** / `shelfClassLabel` / **`shelfPaperOf`** / **`shelfDropOk`** /
@@ -4286,6 +4389,55 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📅 a shelf's year** (`SHELF_YEAR_RE`, `shelfYearOf`,
+  `shelfYearRank`, `shelfYearsIn`, `shelfRacked`, `shelfRackTitle`,
+  `shelfRackId`, `shelfWhereLabel`, `shelfYearOptions`, `shelfRackNode`,
+  `shelfYearChips`, `shelfScrollToRack`, the `year` in `shelfNorm` /
+  `shelfSave` / `shelfCreate` / `shelfRename`, the year arm of
+  `shelfGroupCompare`, the `g.year` in `shelfGroups`, the `year` on
+  `shelfSections`' sections, the rack loop in `renderWorksheets`,
+  `#shelfNameYear`, or the `.shelfRack` / `.shelfYears` CSS), run
+  `node tools/tutor-tests.mjs` **and** `node tools/browser-check.mjs`
+  **and look at the home screen**. Every failure here is silent and the
+  bookcase still paints. **Read an empty year as “nowhere” rather than as
+  EVERY year and a centre's whole bookcase empties itself into a rack
+  nothing draws on the deploy** — every shelf already made has no year —
+  and a junk one read as a real rack does the same to one shelf at a time.
+  Let a year decide whether a paper may go ON a shelf — in
+  `shelfFitsClass`, in `shelfDropOk`, in the mover — and it is a second
+  way to lose a paper, which is the thing the whole shelf section exists
+  not to do. Stop ordering by the year FIRST and the same year turns up
+  again under every level, so there is no rack to scroll to at all;
+  compare the ranks with `a - b` and two undated shelves are
+  `Infinity − Infinity`, which is NaN, which leaves the bookcase in
+  whatever order the engine's sort produced. Make the year part of the
+  GROUP KEY and a shelf is split in two; resolve it after the sort rather
+  than before and nothing reads it. Draw the plates from a second walk and
+  they disagree with the sections' own order the first time a shelf moves
+  — a 2026 plate over a 2025 shelf, on a page that looks perfectly
+  arranged. Let `shelfRacked` go and a bookcase nobody has filed grows an
+  “Undated” heading over the whole page. Build the chips from the
+  CATALOGUE instead of the SECTIONS and one offers to jump to a rack that
+  is not drawn. Let `shelfRename`'s `undefined` stop KEEPING the year and
+  a plain rename un-dates a shelf in silence. Drop the year from the
+  duplicate check and “WA1” can exist on one rack only, which is the very
+  thing this is for. Default a new shelf to the calendar year and a shelf
+  meant for every year disappears under a rack nobody chose; drop the
+  catalogue's own years from the picker and opening ✎ on a 2019 shelf
+  silently un-dates it on save. And put the year into `shelfClassLabel`
+  and the “belongs to a different class” sentences start saying something
+  they do not mean — a year never refuses a paper.
+- **Every field `shelfNorm` reads, `shelfSave` must write.** A field kept
+  by the one reader and dropped by the one writer lives in memory behind
+  `shelves = clean` and is thrown away on the wire — so it works
+  perfectly until the page is reloaded and then is simply not there, with
+  nothing on any screen saying so. That is exactly what happened to 🎓 the
+  class axis for eleven versions: a shelf pinned to P6 · Mathematics stood
+  there until a refresh and then belonged to every class again. The
+  harness takes the KEYS off a normalised shelf and fails on any one the
+  writer does not name, so the next field added to the catalogue cannot
+  come back as this bug wearing a different word — do not answer a red
+  tick there by narrowing what the reader keeps.
 - After touching **📈 the usage record** (`usageFlush`'s `patch.tutorUsage`,
   `usageOf`'s `n(k)`, `usageStart`, `usageSeedRecent`, `usageNote`, `usageAdd`,
   `USAGE_RECENT_MAX`, `USAGE_EVENTS`, or any counter a call site raises), run

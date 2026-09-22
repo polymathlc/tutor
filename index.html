@@ -569,6 +569,33 @@
     font: inherit; font-weight: 600; color: var(--ink); padding: 7px 11px;
     border-radius: 9px; border: 1px solid var(--line); background: #fff; cursor: pointer;
   }
+  /* 📅 THE YEAR PLATE OVER A RACK. Drawn in the app's own ink rather
+     than in the timber's, because it is not part of the bookcase — it is
+     the label on the front of it — and a heading in the same wood as the
+     shelves under it would read as another shelf. */
+  .shelfRack {
+    display: flex; align-items: center; gap: 12px;
+    margin: 6px 4px 14px; font-weight: 800; font-size: 1.02rem;
+    letter-spacing: .01em; color: var(--ink);
+  }
+  .shelfRack::after {
+    content: ''; flex: 1 1 auto; height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, rgba(169,116,63,.45), rgba(169,116,63,0));
+  }
+  .shelfRack + .shelf { margin-top: 0; }
+  .shelfRack.shelfRackNone { color: var(--ink-faint); font-weight: 700; }
+  .shelfRack.shelfRackNone::after { background: linear-gradient(90deg, var(--line), rgba(0,0,0,0)); }
+  /* 📅 JUMP TO A YEAR — a way DOWN the page, never a filter, so every
+     year is still on it. */
+  .shelfYears { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 4px 18px; }
+  .shelfYearsCap { font-size: .8rem; font-weight: 700; color: var(--ink-faint); }
+  .shelfYearChip {
+    font: inherit; font-size: .84rem; font-weight: 700; color: #7B4E24;
+    padding: 6px 13px; border-radius: 999px; cursor: pointer;
+    border: 1px solid rgba(169,116,63,.38); background: rgba(169,116,63,.10);
+  }
+  .shelfYearChip:hover { background: rgba(169,116,63,.20); }
+  .shelfYearChip.shelfYearChipNone { color: var(--ink-faint); border-color: var(--line); background: transparent; }
   /* 🕒 RECENTLY OPENED IS THE SAME BOOKCASE IN A COOLER TIMBER. The wood's
      colours are custom properties on `.shelf` precisely so a second kind
      of shelf is four values rather than a second copy of the gradients —
@@ -626,6 +653,9 @@
   @media (max-width: 640px) {
     .shelfBar { gap: 10px; }
     .shelfPick { font-size: .78rem; gap: 6px; }
+    .shelfRack { font-size: .94rem; gap: 9px; margin-bottom: 11px; }
+    .shelfYears { gap: 6px; margin-bottom: 14px; }
+    .shelfYearChip { font-size: .78rem; padding: 5px 11px; }
     .shelf { padding: 12px 8px 18px; }
     .shelfHead h3 { font-size: 0.9rem; padding: 4px 10px; }
     .shelfItem { flex-basis: 250px; width: 250px; }
@@ -2250,6 +2280,10 @@
           <label for="shelfNameSubject">Subject</label>
           <select id="shelfNameSubject"></select>
         </div>
+        <div class="field">
+          <label for="shelfNameYear">Which year's rack does it stand in?</label>
+          <select id="shelfNameYear"></select>
+        </div>
       </div>
     </div>
     <div class="modalFoot">
@@ -2584,7 +2618,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.50.0';
+var APP_VERSION = 'v1.51.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -18834,6 +18868,13 @@ function shelfCompare(a, b) {
    which leaves the whole bookcase in whatever order the engine's sort
    happened to produce. */
 function shelfGroupCompare(a, b, cat) {
+  /* 📅 THE YEAR'S RACK IS THE OUTERMOST THING, so one year is one
+     unbroken stack of shelves rather than the same year turning up again
+     under every level — which is what “their individual vertical racks”
+     has to mean. Undated is Infinity and therefore always last, which is
+     also why these are compared with `<`. */
+  var ya = shelfYearRank(a.year), yb = shelfYearRank(b.year);
+  if (ya !== yb) return ya < yb ? -1 : 1;
   var la = shelfLevelRank(a.level), lb = shelfLevelRank(b.level);
   if (la !== lb) return la - lb;
   if (a.level !== b.level) return a.level < b.level ? -1 : 1;
@@ -18878,6 +18919,12 @@ function shelfGroups(list, opts) {
   });
   var out = order.map(function (k) { return byKey[k]; });
   out.forEach(function (g) { g.items.sort(shelfCompare); });
+  /* 📅 A GROUP'S YEAR IS ITS SHELF'S, resolved here rather than made part
+     of the key: a shelf has ONE year, so the year can never split a group
+     — and with no catalogue every group is undated, which is what keeps
+     `shelfGroups()` called with nothing byte-for-byte the grouping it has
+     always been. It is set BEFORE the sort, which is what reads it. */
+  out.forEach(function (g) { g.year = cat ? shelfYearOf(shelfFind(cat, g.shelf)) : ''; });
   out.sort(function (a, b) { return shelfGroupCompare(a, b, cat); });
   return out;
 }
@@ -19115,6 +19162,12 @@ function shelfNorm(raw) {
       name: name,
       level: LEVELS.indexOf(lv) >= 0 ? lv : '',
       subject: SUBJECT_OK[sj] ? sj : '',
+      /* 📅 …AND THE YEAR'S RACK IT STANDS IN (v1.51.0). Same shape and
+         same reason as the class above: anything that is not a year this
+         build accepts reads as EVERY year, so a record from a later
+         version is a shelf on the undated rack rather than one that has
+         silently left the bookcase. */
+      year: shelfYearOf(s),
       order: isFinite(order) ? order : i,
       createdAt: shelfStampOf(s.createdAt)
     });
@@ -19205,6 +19258,113 @@ function shelfClassLabel(s) {
   if (s.level) bits.push(levelLabel(s.level));
   if (s.subject) bits.push(subjectLabel(s.subject));
   return bits.join(' · ');
+}
+/* =====================================================================
+   📅 A SHELF STANDS IN A YEAR'S RACK (v1.51.0)
+   ---------------------------------------------------------------------
+   The year was a WORD ON THE PLATE and nothing else — “2025 WA1”, “2025
+   WA2”, “2025 EOY” — so adding 2024 and 2026 made one flat run of a
+   dozen shelves with nothing to tell one year from the next and nothing
+   to scroll between. A shelf names the year it belongs to now, the
+   bookcase is stacked into one RACK per year (newest first, because that
+   is the year being taught), and a chip over the top jumps to any of them.
+
+   AN EMPTY YEAR MEANS **EVERY** YEAR, the rule 🎓 the class axis already
+   carries and for exactly the same reason: every shelf already on a live
+   bookcase has no year at all, so it must go on standing where it stands.
+   Read `''` as “nowhere” instead and a centre's whole bookcase vanishes
+   into a rack nothing draws, on the deploy, with nothing to migrate it
+   back.
+
+   ⚠️ THE YEAR IS A RACK, NOT A RULE ABOUT PAPERS — and that is what keeps
+   this change small enough to be safe. A paper has no year, so nothing
+   here narrows what may go ON a shelf: `shelfFitsClass`, `shelfDropOk`
+   and `moveWorksheetToShelf` are untouched. The CLASS axis decides what a
+   shelf may hold; the YEAR axis only decides where the shelf itself
+   stands. A year that could refuse a paper would be a second way to lose
+   one, which is the thing the whole shelf section is built not to do.
+   ===================================================================== */
+var SHELF_YEAR_RE = /^20\d\d$/;     // a century of headroom, and nothing else
+var SHELF_YEAR_BACK = 3;            // how far back the picker offers unasked
+var SHELF_YEAR_ON = 1;              // …and forward, so next year is fileable early
+var SHELF_UNDATED_TITLE = 'Undated';
+
+/* THE ONE PLACE A SHELF'S YEAR IS READ, the way `shelfFitsClass` is the
+   one place its class is decided. Anything that is not a year this build
+   accepts comes back '' — every year — which is the safe direction: a
+   shelf on the undated rack is one the teacher can see and re-file, where
+   a shelf filed under a year nothing draws is one that has quietly left
+   the bookcase. */
+function shelfYearOf(s) {
+  var y = String((s && s.year) || '').trim();
+  return SHELF_YEAR_RE.test(y) ? y : '';
+}
+/* Where a year's rack stands: NEWEST FIRST, and the undated rack ALWAYS
+   last — the rule the unsorted shelf already follows, because a shelf
+   nobody has filed is the one nobody is looking for. It is compared with
+   `<` rather than `a - b` for `shelfRank`'s reason: both are `Infinity`
+   for an undated shelf, `Infinity - Infinity` is NaN, and a comparator
+   that returns NaN leaves the whole bookcase in whatever order the
+   engine's sort happened to produce. */
+function shelfYearRank(y) {
+  var v = shelfYearOf({ year: y });
+  return v ? -Number(v) : Infinity;
+}
+/* Every rack the bookcase really holds, in the order they are drawn.
+   Built from the SECTIONS rather than from the catalogue, so a chip can
+   never offer to jump to a rack that is not on the page — a shelf of
+   another class, or one the scope has narrowed away, is not a rack. */
+function shelfYearsIn(sections) {
+  var seen = {}, out = [];
+  (sections || []).forEach(function (sec) {
+    if (!sec || sec.kind !== 'shelf') return;
+    var y = shelfYearOf({ year: sec.year });
+    if (seen[y]) return;
+    seen[y] = true;
+    out.push(y);
+  });
+  out.sort(function (a, b) {
+    var ra = shelfYearRank(a), rb = shelfYearRank(b);
+    return ra === rb ? 0 : ra < rb ? -1 : 1;
+  });
+  return out;
+}
+/* THE RACKS ARE DRAWN ONLY WHEN THERE IS SOMETHING TO TELL APART. With
+   every shelf undated — which is every bookcase in the centre until
+   somebody files one — a heading reading “Undated” over the whole page
+   says nothing at all, so none is drawn and the home screen is
+   byte-for-byte the bookcase this app had before years existed. That is
+   the same property that made 🗂 the shelves and 🎓 the class axis safe to
+   ship over a live bookcase. */
+function shelfRacked(sections) { return shelfYearsIn(sections).length > 1; }
+function shelfRackTitle(y) { return y ? '📅 ' + y : '🗂 ' + SHELF_UNDATED_TITLE; }
+function shelfRackId(y) { return 'shelfRack_' + (y || 'none'); }
+/* “2025 · P6 · Mathematics”, or nothing at all for a shelf every class and
+   every year shares. `shelfClassLabel` is deliberately LEFT ALONE: it is
+   what the “belongs to a different class” sentences read, and a year in
+   those would be saying something they do not mean — a year never refuses
+   a paper. */
+function shelfWhereLabel(s) {
+  var y = shelfYearOf(s), c = shelfClassLabel(s);
+  return y && c ? y + ' · ' + c : (y || c);
+}
+/* What the year picker offers: a window round this one, so next year's
+   papers can be filed before it arrives — PLUS every year already on the
+   bookcase, because without that, opening ✎ on a 2019 shelf would offer
+   every year except its own and silently un-date it on save. */
+function shelfYearOptions(list) {
+  var now = new Date().getFullYear();
+  var seen = {}, out = [];
+  var add = function (y) {
+    var v = shelfYearOf({ year: String(y) });
+    if (!v || seen[v]) return;
+    seen[v] = true;
+    out.push(v);
+  };
+  for (var i = now + SHELF_YEAR_ON; i >= now - SHELF_YEAR_BACK; i--) add(i);
+  (list || []).forEach(function (sh) { add(shelfYearOf(sh)); });
+  out.sort(function (a, b) { return Number(b) - Number(a); });
+  return out;
 }
 /* Where a shelf stands on the bookcase. An unsorted paper's shelf is
    ALWAYS last, and a shelf the catalogue no longer has is unsorted — so
@@ -19433,14 +19593,22 @@ function shelfSections(entries, opts) {
       // P6 · Mathematics standing empty on every other class's bookcase is
       // the fault this narrowing exists to end.
       if (!shelfFitsClass(s, scope.level, scope.subject)) return;
-      groups.push({ level: scope.level, subject: scope.subject, shelf: s.id, items: [] });
+      // 📅 …wearing its own year, or an empty shelf would stand on the
+      // undated rack while the same shelf with one paper on it stands on
+      // 2026 — the bookcase disagreeing with itself about where a shelf is.
+      groups.push({ level: scope.level, subject: scope.subject, shelf: s.id, year: shelfYearOf(s), items: [] });
     });
-    if (!here['']) groups.push({ level: scope.level, subject: scope.subject, shelf: '', items: [] });
+    if (!here['']) groups.push({ level: scope.level, subject: scope.subject, shelf: '', year: '', items: [] });
     groups.sort(function (a, b) { return shelfGroupCompare(a, b, cat); });
   }
   groups.forEach(function (g) {
     out.push({
       kind: 'shelf', shelf: g.shelf, level: g.level, subject: g.subject,
+      /* 📅 …and which rack it stands in. The year is deliberately NOT put
+         into `title`: it is written once on the rack heading above, and
+         repeating it down every shelf under it is the noise the “scoped”
+         rule already drops the class prefix to avoid. */
+      year: shelfYearOf({ year: g.year }),
       empty: !g.items.length,
       /* The “P5 · Science ·” prefix is dropped only on the class that was
          ASKED FOR — it is already on the picker above. Anything else keeps
@@ -19489,8 +19657,20 @@ async function shelfSave(list) {
          this is what keeps the catalogue out of the list of worksheets
          set for a class. */
       active: false,
+      /* 🐛 WHAT IS WRITTEN HERE IS ALL THE BOOKCASE EVER GETS BACK, and
+         until v1.51.0 this wrote `{id, name, order, createdAt}` — so
+         🎓 the class axis of v1.40.0 was kept in memory by `shelves =
+         clean` and thrown away on the wire. A shelf pinned to P6 ·
+         Mathematics stood there perfectly until the page was reloaded and
+         then belonged to every class again, with nothing on any screen
+         saying so. Every field `shelfNorm` reads has to be written, or it
+         is a field that only exists until the next refresh. */
       shelves: clean.map(function (s, i) {
-        return { id: s.id, name: s.name, order: i, createdAt: s.createdAt || Date.now() };
+        return {
+          id: s.id, name: s.name,
+          level: s.level || '', subject: s.subject || '', year: s.year || '',
+          order: i, createdAt: s.createdAt || Date.now()
+        };
       }),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
@@ -19506,7 +19686,7 @@ async function shelfSave(list) {
     return false;
   }
 }
-async function shelfCreate(name, level, subject) {
+async function shelfCreate(name, level, subject, year) {
   if (!isAdmin(currentUser)) return '';
   var nm = shelfCleanName(name);
   if (!nm) { toast('Give the shelf a name first.'); return ''; }
@@ -19517,6 +19697,7 @@ async function shelfCreate(name, level, subject) {
   var s = {
     id: shelfNewId(), name: nm,
     level: String(level || ''), subject: String(subject || ''),
+    year: shelfYearOf({ year: year }),
     order: shelves.length, createdAt: Date.now()
   };
   /* 🎓 THE DUPLICATE CHECK IS PER CLASS now, and it has to be: “2025
@@ -19524,19 +19705,23 @@ async function shelfCreate(name, level, subject) {
      different shelves on two different bookcases, and refusing the second
      would be refusing the very thing this narrowing is for. The same name
      on the SAME class is still one shelf twice. */
+  /* 📅 …AND PER YEAR, for the same reason again: “WA1” on the 2025 rack
+     and “WA1” on the 2026 rack are the two shelves this whole feature is
+     for, and refusing the second would refuse the very thing it is for. */
   var dup = null;
   shelves.forEach(function (x) {
     if (!dup && x.name.toLowerCase() === nm.toLowerCase() &&
-        String(x.level || '') === s.level && String(x.subject || '') === s.subject) dup = x;
+        String(x.level || '') === s.level && String(x.subject || '') === s.subject &&
+        shelfYearOf(x) === s.year) dup = x;
   });
   if (dup) {
     toast('There is already a shelf called “' + dup.name + '”' +
-          (shelfClassLabel(dup) ? ' on ' + shelfClassLabel(dup) : '') + '.', 5000);
+          (shelfWhereLabel(dup) ? ' on ' + shelfWhereLabel(dup) : '') + '.', 5000);
     return '';
   }
   if (!await shelfSave(shelves.concat([s]))) return '';
-  var cls = shelfClassLabel(s);
-  toast('🗂 “' + nm + '” is on the ' + (cls ? cls + ' bookcase' : 'bookcase, on every class') +
+  var cls = shelfWhereLabel(s);
+  toast('🗂 “' + nm + '” is on the ' + (cls ? cls + ' bookcase' : 'bookcase, on every class and every year') +
         '. Drag a paper onto it, or use 🗂 on a card.', 7000);
   renderWorksheets();
   return s.id;
@@ -19546,7 +19731,7 @@ async function shelfCreate(name, level, subject) {
    silently take a shelf's class off it — and every shelf made before
    v1.40.0 has none, so a careless `|| ''` would be indistinguishable from
    a deliberate “every class”. */
-async function shelfRename(id, name, level, subject) {
+async function shelfRename(id, name, level, subject, year) {
   if (!isAdmin(currentUser)) return false;
   var nm = shelfCleanName(name);
   if (!nm) { toast('A shelf needs a name.'); return false; }
@@ -19554,19 +19739,31 @@ async function shelfRename(id, name, level, subject) {
   if (!had) { toast('That shelf is not there any more.', 5000); return false; }
   var lv = level === undefined ? String(had.level || '') : String(level || '');
   var sj = subject === undefined ? String(had.subject || '') : String(subject || '');
+  /* 📅 `undefined` KEEPS the year, the rule the class beside it carries:
+     a caller that only wants to rename must not be able to un-date a
+     shelf in silence, and every shelf made before v1.51.0 has no year, so
+     a careless `|| ''` is indistinguishable from a deliberate “every
+     year”. */
+  var yr = year === undefined ? shelfYearOf(had) : shelfYearOf({ year: year });
   var next = shelves.map(function (s) {
     return s.id === id
-      ? { id: s.id, name: nm, level: lv, subject: sj, order: s.order, createdAt: s.createdAt }
+      ? { id: s.id, name: nm, level: lv, subject: sj, year: yr, order: s.order, createdAt: s.createdAt }
       : s;
   });
   if (!await shelfSave(next)) return false;
   var moved = lv !== String(had.level || '') || sj !== String(had.subject || '');
+  var reracked = yr !== shelfYearOf(had);
   var cls = shelfClassLabel({ level: lv, subject: sj });
   toast('🗂 “' + nm + '”' +
         (moved
           ? ' is now ' + (cls ? 'the ' + cls + ' bookcase’s alone' : 'on every class’s bookcase') +
             '. Papers that are not ' + (cls || 'on it') + ' go back to “' + SHELF_UNSORTED_TITLE + '”.'
-          : ' — renamed on every student’s bookcase.'), 7000);
+          /* 📅 A RE-RACK MOVES NO PAPER, and that is worth saying outright:
+             the year decides where the SHELF stands and never what it may
+             hold, so unlike a class change there is nothing to fall off. */
+          : reracked
+            ? ' now stands on the ' + (yr || SHELF_UNDATED_TITLE) + ' rack. Every paper on it went with it.'
+            : ' — renamed on every student’s bookcase.'), 7000);
   renderWorksheets();
   return true;
 }
@@ -19844,12 +20041,22 @@ function openShelfNameModal(id, thenMove) {
   $('shelfNameTitle').textContent = s ? '🗂 Rename this shelf' : '🗂 A new shelf';
   $('shelfNameSub').textContent = s
     ? 'Every student of the class it is for reads the name you set here, so this renames it on their bookcases too. Nothing moves off it.'
-    : 'Name it for the pile it holds — “2025 papers”, “Prelims”, “Heat revision”. A shelf belongs to ONE class: a shelf made for P6 · Mathematics stands on that bookcase and nowhere else. Leave a box on “Every” and it stands on them all.';
+    : 'Name it for the pile it holds — “WA1”, “Prelims”, “Heat revision”. A shelf belongs to ONE class and stands in ONE year’s rack, newest year first. Leave a box on “Every” and it stands on them all.';
   $('shelfNameInput').value = s ? s.name : '';
   shelfClassOptions($('shelfNameLevel'), LEVELS.map(function (l) { return { value: l, label: levelLabel(l) }; }),
                     'Every level', s ? String(s.level || '') : String(here.level || ''));
   shelfClassOptions($('shelfNameSubject'), SUBJECTS.map(function (x) { return { value: x.value, label: x.label }; }),
                     'Every subject', s ? String(s.subject || '') : String(here.subject || ''));
+  /* 📅 A NEW SHELF OPENS ON “Every year”, DELIBERATELY. There is nothing
+     here that could honestly be guessed from — the racks are a view, not
+     a scope, so nothing on the screen says which year the teacher is
+     working in — and this app's own calendar year is a guess, not an
+     answer: pinned to it by default, a shelf meant for every year
+     disappears under one rack a teacher never chose. Blank is also what
+     every shelf already on the bookcase carries, so the default is the
+     status quo and choosing a year is the deliberate act it should be. */
+  shelfClassOptions($('shelfNameYear'), shelfYearOptions(shelves).map(function (y) { return { value: y, label: y }; }),
+                    'Every year', s ? shelfYearOf(s) : '');
   $('shelfNameGo').textContent = s ? 'Save it' : 'Make it';
   $('shelfNameModal').classList.add('open');
   setTimeout(function () { try { $('shelfNameInput').focus(); $('shelfNameInput').select(); } catch (e) {} }, 60);
@@ -19858,11 +20065,12 @@ async function shelfNameConfirm() {
   var nm = $('shelfNameInput').value;
   var lv = ($('shelfNameLevel') || {}).value || '';
   var sj = ($('shelfNameSubject') || {}).value || '';
+  var yr = ($('shelfNameYear') || {}).value || '';
   var id = shelfNameTarget, mv = shelfNameThenMove;
   shelfNameTarget = ''; shelfNameThenMove = '';
   $('shelfNameModal').classList.remove('open');
-  if (id) { await shelfRename(id, nm, lv, sj); return; }
-  var made = await shelfCreate(nm, lv, sj);
+  if (id) { await shelfRename(id, nm, lv, sj, yr); return; }
+  var made = await shelfCreate(nm, lv, sj, yr);
   if (made && mv) await moveWorksheetToShelf(mv, made);
 }
 
@@ -19940,7 +20148,7 @@ function openShelfPick(id) {
   var mine = shelves.filter(function (sh) { return shelfFitsClass(sh, pick.level, pick.subject); });
   mine.forEach(function (sh) {
     add(sh.id, '🗂 ' + sh.name,
-        sh.id === on ? 'It is on this shelf now.' : (shelfClassLabel(sh) || 'Every class'));
+        sh.id === on ? 'It is on this shelf now.' : (shelfWhereLabel(sh) || 'Every class, every year'));
   });
   add('', '⬦ ' + SHELF_UNSORTED_TITLE, on ? 'Take it off that shelf and leave it with the unsorted papers.' : 'It is here now.');
   var hidden = shelves.length - mine.length;
@@ -20027,7 +20235,70 @@ function renderWorksheets() {
       '<div class="padSub">Your other papers are still here — pick another level or subject above.</div>';
     box.appendChild(pad2);
   }
-  sections.forEach(function (sec) { box.appendChild(shelfNode(sec)); });
+  /* 📅 THE RACKS. One heading per year, inserted when the year CHANGES
+     between two shelves — `shelfSections` has already put them in rack
+     order, so a heading per change is a heading per rack, and there is no
+     second ordering here to drift from that one. `racked` is what keeps a
+     bookcase nobody has filed byte-for-byte what it was. */
+  var racked = shelfRacked(sections);
+  if (racked) {
+    var chips = shelfYearChips(sections);
+    if (chips) box.appendChild(chips);
+  }
+  var rack = null;
+  sections.forEach(function (sec) {
+    if (racked && sec.kind === 'shelf') {
+      var y = shelfYearOf({ year: sec.year });
+      if (rack !== y) { rack = y; box.appendChild(shelfRackNode(y)); }
+    }
+    box.appendChild(shelfNode(sec));
+  });
+}
+
+/* 📅 The brass year plate over a rack of shelves. */
+function shelfRackNode(y) {
+  var el = document.createElement('div');
+  el.className = 'shelfRack' + (y ? '' : ' shelfRackNone');
+  el.id = shelfRackId(y);
+  var t = document.createElement('span');
+  t.textContent = shelfRackTitle(y);
+  el.appendChild(t);
+  return el;
+}
+/* 📅 JUMP TO A YEAR. The whole point of the racks is that every year is
+   still on the one page — a filter would hide the papers a teacher is
+   comparing against — so what is needed is a way DOWN to a rack rather
+   than a way to switch one off. It is stateless on purpose: there is no
+   remembered year to come back stale tomorrow, which is the fault the
+   scope picker has to carry a validator for.
+
+   Drawn only when there is more than one rack, because a single chip that
+   scrolls to the top of the page is furniture. */
+function shelfYearChips(sections) {
+  var years = shelfYearsIn(sections);
+  if (years.length < 2) return null;
+  var row = document.createElement('div');
+  row.className = 'shelfYears';
+  var cap = document.createElement('span');
+  cap.className = 'shelfYearsCap';
+  cap.textContent = 'Jump to';
+  row.appendChild(cap);
+  years.forEach(function (y) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'shelfYearChip' + (y ? '' : ' shelfYearChipNone');
+    b.textContent = y || SHELF_UNDATED_TITLE;
+    b.title = y ? 'Scroll to the ' + y + ' shelves' : 'Scroll to the shelves with no year on them';
+    b.addEventListener('click', function () { shelfScrollToRack(y); });
+    row.appendChild(b);
+  });
+  return row;
+}
+function shelfScrollToRack(y) {
+  var el = document.getElementById(shelfRackId(y));
+  if (!el || !el.scrollIntoView) return;
+  try { el.scrollIntoView({ behavior: liveOrbMotionOk() ? 'smooth' : 'auto', block: 'start' }); }
+  catch (e) { el.scrollIntoView(); }
 }
 
 /* ---- 🗂 The bar over the bookcase: which class is in view, and ➕ ----
@@ -21850,8 +22121,11 @@ function fillUploadShelves() {
     if (!open && !shelfFitsClass(sh, lv, sj)) return;
     var o = document.createElement('option');
     o.value = sh.id;
-    var cls = shelfClassLabel(sh);
-    o.textContent = '🗂 ' + sh.name + (open && cls ? '  (' + cls + ')' : '');
+    /* 📅 The year is shown WHATEVER the class is open, because two
+       shelves called “WA1” on two racks are the ordinary case now and a
+       picker offering the same word twice is one nobody can use. */
+    var cls = open ? shelfWhereLabel(sh) : shelfYearOf(sh);
+    o.textContent = '🗂 ' + sh.name + (cls ? '  (' + cls + ')' : '');
     sel.appendChild(o);
   });
   // A shelf that has just fallen out of the list must not stay SELECTED —

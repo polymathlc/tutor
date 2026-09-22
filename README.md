@@ -12,6 +12,42 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.51.0 — 📅 One rack of shelves per year
+
+🗂 **The year was a word on the plate and nothing else.** A term's shelves were called “2025 WA1”,
+“2025 WA2”, “2025 WA3”, “2025 EOY” — so adding 2024 and 2026 made one flat run of a dozen shelves
+with nothing to tell one year from the next and nothing to scroll between. The bookcase knew what
+CLASS a shelf was for and had never heard of the year printed in its own name.
+
+**A shelf names the year it belongs to now, and the bookcase is stacked into one rack per year** —
+newest first, because that is the year being taught — with a brass year plate over each rack and a
+row of chips at the top that jumps down to any of them. Every year is still on the one page, which
+is deliberate: a filter would hide the papers a teacher is comparing this year's against, so what
+this adds is a way **down** to a rack rather than a way to switch one off. Nothing is remembered,
+so there is no year left set from last Tuesday to come back and empty the screen.
+
+The ✎ dialog gains **“Which year's rack does it stand in?”** beside the class it is for, offering
+next year as well as the last few, so a rack can be made before the year arrives.
+
+- **An empty year means EVERY year** — the rule 🎓 the class axis already carries, and the whole
+  migration: every shelf already on a bookcase has no year, so all of them go on standing exactly
+  where they stand. Nothing to run, nothing to re-file.
+- **The year is a RACK, not a rule about papers.** A paper has no year, so nothing here narrows what
+  a shelf will *hold*: the class axis still decides that, and a year can never refuse a paper.
+- **Nothing is racked until something is filed.** With every shelf undated — which is every bookcase
+  in the centre until somebody files one — a heading reading “Undated” over the whole page says
+  nothing, so none is drawn and the home screen is byte-for-byte what it was.
+- **“WA1” on the 2025 rack and “WA1” on the 2026 rack are two shelves**, not one name twice.
+
+### 🐛 …and the class a shelf was pinned to was thrown away on every reload
+
+Found while adding the year to the same record. 🎓 v1.40.0 gave every shelf a class — a folder made
+under P6 · Mathematics stands on that bookcase and nowhere else — and the catalogue's one writer
+wrote the shelf's **name and order and nothing else**. The class lived in memory and never reached
+Firestore, so it worked perfectly until the page was reloaded and then the shelf belonged to every
+class again, with nothing on any screen saying so. Every field the catalogue reads back is written
+now, and the harness fails on the next one that is not.
+
 ## v1.50.0 — The teacher can see what a student has actually been doing
 
 📈 **Every counter on a student's panel read 0.** Worksheets, marked, questions, hints, days used
