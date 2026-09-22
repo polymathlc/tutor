@@ -12601,10 +12601,41 @@ async function mbRedoOne(m) {
     if (path) { patch.imagePath = path; patch.shot = 'question'; }
   }
   if (!patch.blocks && !patch.imagePath) return 'failed';
+  /* 🖼 THE TEACHER'S LINKS ARE RE-MINTED HERE, and they have to be: the old
+     file is DELETED four lines below, so a stored `imageUrl` left alone
+     would point at a picture that no longer exists — and the panel would
+     quietly drop it, showing the teacher no picture at all on the one
+     question somebody has just taken the trouble to set out again. A
+     `figUrls` left over from the old blocks is the same fault twice over,
+     and worse: those links still resolve for a moment and show the picture
+     this rebuild REPLACED.
+
+     They are cleared first and set only on success, so a mint that failed
+     leaves the mistake with no link rather than with a wrong one — and
+     `mistakeMirrorCatchUp` picks it up on the next visit. */
+  patch.imageUrl = firebase.firestore.FieldValue.delete();
+  patch.figUrls = firebase.firestore.FieldValue.delete();
+  try {
+    if (patch.imagePath) {
+      var rUrl = await mistakePathUrl(patch.imagePath);
+      if (rUrl) patch.imageUrl = rUrl;
+    }
+    if (patch.blocks) {
+      var rFigs = await mistakeFigUrls(patch.blocks);
+      if (rFigs.length) patch.figUrls = rFigs;
+    }
+  } catch (e) { console.warn('Mistake picture link could not be kept', e); }
   await mistakesCollRef().doc(m.id).set(patch, { merge: true });
   Object.keys(patch).forEach(function (k) { m[k] = patch[k]; });
+  /* A sentinel is not a value: what went to Firestore for a link that could
+     not be minted was "delete this field", and leaving that object on the
+     in-memory mistake would put it straight into the next mirror row. */
+  if (typeof m.imageUrl !== 'string') delete m.imageUrl;
+  if (!Array.isArray(m.figUrls)) delete m.figUrls;
   m._url = '';
   m._hay = null;
+  // …so the catch-up mints them again on the next visit if either failed.
+  m._urlTried = false;
   /* The old page goes only now, and a refusal is swallowed: a file left in
      the bucket is untidy, a card with no picture is unreadable. */
   if (patch.imagePath && oldPath && oldPath !== patch.imagePath) {

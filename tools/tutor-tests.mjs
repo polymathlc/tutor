@@ -3875,6 +3875,27 @@ ok('…and a refused tidy-up is swallowed',
    /catch \(e\) \{ \/\* a tidy-up is never worth the card \*\/ \}/.test(REDO_SRC));
 ok('nothing is written when the read gave neither blocks nor a crop',
    /if \(!patch\.blocks && !patch\.imagePath\) return 'failed';/.test(REDO_SRC));
+/* 🖼 THE TEACHER'S LINKS ARE RE-MINTED, and they have to be: the old file is
+   DELETED a few lines later, so a stored `imageUrl` left alone points at a
+   picture that no longer exists — and the teacher's panel quietly drops it,
+   showing NO picture on the one question somebody has just taken the trouble
+   to set out again. A stale `figUrls` is worse: those links still resolve for
+   a while and show the picture this rebuild REPLACED. */
+ok('the teacher’s picture links are re-minted when a question is set out again',
+   /patch\.imageUrl = firebase\.firestore\.FieldValue\.delete\(\);/.test(REDO_SRC) &&
+   /patch\.figUrls = firebase\.firestore\.FieldValue\.delete\(\);/.test(REDO_SRC) &&
+   /await mistakePathUrl\(patch\.imagePath\)/.test(REDO_SRC) &&
+   /await mistakeFigUrls\(patch\.blocks\)/.test(REDO_SRC),
+   'the old file is deleted, so a link left alone points at a picture that is gone');
+ok('…cleared BEFORE they are minted, so one that failed is absent rather than wrong',
+   REDO_SRC.indexOf('patch.imageUrl = firebase.firestore.FieldValue.delete();') <
+   REDO_SRC.indexOf('await mistakePathUrl(patch.imagePath)'));
+ok('…and a delete sentinel never reaches the in-memory mistake',
+   /if \(typeof m\.imageUrl !== 'string'\) delete m\.imageUrl;/.test(REDO_SRC) &&
+   /if \(!Array\.isArray\(m\.figUrls\)\) delete m\.figUrls;/.test(REDO_SRC),
+   'it would go straight into the next mirror row as the picture');
+ok('…and the catch-up is allowed to try again on the next visit',
+   /m\._urlTried = false;/.test(REDO_SRC));
 ok('a run that finds the engine off STOPS rather than saying so once per card',
    /if \(r === 'ai'\) break;/.test(REDO_SRC));
 ok('one press is bounded', /MB_REDO_MAX/.test(REDO_SRC) && /i < MB_REDO_MAX/.test(REDO_SRC));

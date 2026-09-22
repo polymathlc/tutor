@@ -1464,6 +1464,14 @@ still came back, it simply went on making the mistake the teacher had already co
       everything already filed would arrive only on the next marking run, which for a class at
       the end of term is never. A sync on every sign-in whether or not it had anything to do is a
       write a hundred students make every morning for nothing.
+    - **🧩 SETTING A QUESTION OUT AGAIN RE-MINTS THEM** (`mbRedoOne`). It writes a new
+      `imagePath` and new `blocks` and then **DELETES the old file**, so a stored `imageUrl` left
+      alone points at a picture that is gone — and the panel quietly drops it, showing the teacher
+      NO picture on the one question somebody has just taken the trouble to redo. A stale
+      `figUrls` is worse: those links still resolve for a while and show the picture the rebuild
+      REPLACED. They are cleared with a `delete()` sentinel FIRST and set only on success, the
+      sentinel is kept off the in-memory mistake (it would go straight into the next row as the
+      picture), and `_urlTried` is released so the catch-up tries again on the next visit.
     - **`_mkUrl` TAKES AN `https` LINK AND NOTHING ELSE.** What comes back goes into an `<img src>`
       on the teacher's screen, and a roster row is a document another app could write to.
     - **THE PANEL FOLLOWS `mistakeTier`'s OWN RULE**: a rebuilt question shows its FIGURES and not
@@ -4319,7 +4327,10 @@ and nothing on any screen says what changed.
   failed resolve as done and a network blip costs that picture for ever. Drop
   the byte budget and a long book stops the mirror dead — a Firestore document
   dies at a megabyte **by refusing the whole write**, with nothing on any screen
-  saying why. Show the figures AND the whole-question crop together and the
+  saying why. Leave `mbRedoOne`'s links alone and 🧩 setting a question out again
+  points the teacher at a file it has just deleted — no picture at all on the
+  one question somebody redid — or, through `figUrls`, at the very picture the
+  rebuild replaced. Show the figures AND the whole-question crop together and the
   teacher reads the same question twice looking for a difference that is not
   there; stop captioning a whole PAGE and they are pointed at the wrong
   question on it. Let `mistakeMirrorSync` REJECT — it is `async` and all four
