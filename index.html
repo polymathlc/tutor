@@ -2618,7 +2618,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.51.0';
+var APP_VERSION = 'v1.52.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -21055,8 +21055,12 @@ async function pushWorksheet(id, level, locked, opts) {
     });
     await db.collection(COLLECTION).doc(w.id).update({ pushed: true });
     w.pushed = true;
-    renderWorksheets();
+    // THE LIST FIRST, THEN THE BOOKCASE. `worksheetSetState` reads the
+    // assignment LIVE, so a repaint before the reload leaves the paper's own
+    // card still reading “◦ Not set for the class” a moment after it was
+    // set — the same ordering `unpushWorksheet` needs, for the same reason.
     await loadAssignments();
+    renderWorksheets();
     var shelfOf = (w.level && w.subject)
       ? ' It is on every ' + levelLabel(w.level) + ' ' + subjectLabel(w.subject) + ' student’s shelf.'
       : ' ⚠ It has no level and subject, so it is on nobody’s shelf yet.';
@@ -21167,20 +21171,94 @@ function blockedList(rows) {
   return (rows || []).map(function (r) { return '“' + r.name + '” (' + r.why + ')'; }).join(', ') + '.';
 }
 
+/* A FIRESTORE WRITE TO A DOCUMENT THAT IS NOT THERE. `update()` refuses one
+   with `not-found` and “No document to update: …/<id>”, and that is a
+   different thing from a write that was DENIED or a network that dropped: it
+   says the record this write was housekeeping for has already gone. It is
+   deliberately NOT a loose /not-found/ — Storage answers `object-not-found`
+   for a missing PDF, which is `pdfMissingError`'s question and not this one. */
+function docMissingError(e) {
+  var code = (e && e.code) || '';
+  var msg = (e && e.message) || String(e || '');
+  return code === 'not-found' || /No document to update/i.test(msg);
+}
+
+/* =====================================================================
+   📌 TAKING A PAPER OFF THE CLASS LIST  (v1.52.0)
+   ---------------------------------------------------------------------
+   Reported: “Take off the list” answered
+     “Could not take it off the list: No document to update:
+      …/documents/tutorWorksheets/<id>”
+   and answered it every single time, so the card could not be got rid of
+   at all. Two faults, and both are silent.
+
+   ① THE WRITE THAT FAILED WAS THE SECOND ONE, AND THE FIRST HAD ALREADY
+     LANDED. `active: false` on the ASSIGNMENT is the take-off; `pushed:
+     false` on the TEACHER'S OWN copy is a local mirror of it, and on this
+     paper that copy had been deleted — which is exactly how a set paper
+     comes to be drawn as a `setCardNode` on the teacher's own bookcase in
+     the first place, because `shelfEntries` draws their own card instead
+     whenever the copy is there. So the one card that can show this button
+     with no copy behind it was the one card the button could never work
+     on. The flag is best effort now: `worksheetSetState` reads the
+     assignment LIVE and only falls back to `w.pushed` before the list has
+     arrived, so a flag that could not be written costs nothing.
+   ② THE BOOKCASE WAS REPAINTED BEFORE THE LIST WAS RELOADED, so it was
+     redrawn from the very list that still held the paper: the set card
+     stayed on the shelf and the teacher's own card went on saying
+     “📌 Set for the class” until something else happened to repaint. A
+     take-off that reports success and changes nothing on the screen is the
+     fault 📌 v1.29.0 exists to answer, upside down.
+
+   AND THERE IS DELIBERATELY NO HARDER DELETE THAN THIS. The record is kept
+   (`active: false`) rather than removed, because `worksheetReadByClass`
+   reads whether it EXISTS to decide if the teacher's own copy still shares
+   its PDF with the class — delete it and deleting that copy takes the file
+   away from every student who had already started, which is precisely the
+   fault v1.23.1 fixed. The PDF is left standing for the same reason, and
+   the teacher cannot read another account's copies to know whether anybody
+   still needs it. Off the list the paper is invisible on every screen,
+   which is what “remove it” has to mean here.
+   ===================================================================== */
 async function unpushWorksheet(id) {
   if (!isAdmin(currentUser)) return;
+  var stale = false;
   try {
     await db.collection(ASSIGN_COLLECTION).doc(id).update({ active: false });
+  } catch (e) {
+    // An assignment that is not there AT ALL is a card out of date rather
+    // than a take-off that failed: what the teacher pressed for is already
+    // true, so it is said as such and the screen is put right below.
+    if (!docMissingError(e)) {
+      var denied = /permission|insufficient|PERMISSION_DENIED/i.test(String((e && e.message) || e));
+      toast(denied
+        ? 'It could not be taken off the list — the rules do not allow it. ' + assignRulesHint()
+        : 'Could not take it off the list: ' + ((e && e.message) || e), 12000);
+      return;
+    }
+    stale = true;
+  }
+  // HOUSEKEEPING, NEVER THE OUTCOME. The teacher's own copy may have been
+  // deleted long ago, and flagging it is a convenience — its refusal must
+  // never report a take-off that really happened as a failure.
+  try {
     await db.collection(COLLECTION).doc(id).update({ pushed: false });
-    var w = worksheets.find(function (x) { return x.id === id; });
-    if (w) w.pushed = false;
-    renderWorksheets();
-    await loadAssignments();
-    // The copies students already started are THEIRS and are left alone: a
-    // worksheet that disappeared mid-way through, with the marking on it,
-    // would be work taken away rather than an assignment withdrawn.
-    toast('Taken off the class list. Anyone who already started it keeps their copy.', 6000);
-  } catch (e) { toast('Could not take it off the list: ' + ((e && e.message) || e), 6000); }
+  } catch (e) {
+    console.warn('The teacher’s own copy could not be flagged as unset', e);
+  }
+  var w = worksheets.find(function (x) { return x.id === id; });
+  if (w) w.pushed = false;
+  // THE LIST FIRST, THEN THE BOOKCASE. The set card on the shelf and the
+  // 📌 chip on the teacher's own card are both read LIVE off `assignments`,
+  // so a repaint before the reload draws the paper exactly as it was.
+  await loadAssignments();
+  renderWorksheets();
+  // The copies students already started are THEIRS and are left alone: a
+  // worksheet that disappeared mid-way through, with the marking on it,
+  // would be work taken away rather than an assignment withdrawn.
+  toast(stale
+    ? 'That paper was already off the class list — the card was out of date. It has gone now.'
+    : 'Taken off the class list. Anyone who already started it keeps their copy.', 7000);
 }
 
 /* =====================================================================

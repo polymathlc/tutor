@@ -12,6 +12,32 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.52.0 — 📌 “Take off the list” works on the one card that needed it
+
+Pressing **Take off the list** on a set worksheet answered *“Could not take it off the list: No
+document to update: …/tutorWorksheets/&lt;id&gt;”* — every time, so the card could not be got rid of
+at all. Two faults, both silent.
+
+- **The write that failed was the SECOND one, and the first had already landed.** `active: false`
+  on the assignment *is* the take-off; `pushed: false` on the teacher's own copy is a local mirror
+  of it — and on that paper the teacher's own copy had been deleted, which is exactly how a set
+  paper comes to be drawn as a set card on the teacher's own bookcase in the first place. So the
+  one card that can show the button with no copy behind it was the one card the button could never
+  work on. The flag is best effort now; the assignment write alone decides the outcome.
+- **The bookcase was repainted before the class list was reloaded**, so it was redrawn from the
+  very list that still held the paper: the card stayed on the shelf and the teacher's own card
+  went on saying *📌 Set for the class*. Setting a paper had the same ordering the other way round
+  — the card it had just set went on reading *⬦ Not set for the class*.
+- **An assignment that has already gone is a card out of date, not a failure.** It says so and
+  puts the screen right rather than repeating an error about something that is already true.
+- **There is deliberately no harder delete than this.** The record is kept (`active: false`)
+  rather than removed, because `worksheetReadByClass` reads whether it *exists* to decide the
+  teacher's own copy still shares its PDF with the class — delete it and deleting that copy takes
+  the file away from every student who had already started. Off the list the paper is invisible on
+  every screen, and anyone who started it keeps their copy.
+
+---
+
 ## v1.51.0 — 📅 One rack of shelves per year
 
 🗂 **The year was a word on the plate and nothing else.** A term's shelves were called “2025 WA1”,
