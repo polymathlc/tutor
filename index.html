@@ -991,6 +991,19 @@
   .mmHead { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-bottom: 7px; }
   .mmWho { font-weight: 700; font-size: 0.78rem; }
   .mmQ { font-size: 0.9rem; line-height: 1.55; }
+  /* 🕒 When it was made. Pushed to the far end of the head so a column of
+     rows lines its dates up rather than having them wander with the chips. */
+  .mmWhen { margin-left: auto; font-size: 0.72rem; color: var(--ink-faint); white-space: nowrap; }
+  /* 🖼 The question as it was printed. `contain` never `cover`: a crop that
+     is cut off at the edges is a question with its last line missing, and
+     nothing on the card would say so. */
+  .mmPics { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .mmPic {
+    max-width: 100%; width: auto; max-height: 260px; object-fit: contain;
+    border: 1px solid var(--line); border-radius: var(--radius-sm);
+    background: #fff; padding: 4px;
+  }
+  .mmCap { font-size: 0.72rem; color: var(--ink-faint); margin-top: 5px; }
   .mmLine { font-size: 0.82rem; color: var(--ink-soft); margin-top: 6px; line-height: 1.5; }
   .mmLine b { color: var(--ink); font-weight: 700; }
   .mistShot {
@@ -2571,7 +2584,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.49.1';
+var APP_VERSION = 'v1.50.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -13655,6 +13668,23 @@ async function fileMistakes(opts) {
           }
         } catch (e) { console.warn('Mistake picture could not be saved', e); }
       }
+      /* 🖼 THE LINK IS MINTED HERE, at the one moment it is cheapest: the
+         file has just gone up, so this is one call on a picture that is
+         already in hand rather than a hundred and fifty on a book. It is
+         what lets the teacher see 🧩 the question set out again — see the
+         note on `mistakePathUrl`. A link that will not mint costs the
+         teacher's view of the picture and never the mistake, which is the
+         same rule the picture itself follows two lines above. */
+      try {
+        if (patch.imagePath) {
+          var mUrl = await mistakePathUrl(patch.imagePath);
+          if (mUrl) patch.imageUrl = mUrl;
+        }
+        if (patch.blocks) {
+          var mFigs = await mistakeFigUrls(patch.blocks);
+          if (mFigs.length) patch.figUrls = mFigs;
+        }
+      } catch (e) { console.warn('Mistake picture link could not be kept', e); }
       if (Object.keys(patch).length) {
         try { await ref.update(patch); }
         catch (e) { console.warn('Mistake picture could not be recorded', e); }
@@ -13810,15 +13840,113 @@ async function loadMistakes(quiet) {
    Anything added to `mistakeMirrorRow` is added to what leaves a child's
    device, so add nothing to it without deciding that again.
 
-   THE PICTURES DO NOT TRAVEL. They are Storage paths under the student's
-   own uid, which the admin cannot read without a Storage rule this app
-   is not going to ask for — so a row carries the question as TEXT and the
-   panel says so, rather than showing a teacher a grid of broken images.
+   🖼 THE PICTURES TRAVEL AS LINKS (v1.50.0). They are Storage objects
+   under the student's own uid, which the admin cannot read — so a PATH in
+   the row would put a grid of broken images in front of a teacher, which
+   is why for three versions the row carried the question as text alone and
+   the panel said so. A DOWNLOAD URL is a different thing: the student's own
+   device mints one, the token in it is what grants the read, and it needs
+   no Storage rule and no deploy. See `mistakePathUrl` for the whole of it.
+
+   🕒 AND EVERY ROW SAYS WHEN. The stamp was always carried and was never
+   drawn, so the panel was a pile of questions with no way to tell last
+   night's paper from last term's.
    ===================================================================== */
 var MIST_MIRROR_MAX = 150;   // rows on the profile — a Firestore document dies at ~1 MB
 var MIST_MIRROR_Q = 300;     // …so every field is clipped, hard
 var MIST_MIRROR_A = 160;
 var MIST_PANEL_MAX = 240;    // and what one panel will draw
+var MIST_MIRROR_FIGS = 3;    // figures off ONE rebuilt question that travel
+var MIST_MIRROR_FILL = 20;   // pictures one sync will resolve for the first time
+var MIST_MIRROR_BYTES = 420000;  // the whole mirror, as JSON, hard
+
+/* 🖼 THE PICTURES TRAVEL NOW, AND THEY TRAVEL AS LINKS RATHER THAN AS PATHS.
+   ---------------------------------------------------------------------
+   Until v1.50.0 a row carried the question as TEXT and said so, because a
+   picture is a Storage object under the STUDENT's own uid and the admin
+   cannot read one: a path in the row would have put a grid of broken images
+   in front of a teacher. That was true, and it meant the teacher could not
+   see the one thing this whole book is made of — 🧩 the question SET OUT
+   AGAIN, cropped off the paper and redrawn as clean line work. The text is
+   the marking's own transcription of it; the picture is the question.
+
+   A DOWNLOAD URL IS NOT A PATH. `getDownloadURL()` mints a link carrying an
+   unguessable access token, and that token is what grants the read — not
+   the Storage rules. So the STUDENT's own device, which can read its own
+   files, mints the link once and the link is what travels. The teacher's
+   panel then shows the real picture with NO Storage rules change and NO
+   deploy, which is the constraint this whole mirror is shaped by.
+
+   IT IS MINTED ONCE AND KEPT ON THE MISTAKE ITSELF (`imageUrl`, `figUrls`),
+   never re-resolved per sync: the mirror rewrites the whole book on every
+   change, so resolving as it went would be a hundred and fifty network
+   calls each time a student ticked one question off.
+
+   ⚠️ THIS WIDENS WHAT LEAVES A CHILD'S DEVICE, on purpose, for the teacher
+   and for nobody else — the row already carries their own words, the
+   document is readable only by the admin and by the account it belongs to,
+   and every panel that draws it refuses in its own handler. The census in
+   `tools/tutor-tests.mjs` still pins the row by NAME, and it still pins
+   that a Storage PATH never travels. */
+async function mistakePathUrl(path) {
+  if (!storage || !path) return '';
+  try { return await storage.ref(path).getDownloadURL(); } catch (e) { return ''; }
+}
+/* The figures of a rebuilt question, in the order they are printed. */
+async function mistakeFigUrls(blocks) {
+  var out = [];
+  var list = Array.isArray(blocks) ? blocks : [];
+  for (var i = 0; i < list.length && out.length < MIST_MIRROR_FIGS; i++) {
+    var b = list[i];
+    if (!b || b.type !== 'image' || !b.path) continue;
+    var u = await mistakePathUrl(b.path);
+    if (u) out.push(u);
+  }
+  return out;
+}
+
+/* THE BACKFILL, for every mistake filed before the links were kept — which
+   on the day this ships is the whole book. Bounded hard: a student who has
+   never had one resolved fills a few in per sync and is done inside a
+   session or two, and the cost is paid ONCE because the answer is written
+   back onto the mistake.
+
+   A resolve that FAILED is not written. The file may be missing (then it
+   fails for ever and costs one call a sync, which the budget bounds) or the
+   network may have blinked (then it works next time) — and writing `''` to
+   mark it done would turn the second case into the first. `_urlTried` stops
+   it being retried again within the one session. */
+async function mistakeMirrorFill(list) {
+  if (!storage || !currentUser) return;
+  var left = MIST_MIRROR_FILL;
+  for (var i = 0; i < list.length && left > 0; i++) {
+    var m = list[i];
+    if (!m || m._urlTried) continue;
+    var wantPic = !!(m.imagePath && !m.imageUrl);
+    var figs = mistakeBlocks(m).filter(function (b) { return b.type === 'image'; });
+    var wantFigs = !!(figs.length && !Array.isArray(m.figUrls));
+    if (!wantPic && !wantFigs) continue;
+    m._urlTried = true;
+    left--;
+    var patch = {};
+    try {
+      if (wantPic) {
+        var u = await mistakePathUrl(m.imagePath);
+        if (u) { m.imageUrl = u; patch.imageUrl = u; }
+      }
+      if (wantFigs) {
+        var fu = await mistakeFigUrls(mistakeBlocks(m));
+        if (fu.length) { m.figUrls = fu; patch.figUrls = fu; }
+      }
+      /* The mistake is the truth and the link is a convenience on it, so a
+         refused write costs the link and never the mistake — exactly the
+         rule `fileMistakes` follows about the picture itself. */
+      if (Object.keys(patch).length && m.id) {
+        await mistakesCollRef().doc(m.id).update(patch);
+      }
+    } catch (e) { console.warn('mistake mirror: a picture link could not be kept', e); }
+  }
+}
 
 /* ONE ROW, and it is PURE so the harness can hold it to exactly what may
    travel. A row with neither a question nor a number is not a row: it
@@ -13844,8 +13972,55 @@ function mistakeMirrorRow(m) {
     mine: _mkStr(m.studentAnswer, MIST_MIRROR_A),
     ans: _mkStr(m.answer, MIST_MIRROR_A),
     done: !!m.cleared,
+    /* 🖼 The question as a PICTURE — a link, never a path (see above). `sh`
+       is which of the three tiers it is, and it is not decoration: a
+       whole-PAGE shot has two other questions on it, so a panel that
+       captioned it as "the question" would be pointing a teacher at the
+       wrong one. `figs` is 🧩 the rebuilt question's own figures. */
+    img: _mkUrl(m.imageUrl),
+    sh: _mkStr(m.shot, 10),
+    figs: (Array.isArray(m.figUrls) ? m.figUrls : [])
+            .map(_mkUrl).filter(Boolean).slice(0, MIST_MIRROR_FIGS),
     at: stampOf(m.createdAt) || 0
   };
+}
+
+/* A link, and only ever a link this app minted. Anything that is not an
+   https URL is dropped rather than carried: what comes back goes into an
+   `<img src>` on the teacher's screen, and a row is a place a later version
+   of another app could write to. */
+function _mkUrl(v) {
+  var u = String(v == null ? '' : v).trim();
+  return /^https:\/\//i.test(u) ? u.slice(0, 600) : '';
+}
+
+/* WHEN A MISTAKE WAS MADE, in the words a teacher would use. PURE, so the
+   harness can hold it to the boundaries rather than to a screenshot.
+
+   The TIME is always there and the DAY is what changes: today and yesterday
+   are named, the last week is its weekday ("Tue"), and anything older takes
+   its date — with the year on it once it is not this one, or a paper from
+   last September reads as one from this September. A stamp that will not
+   parse comes back EMPTY rather than as 1 Jan 1970, which is a date a
+   teacher would act on. */
+function mistWhenText(at, now) {
+  var t = Number(at) || 0;
+  if (!t) return '';
+  var d = new Date(t);
+  if (isNaN(d.getTime())) return '';
+  var n = now ? new Date(now) : new Date();
+  var time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  function midnight(x) { return new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime(); }
+  var days = Math.round((midnight(n) - midnight(d)) / 86400000);
+  if (days === 0) return 'today, ' + time;
+  if (days === 1) return 'yesterday, ' + time;
+  if (days > 1 && days < 7) {
+    return d.toLocaleDateString(undefined, { weekday: 'short' }) + ', ' + time;
+  }
+  var date = d.toLocaleDateString(undefined, d.getFullYear() === n.getFullYear()
+    ? { day: 'numeric', month: 'short' }
+    : { day: 'numeric', month: 'short', year: 'numeric' });
+  return date + ', ' + time;
 }
 
 /* The WHOLE (capped) book, newest first, written as ONE field. It is
@@ -13855,15 +14030,37 @@ function mistakeMirrorRow(m) {
    Mirroring the whole book rather than appending to it is what makes it
    SELF-HEALING — a question sorted, deleted or set out again drops out or
    updates on the next write, with nothing anywhere to remember. */
-function mistakeMirrorSync() {
+/* ⚠️ IT IS `async` AND EVERY CALLER FIRES AND FORGETS IT, so it may never
+   REJECT: an unhandled rejection is a line in a console no student opens,
+   which is exactly how 💾 the dead save went unnoticed for forty-eight
+   versions. One guard on the ONE door rather than a `.catch` at each of the
+   four call sites — a call site added later would be the one that forgot. */
+async function mistakeMirrorSync() {
+  try { return await _mistakeMirrorWrite(); }
+  catch (e) { console.warn('mistake mirror: not recorded', e); return null; }
+}
+async function _mistakeMirrorWrite() {
   /* The teacher's own papers are not a student's book, and a teacher at
      the top of their own roster is the fault 📈 usage already refuses to
      make. */
   if (!currentUser || !db || isAdmin(currentUser)) return null;
-  var rows = [];
+  /* 🖼 The links for anything filed before they were kept. Bounded, paid
+     once, and wrapped: a picture link that could not be minted must cost
+     the picture and never the row it sits on. */
+  try { await mistakeMirrorFill(mistakes); } catch (e) { /* the rows still go */ }
+  if (!currentUser || !db) return null;   // signed out while we resolved
+  var rows = [], bytes = 0;
   for (var i = 0; i < mistakes.length && rows.length < MIST_MIRROR_MAX; i++) {
     var row = mistakeMirrorRow(mistakes[i]);
-    if (row) rows.push(row);
+    if (!row) continue;
+    /* A RUNNING BYTE BUDGET, because a row carries links now and a
+       Firestore document dies at a megabyte — and it dies by REFUSING THE
+       WHOLE WRITE, so one long book would stop the mirror dead and nothing
+       on any screen would say why. The newest questions are the ones a
+       teacher opens this for, so the tail is what goes. */
+    bytes += JSON.stringify(row).length + 2;
+    if (bytes > MIST_MIRROR_BYTES) break;
+    rows.push(row);
   }
   /* A MERGE, ALWAYS. This document is the centre's roster and four apps
      write namespaced fields on it; a plain set would take the level, the
@@ -13877,6 +14074,34 @@ function mistakeMirrorSync() {
   // Never a reason to interrupt a student. Worth knowing about, and nothing more.
   if (write && write.catch) write.catch(function (e) { console.warn('mistake mirror: not recorded', e); });
   return write;
+}
+
+/* 🖼 THE CATCH-UP, so a book filed before the links were kept fills itself
+   in rather than waiting for the student to mark another paper. The mirror
+   is written when the book CHANGES — marked, sorted, deleted, set out again
+   — and none of those happens to a student who simply opens the app, so
+   without this the pictures of everything already in the book would arrive
+   only on the next marking run, which for a class at the end of a term is
+   never.
+
+   It asks first and writes NOTHING when there is nothing to mint: a sync on
+   every sign-in whether or not it had anything to do is a write a hundred
+   students make every morning for no reason. The resolve itself is bounded
+   by `MIST_MIRROR_FILL`, so a long book fills over a few visits. */
+function mistakeMirrorNeedsLinks() {
+  for (var i = 0; i < mistakes.length; i++) {
+    var m = mistakes[i];
+    if (!m || m._urlTried) continue;
+    if (m.imagePath && !m.imageUrl) return true;
+    if (!Array.isArray(m.figUrls) &&
+        mistakeBlocks(m).some(function (b) { return b.type === 'image'; })) return true;
+  }
+  return false;
+}
+function mistakeMirrorCatchUp() {
+  if (!currentUser || !db || isAdmin(currentUser)) return;
+  if (!mistakeMirrorNeedsLinks()) return;
+  mistakeMirrorSync();   // it is guarded and never rejects
 }
 
 /* What the teacher reads back. A profile from before this existed carries
@@ -23229,7 +23454,11 @@ function usageLabel(key) {
   return e ? e.label : String(key || 'Something');
 }
 
-var USAGE_RECENT_MAX = 40;   // one roster row holds this comfortably
+/* It was 40 while the feed was (accidentally) one session long. It spans
+   sessions now, and a teacher asking "what have they been doing" wants more
+   than an afternoon — at roughly 90 bytes a line this is a few KB on a row
+   that has a megabyte to play with. */
+var USAGE_RECENT_MAX = 150;
 var USAGE_FLUSH_MS = 2500;
 
 var _usage = null;           // { inc: {}, recent: [], timer, day }
@@ -23247,7 +23476,52 @@ function usageStart(user) {
   // The teacher is not a student: their own list is a list of the people
   // they teach, and their own use of the app is not usage to report.
   _usageOn = !!(user && db && !isAdmin(user));
-  _usage = { inc: {}, recent: [], timer: null, uid: user ? user.uid : '' };
+  /* `past` is what the ROW already held and `recent` is this session's own.
+     They are kept apart on purpose — see `usageSeedRecent` for why the feed
+     was only ever one session long before v1.50.0. */
+  _usage = { inc: {}, recent: [], past: [], seeded: false, timer: null,
+             uid: user ? user.uid : '' };
+  if (_usageOn) usageSeedRecent(_usage);
+}
+
+/* 🐛 THE FEED WAS WIPED ON EVERY SIGN-IN, and it looked exactly like an app
+   that records nothing. `tutorRecent` is written WHOLE (last-writer-wins,
+   deliberately — see the note at the top), and what was written was
+   `_usage.recent`, which starts EMPTY every session. So the first flush
+   after a sign-in replaced the whole history with the two or three events
+   that had happened since: a teacher opening a student who had marked four
+   papers last week saw "Signed in" and nothing else, for ever.
+
+   So the row's own list is READ BACK first and the session's events are
+   appended to it. The student can read their own profile — `onboardRequire`
+   already does, on every sign-in — so this needs no rules change.
+
+   ⚠️ A READ THAT FAILED MUST NOT WRITE THE FEED AT ALL. `seeded` is set only
+   by a read that really came back, and `usageFlush` writes `tutorRecent`
+   only when it is set. Losing a few lines out of a log is a lost line; a
+   log REPLACED by a fragment because a network blip made the history look
+   empty is the very bug this fixes, arriving through its own fix. The
+   counters are unaffected either way: they are increments and never need to
+   know what was there before. */
+function usageSeedRecent(u) {
+  var ref;
+  try { ref = peopleRef(u.uid); } catch (e) { return; }
+  if (!ref || !ref.get) return;
+  ref.get().then(function (snap) {
+    // A different account signed in while the read was in flight.
+    if (_usage !== u) return;
+    var d = (snap && snap.exists && snap.data()) || {};
+    var rows = Array.isArray(d.tutorRecent) ? d.tutorRecent : [];
+    u.past = rows.filter(function (r) { return r && typeof r === 'object'; })
+                 .slice(-USAGE_RECENT_MAX);
+    u.seeded = true;
+    // Anything that happened while the read was out is already in `recent`,
+    // so the next ordinary flush carries the whole thing. Nothing is
+    // scheduled here: a feed is a convenience, never a reason to write.
+  }).catch(function (e) {
+    if (_usage !== u) return;
+    console.warn('usage: the earlier feed could not be read — it is left alone', e);
+  });
 }
 function usageStop() {
   usageFlush(true);
@@ -23305,18 +23579,46 @@ function usageFlush(now) {
   var keys = Object.keys(u.inc);
   if (!keys.length && !u.recent.length) return;
   var patch = { tutorLastSeen: firebase.firestore.FieldValue.serverTimestamp() };
+  /* 🐛 A NESTED MAP, NEVER `patch['tutorUsage.' + k]`, and this is the bug
+     that made every counter in the panel read 0 for the whole life of the
+     feature.
+
+     `set()` and `update()` do NOT read a key the same way. `update()`
+     splits a key on its dots and walks into the map — `tutorUsage.hints`
+     means the `hints` field INSIDE `tutorUsage`. `set()` does not: it takes
+     each key as ONE literal field name, so a key written as tutorUsage, a
+     full stop and hints writes a TOP-LEVEL field whose own name contains a
+     full stop, and `p.tutorUsage` stays undefined for ever.
+
+     Every write here landed. Nothing threw, nothing was denied, the feed
+     beside it (a plain `tutorRecent`, no dot) worked perfectly — and
+     `usageOf` read `p.tutorUsage`, found nothing, and reported a student
+     with fifty-seven filed mistakes as having marked NOTHING. The one
+     screen that could have shown the fault is the one screen the fault
+     blanked.
+
+     Written as a nested map under `{ merge: true }` the increments land
+     where `usageOf` reads them, and merge is a DEEP merge for maps, so this
+     still touches only the counters in hand — the other apps' fields on this
+     roster row, and the counters not in this flush, are left alone. */
+  var usage = {};
   keys.forEach(function (k) {
-    patch['tutorUsage.' + k] = firebase.firestore.FieldValue.increment(u.inc[k]);
+    usage[k] = firebase.firestore.FieldValue.increment(u.inc[k]);
   });
   // One a day, whatever else happened: "active days" is what says whether
   // the app is part of a week or was opened once.
   var day = usageDayKey();
   if (u.day !== day) {
     u.day = day;
-    patch['tutorUsage.lastDay'] = day;
-    patch['tutorUsage.activeDays'] = firebase.firestore.FieldValue.increment(1);
+    usage.lastDay = day;
+    usage.activeDays = firebase.firestore.FieldValue.increment(1);
   }
-  if (u.recent.length) patch.tutorRecent = u.recent.slice(-USAGE_RECENT_MAX);
+  if (Object.keys(usage).length) patch.tutorUsage = usage;
+  /* The row's own history, then this session's. Only once the history has
+     really been read — see `usageSeedRecent`. */
+  if (u.seeded && u.recent.length) {
+    patch.tutorRecent = u.past.concat(u.recent).slice(-USAGE_RECENT_MAX);
+  }
   u.inc = {};
   var ref = peopleRef(u.uid);
   var write = ref.set(patch, { merge: true });
@@ -23331,8 +23633,26 @@ function usageFlush(now) {
    number falls back to 0 rather than to nothing — a dash where a count
    should be reads as a fault rather than as "none yet". */
 function usageOf(p) {
-  var u = (p && p.tutorUsage) || {};
-  function n(k) { return Number(u[k]) || 0; }
+  var row = p || {};
+  var u = row.tutorUsage || {};
+  /* 🐛 …AND WHAT THE BROKEN WRITE LEFT BEHIND IS STILL READ (see the note in
+     `usageFlush`). Until v1.50.0 every counter went into a TOP-LEVEL field
+     literally named `tutorUsage.hints`, so a student's whole history —
+     every paper marked, every question answered, every hint taken — is
+     sitting on the row under those flat names.
+
+     They are ADDED rather than fallen back to, and the difference matters:
+     the flat keys are a frozen total that nothing writes any more, the
+     nested map starts at zero and counts from the deploy, and the student's
+     real total is the two together. Falling back would report a child with
+     four hundred questions behind them as having done the three they have
+     done since the fix, which is the same data loss wearing a tidier face.
+
+     So nothing needs migrating, nothing needs a script, and the number is
+     right on the very first render. */
+  function n(k) {
+    return (Number(u[k]) || 0) + (Number(row['tutorUsage.' + k]) || 0);
+  }
   var marked = n('questions');
   return {
     sessions: n('sessions'), worksheets: n('worksheets'),
@@ -23344,7 +23664,8 @@ function usageOf(p) {
     cleared: n('cleared'), sheets: n('sheets'), papers: n('papers'),
     again: n('again'), reports: n('reports'),
     quizzes: n('quizzes'), solved: n('solved'),
-    activeDays: n('activeDays'), lastDay: String(u.lastDay || ''),
+    activeDays: n('activeDays'),
+    lastDay: String(u.lastDay || row['tutorUsage.lastDay'] || ''),
     // Accuracy over questions that were ATTEMPTED. A blank was not an
     // attempt, and counting it as one reports a child who ran out of time
     // as a child who got it wrong.
@@ -23642,9 +23963,14 @@ function openPersonUsage(id) {
     body.appendChild(mh);
     var note = document.createElement('p');
     note.className = 'sub';
-    note.textContent = 'Their work as text. The pictures stay in their own mistake book.';
+    note.textContent = 'Newest first — the question as it was printed, what they put, and when.';
     body.appendChild(note);
-    r.mistakes.slice(0, MIST_PANEL_MAX).forEach(function (row) {
+    /* Newest first, by the stamp rather than by the order the row happened
+       to be written in: a book read for "what went wrong last night" is
+       useless in any other order, and a row from an older version that
+       carries no stamp sorts last rather than jumping to the top. */
+    r.mistakes.slice().sort(function (a, b) { return (b.at || 0) - (a.at || 0); })
+     .slice(0, MIST_PANEL_MAX).forEach(function (row) {
       body.appendChild(mistMirrorRowNode(row, ''));
     });
     if (r.mistakes.length > MIST_PANEL_MAX) {
@@ -23698,12 +24024,67 @@ function mistMirrorRowNode(row, who) {
     d.textContent = '✓ Sorted';
     head.appendChild(d);
   }
+
+  /* WHEN, and it goes on the head rather than under the answer. "Is this
+     last night's paper or last term's" is the first thing a teacher asks of
+     a question in front of them, and it decides whether it is worth a
+     lesson — a book with no dates on it is a pile. A row filed before the
+     stamp was kept simply has none and says nothing rather than today. */
+  if (row.at) {
+    var when = document.createElement('span');
+    when.className = 'mmWhen';
+    when.textContent = mistWhenText(row.at);
+    when.title = new Date(row.at).toLocaleString();
+    head.appendChild(when);
+  }
   card.appendChild(head);
 
   var q = document.createElement('div');
   q.className = 'mmQ';
   q.textContent = row.q || '(the question was not recorded)';
   card.appendChild(q);
+
+  /* 🖼 THE QUESTION AS IT WAS PRINTED — 🧩 cut out of the paper and redrawn,
+     which is the thing this book is actually made of. The wording above is
+     the marking's transcription of it; a diagram, a table or a number line
+     is not in that sentence at all, so without the picture a teacher is
+     reading about a question rather than reading the question.
+
+     A WHOLE-PAGE shot is CAPTIONED as one. It has the two questions either
+     side of it on it, so presenting it as "the question" would point a
+     teacher at the wrong one — the same reason `mistakeTier` keeps the
+     three tiers apart on the student's own card. */
+  /* THE SAME RULE `mistakeTier` FOLLOWS ON THE STUDENT'S OWN CARD: a
+     question shown as its rebuilt FIGURES must not also show the
+     whole-question crop, because the crop IS the same question — the
+     teacher would be reading it twice and looking for a difference that
+     is not there. Figures first, and the crop only when there are none. */
+  var pics = (row.figs || []).slice();
+  if (!pics.length && row.img) pics.push(row.img);
+  if (pics.length) {
+    var wrap = document.createElement('div');
+    wrap.className = 'mmPics';
+    pics.forEach(function (u) {
+      var im = document.createElement('img');
+      im.className = 'mmPic';
+      // A panel can hold 240 of these, so nothing is fetched until it is
+      // scrolled to.
+      im.loading = 'lazy';
+      im.alt = 'The question as it was printed';
+      im.src = u;
+      // A link that has been revoked, or a file since deleted, must leave a
+      // card that still reads rather than a broken-image tile.
+      im.addEventListener('error', function () { im.remove(); });
+      wrap.appendChild(im);
+    });
+    card.appendChild(wrap);
+    if (row.sh === 'page' && !(row.figs || []).length) {
+      var cap = document.createElement('div');
+      cap.className = 'mmCap';
+      cap.textContent = 'The whole page — this question is somewhere on it.';
+      card.appendChild(cap);
+    }
+  }
 
   // MODEL OUTPUT AND A CHILD'S OWN WORDS, painted as TEXT. Every one of
   // these is something a student or a model wrote, rendered into the
@@ -23789,8 +24170,8 @@ function openClassMistakes() {
   var sum = document.createElement('p');
   sum.className = 'sub';
   sum.textContent = rows.length + ' question' + (rows.length === 1 ? '' : 's') + ' across ' +
-    groups.length + ' topic' + (groups.length === 1 ? '' : 's') + '. This is their work as TEXT — the ' +
-    'pictures stay in each student\u2019s own mistake book.';
+    groups.length + ' topic' + (groups.length === 1 ? '' : 's') +
+    '. Biggest topic first, and newest first inside each one.';
   body.appendChild(sum);
 
   var drawn = 0;
@@ -23905,7 +24286,9 @@ if (auth) auth.onAuthStateChanged(function (user) {
     // The linked worksheet (?ws=) opens once the list it is looked up in has
     // arrived — and only once, whatever else the sign-in does.
     loadWorksheets().then(openFromLink);
-    loadMistakes();
+    /* 🖼 …and the pictures of anything filed before the links were kept.
+       Nothing waits on it and nothing fails because of it. */
+    loadMistakes().then(mistakeMirrorCatchUp, function () {});
     usageStart(user);
     usageNote('signin');
     onboardRequire(user).catch(function (e) {

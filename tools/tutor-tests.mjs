@@ -1501,17 +1501,60 @@ const mrow = S.mistakeMirrorRow({
   marks: '0/2', studentAnswer: 'it went away', answer: 'The water evaporated.',
   feedback: 'You have not said where the water went.', explanation: 'Evaporation is…',
   imagePath: 'tutor-mistakes/uid/abc.jpg', blocks: [{ type: 'image', path: 'x.jpg' }],
+  imageUrl: 'https://firebasestorage.googleapis.com/v0/b/x/o/abc.jpg?alt=media&token=t1',
+  figUrls: ['https://firebasestorage.googleapis.com/v0/b/x/o/f0.png?alt=media&token=t2'],
+  shot: 'question',
   cleared: false, createdAt: 1700000000000
 });
 eq('a row carries the question, what they put and the answer',
    [mrow.q, mrow.mine, mrow.ans], ['Explain why the puddle dried up.', 'it went away', 'The water evaporated.']);
-/* THE CENSUS. A picture is a Storage path under the STUDENT's own uid that
-   the admin cannot read without a Storage rule this app is not going to
-   ask for — so sending one would put a grid of broken images in front of a
-   teacher. Everything else here is a decision about a child's privacy. */
+/* THE CENSUS. Everything here is a decision about a child's privacy, so the
+   row is pinned BY NAME and a field nobody decided to send fails the run. */
 eq('…and nothing else at all', Object.keys(mrow).sort(),
-   ['ans', 'at', 'doc', 'done', 'lo', 'lvl', 'mine', 'mk', 'n', 'q', 'sub', 'top', 'v']);
-ok('no picture travels', !JSON.stringify(mrow).includes('tutor-mistakes') && !JSON.stringify(mrow).includes('x.jpg'));
+   ['ans', 'at', 'doc', 'done', 'figs', 'img', 'lo', 'lvl', 'mine', 'mk', 'n', 'q', 'sh', 'sub', 'top', 'v']);
+/* 🖼 A LINK TRAVELS AND A PATH NEVER DOES, and the difference is the whole
+   feature: the admin cannot read a Storage object under the student's own
+   uid, so a path would be a grid of broken images — while a download URL
+   carries its own access token and simply works. */
+eq('the question as it was printed travels, as a link',
+   [mrow.img.slice(0, 8), mrow.figs.length], ['https://', 1]);
+eq('…and which of the three tiers it is, so a whole PAGE is never captioned as the question',
+   mrow.sh, 'question');
+ok('a Storage PATH still never travels',
+   !JSON.stringify(mrow).includes('tutor-mistakes/') && !JSON.stringify(mrow).includes('"x.jpg"'));
+/* What comes back goes into an `<img src>` on the teacher's screen, and a
+   roster row is a document another app could write to. */
+eq('anything that is not an https link is dropped rather than drawn',
+   [S.mistakeMirrorRow({ question: 'Q', imageUrl: 'javascript:alert(1)' }).img,
+    S.mistakeMirrorRow({ question: 'Q', imageUrl: 'http://x/y.jpg' }).img,
+    S.mistakeMirrorRow({ question: 'Q', figUrls: ['data:image/png;base64,AAA'] }).figs], ['', '', []]);
+eq('a figure list that is not a list is not a crash',
+   S.mistakeMirrorRow({ question: 'Q', figUrls: 'oops' }).figs, []);
+eq('…and a book of figures is capped',
+   S.mistakeMirrorRow({ question: 'Q',
+     figUrls: new Array(9).fill('https://x/y.png') }).figs.length, S.MIST_MIRROR_FIGS);
+
+/* 🕒 WHEN IT WAS MADE, in the words a teacher would use. The stamp was
+   always carried and was never drawn, so the panel was a pile of questions
+   with no way to tell last night's paper from last term's. */
+const NOON = new Date(2026, 8, 22, 12, 0, 0).getTime();   // Tue 22 Sep 2026
+const DAY = 86400000;
+ok('today is named', S.mistWhenText(NOON - 3600000, NOON).startsWith('today, '));
+ok('…and so is yesterday', S.mistWhenText(NOON - DAY, NOON).startsWith('yesterday, '));
+ok('the last week is its weekday',
+   /^[A-Za-z]{3,}, /.test(S.mistWhenText(NOON - 3 * DAY, NOON)) &&
+   !/^(today|yesterday)/.test(S.mistWhenText(NOON - 3 * DAY, NOON)));
+ok('anything older takes its date',
+   /\d/.test(S.mistWhenText(NOON - 30 * DAY, NOON)) &&
+   !/^(today|yesterday)/.test(S.mistWhenText(NOON - 30 * DAY, NOON)));
+/* A paper from last September must not read as one from this September. */
+ok('…with the year on it once it is not this one',
+   S.mistWhenText(new Date(2025, 8, 22, 9, 0, 0).getTime(), NOON).includes('2025'));
+ok('…and not when it is', !S.mistWhenText(NOON - 30 * DAY, NOON).includes('2026'));
+/* 1 Jan 1970 is a date a teacher would act on. */
+eq('a stamp that will not parse says nothing at all',
+   [S.mistWhenText(0, NOON), S.mistWhenText('', NOON), S.mistWhenText(null, NOON),
+    S.mistWhenText('oops', NOON)], ['', '', '', '']);
 eq('every field is clipped', S.mistakeMirrorRow({ question: 'x'.repeat(900), studentAnswer: 'y'.repeat(900) }).q.length,
    S.MIST_MIRROR_Q);
 /* 🕳 A skipped blank must not arrive with an empty verdict the panel
@@ -1520,6 +1563,89 @@ eq('a skipped blank says so', S.mistakeMirrorRow({ question: 'Q', skipped: true,
 eq('a row with neither a question nor a number is not a row',
    S.mistakeMirrorRow({ studentAnswer: 'something' }), null);
 eq('nothing at all is not a crash', S.mistakeMirrorRow(null), null);
+
+/* ---- The write itself ---- */
+/* A student's device runs this, and it runs it on every change to the book,
+   so what it costs and what it refuses both matter. */
+async function mirrorRun(user, book, opts) {
+  const o = opts || {};
+  const writes = [], updates = [], urls = [];
+  S.currentUser = user;
+  S.mistakes = book;
+  S.db = { collection: () => ({ doc: () => ({
+    set: (p, m) => { writes.push({ p, m }); return { catch: () => {} }; }
+  }) }) };
+  S.mistakesCollRef = () => ({ doc: () => ({ update: p => { updates.push(p); return Promise.resolve(); } }) });
+  S.storage = { ref: path => ({ getDownloadURL: () => {
+    urls.push(path);
+    return o.noUrls ? Promise.reject(new Error('gone'))
+                    : Promise.resolve('https://fs.example/' + encodeURIComponent(path) + '?token=t');
+  } }) };
+  S.firebase = { firestore: { FieldValue: { serverTimestamp: () => 'STAMP' } } };
+  const r = await S.mistakeMirrorSync();
+  S.currentUser = null; S.db = null; S.storage = null; S.mistakes = [];
+  return { writes, updates, urls, r };
+}
+const oneQ = (i, extra) => Object.assign({
+  id: 'm' + i, question: 'Question ' + i, number: String(i), verdict: 'wrong',
+  createdAt: 1700000000000 + i
+}, extra || {});
+
+const mw = await mirrorRun({ uid: 'u1', email: 'kid@example.com' },
+  [oneQ(1, { imagePath: 'tutor-mistakes/u1/a.jpg', shot: 'question' })]);
+eq('the book is mirrored as ONE write', mw.writes.length, 1);
+eq('…and it is a MERGE, or the roster loses the level, the subject and the answers',
+   mw.writes[0].m && mw.writes[0].m.merge, true);
+eq('…carrying the count of the WHOLE book, not of the rows that fitted',
+   mw.writes[0].p.tutorMistakeCount, 1);
+/* 🖼 The link is minted by the student's own device — the admin cannot read
+   the object — and it is KEPT on the mistake so the next sync is free. */
+eq('a picture filed before the links were kept is resolved once', mw.urls, ['tutor-mistakes/u1/a.jpg']);
+eq('…and written back onto the mistake, so it is paid for once and not once a sync',
+   mw.updates.length && !!mw.updates[0].imageUrl, true);
+ok('…and the row carries the link', mw.writes[0].p.tutorMistakes[0].img.startsWith('https://'));
+
+/* A resolve that failed must not be written as done: the file may be gone
+   (it fails for ever, which the budget bounds) or the network may have
+   blinked (it works next time), and writing '' would turn the second into
+   the first. */
+const mFail = await mirrorRun({ uid: 'u1' },
+  [oneQ(1, { imagePath: 'tutor-mistakes/u1/a.jpg' })], { noUrls: true });
+eq('a link that could not be minted is not written back', mFail.updates.length, 0);
+eq('…and the row still goes, with the question as text', mFail.writes[0].p.tutorMistakes.length, 1);
+
+/* The teacher's own papers are not a student's book. */
+const mAdmin = await mirrorRun({ uid: 'a', email: S.ADMIN_EMAIL }, [oneQ(1)]);
+eq('the teacher is never mirrored', mAdmin.writes.length, 0);
+
+/* A Firestore document dies at a megabyte and it dies by REFUSING THE WHOLE
+   WRITE, so one long book would stop the mirror dead with nothing on any
+   screen saying why. The newest are what a teacher opens this for. */
+const big = [];
+for (let i = 0; i < 400; i++) big.push(oneQ(i, { question: 'x'.repeat(S.MIST_MIRROR_Q) }));
+const mBig = await mirrorRun({ uid: 'u1' }, big);
+ok('a long book is cut to fit rather than refused whole',
+   JSON.stringify(mBig.writes[0].p.tutorMistakes).length <= S.MIST_MIRROR_BYTES + 2000);
+ok('…and never past the row cap either',
+   mBig.writes[0].p.tutorMistakes.length <= S.MIST_MIRROR_MAX);
+eq('…while the count still says how many there really are',
+   mBig.writes[0].p.tutorMistakeCount, 400);
+/* Resolving a hundred and fifty pictures on every tick of a book is what
+   the budget exists to stop. */
+ok('…and one sync never resolves more than its budget', mBig.urls.length <= S.MIST_MIRROR_FILL);
+
+/* ⚠️ Every caller fires and forgets it, so it may never REJECT: an
+   unhandled rejection is a line in a console no student opens. */
+const mThrow = await (async () => {
+  S.currentUser = { uid: 'u1' }; S.mistakes = [oneQ(1)];
+  S.db = { collection: () => { throw new Error('denied'); } };
+  S.firebase = { firestore: { FieldValue: { serverTimestamp: () => 'STAMP' } } };
+  let threw = false;
+  try { await S.mistakeMirrorSync(); } catch (e) { threw = true; }
+  S.currentUser = null; S.db = null; S.mistakes = [];
+  return threw;
+})();
+eq('a mirror that could not be written never rejects', mThrow, false);
 
 eq('a profile from before this existed reads as nothing, never as an error',
    [S.mistakesOf(null), S.mistakesOf({}), S.mistakesOf({ tutorMistakes: 'junk' })], [[], [], []]);
@@ -1557,8 +1683,32 @@ ok('the class-wide panel refuses anyone but the admin IN THE HANDLER',
 ok('the mirror is written after the book is reloaded',
    /await loadMistakes\(true\);[\s\S]{0,500}mistakeMirrorSync\(\);/.test(FILING));
 ok('…and again whenever the book CHANGES',
-   (html.match(/mistakeMirrorSync\(\);/g) || []).length === 3,
-   'filed, sorted and removed — or the teacher reads a book that no longer exists');
+   (html.match(/mistakeMirrorSync\(\);/g) || []).length === 4,
+   'filed, sorted and removed — or the teacher reads a book that no longer exists — ' +
+   'plus 🖼 the catch-up that mints the picture links for a book filed before they were kept');
+/* 🖼 …and the catch-up ASKS FIRST. A sync on every sign-in whether or not it
+   had anything to do is a write a hundred students make every morning for
+   nothing. */
+ok('the catch-up writes nothing when there is nothing to mint',
+   /function mistakeMirrorCatchUp\(\) \{[\s\S]{0,200}if \(!mistakeMirrorNeedsLinks\(\)\) return;/.test(MIRROR));
+eq('…and it is asked of a book that has none', (() => {
+  S.mistakes = [{ id: 'a', question: 'Q' }];
+  const r = S.mistakeMirrorNeedsLinks();
+  S.mistakes = [];
+  return r;
+})(), false);
+eq('…and of one that does', (() => {
+  S.mistakes = [{ id: 'a', question: 'Q', imagePath: 'tutor-mistakes/u/a.jpg' }];
+  const r = S.mistakeMirrorNeedsLinks();
+  S.mistakes = [];
+  return r;
+})(), true);
+eq('…and never twice for the same one in a session', (() => {
+  S.mistakes = [{ id: 'a', question: 'Q', imagePath: 'p.jpg', _urlTried: true }];
+  const r = S.mistakeMirrorNeedsLinks();
+  S.mistakes = [];
+  return r;
+})(), false);
 ok('a student with a book and no counters still shows it',
    /if \(!u\.any && !r\.mistakes\.length\) \{/.test(html));
 ok('the panel paints a child\u2019s words as TEXT, never as markup',
@@ -5017,18 +5167,68 @@ eq('an event nobody named still reads as words, not as a blank',
 ok('usageNote and usageAdd are the only things that move a counter',
    (html.match(/_usage\.inc\[field\] = /g) || []).length === 2);
 ok('…and usageFlush is the only thing that writes one',
-   (html.match(/'tutorUsage\.'/g) || []).length === 1 &&
-   (html.match(/tutorUsage\./g) || []).length === 3);
+   (html.match(/patch\.tutorUsage = usage;/g) || []).length === 1);
 
-/* A student's device runs all of this, so what leaves it matters. */
-function usageRun(user, fn) {
+/* 🐛 THE CENSUS, which is the half that matters — it fails on the NEXT
+   place somebody writes a dotted key rather than on the last one.
+
+   A quoted key with a dot in it means two OPPOSITE things depending on
+   which door it goes through: a field PATH to `update()`, and a literal
+   field NAME to `set()`. The second is what shipped, and it is silent —
+   the write lands, nothing is denied, and the field simply is not where
+   anything reads it.
+
+   It is a whole-file sweep and it can afford to be, because the pattern is
+   a narrow one (a QUOTED dotted literal in key position) rather than an
+   attempt to strip comments — the trap this repo documents about hand-rolled
+   JS strippers. It is clean today. If a dotted key is ever really wanted,
+   it belongs on an `update()` and the exemption belongs here, in writing. */
+const dottedKey = [
+  ...html.matchAll(/\[\s*['"][A-Za-z_$][\w$]*\.[\w$.]*['"]\s*\]\s*=/g),
+  ...html.matchAll(/['"][A-Za-z_$][\w$]*\.[\w$]*['"]\s*:/g)
+].map(m => m[0]);
+ok('no quoted dotted key is written anywhere in the file',
+   dottedKey.length === 0,
+   'a dot means a field PATH to update() and a literal field NAME to set(): ' +
+   dottedKey.join(' · '));
+
+/* 🐛 THE ONE THAT SHIPPED, AND THE PIN THAT WOULD HAVE CAUGHT IT.
+
+   `set()` does NOT read a dotted key as a path — only `update()` does. So
+   `set({'tutorUsage.hints': increment(1)})` writes a TOP-LEVEL field whose
+   name contains a full stop, `p.tutorUsage` stays undefined, and every
+   counter in the teacher's panel reads 0 while the feed beside it (a plain
+   `tutorRecent`) works perfectly. Nothing throws and nothing is denied.
+
+   The old pin asked what the source SAID — it counted the string
+   `'tutorUsage.'` — so it was green for the whole life of the bug. This one
+   asks what the WRITE would do. */
+function dottedKeys(o, path) {
+  let bad = [];
+  Object.keys(o || {}).forEach(k => {
+    if (k.includes('.')) bad.push((path ? path + '.' : '') + k);
+  });
+  return bad;
+}
+
+/* A student's device runs all of this, so what leaves it matters. `seed` is
+   what the roster row ALREADY held, because the feed spans sessions now. */
+async function usageRun(user, fn, seed) {
   const writes = [];
-  S.db = { collection: () => ({ doc: () => ({ set: (p, o) => { writes.push({ p, o }); return { catch: () => {} }; } }) }) };
+  const doc = {
+    set: (p, o) => { writes.push({ p, o }); return { catch: () => {} }; },
+    get: () => (seed === 'fail'
+      ? Promise.reject(new Error('denied'))
+      : Promise.resolve({ exists: true, data: () => ({ tutorRecent: seed || [] }) }))
+  };
+  S.db = { collection: () => ({ doc: () => doc }) };
   S.firebase = { firestore: { FieldValue: {
     serverTimestamp: () => 'STAMP',
     increment: n => ({ inc: n })
   } } };
   S.usageStart(user);
+  // The seed read is a promise; let it land before anything is flushed.
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
   fn();
   S.usageFlush(true);
   S.db = null;
@@ -5037,28 +5237,36 @@ function usageRun(user, fn) {
 const student = { uid: 'u1', email: 'kid@example.com' };
 const teacher = { uid: 'admin', email: S.ADMIN_EMAIL };
 
-const w = usageRun(student, () => {
+const w = await usageRun(student, () => {
   S.usageNote('mark', '  Term 1   Paper\n2  ');
   S.usageAdd('questions', 18);
   S.usageAdd('correct', 11);
 });
 eq('a run of work is ONE write', w.length, 1);
 eq('…and it is a MERGE, never a set', w[0].o && w[0].o.merge, true);
+/* THE COUNTERS LAND WHERE `usageOf` READS THEM — a nested map, so that
+   `p.tutorUsage.questions` is a thing that exists. */
 eq('a counter goes up by an INCREMENT, not by a number this tab worked out',
-   w[0].p['tutorUsage.questions'], { inc: 18 });
+   w[0].p.tutorUsage.questions, { inc: 18 });
 eq('…so two tabs on one account cannot overwrite each other',
-   w[0].p['tutorUsage.marked'], { inc: 1 });
+   w[0].p.tutorUsage.marked, { inc: 1 });
 eq('the day is counted once, whatever else happened',
-   w[0].p['tutorUsage.activeDays'], { inc: 1 });
+   w[0].p.tutorUsage.activeDays, { inc: 1 });
+eq('…and the panel really reads back what the write put there',
+   S.usageOf({ tutorUsage: { questions: 18, marked: 1 } }).questions, 18);
+/* 🐛 THE SHAPE OF THE BUG ITSELF. A dotted key in a `set()` is a literal
+   field name, so this must hold at EVERY level of the patch. */
+eq('no key written by a set() carries a dot in it', dottedKeys(w[0].p), []);
+eq('…at any level of it', dottedKeys(w[0].p.tutorUsage, 'tutorUsage'), []);
 eq('the sign-in stamp goes with it', w[0].p.tutorLastSeen, 'STAMP');
 /* A worksheet's own NAME is the most that ever leaves the device. Not a
    question, not an answer, not a mark on a particular question. */
 eq('what a line records is folded to one line and capped',
    w[0].p.tutorRecent[0].d, 'Term 1 Paper 2');
-const long = usageRun(student, () => { S.usageNote('chat', 'x'.repeat(400)); });
+const long = await usageRun(student, () => { S.usageNote('chat', 'x'.repeat(400)); });
 eq('a long detail is cut rather than written whole', long[0].p.tutorRecent[0].d.length, 80);
 
-const many = usageRun(student, () => {
+const many = await usageRun(student, () => {
   for (let i = 0; i < S.USAGE_RECENT_MAX + 12; i++) S.usageNote('hint', 'Q' + i);
 });
 eq('the recent list is capped', many[0].p.tutorRecent.length, S.USAGE_RECENT_MAX);
@@ -5066,12 +5274,30 @@ eq('…and it is the LAST ones that are kept',
    many[0].p.tutorRecent[many[0].p.tutorRecent.length - 1].d,
    'Q' + (S.USAGE_RECENT_MAX + 11));
 eq('…while the counter still counts every one of them',
-   many[0].p['tutorUsage.hints'], { inc: S.USAGE_RECENT_MAX + 12 });
+   many[0].p.tutorUsage.hints, { inc: S.USAGE_RECENT_MAX + 12 });
+
+/* 🐛 THE FEED SPANS SESSIONS. `tutorRecent` is written WHOLE, and what used
+   to be written was the session's own list — which starts empty. So the
+   first flush after every sign-in replaced the entire history with the two
+   events that had happened since, and a teacher saw "Signed in" under a
+   student who had marked four papers. */
+const feedSpan = await usageRun(student, () => { S.usageNote('chat', 'today'); },
+                                [{ t: 1, k: 'mark', d: 'last week' }]);
+eq('what the row already held is kept, and this session is added to it',
+   feedSpan[0].p.tutorRecent.map(e => e.d), ['last week', 'today']);
+/* …and the other direction, which is the one that would put the bug back:
+   a read that FAILED must leave the history alone rather than replace it
+   with whatever this session happens to have seen. */
+const blind = await usageRun(student, () => { S.usageNote('chat', 'today'); }, 'fail');
+eq('a history that could not be read is never overwritten',
+   blind[0].p.tutorRecent, undefined);
+eq('…while the counters still go up, because an increment needs no history',
+   blind[0].p.tutorUsage.chats, { inc: 1 });
 
 /* The teacher's own list is a list of the people they teach. Their own use
    of the app is not usage to report, and recording it would put the teacher
    at the top of their own roster every single day. */
-const t = usageRun(teacher, () => { S.usageNote('mark', 'anything'); S.usageAdd('questions', 9); });
+const t = await usageRun(teacher, () => { S.usageNote('mark', 'anything'); S.usageAdd('questions', 9); });
 eq('the teacher is not recorded', t.length, 0);
 
 /* Signing out FLUSHES what is still in hand — the last few minutes of a
@@ -5095,10 +5321,10 @@ const bye = (() => {
 eq('signing out files what is still in hand', bye.afterStop, 1);
 eq('…and nothing is recorded once the account has gone', bye.total, 1);
 
-const nothing = usageRun(student, () => {});
+const nothing = await usageRun(student, () => {});
 eq('a session with nothing in it writes nothing at all', nothing.length, 0);
 
-const zero = usageRun(student, () => { S.usageAdd('questions', 0); S.usageAdd('correct', NaN); });
+const zero = await usageRun(student, () => { S.usageAdd('questions', 0); S.usageAdd('correct', NaN); });
 eq('a count of nothing is not a count', zero.length, 0);
 
 /* ---- What is read back out ---- */
@@ -5123,6 +5349,23 @@ eq('…so a page left blank never counts against them', S.usageAccuracy(acc), 75
 eq('a partial counts half', S.usageAccuracy(S.usageOf({ tutorUsage: { correct: 1, partial: 1 } })), 75);
 eq('nothing attempted has no accuracy at all',
    S.usageAccuracy(S.usageOf({ tutorUsage: { hints: 4 } })), null);
+
+/* 🐛 THE HISTORY THE BROKEN WRITE LEFT BEHIND IS STILL READ. Every counter
+   a student earned before v1.50.0 is on the row under a flat key literally
+   named `tutorUsage.questions`. Falling back to it would report a child
+   with four hundred questions behind them as having done the three they
+   have done since the deploy, so the two are ADDED — which is also what
+   makes it need no migration and be right on the first render. */
+const legacy = S.usageOf({ 'tutorUsage.questions': 57, 'tutorUsage.marked': 3,
+                           'tutorUsage.correct': 40, 'tutorUsage.wrong': 17 });
+eq('what the broken write recorded is not lost', [legacy.questions, legacy.marked], [57, 3]);
+eq('…and it counts as having done something', legacy.any, true);
+eq('…and it still has an accuracy', S.usageAccuracy(legacy), 70);
+const both = S.usageOf({ 'tutorUsage.questions': 57, tutorUsage: { questions: 4 } });
+eq('the old total and the new one are ADDED, never one or the other',
+   both.questions, 61);
+eq('the last day falls back to the old key when there is no new one',
+   S.usageOf({ 'tutorUsage.lastDay': '2026-09-22' }).lastDay, '2026-09-22');
 
 const feed = S.usageRecent({ tutorRecent: [{ t: 10, k: 'hint' }, { t: 90, k: 'chat' }, { t: 50, k: 'mark' }] });
 eq('the feed reads newest first', feed.map(e => e.k), ['chat', 'mark', 'hint']);

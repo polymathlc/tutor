@@ -1442,9 +1442,44 @@ still came back, it simply went on making the mistake the teacher had already co
     handler**, and the mirror is never written by the teacher's own device. **Anything added to
     `mistakeMirrorRow` is added to what leaves a child's device** — the harness pins its key list
     by name, so a field nobody decided to send fails the run.
-  - **THE PICTURES DO NOT TRAVEL.** They are Storage paths under the student's own uid that the
-    admin cannot read without a Storage rule this app is not going to ask for, so sending one
-    would put a grid of broken images in front of a teacher. Both panels say the rows are text.
+  - **🖼 THE PICTURES TRAVEL AS LINKS, NEVER AS PATHS** (v1.50.0 — `mistakePathUrl` /
+    `mistakeFigUrls` / **`mistakeMirrorFill`** / `mistakeMirrorNeedsLinks` / `mistakeMirrorCatchUp`
+    / `_mkUrl`, the `img` / `sh` / `figs` on the row, and the `imageUrl` / `figUrls` `fileMistakes`
+    writes). A PATH is a Storage object under the student's own uid that the admin cannot read
+    without a rule this app is not going to ask for, so one in the row is a grid of broken images
+    — which is why for three versions the row was text alone and both panels said so. A
+    **download URL** is a different thing: `getDownloadURL()` mints a link whose TOKEN is what
+    grants the read, so the student's own device mints it and the link is what travels. **No
+    Storage rules change and no deploy**, which is the constraint this whole mirror is shaped by.
+    - **IT IS MINTED ONCE AND KEPT ON THE MISTAKE** (`imageUrl`, `figUrls`) — at creation for a
+      new one, and by a bounded backfill for a book filed before this existed. The mirror rewrites
+      the WHOLE book on every change, so resolving as it went would be a hundred and fifty network
+      calls each time a student ticked one question off.
+    - **A RESOLVE THAT FAILED IS NOT WRITTEN AS DONE.** The file may be gone (it fails for ever,
+      which `MIST_MIRROR_FILL` bounds) or the network may have blinked (it works next time), and
+      writing `''` to mark it done turns the second case into the first. `_urlTried` stops it being
+      retried again within the one session.
+    - **`mistakeMirrorCatchUp` ASKS FIRST.** The mirror is written when the book CHANGES, and
+      none of those happens to a student who merely opens the app — so without it the pictures of
+      everything already filed would arrive only on the next marking run, which for a class at
+      the end of term is never. A sync on every sign-in whether or not it had anything to do is a
+      write a hundred students make every morning for nothing.
+    - **`_mkUrl` TAKES AN `https` LINK AND NOTHING ELSE.** What comes back goes into an `<img src>`
+      on the teacher's screen, and a roster row is a document another app could write to.
+    - **THE PANEL FOLLOWS `mistakeTier`'s OWN RULE**: a rebuilt question shows its FIGURES and not
+      the whole-question crop as well, because the crop IS the same question and the teacher would
+      be reading it twice looking for a difference that is not there. A whole PAGE is CAPTIONED as
+      one, or a teacher is pointed at the wrong question.
+    - **THE BYTE BUDGET IS NOT OPTIONAL** (`MIST_MIRROR_BYTES`). A row carries links now and a
+      Firestore document dies at a megabyte **by refusing the whole write**, so one long book would
+      stop the mirror dead with nothing on any screen saying why. The newest are what a teacher
+      opens this for, so the tail is what goes — and the COUNT still says how many there really are.
+  - **🕒 AND EVERY ROW SAYS WHEN** (`mistWhenText`, pure). The stamp was carried from the first
+    version and was never DRAWN, so the panel was a pile of questions with no way to tell last
+    night's paper from last term's. Today and yesterday are named, the last week is its weekday,
+    anything older takes its date — **with the year on it once it is not this one**, or a paper
+    from last September reads as one from this September. A stamp that will not parse comes back
+    EMPTY rather than as 1 Jan 1970, which is a date a teacher would act on.
   - **IT MIRRORS THE WHOLE (capped) BOOK rather than appending**, which is what makes it
     SELF-HEALING: a question sorted, deleted or set out again drops out or updates on the next
     write with nothing to remember. Last-writer-wins on purpose, exactly like `tutorRecent`.
@@ -3324,15 +3359,79 @@ is free; not enrolled is **$100 a month**, agreed to by a parent or guardian.
   in and closed the dialog is shown, saying it has not answered, because that
   is exactly the person worth chasing.
 
-## 📈 WHO DID WHAT — student usage (v1.6.0)
+## 📈 WHO DID WHAT — student usage (v1.6.0, and the two faults that made it read 0 — v1.50.0)
 
 `USAGE_EVENTS` / `usageLabel` / `USAGE_RECENT_MAX` / **`usageNote`** /
-`usageAdd` / `usageFlush` / `usageStart` / `usageStop` / `usageDayKey` /
-`usageOf` / `usageAccuracy` / `usageRecent` / `openPersonUsage` (search `WHO
-DID WHAT`), plus the extra columns on 👥 and the `#personModal`.
+`usageAdd` / **`usageFlush`** / `usageStart` / **`usageSeedRecent`** /
+`usageStop` / `usageDayKey` / **`usageOf`** / `usageAccuracy` / `usageRecent` /
+`openPersonUsage` (search `WHO DID WHAT`), plus the extra columns on 👥 and
+the `#personModal`.
 
 The roster said who had signed in. It could not say what any of them had
 **done** — which is the question a teacher opens that list with.
+
+### 🐛 A DOTTED KEY IN A `set()` IS A LITERAL FIELD NAME (v1.50.0)
+
+Every counter on the panel read **0** — worksheets, marked, questions, hints,
+days used — on an account with fifty-seven questions in its mistake book. The
+call sites were all there and every write LANDED. They landed where nothing
+reads them.
+
+- **`set()` AND `update()` READ A KEY TWO OPPOSITE WAYS.** `update()` splits a
+  key on its dots and walks into the map, so `tutorUsage.hints` means the
+  `hints` field INSIDE `tutorUsage`. `set()` does not: it takes each key as ONE
+  literal field name. So `patch['tutorUsage.' + k]` under `set(…, {merge:true})`
+  wrote a **top-level field whose own name contains a full stop**, and
+  `p.tutorUsage` — which is what `usageOf` reads — stayed undefined for ever.
+- **IT WAS SILENT IN THE WORST WAY.** Nothing threw, nothing was denied, and
+  the FEED beside it (`tutorRecent`, a plain key with no dot in it) worked
+  perfectly — so the panel showed a student's last two actions above a grid of
+  zeros, which reads as a child who has not started rather than as a broken
+  write. **The one screen that could have shown the fault is the screen the
+  fault blanked.**
+- **THE COUNTERS ARE A NESTED MAP NOW**, `patch.tutorUsage = usage`, because
+  `{ merge: true }` is a DEEP merge for maps — so the increments land where
+  `usageOf` reads them and still touch only the counters in hand.
+- **AND WHAT THE BROKEN WRITE RECORDED IS STILL READ, AND ADDED** (`usageOf`'s
+  `n(k)`). A whole term of work is on those flat keys. Falling BACK to them
+  would report a child with four hundred questions behind them as having done
+  the three they have done since the deploy, which is the same data loss
+  wearing a tidier face; adding them is what makes the panel right on the very
+  first render, with nothing to migrate and no script to run.
+- **THE PIN THAT WOULD HAVE CAUGHT IT ASKS WHAT THE WRITE WOULD DO**, not what
+  the source says — the old one counted the string `'tutorUsage.'` and was
+  green for the whole life of the bug. `tools/tutor-tests.mjs` now asserts no
+  key of the patch carries a dot **at any level**, and a **file-wide census**
+  fails on the next quoted dotted key written anywhere. It can afford to be
+  whole-file because the pattern is narrow (a QUOTED dotted literal in key
+  position) rather than an attempt to strip comments — the trap this repo
+  documents about hand-rolled JS strippers. **A dotted key that is really
+  wanted belongs on an `update()`, and the exemption belongs in that census in
+  writing.**
+
+### 🐛 …AND THE FEED WAS WIPED ON EVERY SIGN-IN (v1.50.0)
+
+`tutorRecent` is written WHOLE — last-writer-wins, deliberately — and what was
+written was `_usage.recent`, which starts **empty every session**. So the first
+flush after a sign-in replaced the entire history with the two or three events
+since, and a teacher opening a student who had marked four papers last week saw
+*Signed in* and nothing else.
+
+- **`usageSeedRecent` READS THE ROW BACK FIRST** and the session's events are
+  appended to it. The student can read their own profile — `onboardRequire`
+  already does, on every sign-in — so it needs no rules change.
+- **⚠️ A READ THAT FAILED MUST NOT WRITE THE FEED AT ALL.** `seeded` is set
+  only by a read that really came back. Losing a few lines out of a log is a
+  lost line; a log REPLACED by a fragment because a network blip made the
+  history look empty is this very bug arriving through its own fix. The
+  counters are unaffected either way — an increment never needs to know what
+  was there before.
+- **THE SEED IS CHECKED AGAINST `_usage` ITSELF**, not against a uid: a
+  different account signing in while the read is in flight must not have the
+  previous student's history seeded onto it.
+- `USAGE_RECENT_MAX` went from 40 to **150**. It was 40 while the feed was
+  (accidentally) one session long; it spans sessions now, and a teacher asking
+  what a student has been doing wants more than an afternoon.
 
 - **`usageNote(key, detail)` IS THE ONE DOOR**, and `usageAdd` is its only
   sibling (for the counts that are not one-per-event: a marking run is ONE
@@ -3374,13 +3473,21 @@ The roster said who had signed in. It could not say what any of them had
   named there.
 - **An account from before any of this reads as ZEROS, never as nothing.** A
   dash where a count should be reads as a fault rather than as "none yet".
+- **🕒 THE MISTAKE PANEL IS NEWEST FIRST, BY THE STAMP** rather than by the
+  order the rows happened to be written in. A book read for "what went wrong
+  last night" is useless in any other order, and a row from an older version
+  that carries no stamp sorts LAST rather than jumping to the top.
 - **It needed no Firestore rules change**: more namespaced fields
   (`tutorUsage`, `tutorRecent`) on a document this app already writes, merged.
   Those rules live in another repository and are shared with four apps, so a
   feature that needs one is a feature that waits.
 - **The panel is a READ.** Nothing in `openPersonUsage` writes anything
   anywhere.
-- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it — **and
+  `node tools/browser-check.mjs`, and open one student on a real roster.**
+  Every pin here asked what the source SAID and all of them were green over a
+  build whose every counter read 0; a browser is the only thing that can tell a
+  number that is recorded from a number that is SHOWN.
 
 ## 🗂 THE COVER — the front page, on a stack of sheets (v1.7.0)
 
@@ -4171,6 +4278,59 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **📈 the usage record** (`usageFlush`'s `patch.tutorUsage`,
+  `usageOf`'s `n(k)`, `usageStart`, `usageSeedRecent`, `usageNote`, `usageAdd`,
+  `USAGE_RECENT_MAX`, `USAGE_EVENTS`, or any counter a call site raises), run
+  `node tools/tutor-tests.mjs` **and** `node tools/browser-check.mjs` **and
+  open one student on a real roster**. That last one is not ceremony: every pin
+  in this section was green over a build where **every counter on the panel
+  read 0**, because each asked what the source SAID rather than what the write
+  would DO. **Write a counter under a dotted key again and it is that fault
+  exactly** — `set()` takes the key as a literal field NAME while `update()`
+  takes it as a PATH, so the write lands, nothing throws, the feed beside it
+  goes on working, and the panel reports a child with a term of work behind
+  them as having done nothing. Stop ADDING the legacy flat keys in `usageOf`
+  and every number recorded before v1.50.0 disappears from the panel on the day
+  this deploys, which is data loss dressed as a tidy-up. Go back to writing
+  `tutorRecent` from the session's own list and the feed is wiped on every
+  sign-in — the second fault, and the one that made "I cannot see their
+  activity" true. Write it when the seed read FAILED and that is the same wipe
+  from the other direction, so `seeded` must stay the only thing that lets the
+  feed be written. Seed it against a uid rather than against `_usage` itself
+  and one student's history is grafted onto whoever signs in next on a shared
+  iPad. And add a name to the dotted-key census to quiet it and the one check
+  that can see this class of fault is switched off.
+- After touching **📕 what the teacher can see of a student's book**
+  (`mistakeMirrorRow`, `_mkUrl`, `mistWhenText`, `mistakePathUrl`,
+  `mistakeFigUrls`, `mistakeMirrorFill`, `mistakeMirrorNeedsLinks`,
+  `mistakeMirrorCatchUp`, `mistakeMirrorSync` / `_mistakeMirrorWrite`,
+  `MIST_MIRROR_FIGS` / `MIST_MIRROR_FILL` / `MIST_MIRROR_BYTES`, the `imageUrl`
+  / `figUrls` `fileMistakes` writes, `mistMirrorRowNode`, or the `.mmPic` /
+  `.mmWhen` CSS), run `node tools/tutor-tests.mjs` **and**
+  `node tools/browser-check.mjs`. **This is the one path in the app that
+  carries a child's own work off their own device**, so the harness pins the
+  row's key list BY NAME: add a field and the run fails until somebody has
+  decided to send it. Send a Storage PATH instead of a download link and the
+  teacher gets a grid of broken images, because the admin cannot read a file
+  under a student's uid; take the `https` test off `_mkUrl` and a roster row
+  another app writes becomes a `javascript:` url in the teacher's page. Resolve
+  the links per sync rather than keeping them on the mistake and one tick of a
+  book is a hundred and fifty network calls; write an empty string to mark a
+  failed resolve as done and a network blip costs that picture for ever. Drop
+  the byte budget and a long book stops the mirror dead — a Firestore document
+  dies at a megabyte **by refusing the whole write**, with nothing on any screen
+  saying why. Show the figures AND the whole-question crop together and the
+  teacher reads the same question twice looking for a difference that is not
+  there; stop captioning a whole PAGE and they are pointed at the wrong
+  question on it. Let `mistakeMirrorSync` REJECT — it is `async` and all four
+  callers fire and forget — and it is an unhandled rejection in a console no
+  student opens, which is how 💾 the dead save went unnoticed for forty-eight
+  versions. Drop `mistakeMirrorCatchUp`, or let it write when there is nothing
+  to mint, and either the pictures of everything already filed never arrive or
+  a hundred students write to the roster every morning for nothing. And stop
+  drawing `at` and the panel is a pile of questions with no way to tell last
+  night's paper from last term's — which it was, for three versions, while
+  every row carried the stamp all along.
 - After touching **▸ the working's steps or its size** (`WORK_SIZE`, `WORK_LEAD`, `WORK_PAD`,
   `WORK_LINES_MAX`, `WORK_CHARS_MAX`, `WORK_MAX_W`, `tutorWorkSteps`, `tutorWorkMore`,
   `tutorWorkNext`, `tutorWorkRestart`, `tutorWorkGeom`'s width / height / clamp split,

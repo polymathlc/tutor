@@ -671,6 +671,78 @@ const shortcut = await page.evaluate(() => tool);
 ok('a one-letter tool shortcut reaches the page', shortcut === 'select',
    'tool is "' + shortcut + '" after pressing v');
 
+/* =====================================================================
+   📕 WHAT THE TEACHER ACTUALLY SEES
+   ---------------------------------------------------------------------
+   Every pin on the mirror asks what a ROW carries. None of them could ask
+   whether the panel DRAWS it — and for three versions it did not: the
+   stamp was carried on every row and never rendered, so the teacher's
+   panel was a pile of questions with no way to tell last night's paper
+   from last term's. A browser is the only thing that can tell a field that
+   is carried from a field that is shown.
+   ===================================================================== */
+console.log('\n📕 The teacher’s panel draws what the row carries');
+const PIC = 'https://fs.example/a.png?token=t';
+const FIG = 'https://fs.example/f0.png?token=t';
+const panel = await page.evaluate((a) => {
+  const node = mistMirrorRowNode({
+    q: 'Explain why the puddle dried up.', n: '7', doc: 'P5 Science SA2',
+    v: 'wrong', mine: 'it went away', ans: 'The water evaporated.',
+    img: a.PIC, sh: 'question', figs: [], at: Date.now() - 3600000
+  }, '');
+  const pageShot = mistMirrorRowNode({ q: 'Q', n: '8', img: a.PIC, sh: 'page', figs: [], at: 0 }, '');
+  // 🧩 A rebuilt question: its figures are the question, so the
+  // whole-question crop must NOT be drawn beside them.
+  const rebuilt = mistMirrorRowNode({ q: 'Q', n: '9', img: a.PIC, sh: 'question',
+                                      figs: [a.FIG], at: 0 }, '');
+  const older = mistMirrorRowNode({ q: 'Q', n: '1', at: 0 }, '');
+  const srcOf = n => [...n.querySelectorAll('img')].map(i => i.getAttribute('src'));
+  return {
+    when: (node.querySelector('.mmWhen') || {}).textContent || '',
+    pics: srcOf(node),
+    lazy: [...node.querySelectorAll('img')].every(i => i.getAttribute('loading') === 'lazy'),
+    caption: !!node.querySelector('.mmCap'),
+    pageCaption: !!pageShot.querySelector('.mmCap'),
+    rebuiltPics: srcOf(rebuilt),
+    olderPics: srcOf(older).length,
+    olderWhen: !!older.querySelector('.mmWhen'),
+    text: node.textContent
+  };
+}, { PIC, FIG });
+
+ok('a row says WHEN the mistake was made', /today, /.test(panel.when),
+   'the chip read "' + panel.when + '"');
+ok('…and the question as it was printed is really on the card',
+   panel.pics.length === 1 && panel.pics[0] === PIC, JSON.stringify(panel.pics));
+ok('…lazily, because one panel can hold 240 of them', panel.lazy);
+ok('a whole-question crop is not captioned as a page', !panel.caption);
+ok('…while a whole PAGE says so, or the teacher is pointed at the wrong question',
+   panel.pageCaption);
+/* The rule `mistakeTier` follows on the student's own card: the crop IS the
+   same question, so a rebuilt one must not show both. */
+ok('a rebuilt question shows its figures and NOT the crop as well',
+   panel.rebuiltPics.length === 1 && panel.rebuiltPics[0] === FIG,
+   JSON.stringify(panel.rebuiltPics));
+/* A row filed before any of this carries neither, and must still read. */
+ok('a row from before the links and the stamp still draws',
+   panel.olderPics === 0 && !panel.olderWhen);
+ok('…and what they put and the answer are still on the card',
+   panel.text.includes('it went away') && panel.text.includes('The water evaporated.'));
+
+/* 📈 …and the counters the panel is built from. A nested map is what
+   `usageOf` reads; the flat keys are what the broken write left behind. */
+const counters = await page.evaluate(() => {
+  const now = usageOf({ tutorUsage: { questions: 4, marked: 1, correct: 3, wrong: 1 } });
+  const old = usageOf({ 'tutorUsage.questions': 57, 'tutorUsage.marked': 3 });
+  const both = usageOf({ 'tutorUsage.questions': 57, tutorUsage: { questions: 4 } });
+  return { now: now.questions, old: old.questions, oldAny: old.any, both: both.questions };
+});
+ok('the panel reads a counter the fixed write puts there', counters.now === 4);
+ok('…and still reads the history the broken one left behind',
+   counters.old === 57 && counters.oldAny === true);
+ok('…and adds the two rather than reporting only the newer',
+   counters.both === 61, 'got ' + counters.both);
+
 await browser.close();
 console.log('\n' + (fail ? '✗ ' + fail + ' failed, ' + pass + ' passed' : '✓ all ' + pass + ' passed'));
 process.exit(fail ? 1 : 0);
