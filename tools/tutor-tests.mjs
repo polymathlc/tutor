@@ -6426,18 +6426,28 @@ ok('…and `askGeminiDirect` is reached only through the dispatcher',
    ChatGPT, and a marking call that STARTS naming it puts thirty students'
    papers on a bill nobody asked for.
    ===================================================================== */
-ok('the model is named ONCE, and it is gpt-6-astra',
-   /const OPENAI_MODEL = "gpt-6-astra";/.test(html) &&
-   (html.match(/"gpt-6-astra"/g) || []).length === 1,
-   'a model id typed at a call site is one that goes stale somewhere nobody looks');
-ok('…and it is SENT to ChatGPT',
-   /function askOpenAiServer\(prompt, opts\) \{ return _aiServerAsk\("askOpenAi", prompt, opts, \{ model: OPENAI_MODEL \}\); \}/.test(html),
-   'the server picking for itself is the centre teaching on whatever that function happens to default to');
-ok('…and NOT to Kimi, which renames its flagship every release',
+/* WHICH MODEL ANSWERED IS READ BACK, NEVER NAMED HERE. `askOpenAi` in
+   `polymathlc/math` picks it server-side ON PURPOSE — a client that could
+   name a model could name an expensive one, and the bill is the centre's —
+   and it returns the one it used. A constant mirroring it here would be
+   ignored on the way out and would go stale in silence on the way back,
+   leaving this panel confidently naming a model nothing had used for
+   months. */
+ok('no model id is a VALUE anywhere in this file',
+   !/["']gpt-[0-9]/.test(html),
+   'a mirrored id goes stale the first time the shared function is redeployed, and nothing here would say so');
+ok('…and neither server route sends one',
+   /function askOpenAiServer\(prompt, opts\) \{ return _aiServerAsk\("askOpenAi", prompt, opts\); \}/.test(html) &&
    /function askKimiServer\(prompt, opts\) \{ return _aiServerAsk\("askKimi", prompt, opts\); \}/.test(html),
-   'this app has no box to correct a stale Moonshot id in, so the function falls back to its own');
+   'both functions choose server-side, so a name from here is a client deciding what the centre is billed for');
+ok('…it is READ BACK off the reply instead',
+   /_aiModel\[name === "askKimi" \? "kimi" : "openai"\] = used\.trim\(\);/.test(html),
+   'the panel then reports a fact rather than an intention, and corrects itself when the server moves');
+ok('…and a reply that carries none leaves the last one alone',
+   /if \(typeof used === "string" && used\.trim\(\)\)/.test(html),
+   '"the server stopped saying" and "nothing has answered yet" are different things');
 ok('no temperature is sent to a server route either',
-   !/temperature:/.test(between('async function _aiServerAsk(', '/* A reasoning model', 'the server call')),
+   !/temperature:/.test(between('async function _aiServerAsk(', '/* NOTHING IS SENT', 'the server call')),
    'a reasoning model runs only at its own, and one sent is a 400 rather than a worse answer');
 
 ok('the teaching task leads with ChatGPT',
@@ -6449,8 +6459,9 @@ ok('…and the other engines stay BEHIND it rather than being taken away',
 ok('…and an unknown task falls back to the centre’s own setting',
    /\(task && AI_TASK_ENGINE\[task\]\) \|\| _aiPreferred/.test(html),
    'a typo must never take the AI off every device at once');
-ok('the panel reports the teaching order and the model',
-   /teachOrder: aiEngineOrder\("teach"\)/.test(html) && /openAiModel: OPENAI_MODEL/.test(html),
+ok('the panel reports the teaching order and the model that really answered',
+   /teachOrder: aiEngineOrder\("teach"\)/.test(html) && /models: Object\.assign\(\{\}, _aiModel\)/.test(html) &&
+   /has not been asked yet this session/.test(html),
    'an app whose teaching runs on a different engine from its marking looks exactly like one that does not');
 
 /* THE CENSUS. It reads the call sites out of the file rather than trusting

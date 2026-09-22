@@ -12,7 +12,7 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
-## v1.49.0 — The working goes down one step at a time, in a smaller note
+## v1.49.1 — The working goes down one step at a time, in a smaller note
 
 Two things were wrong with the working the tutor writes on the page, and they were the same
 thing twice: **it was too big, and it was all of it at once.**
@@ -33,10 +33,12 @@ the one door — and the note still never becomes ink, still comes off the page 
 tutor moves on, and still stops one step short of the answer.
 
 **The teaching now runs on ChatGPT `gpt-6-astra`.** The hint ladder, the live reply and the two
-✏️ maths-pad calls — the ones that write the working and the steps a child reads — lead with it
-whatever engine the centre has chosen, with Gemini and Kimi still behind them, so an account out
-of credit is a slower hint rather than no hint. The admin's engine panel says so and names the
-model.
+✏️ maths-pad calls — the ones that write the working and the steps a child reads — lead with
+ChatGPT whatever engine the centre has chosen, with Gemini and Kimi still behind them, so an
+account out of credit is a slower hint rather than no hint. The model itself is the shared
+`askOpenAi` function's choice (it already runs `gpt-6-astra`) and the admin's engine panel reports
+whichever one really answered, read back off the reply rather than named here — so it can never
+go stale.
 
 ---
 
