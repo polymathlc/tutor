@@ -12,6 +12,25 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.53.0 — 📌 Every paper you set reaches the class, and 🗄 withdrawn work goes to Backup
+
+Papers set for the class were not reaching students' accounts. **The class list was read with a
+hidden cap of 60**, with no order — so Firestore returned the first sixty by (random) document id,
+and once the centre had more than sixty papers set, each new paper was a coin toss: on the class's
+shelves, or on nobody's. The teacher's own card said so only in a small chip — *⬦ Not set for the
+class* beside a button reading *📌 Set — take it off* — because both screens read the same
+truncated list.
+
+- **The whole class list is read now**, with no cap. A student's own papers had the same kind of
+  cap (200) and it is gone too, so a student's paper with their working on it can never quietly
+  fall off their shelf.
+- **🗄 A Backup shelf.** When you take a paper off the class list (or its record is gone), every
+  student who had already started it keeps their copy, their ink, hints and marking — and it now
+  stands on a **🗄 Backup — papers taken off the class list** shelf at the foot of their bookcase,
+  rather than mixed in with this term's papers. A list that has not loaded, or a read that failed,
+  never moves anything into Backup. Deleting your own copy of a set paper still leaves the class's
+  PDF and the class list alone, exactly as before.
+
 ## v1.52.0 — 📌 “Take off the list” works on the one card that needed it
 
 Pressing **Take off the list** on a set worksheet answered *“Could not take it off the list: No
