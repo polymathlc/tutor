@@ -12,6 +12,59 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.50.0 — The teacher can see what a student has actually been doing
+
+📈 **Every counter on a student's panel read 0.** Worksheets, marked, questions, hints, days used
+— all of them — on an account with fifty-seven questions in its mistake book and a term of work
+behind it. Nothing had gone wrong with the recording: the counters were being raised on every
+marking run, every hint and every practice, and every write landed. They were landing where
+nothing read them.
+
+Firestore reads a key with a dot in it two opposite ways. To `update()` it is a **path** —
+`tutorUsage.hints` means the `hints` field inside `tutorUsage`. To `set()` it is a **literal field
+name**, so the write created a top-level field whose own name contained a full stop and left
+`tutorUsage` itself empty for ever. Nothing threw, nothing was denied, and the activity feed
+beside it — an ordinary field with no dot in it — worked perfectly. The one screen that could have
+shown the fault is the screen the fault blanked.
+
+**The counters go where they are read now — and every number already recorded comes back with
+them.** A whole term of work is sitting on those flat keys, so they are read too and ADDED to the
+new ones rather than replaced by them: the panel is right on the first refresh, with nothing to
+migrate and no waiting for the student to do it all again.
+
+🕒 **…and the activity feed was wiped on every sign-in.** It is written whole, and what was being
+written was the current session's list — which starts empty. So the first save after a sign-in
+replaced the whole history with the two or three things that had happened since, and a teacher
+opening a student who had marked four papers last week saw *Signed in* and nothing else. The row's
+own history is read back first now and the session is added to it, so the feed holds the last 150
+things they did rather than the last five minutes — and a history that could not be read is left
+alone rather than overwritten with a fragment.
+
+🖼 **The teacher can see the questions themselves.** The mistake book's whole point is 🧩 the
+question **set out again** — cut off the paper and redrawn as clean line work — and none of it
+reached the teacher, who got the marking's one-line transcription and a note saying the pictures
+stayed on the student's device. That was true: a picture is a file under the student's own account
+and the teacher cannot read one.
+
+A **download link** is a different thing. The student's own device mints one, the token in it is
+what grants the read, and it is the link that travels — so the teacher now sees the real cropped
+and redrawn question, with no change to any access rule and nothing to deploy. New mistakes carry
+their link from the moment they are filed; everything already in a book fills itself in over the
+student's next visit or two. A whole page rather than a single question still says so on the card,
+so nobody is ever pointed at the wrong question.
+
+🕒 **And every question says when it was got wrong** — *today, 8:53 PM*, *yesterday*, *Tue*, *14
+Sep* — newest first. The date was being recorded all along and was never drawn, so the panel was a
+pile of questions with no way to tell last night's paper from last term's.
+
+**The check that would have caught it.** Every pin on the usage record asked what the source
+*said* — one of them counted the very string that was the bug — so all of them were green for the
+whole life of the fault. They ask what the write would DO now, a census fails on the next dotted
+key written anywhere in the file, and eleven new checks in a real browser prove the panel actually
+draws the picture, the time and both shapes of counter.
+
+---
+
 ## v1.49.1 — The working goes down one step at a time, in a smaller note
 
 Two things were wrong with the working the tutor writes on the page, and they were the same
