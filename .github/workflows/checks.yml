@@ -41,3 +41,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/adventure-browser-check.mjs
+      - name: Check prepared tutoring, streaming and interruptions
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/fast-tutor-browser-check.mjs

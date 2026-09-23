@@ -46,7 +46,7 @@ const ok = (name, cond, note) => {
   else { fail++; console.log('  ✗ ' + name + (note ? '\n      ' + note : '')); }
 };
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
 // `hasTouch` because ✍️ only unhides on a device that reports a touchscreen,
 // and the whole palm/pencil engine turns on `pointerType`.
 const ctx = await browser.newContext({ viewport: { width: 1100, height: 900 }, hasTouch: true });
@@ -684,6 +684,10 @@ ok('a one-letter tool shortcut reaches the page', shortcut === 'select',
 console.log('\n📕 The teacher’s panel draws what the row carries');
 const PIC = 'https://fs.example/a.png?token=t';
 const FIG = 'https://fs.example/f0.png?token=t';
+// One hour ago is yesterday just after midnight. Hold the browser's date at
+// local noon so this rendering fixture is independent of when CI is run.
+// setFixedTime leaves animation and timeout timers running normally.
+await page.clock.setFixedTime(await page.evaluate(() => new Date(2026, 8, 24, 12).getTime()));
 const panel = await page.evaluate((a) => {
   const node = mistMirrorRowNode({
     q: 'Explain why the puddle dried up.', n: '7', doc: 'P5 Science SA2',
