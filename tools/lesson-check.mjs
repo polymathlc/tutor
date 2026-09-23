@@ -50,7 +50,7 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: pa
 
 // A UTF-8 locale, or Chromium on a bare Linux box names every download
 // "download" — the file names here carry an em dash and a middle dot.
-const browser = await chromium.launch({ env: { ...process.env, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8' }, args: [
+const browser = await chromium.launch({ ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}), env: { ...process.env, LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8' }, args: [
   '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '--autoplay-policy=no-user-gesture-required'] });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, permissions: ['camera', 'microphone'], acceptDownloads: true, hasTouch: true });
 const page = await ctx.newPage();

@@ -15,6 +15,9 @@ const { createProvider } = require('./live-provider');
 const { createGameService } = require('./gamification-service');
 const { createGameRepository } = require('./gamification-repository');
 const { createGameProvider } = require('./gamification-provider');
+const { createTeachService } = require('./fast-tutor-service');
+const { createTeachRepository } = require('./fast-tutor-repository');
+const { createTeachProvider } = require('./fast-tutor-provider');
 
 initializeApp();
 const openaiKey = defineSecret('OPENAI_API_KEY');
@@ -47,3 +50,13 @@ exports.studyBuddyGame = onRequest({
   region: 'us-central1', secrets: [openaiKey], timeoutSeconds: 60,
   maxInstances: 5, concurrency: 20, memory: '256MiB', invoker: 'public'
 }, gameService.handler);
+
+const teachService = createTeachService({
+  auth: getAuth(), appCheck: getAppCheck(), repository: createTeachRepository(getFirestore()),
+  provider: createTeachProvider({ apiKey: () => openaiKey.value() }),
+  report: code => logger.warn(code)
+});
+exports.studyBuddyTeach = onRequest({
+  region: 'us-central1', secrets: [openaiKey], timeoutSeconds: 180,
+  minInstances: 1, maxInstances: 5, concurrency: 20, memory: '512MiB', invoker: 'public'
+}, teachService.handler);

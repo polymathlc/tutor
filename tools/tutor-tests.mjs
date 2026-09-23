@@ -1916,7 +1916,11 @@ ok('there are askGemini call sites to check at all', callSites.length >= 3,
    'found ' + callSites.length);
 const exemptSeen = {};
 callSites.forEach((idx, i) => {
-  const chunk = html.slice(idx, idx + 900);
+  // The fast tutor forwards the original live options unchanged to the
+  // existing engine on fallback. Audit the options at its caller as well.
+  const chunk = /window\.askGemini\(prompt, options\)/.test(html.slice(idx, idx + 50))
+    ? html.slice(html.indexOf('fastTutorReply(lines.join('), html.indexOf('fastTutorReply(lines.join(') + 900)
+    : html.slice(idx, idx + 900);
   // The bridge's own definition is not a call site.
   if (/window\.askGemini\s*=/.test(html.slice(Math.max(0, idx - 40), idx + 40))) return;
   const exempt = Object.keys(UNGROUNDED_BY_DESIGN)
@@ -7136,7 +7140,7 @@ const TEACH_CALLS = new Set([
   'hintLadderFor',    // 💡 the hint ladder — writes the rungs and the working
   'mthWorkCheck',     // ✏️ the maths pad's next step
   'mthModelBuild',    // 📐 the drawn bar model, on the same method rung
-  'runLiveDelegation' // 🎧 the spoken reply — writes the working markers
+  'fastTutorReply' // 🎧 forwards the live reply options to the fallback engine
 ]);
 const askSites = [];
 for (let i = html.indexOf('window.askGemini('); i >= 0; i = html.indexOf('window.askGemini(', i + 1)) {
@@ -7151,7 +7155,8 @@ for (let i = html.indexOf('window.askGemini('); i >= 0; i = html.indexOf('window
      window is generous because the live reply's system prompt alone is
      several thousand characters, and a window that stopped short of the
      options would read every one of them as untagged. */
-  const tail = html.slice(i, i + 20000);
+  const caller = m && m[1] === 'fastTutorReply' ? html.indexOf('fastTutorReply(lines.join(') : i;
+  const tail = html.slice(caller, caller + 20000);
   const end = tail.search(/\n\s*\}\);/);
   askSites.push({ fn: m ? m[1] : '(top level)', opts: tail.slice(0, end < 0 ? 20000 : end) });
 }

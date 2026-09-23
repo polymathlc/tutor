@@ -4,6 +4,9 @@ Study Buddy uses `gpt-live-1` for full-duplex speech through the OpenAI Live API
 delegation calls the app's existing Firebase teaching engine, so the visible worksheet page,
 teacher grounding, help ceiling, and answer-key rules also apply to spoken tutoring.
 
+Since v1.56.0, [prepared guidance and streamed teaching](fast-tutoring.md) add a
+faster path through `studyBuddyTeach`; the original engine remains a fallback.
+
 ## Deploy
 
 The browser remains the existing GitHub Pages site. The session broker and cleanup job run in

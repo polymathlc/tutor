@@ -12,6 +12,17 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.56.0 — Faster live tutoring
+
+Worksheet hints prepare in the background. Repeats and familiar follow-ups reuse
+prepared guidance, while new questions stream Astra's teaching as useful
+sentences become available. A fast selector handles ambiguous requests for
+existing explanations; checking new working still uses fresh reasoning.
+Interruptions cancel old work, and the existing help limits and teacher
+references continue to apply. No Jev signup is required.
+
+See [the implementation and deployment notes](docs/fast-tutoring.md).
+
 ## v1.55.0 — 🎬 Video solutions: Mr Chung records a question, the whole class watches it
 
 **Recording is the teacher's; watching is everybody's.** Talk a question through on your own copy
