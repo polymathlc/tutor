@@ -3002,7 +3002,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.56.0';
+var APP_VERSION = 'v1.56.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -15197,7 +15197,7 @@ var LIVE_PAGE_QUALITY = 0.82;      // unchanged on purpose: see above
    in this tab. Every spoken result belongs to one learner, page and work state. */
 var FAST_TUTOR_ENDPOINT = 'https://us-central1-mathgen--app.cloudfunctions.net/studyBuddyTeach';
 var fastTutorState = { client: null, owner: '', timer: null, controller: null, attempted: new Set(),
-  retries: new Map(), backgroundPages: 0, status: '', groundingKey: '', grounding: '', sources: new Map(), timing: null, timings: [] };
+  retries: new Map(), backgroundPages: 0, status: '', groundingKey: '', grounding: '', sources: new Map(), lastSnapshot: null, timing: null, timings: [] };
 function fastTutorAvailable() {
   return !!(window.FastTutorClient && currentUser && currentDocId && view === 'ws' &&
     !(typeof lessonCapture !== 'undefined' && lessonCapture) &&
@@ -15215,6 +15215,7 @@ function fastTutorReset() {
   if (fastTutorState.client) fastTutorState.client.reset();
   fastTutorState.owner = ''; fastTutorState.attempted.clear(); fastTutorState.backgroundPages = 0;
   fastTutorState.sources.clear(); fastTutorState.retries.clear();
+  fastTutorState.lastSnapshot = null;
   fastTutorState.status = ''; fastTutorState.groundingKey = ''; fastTutorState.grounding = '';
   var el = $('livePreparation'); if (el) { el.textContent = ''; el.hidden = true; }
 }
@@ -15256,7 +15257,13 @@ function fastTutorBinding(contextPages) {
     wsMeta, typeof wsKey === 'undefined' ? {} : wsKey,
     typeof teachingNotes === 'undefined' ? [] : teachingNotes,
     typeof aiStyle === 'undefined' ? null : aiStyle, typeof cerStyle === 'undefined' ? null : cerStyle,
+    typeof notesWatching === 'undefined' ? '' : notesWatching, typeof _notesAttachSeq === 'undefined' ? 0 : _notesAttachSeq,
     annotations.filter(function (a) { return nums.indexOf(a.page) !== -1; }), selectedId, editingId]);
+}
+function fastTutorReferencesReady() {
+  if (wsKey.reading || ((wsKey.pages.length || wsKey.path) && !wsKey.rows.length)) return false;
+  return notesLoaded && !notesLoading && !notesBusy && !!_notesUnsub &&
+    !!notesWatching && notesWatching === notesOwner();
 }
 async function fastTutorSource(p) {
   if (fastTutorState.sources.has(p.num)) return fastTutorState.sources.get(p.num);
@@ -15354,6 +15361,23 @@ function fastTutorMeasure(stage) {
     if (fastTutorState.timings.length > 30) fastTutorState.timings.shift();
   }
 }
+function fastTutorRememberSnapshot(snapshot) {
+  var body = Object.assign({}, snapshot.body);
+  delete body.image; delete body.images;
+  fastTutorState.lastSnapshot = { binding: snapshot.binding, key: snapshot.key, packKey: snapshot.packKey, body: body };
+}
+async function fastTutorTryEarly(contextPages, question, signal, onStream) {
+  var client = fastTutor(), snapshot = fastTutorState.lastSnapshot, timing = fastTutorState.timing;
+  if (!client || !client.tryEarly || !snapshot || !fastTutorReferencesReady() ||
+    snapshot.binding !== fastTutorBinding(contextPages)) return null;
+  var result = await client.tryEarly(Object.assign({}, snapshot.body, { message: question.slice(0, 3000) }), snapshot.key, {
+    packKey: snapshot.packKey, signal: signal, onStream: onStream, allowPrepared: contextPages.length === 1,
+    onDispatch: function () { fastTutorMeasure('dispatch'); },
+    isCurrent: function () { return fastTutorAvailable() && fastTutorReferencesReady() && snapshot.binding === fastTutorBinding(contextPages); }
+  });
+  if (result && timing) { timing.route = result.route; if (timing.record) timing.record.route = result.route; }
+  return result;
+}
 async function fastTutorReply(prompt, options, contextPages, question) {
   var client = fastTutor(), snapshot = null, timing = fastTutorState.timing;
   function route(value) { if (timing) { timing.route = value; if (timing.record) timing.record.route = value; } }
@@ -15368,6 +15392,7 @@ async function fastTutorReply(prompt, options, contextPages, question) {
         return fastTutorAvailable() && snapshot.binding === fastTutorBinding(contextPages);
       } });
       route(result.route);
+      fastTutorRememberSnapshot(snapshot);
       return result.text;
     } catch (error) {
       if (error.emitted || error.name === 'AbortError' || options.signal && options.signal.aborted) throw error;
@@ -15378,7 +15403,9 @@ async function fastTutorReply(prompt, options, contextPages, question) {
   route('fallback');
   var out = await window.askGemini(prompt, options);
   aiThrowIfAborted(options.signal);
-  if (client && snapshot && snapshot.binding === fastTutorBinding(contextPages)) client.remember(String(out || ''), snapshot.key);
+  if (client && snapshot && snapshot.binding === fastTutorBinding(contextPages)) {
+    client.remember(String(out || ''), snapshot.key); fastTutorRememberSnapshot(snapshot);
+  }
   return out;
 }
 
@@ -16661,6 +16688,20 @@ async function runLiveDelegation(id, generation, queued) {
          the page has drifted to by the time the notes have loaded. */
       var contextPages = worksheetContextPages({ max: LIVE_CONTEXT_MAX, dominant: LIVE_CONTEXT_DOMINANT });
       requestPages = contextPages;
+      var lastQuestion = liveConversationParts().filter(function (part) { return part.who === 'student'; }).slice(-1).map(function (part) { return part.text; }).join('');
+      spokenQuestion = lastQuestion;
+      // An unchanged repeat needs no worksheet photograph. A known prepared
+      // follow-up first asks the server for that safe step without an image;
+      // only a miss pays for rasterising, encoding and sending the page.
+      if (window.FastTutorClient) {
+        requestBinding = fastTutorBinding(contextPages);
+        pointPage = contextPages[0] ? contextPages[0].num : 0;
+        var early = await fastTutorTryEarly(contextPages, lastQuestion, signal, LIVE_STREAM_ON ? function (full) {
+          raw = full; streamed = true;
+          if (!blocked && !liveFlush(false)) blocked = true;
+        } : undefined);
+        if (early) return early.text;
+      }
       var imgs = [], imagePages = [], dropped = false;
       /* Side by side, not one after the other. Neither branch needs anything
          the other produces, so the shorter one costs nothing at all. */
@@ -16691,7 +16732,7 @@ async function runLiveDelegation(id, generation, queued) {
       }
       pointPage = imagePages[0] || 0;
       if (window.FastTutorClient) requestBinding = fastTutorBinding(contextPages);
-      var lastQuestion = liveConversationParts().filter(function (part) { return part.who === 'student'; }).slice(-1).map(function (part) { return part.text; }).join('');
+      lastQuestion = liveConversationParts().filter(function (part) { return part.who === 'student'; }).slice(-1).map(function (part) { return part.text; }).join('');
       spokenQuestion = lastQuestion;
       var lines = ['Help the student with the latest spoken question in this conversation.',
         'Student level: ' + levelLabel(wsMeta.level) + '. Subject: ' + subjectLabel(wsMeta.subject) + '.',
@@ -30135,7 +30176,8 @@ async function askGeminiDirect(prompt, { maxOutputTokens = 512, temperature = 0.
 }
 </script>
 
-<script src="fast-tutor.js?v=1.56.0"></script>
+<script src="functions/fast-tutor-intents.js?v=1.56.1"></script>
+<script src="fast-tutor.js?v=1.56.1"></script>
 <script src="adventure-ui.js?v=1.54.0"></script>
 <script src="adventure.js?v=1.54.0"></script>
 </body>

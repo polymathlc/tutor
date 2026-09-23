@@ -53,7 +53,7 @@ function createTeachService({ auth, appCheck, repository, provider, now = Date.n
         if (question) {
           selected = selectDirect(question, body, context.ceiling);
           if (selected) route = 'prepared';
-          else {
+          else if (!body.preparedOnly) {
             lease = await repository.reserve(context, body, 'reply', now());
             try {
               const choices = candidates(question, body, context.ceiling);
@@ -75,7 +75,7 @@ function createTeachService({ auth, appCheck, repository, provider, now = Date.n
         emit({ type: 'delta', text: selected.text });
         return { type: 'done', text: selected.text, route, questionId: question.id, responseId: selected.id, cacheKey };
       }
-      if (!body.image) throw new TeachError(409, 'fresh_image_required', 'Please send the current worksheet page for this question.');
+      if (body.preparedOnly || !body.image) throw new TeachError(409, 'fresh_image_required', 'Please send the current worksheet page for this question.');
       if (!lease) lease = await repository.reserve(context, body, 'reply', now());
       const freshContext = await repository.resolve(uid, body);
       checkPages(freshContext, body);

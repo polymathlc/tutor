@@ -22,6 +22,22 @@ An unavailable preparation service does not block a lesson: the existing tutor
 remains the fallback. After any streamed text is delivered, the client never
 starts a replacement answer over the top of that partial reply.
 
+Since v1.56.1, exact repeats are checked before loading teaching references or
+rendering and encoding worksheet images. Familiar follow-ups with an unchanged
+context can also make an image-free `reply` request with `preparedOnly: true`.
+The server still checks authentication, worksheet ownership and current teaching
+settings. This request can only return a directly matched prepared response;
+it never calls a model or reserves a paid teaching turn. A miss returns
+`fresh_image_required` before any text, allowing the browser to capture the
+current worksheet and continue through the full teaching path once.
+
+The browser and server share a whole-utterance phrase classifier for familiar
+requests such as “give me another clue”, repeats and simpler explanations.
+Compound requests, answer checks, changes of method and unclear references do
+not gain a direct shortcut. New phrases do not change the permitted hint ladder.
+Cached text still passes through GPT-Live for spoken delivery; avoiding image
+work and selection calls does not remove the voice generation time.
+
 ## Preparation and correctness
 
 Preparation uses Astra with medium reasoning and structured output, up to eight

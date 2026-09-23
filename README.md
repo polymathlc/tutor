@@ -12,6 +12,14 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.56.1 — Quicker repeats and familiar follow-ups
+
+Repeats take an earlier shortcut, before worksheet image preparation. Familiar
+requests such as “give me another clue” can retrieve the next permitted prepared
+hint without sending a page image or asking a model to select the response.
+Changed writing, unclear requests and unavailable hints continue through the
+full worksheet check. Teacher limits and interruption handling still apply.
+
 ## v1.56.0 — Faster live tutoring
 
 Worksheet hints prepare in the background. Repeats and familiar follow-ups reuse
