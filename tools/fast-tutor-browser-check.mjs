@@ -114,7 +114,7 @@ async function installFixture() {
     teachingNotes = []; aiStyle = cerStyle = null;
     notesOwnerUid = 'fixture-teacher'; notesLoaded = true; notesLoading = null; notesBusy = false;
     notesWatching = notesOwner(); _notesUnsub = () => {}; _notesPending = [];
-    wsKey = { pages: [], rows: [] };
+    wsKey = { pages: [], rows: [], scanned: true, scanVersion: 2, scanPending: false };
     wsMeta = { level: 'P5', subject: 'math', school: '', topic: 'Equal groups', guidance: 'nudge', assignmentId: '', setBy: '', guidanceLocked: true };
     scale = 1; view = 'ws'; currentDocId = 'fast-browser-fixture'; wsEpoch++;
     showView('ws'); openBuddy('live');
@@ -517,13 +517,98 @@ try {
   assert.deepEqual(staleSpeech, [], 'context changes discard all stale spoken guidance, including error messages');
 
   await installFixture();
-  const beforeVideo = requests.length;
+  // Real live streaming shows an exact quote before PDF text extraction finishes.
+  // A scanned worksheet keeps the same useful card without inventing a position.
+  await page.evaluate(() => {
+    tutorFocusClear();
+    const p = pages[0], ctx = p.canvas.getContext('2d');
+    ctx.fillStyle = 'white'; ctx.fillRect(0, 0, 600, 800);
+    ctx.fillStyle = 'black'; ctx.font = '20px Arial';
+    ctx.fillText('7  What is the area of a circle with diameter 60 cm?', 30, 100);
+    ctx.fillText('(Take π = 3.14)', 30, 135);
+    p.viewport1 = { width: 600, height: 800, transform: [1, 0, 0, -1, 0, 800] };
+    window.__focusText = {
+      styles: { F1: { ascent: .8, descent: -.2 } },
+      items: [{ str: '7 What is the area of a circle with diameter 60 cm?', width: 520, height: 20,
+        transform: [20, 0, 0, 20, 30, 700], fontName: 'F1', dir: 'ltr' }]
+    };
+    p.page = { getTextContent: () => new Promise(resolve => { window.__releaseFocusText = () => resolve(window.__focusText); }) };
+  });
+  first = '[[focus p1 | Q7 | diameter 60 cm]] First use the diameter to find the radius. Then';
+  whole = '[[focus p1 | Q7 | diameter 60 cm]] First use the diameter to find the radius. Then use it to calculate the area.';
+  replyMode = 'held';
+  await startLiveReply('Help with question 7.', 'focus-circle');
+  await page.waitForFunction(() => window.__sent.some(x => x.type === 'session.commentary.append'));
+  assert.equal(await page.locator('#tutorFocus q').innerText(), 'diameter 60 cm');
+  assert.equal(await page.locator('#tutorFocus').isVisible(), true, 'focus is visible before text extraction completes');
+  assert.deepEqual(await spoken('focus-circle'), ['First use the diameter to find the radius.'], 'focus metadata never reaches speech');
+  assert.equal(await page.locator('g[data-focus]').count(), 0, 'no position is guessed while text is pending');
+  releaseHeld(); await liveFinished('focus-circle');
+  assert.equal((await spoken('focus-circle')).join(' '), 'First use the diameter to find the radius. Then use it to calculate the area.');
+  await page.evaluate(() => window.__releaseFocusText());
+  await page.waitForFunction(() => tutorFocusState.items[0]?.status === 'matched');
+  assert.equal(await page.locator('g[data-focus] rect').count(), 1);
+  assert.deepEqual(await page.locator('g[data-focus] rect').evaluate(node => ['x', 'y', 'width', 'height'].map(name => Number(node.getAttribute(name)))), [30, 84, 520, 20], 'highlight follows the whole measured PDF text run');
+  assert.equal(await page.locator('g[data-point]').count(), 0, 'the inaccurate coordinate underline is absent');
+  if (process.env.FOCUS_SCREENSHOT_DIR) await page.screenshot({ path: path.join(process.env.FOCUS_SCREENSHOT_DIR, 'focus-desktop.png') });
+  const focusPersistence = await page.evaluate(() => {
+    const marker = pages[0].svg.querySelector('g[data-focus]');
+    annotations.push({ id: 'focus-ink', type: 'text', page: 1, x: 35, y: 175, w: 150, text: 'r = 30' });
+    renderOverlay(pages[0]); scale = 1.5; applyScale();
+    const svg = pages[0].svg;
+    return { same: marker === svg.querySelector('g[data-focus]'), underInk: svg.firstElementChild === marker,
+      persisted: JSON.stringify(annotations).includes('diameter'), pointer: marker.getAttribute('pointer-events') };
+  });
+  assert.deepEqual(focusPersistence, { same: true, underInk: true, persisted: false, pointer: 'none' }, 'verified focus survives zoom and writing without becoming student work');
+  await page.getByRole('button', { name: 'Close focus for page 1' }).click();
+  assert.equal(await page.locator('#tutorFocus').isVisible(), false);
+  assert.equal(await page.locator('g[data-focus]').count(), 0);
+
+  await installFixture();
+  await page.evaluate(() => { tutorFocusClear(); tutorFocusShow({ page: 1, label: 'Q7', quote: 'diameter 60 cm' }); });
+  await page.waitForFunction(() => tutorFocusState.items[0]?.status === 'quote');
+  assert.match(await page.locator('#tutorFocus').innerText(), /Find these words on page 1/);
+  assert.equal(await page.locator('g[data-focus]').count(), 0, 'scans show a quote without estimated coordinates');
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.locator('#tutorFocus q').isVisible(), true, 'the quote stays visible on mobile');
+  const mobileBox = await page.locator('#tutorFocus').boundingBox();
+  assert.ok(mobileBox.x >= 0 && mobileBox.x + mobileBox.width <= 391, 'focus fits the narrow screen');
+  if (process.env.FOCUS_SCREENSHOT_DIR) await page.screenshot({ path: path.join(process.env.FOCUS_SCREENSHOT_DIR, 'focus-mobile.png') });
+  const voicePhase = await page.evaluate(() => liveTutor.phase);
+  await page.getByRole('button', { name: 'Show page', exact: true }).click();
+  assert.equal(await page.locator('#buddy').isVisible(), false, 'Show page clears the mobile panel from the worksheet');
+  assert.equal(await page.locator('#buddyFab').isVisible(), true, 'live controls remain reachable after showing the page');
+  assert.equal(await page.evaluate(() => liveTutor.phase), voicePhase, 'Show page keeps the voice session connected');
+  await page.locator('#buddyFab').click();
+  assert.equal(await page.locator('#buddy').isVisible(), true, 'the tutor controls reopen');
+  assert.equal(await page.evaluate(() => liveTutor.phase), voicePhase, 'reopening the controls keeps the same voice session');
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.evaluate(() => {
+    tutorFocusClear();
+    tutorFocusShow({ page: 1, label: 'Q7', quote: '<img src=x onerror=alert(1)>' });
+  });
+  assert.equal(await page.locator('#tutorFocus img').count(), 0, 'quotes are rendered as literal text');
+  assert.equal(await page.locator('#tutorFocus q').innerText(), '<img src=x onerror=alert(1)>');
+  await page.evaluate(() => { wsKey.pages = [1]; applyKeyVisibility(); });
+  assert.equal(await page.locator('#tutorFocus').isVisible(), false, 'a page hidden as an answer key loses its focus card');
+  assert.equal(await page.evaluate(() => tutorFocusShow({ page: 1, label: 'Q7', quote: 'diameter 60 cm' })), false, 'answer-key pages cannot be revealed through focus');
+
+  await installFixture();
+  whole = '[[point p1 0.12 0.25 0.35 0.02 underline]] Read the diameter first.';
+  replyMode = 'complete';
+  await startLiveReply('Help with question 7.', 'focus-old-cache'); await liveFinished('focus-old-cache');
+  assert.equal((await spoken('focus-old-cache')).join(' '), 'Read the diameter first.');
+  assert.equal(await page.locator('g[data-point]').count(), 0, 'old cached pointer metadata is consumed without drawing');
+  first = englishFirst; whole = englishWhole;
+
+  await installFixture();
+  const beforeVideoFocus = requests.length;
   await page.evaluate(async () => { lessonPlayback = { fixture: true }; await fastTutorPrepareNext(); lessonPlayback = null; });
-  assert.equal(requests.length, beforeVideo, 'preparation does not compete with a playing recorded lesson');
+  assert.equal(requests.length, beforeVideoFocus, 'preparation does not compete with a playing recorded lesson');
   assert.equal(await page.locator('#lessonVideo').count(), 1, 'video lesson player survives tutor interactions');
   assert.equal(await page.locator('#stylusBtn').count(), 1, 'worksheet pen controls survive tutor interactions');
   assert.deepEqual(errors, [], 'real browser client checks finish without uncaught errors');
-  console.log('Fast tutor browser checks passed: zero-preparation local repeat, image-free prepared next/clue/simpler, one full retry after a cache miss, pending-reference guards, mixed-answer routing, first useful speech before completion, interruption, stale-context protection, and worksheet/video UI.');
+  console.log('Fast tutor browser checks passed: exact quote focus, verified PDF highlighting, scan and mobile fallback, hidden-key guards, legacy marker removal, zero-preparation repeat, image-free prepared follow-ups, one retry after a miss, streaming, interruption, stale-context protection, and worksheet/video UI.');
 } finally {
   for (const finish of held.values()) finish();
   await browser.close();

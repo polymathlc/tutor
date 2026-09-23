@@ -173,7 +173,7 @@ function box(extra) {
     'var STORAGE_DIR = ' + literal('STORAGE_DIR') + ';',
     'var ASSIGN_COLLECTION = ' + literal('ASSIGN_COLLECTION') + ';',
     'var DRAG_SLOP_PX = ' + literal('DRAG_SLOP_PX') + ';',
-    fnSrc('isAdmin'), fnSrc('round2'), fnSrc('pageIsKey'), fnSrc('studentPages'), fnSrc('assignmentFor'),
+    fnSrc('isAdmin'), fnSrc('round2'), fnSrc('pageIsKey'), fnSrc('keyPageHeld'), fnSrc('studentPages'), fnSrc('assignmentFor'),
     fnSrc('docMissingError'), fnSrc('chipNode'), fnSrc('setterName'),
     `var pages = [], annotations = [], wsKey = { pages: [], rows: [] }, wsEpoch = 1, currentDocId = null,
          currentUser = null, wsMeta = {}, view = 'home', scale = 1, fittedWidth = true, drawing = null,

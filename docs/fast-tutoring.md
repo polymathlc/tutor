@@ -40,6 +40,15 @@ work and selection calls does not remove the voice generation time.
 
 ## Preparation and correctness
 
+Since v1.57.0, live teaching uses `[[focus pN | Q7 | exact printed words]]`
+markers instead of model-estimated underline coordinates. The question label is
+optional. Quotes appear as plain text in a small focus card outside the worksheet
+canvas. PDF text positions are used only for a unique, trustworthy match;
+scanned pages and ambiguous matches retain the quote without a guessed mark.
+Text extraction runs asynchronously and never blocks speech. Old `point`
+markers are removed from live speech and no longer draw a coordinate-based cue.
+Prepared packs use a new revision so old underlines are not reused.
+
 Preparation uses Astra with medium reasoning and structured output, up to eight
 readable questions per page. Each question has a progressive hint ladder,
 simpler explanations and relevant misconception explanations. Question images

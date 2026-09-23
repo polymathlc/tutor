@@ -12,6 +12,18 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.57.0 — Clearer tutor focus and complete answer-key discovery
+
+Live tutoring names the question and quotes the exact printed words in a compact
+“Look here” card. The app highlights text only when it can verify a unique PDF
+text match; scanned or ambiguous text keeps the quote without a guessed
+underline. These cues never become student ink or delay the spoken reply.
+
+Answer-key discovery starts at the actual last page and works backwards through
+continued solutions and blank separators. Existing worksheets with an incomplete
+older scan are checked again. Unresolved trailing pages stay out of the student
+view while the check finishes; a failed check remains pending for retry.
+
 ## v1.56.1 — Quicker repeats and familiar follow-ups
 
 Repeats take an earlier shortcut, before worksheet image preparation. Familiar

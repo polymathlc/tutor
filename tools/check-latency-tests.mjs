@@ -197,7 +197,7 @@ if (tutor) {
   function keyHarness(read) {
     const h = harness();
     const key = { pages: [3], rows: [], path: '', reading: false };
-    Object.assign(h.c, { wsKey: key, wsEpoch: 1, pdfDoc: {}, aiAvailable: () => true,
+    Object.assign(h.c, { wsKey: key, wsEpoch: 1, currentUser: { uid: 'fixture' }, currentDocId: 'fixture-doc', pdfDoc: {}, aiAvailable: () => true, keyScanRequired: () => false, keyScanJob: null,
       renderKeyChip() {}, toast() {}, setDirty() {}, keyReadOwnPages: read, keyReadPdfAt: async () => [] });
     vm.runInContext(cut('var keyReadJob = null;', '/* ---- A key that came as its own PDF'), h.c);
     return { ...h, key };

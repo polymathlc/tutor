@@ -56,12 +56,13 @@ const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, p
 const page = await ctx.newPage();
 await page.addInitScript(() => {
   const chain = () => new Proxy(function () { return chain(); }, {
-    get: (t, k) => (k === 'then' ? undefined : chain()),
+    get: (t, k) => (k === 'then' ? undefined : k === Symbol.toPrimitive ? () => 'fixture' : chain()),
     apply: () => chain(), construct: () => chain(), set: () => true
   });
   window.pdfjsLib = chain(); window.firebase = chain(); window.grecaptcha = chain();
 });
 const errors = [];
+await page.route('https://**/*', route => route.abort()); // fixture services must stay isolated from production SDKs
 page.on('pageerror', e => errors.push(e.message));
 page.on('dialog', d => d.accept());
 const downloads = [];
