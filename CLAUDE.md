@@ -2,6 +2,118 @@
 
 Guidance for Claude when working in this repo.
 
+## 🎬 VIDEO SOLUTIONS — the teacher records, the class watches (v1.55.0)
+
+The whole block between `🎬 VIDEO SOLUTIONS — the teacher records, the class watches  (v1.55.0)`
+and `End video solutions` in `index.html`: `recPickMime` / `recExt` / `recFmtTime` /
+**`recDropSpot`** / **`lessonVideoLabel`** / `videoPillLabel`, **`LessonReplayCore`**,
+`lessonCaptureBackgrounds`, **`LessonAudioFinalize`**, the camera-and-microphone window
+(`lessonDev*`, `lessonOpenModal`, `lessonCloseModal`), the recording (`LESSON_*_LIMIT`,
+`LESSON_BYTES_SLACK`, **`LESSON_DIRS`**, `LESSON_VIDEOS_MAX`, **`lessonAdmin`** /
+**`lessonTeacher`** / **`lessonOwnerId`**, `lessonSaveContextOK`, **`lessonFitZoom`**,
+`lessonApplyView`, `lessonSafeAnn`, `lessonStart`, `lessonStop`, `lessonFinish`, **`lessonPut`**,
+`lessonStorageRefused`, **`lessonVideoEntry`**, `lessonSavePending`, **`lessonAssetUrl`**,
+`lessonPlay`, `lessonReplayFrame`, `lessonExitPlayback`, `lessonRecovery`), the list
+(**`lessonVideosClean`** / **`lessonVideosOf`** / `lessonVisibleVideos` / `lessonVideosOpen` /
+**`lessonVideosWatch`** / `lessonVideosUnwatch` / **`lessonVideosCommit`** / `lessonDeleteFiles`),
+the pills (`renderVideoPills` / `videoPillNode` / `lessonPillWire` / `lessonVideoMove` /
+`lessonVideoRename` / `lessonVideoDelete` / `lessonPillMenu`), the shelf (**`lessonShelfMark`**),
+`lessonToolsSync` / `lessonWorksheetClosing` / `lessonLeaveWs` / `lessonRoleChanged`, the title
+(`lessonQuestionGuess` / `lessonTitlePrefill`), the 1080p export (`lessonExport*`) and the
+playlist (`lessonPlaylist*`). Plus `#lessonTools` (⏺ `#lessonRecordBtn`, 🎬 `#playlistBtn`),
+`#lessonModal`, `#barStack`, `#lessonCamWin`, `#playlistPanel`, `#lessonExportModal`, the
+`.vidPills` / `.vidPill` / `.vidMenu` / `.vidBadge` / `.chipVideo` / `.lesson*` / `.lx*` / `.pl*`
+CSS, and the hooks in `setDirty`, `loadPdf`, `showView`, `openWorksheet`, `wsCardNode`,
+`setCardNode`, `pushWorksheet`, `deleteWorksheet`, the auth handler, the Escape branch, Shift+R
+and the `video` row of `USAGE_EVENTS`.
+
+The teacher talks a question through on their own worksheet — camera, voice, pencil, typed words,
+scroll and zoom — and every student with that worksheet gets a ▶ beside the question that plays it
+back ON THEIR OWN PAGE, the writing appearing stroke by stroke in time with the voice.
+
+- **IT IS ANS KEY'S MACHINERY, PORTED UNDER THE SAME NAMES.** The replay core, the WebM finalizer
+  and the camera window are byte for byte `polymathlc/anskey`'s; the recorder, the replay, the
+  1080p export, the playlist and the title are copied and then told where this app differs, and
+  the header comment of the block lists those differences (①–⑧) and nowhere else is allowed to.
+  **`tools/lesson-tests.mjs` compares the shared parts byte for byte whenever both repositories
+  are checked out side by side** (it skips in CI, where only one is). A fix in either app copies
+  straight across rather than being re-derived.
+- **A VIDEO IS NOT AN ANNOTATION HERE — and that is the one big difference from Ans Key.** A
+  student's copy of a set worksheet is their OWN document with their OWN ink, made the moment they
+  start, so a pill saved with the teacher's ink would never reach a copy begun yesterday, and one
+  saved into a child's ink is something they could erase and the marking would read. So the videos
+  are a LIST, `videos`, on the teacher's own worksheet AND on the assignment beside it (same id),
+  and **nothing in the block writes `annotations`, `drawAnnsOnCtx` never draws a pill,
+  `worksheetBody` and `performSave` never name the list** — so an auto-save can never write a
+  stale list over a fresh one. The harness pins all four.
+- **`lessonVideosClean` IS THE ONE DOOR A LIST COMES IN BY** — every read, every write and every
+  live snapshot. An entry that cannot play is dropped (a pill that does nothing is worse than
+  none), no field nobody reads is carried, `video` / `title` exist only when real (so an untitled
+  voice-only entry is byte for byte an Ans Key attachment), and the list is capped at
+  `LESSON_VIDEOS_MAX` because every entry rides on the document every copy reads.
+- **`lessonVideosOf` IS THE ONE PLACE A PAPER'S VIDEOS ARE DECIDED** — the page, the shelf, the
+  playlist — and **a copy reads the ASSIGNMENT**, the way its help level, its name and its key
+  pages are read, so a video recorded today reaches the copy begun yesterday. A copy of a paper
+  taken off the class list has none (the Backup shelf's rule).
+- **`lessonVideosCommit` IS THE ONE WRITER, and it RE-READS before it writes**: the change is
+  handed the DOCUMENT's list, never what this tab was holding, so a second device's video is never
+  written over. **`update`, never `set`, on both documents**: a worksheet deleted mid-save must not
+  come back as a stub, and an assignment must never be CREATED here, because
+  `worksheetReadByClass` reads whether it EXISTS to decide the class shares the PDF. The class half
+  failing is reported apart (`classError`) — "saved on your worksheet, but your students could not
+  be given it" is a different sentence from "saved".
+- **A COPY FOLLOWS THE TEACHER'S LIST LIVE** (`lessonVideosWatch`, an `onSnapshot` on
+  `tutorAssignments/{id}`): a video recorded while the class has the paper open arrives on every
+  copy by itself, with a toast naming `setterName()`. It comes down on another worksheet, on
+  leaving the worksheet and on an account change, and a snapshot for a worksheet no longer open is
+  dropped by its epoch.
+- **ONLY THE TEACHER RECORDS, AND ONLY ON THEIR OWN WORKSHEET.** `lessonTeacher()` is the admin on
+  a worksheet that is not a copy — a copy is a child's document in every respect but whose it is —
+  and it draws ⏺ AND is asked again in `lessonStart`, the drag, rename, delete and ⋯ menu.
+  `lessonAdmin()` is what the export, the writer and the file delete ask: the teacher may export
+  from any page a video plays on, and a save carries on after they have moved on.
+  **`lessonDeleteFiles` refuses on any device but the teacher's**, and deletes only a path in a
+  lesson folder — a `videos` field somebody wrote on a student's own paper is never the door to
+  the teacher's recordings.
+- **EVERYBODY WATCHES.** The pills, the replay and 🎬 the playlist are for every account that can
+  open the worksheet. A watch is counted through `usageNote('video', …)` with the worksheet's own
+  name and the question — never anything a child wrote.
+- **THE FILES GO IN THE ONE FOLDER THE RULES GUARD** (`LESSON_DIRS`, `pdf-annotator` first). The
+  shared Storage rules are a catch-all with one exception, published by Ans Key v1.94.1:
+  `pdf-annotator/lesson-*` is readable by anybody and writable only by the verified Google teacher.
+  A lesson a class watches is what a child must not be able to overwrite, so it goes there;
+  `tutor-worksheets/` is the fallback, tried only on a REFUSAL by the rules
+  (`lessonStorageRefused`) — a dropped network is a retry, never a different folder — and the
+  manifest always follows the media into the folder it landed in. `lessonAssetUrl` reads both and
+  nothing else: an entry is a document field, and a field can be written by something other than
+  this app.
+- **THE SAVE NEEDS THE TEACHER, NOT THE WORKSHEET** (`lessonSaveContextOK`). Nothing it writes is
+  on the open page, so it runs on after the teacher has opened the next paper; only the PDF-hash
+  check waits for the worksheet it was recorded on to be the one open. Leaving the worksheet mid-
+  recording STOPS AND SAVES (`lessonLeaveWs`) rather than refusing the way out.
+- **THE STUDENT SEES THE REGION THE TEACHER SAW** (`lessonFitZoom`, pure): the teacher's viewer
+  size rides on the manifest, and the replay fits that region onto the student's screen — never
+  wider than the page, because the desk either side carries nothing. A recorded view on a page this
+  copy hides (an answer-key page) is stepped over, never scrolled to, and the 1080p export stacks
+  only `studentPages()`.
+- **THE RECORDER MIXES THE MICROPHONE AND NOTHING ELSE**, the rule Ans Key v1.98.0 set: one
+  `createMediaStreamSource`, no route from the live tutor, and the live tutor is stopped before a
+  recording starts and before a replay plays (it would hear the lesson and answer it). The
+  window's previews let go before the recording opens its own devices, exactly — Safari on an iPad
+  silences the older capture.
+- **THE BYTE CEILINGS MOVE TOGETHER**: `LESSON_VIDEO_LIMIT` = `MAX_VIDEO_BYTES`,
+  `LESSON_AUDIO_LIMIT` = `MAX_BYTES`, the replay core's duration = `MAX_MS`, and the recorder stops
+  `LESSON_BYTES_SLACK` short. A finalizer stricter than the recorder throws a lesson away at save.
+- **THE SHELF SAYS SO, FROM THE SAME LIST THE PAGE READS** (`lessonShelfMark`): a 🎬 chip for
+  anybody reading the card and a badge on the cover for anybody running an eye along the shelf, on
+  the teacher's card, a set card and a started copy alike.
+- **A RECORDING THAT HAS NOT FINISHED SAVING IS KEPT ON THE DEVICE** (`lessonRecovery`, IndexedDB
+  `tutorLessonRecovery` — this app's own store, because the family's apps share an origin).
+- Run **`node --test tools/lesson-tests.mjs`** and **`node tools/lesson-check.mjs`** after touching
+  any of it. The second drives a real Chromium with a fake camera through a recording, the
+  student's copy, the live arrival, the playlist, the shelf, the 1080p export and a delete —
+  nothing that reads the source can say whether a browser records, replays or writes the file.
+
 ## 🔮 THE LIVE ORB — the WHOLE logo in sand, inside a glass sphere, and no "let me check" (v1.21.0)
 
 `LIVE_ORB_TEAL` … `LIVE_ORB_MAGENTA_DARK` / `LIVE_ORB_PALETTE` / **`LIVE_ORB_MASK`** /
@@ -4457,6 +4569,29 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **🎬 the video solutions** (anything between `🎬 VIDEO SOLUTIONS — the teacher
+  records, the class watches  (v1.55.0)` and `End video solutions`, the `videos` field in
+  `pushWorksheet`, the `lessonDeleteFiles` line in `deleteWorksheet`, `lessonShelfMark` in
+  `wsCardNode` / `setCardNode`, or the lesson hooks in `setDirty` / `loadPdf` / `showView` /
+  `openWorksheet` / the auth handler / the Escape branch / Shift+R), run
+  `node --test tools/lesson-tests.mjs` **and** `node tools/lesson-check.mjs` — and ship the shared
+  parts to `polymathlc/anskey` as well. Every failure here is silent and a pill still appears. Put a
+  video into `annotations` and it is something a child can erase and the marking reads off the
+  page; name `videos` in `performSave` and the teacher's own auto-save writes a stale list over a
+  fresh one. Read a copy's videos off the COPY and a video recorded today never reaches the paper
+  begun yesterday. Let the writer trust what the tab holds instead of re-reading, and a video
+  recorded on the other device is written over; `set` either document and a deleted worksheet
+  comes back as a stub, or an assignment is CREATED and the class is told it shares a PDF it does
+  not. Drop the live listener's teardown and one account's list goes on arriving on the next
+  person's screen. Let a handler stop asking `lessonTeacher()` and a student can move, rename or
+  delete the teacher's video; let `lessonDeleteFiles` run on a student's device and a field on
+  their own paper is a door to the teacher's recordings. Put `tutor-worksheets` first in
+  `LESSON_DIRS` and every lesson a class watches sits where any client may overwrite it; try the
+  other folder on a dropped NETWORK and half a lesson lands in each. Stop fitting the replay
+  (`lessonFitZoom`) and a lesson taught on a laptop is a corner of the page on a phone; let a view on
+  a hidden answer-key page through and the replay scrolls a child towards the marking scheme. Let the recorder mix anything
+  but the microphone and the live tutor answers into a lesson a class watches. And let the byte
+  ceilings drift apart and a long lesson is thrown away at the moment it is saved.
 - After touching **📌 taking a paper off the class list** (`docMissingError`,
   `unpushWorksheet`, or the `await loadAssignments(); renderWorksheets();`
   at the foot of `pushWorksheet`), run `node tools/tutor-tests.mjs`. Both

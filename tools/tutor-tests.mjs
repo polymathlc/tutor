@@ -4941,6 +4941,9 @@ const asgSand = {
   HINT_DEFAULT: 'method',
   levelLabel: v => v, subjectLabel: () => 'Science',
   startAssignment: () => {}, unpushWorksheet: () => {},
+  // 🎬 The shelf mark is tools/lesson-tests.mjs's to pin; here it only has to
+  // be there, and to be handed the card's own chips.
+  lessonShelfMark: (a, meta) => { if (a && Array.isArray(a.videos) && a.videos.length && meta) meta.appendChild(mkEl('span')); },
   assignmentsForMe: () => asgList,
   checkAssignmentPdfs: () => { asgChecked++; }
 };

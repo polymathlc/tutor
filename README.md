@@ -12,6 +12,55 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.55.0 — 🎬 Video solutions: Mr Chung records a question, the whole class watches it
+
+**Recording is the teacher's; watching is everybody's.** Talk a question through on your own copy
+of a worksheet — your camera, your voice, your pencil, what you type, where you scroll and how far
+you zoom — and every student with that worksheet gets a ▶ button beside the question that plays it
+back **on their own page**: your writing appears stroke by stroke, in time with your voice, with
+you in a little video window beside it.
+
+- **⏺ Record a video solution** (toolbar, or **Shift+R**) — only on your account, and only on your
+  own worksheet. Choose the camera (or **No camera** for voice and writing only) and the
+  microphone, see yourself, check the sound, say **which question it is for** (it guesses from the
+  page — “Q5”), then **Start**. Stop, and it saves itself onto the worksheet.
+- **▶ The button lands beside the question** on the page you were looking at, and reads
+  **“Q5 · video solution · 3:12”**. Drag it anywhere; **⋯** on it lets you watch it, rename it
+  (which question it is for), export it as a 1080p video, or delete it.
+- **Every student gets it — including the ones who started the paper yesterday.** Set the paper
+  for the class (📌) as usual; a video recorded before or after that reaches every copy. A student
+  who has the worksheet open while you record sees it arrive by itself: *“🎬 Mr Chung has added a
+  video solution to this worksheet — tap ▶ on the page to watch.”*
+- **Watching it.** Tap ▶ and the page scrolls and zooms to what you were looking at — fitted to the
+  student's screen, so a lesson taught on a laptop is still readable on a phone — and your writing
+  appears on top of theirs. Their own work is never touched: close it and their page is exactly as
+  they left it. The video plays in a floating window they can drag about and make bigger or smaller.
+- **🎬 Play them all.** A 🎬 button appears on any worksheet with video solutions. It lists them in
+  question order and **▶ Play all** plays them one after another: when one finishes the bar says
+  *“Up next in 3 — Q6 · …”*, scrolls to that question and plays it. ⏮ ⏭ Stop on the bar.
+- **📚 On the shelf**, a paper with video solutions wears a 🎬 badge on its cover and a
+  *“🎬 2 video solutions”* chip — on your shelf, and on every student's, whether or not they have
+  started it yet.
+- **⬇ 1080p video (your account only):** any video solution can be turned into a 1920 × 1080 file
+  — the page, your writing, your camera and your voice — to post to a class chat or keep. Same as
+  Ans Key's.
+- **Answer-key pages stay hidden.** A video never takes a student to a page that is hidden from
+  them, and the 1080p file never shows one.
+- **Where it is kept.** The recording is two files in Storage, in the lesson folder Ans Key's
+  recording rule already guards (`pdf-annotator/lesson-…`, since Ans Key v1.94.1 — anybody may
+  watch, only your verified Google account may write or delete), falling back to this app's own
+  folder if that one ever refuses. The list of videos is one field,
+  `videos`, on your worksheet and on the class's copy of it — no Firestore rules change, no deploy.
+  A video on a worksheet you have not set for the class is on your worksheet only, and the toast
+  says so.
+- **Long lessons are fine** — about two hours with the camera (512 MB) and about an hour and a half
+  as voice and writing only (64 MB). A recording that has not finished uploading is kept on the device until it has.
+- **Checks:** `node --test tools/lesson-tests.mjs` runs in CI (27 tests, including a byte-for-byte
+  comparison with Ans Key's copy of the same machinery when both repositories are checked out
+  side by side). `node tools/lesson-check.mjs` drives a real Chromium through the whole thing: a
+  camera recording, the student's copy, the live arrival, the playlist, the shelf badge, the
+  1080p export and a delete.
+
 ## v1.54.0 — Study Adventure
 
 Meet **Orbit, Pip and Nova**: three original companions with twelve transparent
