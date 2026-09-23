@@ -96,7 +96,7 @@ function setup(savedMode) {
     tool: 'pen', color: '#000', strokeW: 3, lineHeads: 'single', lineDash: 'solid', scale: 1,
     newAnnId: () => 'test-' + (++annId), round2: x => Math.round(x * 100) / 100,
     highlightWidthFor: x => x * 4,
-    renderPinsOn: () => {}, renderMarksOn: () => {}, renderTutorPointOn: () => {}, renderTutorWorkOn: () => {},
+    renderPinsOn: () => {}, renderMarksOn: () => {}, renderTutorPointOn: () => {}, renderTutorWorkOn: () => {}, renderTutorFocusOn: () => {},
     commitActiveTextEdit: () => {},
     scheduleRaster: () => {}, applyScale: () => {}, toast: () => {},
     askHintAt: () => S.hints++, startVoice: () => S.voices++, startTextBox: () => S.texts++,

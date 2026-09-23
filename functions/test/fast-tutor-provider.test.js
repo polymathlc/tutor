@@ -24,6 +24,9 @@ test('preparation fixes Astra medium reasoning and a strict bounded schema witho
   assert.equal(sent.text.format.strict, true); assert.equal(sent.text.format.schema.properties.questions.maxItems, 8);
   assert.equal(sent.input[0].content[1].image_url, body.image);
   assert.match(sent.instructions, /NEVER calculate/); assert.match(sent.instructions, /task data/);
+  assert.match(sent.instructions, /\[\[focus pN \| Q7 \| diameter 60 cm\]\]/);
+  assert.match(sent.instructions, /exact contiguous quote/);
+  assert.match(sent.instructions, /Never emit \[\[point\]\]/);
 });
 test('selector fixes Luna none reasoning, bounds available response IDs, and receives no student image or key', async () => {
   let sent;
@@ -39,10 +42,10 @@ test('fresh teaching forwards deltas while the stream is arriving and requires c
   let sent; const deltas = [];
   const provider = createTeachProvider({ apiKey: () => 'private', fetchImpl: async (url, req) => {
     sent = JSON.parse(req.body);
-    return sse([{ type: 'response.output_text.delta', delta: '[[point p3 100,200 underline]] ' }, { type: 'response.output_text.delta', delta: '看看 these groups.' }, { type: 'response.completed', response: { status: 'completed' } }], 3);
+    return sse([{ type: 'response.output_text.delta', delta: '[[focus p3 | Q1 | three equal groups]] ' }, { type: 'response.output_text.delta', delta: '看看 these groups.' }, { type: 'response.completed', response: { status: 'completed' } }], 3);
   } });
   const result = await provider.fresh(context, body, text => deltas.push(text));
-  assert.deepEqual(deltas, ['[[point p3 100,200 underline]] ', '[[point p3 100,200 underline]] 看看 these groups.']);
+  assert.deepEqual(deltas, ['[[focus p3 | Q1 | three equal groups]] ', '[[focus p3 | Q1 | three equal groups]] 看看 these groups.']);
   assert.equal(result, deltas[1]); assert.equal(sent.stream, true); assert.equal(sent.reasoning.effort, 'low'); assert.equal(sent.store, false);
 });
 test('upstream truncation, refusal and failure cannot masquerade as a completed answer', async () => {

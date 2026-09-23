@@ -774,24 +774,23 @@ eq('a read the cleaner would refuse fills nothing', [ap.level, ap.subject, ap.fi
 /* Against the file: the read is ADDED to the scan, the tail is walked
    backwards, and the whole-paper eye stands down when the read saw it all. */
 ok('the scan UNIONS the read\'s key pages with what the text found',
-   /readPages\.forEach\(function \(n\) \{ if \(found\.indexOf\(n\) < 0\) found\.push\(n\); \}\);/.test(scanSrc));
-ok('…and only looks at the whole paper when the read has not already',
-   /if \(!anyText && !found\.length && !readSawAll && aiAvailable\(true\)\)/.test(scanSrc));
-ok('…and walks the key backwards from the last page, one page at a time', /found = await keyWalkBack\(found\);/.test(scanSrc));
-ok('…whenever the paper was read at all, never with the AI off', /if \(\(found\.length \|\| read\) && aiAvailable\(true\)\)/.test(scanSrc));
+   /readPages\.forEach[\s\S]{0,220}found\.push\(n\)/.test(scanSrc));
+ok('…and retains the cursor\'s provisional key labels when resuming', /wsKey\.pages\.concat\(wsKey\.scanFound \|\| \[\]\)/.test(scanSrc));
+ok('…and walks the key backwards even when metadata found no key', /found = await keyWalkBack\(found, options\);/.test(scanSrc));
+ok('the page classifier pauses safely when AI is unavailable', /!p \|\| !aiAvailable\(true\)\) return \{ kind: 'uncertain' \}/.test(scanSrc));
 ok('the whole-paper look goes through the one eye', /async function keyScanByEye\(\) \{\n\s*return keyEyeOn\(pages\.map/.test(SRC_KEY));
 ok('the walk is bounded', /asked < KEY_WALK_MAX/.test(SRC_KEY));
-ok('the walk asks ONE page per call', /var hit = await keyEyeOn\(\[n\]\);/.test(SRC_KEY));
+ok('the walk classifies ONE page at a time', /await keyInspectPage\(n, options, out\)/.test(SRC_KEY));
 
 /* THE WALK, driven by hand: a stubbed eye that knows which pages are the
    key, and a count of what it was asked. */
 {
   const eyeLog = [];
-  const savedEye = S.keyEyeOn, savedPages = S.pages;
-  const withKey = (n, keySet) => {
+  const savedEye = S.keyInspectPage, savedPages = S.pages;
+  const withKey = (n, keySet, blankSet = []) => {
     S.pages = Array.from({ length: n }, (_, i) => ({ num: i + 1 }));
     eyeLog.length = 0;
-    S.keyEyeOn = async nums => { eyeLog.push(nums.slice()); return nums.filter(x => keySet.indexOf(x) >= 0); };
+    S.keyInspectPage = async n => { eyeLog.push([n]); return { kind: keySet.includes(n) ? 'key' : blankSet.includes(n) ? 'blank' : 'question' }; };
   };
   // A 12-page paper whose key is pages 5–12: the read saw 9–12, so the
   // walk starts at 8 and asks 8, 7, 6, 5, then 4 — which is not a key.
@@ -804,11 +803,13 @@ ok('the walk asks ONE page per call', /var hit = await keyEyeOn\(\[n\]\);/.test(
   withKey(6, [5, 6]);
   eq('with nothing known it starts at the last page', await S.keyWalkBack([]), [5, 6]);
   eq('…and stops at the first page that is not', eyeLog, [[6], [5], [4]]);
-  // A blank back cover: the read saw the last four, called 8–9 the key and
-  // 10 not, so the walk starts at 7 and never re-asks page 10.
-  withKey(10, [6, 7, 8, 9]);
-  eq('a page the read has already ruled out is not asked again', await S.keyWalkBack([8, 9]), [6, 7, 8, 9]);
-  eq('…the walk starts just above the lowest known key page', eyeLog[0], [7]);
+  // Metadata omits continuation pages and blank backs; it cannot rule them out.
+  withKey(10, [6, 7, 8, 9], [10]);
+  eq('a blank back is crossed before the known keys', await S.keyWalkBack([8, 9]), [6, 7, 8, 9]);
+  eq('…the actual last page is inspected despite lower known key pages', eyeLog, [[10], [7], [6], [5]]);
+  withKey(10, [6, 7, 8, 9, 10]);
+  eq('continued solutions above the highest known key are found', await S.keyWalkBack([8]), [6, 7, 8, 9, 10]);
+  eq('the scan starts at the actual last page', eyeLog[0], [10]);
   // A page the text scan already called a key is stepped over, not asked.
   withKey(8, [4, 5, 6, 7, 8]);
   eq('a page the text scan already called a key is stepped over', await S.keyWalkBack([5, 7, 8]), [4, 5, 6, 7, 8]);
@@ -823,7 +824,7 @@ ok('the walk asks ONE page per call', /var hit = await keyEyeOn\(\[n\]\);/.test(
   await S.keyWalkBack([200]);
   ok('the walk never asks more than KEY_WALK_MAX pages', eyeLog.length === S.KEY_WALK_MAX, 'asked ' + eyeLog.length);
   eq('a paper with no pages walks nowhere', await (async () => { S.pages = []; return S.keyWalkBack([3]); })(), [3]);
-  S.keyEyeOn = savedEye; S.pages = savedPages;
+  S.keyInspectPage = savedEye; S.pages = savedPages;
 }
 ok('the read is ONE call over small pictures, with a deadline',
    /system: PAPER_READ_SYS, maxOutputTokens: 500, temperature: 0, json: true, thinkingLevel: 'low',\n\s*images: imgs, timeoutMs: 45000/.test(SRC_KEY));
@@ -1903,6 +1904,7 @@ const UNGROUNDED_BY_DESIGN = {
                 'writes that down instead of what is printed, and a key rewritten on the way in is a whole ' +
                 'class marked against something the paper never said.',
   KEY_EYE_SYS:  'asks which PAGES are the answer key. It returns page numbers, not science said to anybody.',
+  KEY_INSPECT_SYS: 'classifies original printed pages as key, question, blank or uncertain; it does not teach or answer a question.',
   PAPER_READ_SYS: 'reads what a paper IS — its subject, its level, its name and which of its pages are its ' +
                   'answer key — off its first and last pages. Metadata about the paper, not science said to ' +
                   'anybody; grounded, it would file every paper under whatever the notes happen to be about.',
@@ -2132,8 +2134,9 @@ ok('the note budgets are pots, not a slice',
    paper puts the paper's own answers into the score as questions they "got
    right", and into the mistake book with a picture of the key beside them. */
 const runMark = html.slice(html.indexOf('async function runMarking'),
-                           html.indexOf('async function runMarking') + 3200);
-ok('marking runs over the student\'s pages, not the key\'s', /var work = studentPages\(\)/.test(runMark),
+                           html.indexOf('async function runMarking') + 4200);
+ok('marking runs over the student\'s pages after answer-key readiness',
+   /work = studentPages\(\)/.test(runMark) && runMark.indexOf('work = studentPages()') > runMark.indexOf('keyEnsureReady()'),
    runMark.replace(/\s+/g, ' ').slice(0, 260));
 ok('…and the picture and its page number are pushed together',
    /imgs\.push\([^)]*\);\s*pageNums\.push\(batch\[b\]\.num\)/.test(runMark.replace(/\s+/g, ' ')) ||
@@ -3262,7 +3265,7 @@ ok('a gesture already on the page is left alone when the overlay rebuilds',
    DETACHED: taking one out of the document cancels its CSS animation, so
    lifting it out and putting it back flashes exactly as a rebuild does. */
 ok('…and the overlay\'s wipe steps over it rather than detaching it',
-   /var tutorNodes = Array\.prototype\.slice\.call\(svg\.querySelectorAll\('g\[data-point\], g\[data-work\]'\)\);/.test(html) &&
+   /var tutorNodes = Array\.prototype\.slice\.call\(svg\.querySelectorAll\('g\[data-point\], g\[data-work\], g\[data-focus\]'\)\);/.test(html) &&
    /if \(tutorNodes\.indexOf\(n\) === -1\) svg\.removeChild\(n\);/.test(html) &&
    !/while \(svg\.firstChild\) svg\.removeChild\(svg\.firstChild\);/.test(html),
    'a detached node flashes its way back in every time the child commits a stroke');
@@ -3341,8 +3344,8 @@ ok('and a new spoken question takes it off too',
 /* ONE clear for BOTH marks, and every one of those five call sites reaches it.
    Two clear functions with five call sites each is ten chances to forget one,
    and what is forgotten is silent. */
-ok('…and that ONE clear takes BOTH the finger and the working down',
-   /function tutorMarksClear\(\) \{\n\s*tutorPointClear\(\);\n\s*tutorWorkClear\(\);\n\}/.test(html),
+ok('…and that ONE clear takes the finger, working and verified focus down',
+   /function tutorMarksClear\(\) \{\n\s*tutorPointClear\(\);\n\s*tutorWorkClear\(\);\n\s*tutorFocusClear\(\);\n\}/.test(html),
    'a note about a step, left standing beside a question nobody is on any more');
 ok('…and nothing but that one function calls either half',
    (html.match(/tutorPointClear\(\)/g) || []).length === 2 &&
@@ -3377,21 +3380,21 @@ const LIVE_SYS_SRC = between('You support a live voice tutor.', 'onProgress: fun
 /* BOTH PROMPTS SAY WHAT A SECOND MARK IS FOR, and both say it the same way:
    a comparison, never a second interesting thing. A model that marks four
    places has told the student nothing about where to look. */
-ok('…and both prompts say a second mark is for a COMPARISON and nothing else',
+ok('…and both prompts limit multiple locations to a comparison',
    /"point" is a LIST/.test(HINT_SYS_SRC) &&
    /when and only when the student has to COMPARE two places/.test(HINT_SYS_SRC) &&
-   /when and only when the student has to COMPARE two places/.test(LIVE_SYS_SRC) &&
+   /at most TWO focus markers when comparing two printed passages/.test(LIVE_SYS_SRC) &&
    /a page under three boxes says nothing/.test(HINT_SYS_SRC) &&
-   /a page under three boxes says nothing/.test(LIVE_SYS_SRC),
+   /exact short quotation, not guessed coordinates/.test(LIVE_SYS_SRC),
    'a model that boxes four things has said nothing about where to look');
-ok('…and both say the marks are NUMBERED, so the words can name them',
-   /numbered ① ②/.test(HINT_SYS_SRC) && /numbered ① ②/.test(LIVE_SYS_SRC));
+ok('…and live focus names the printed question while saved hint gestures retain their numbering',
+   /numbered ① ②/.test(HINT_SYS_SRC) && /printed question label/.test(LIVE_SYS_SRC));
 /* …and both PERMIT a second one in the first place. A prompt that carries
    every rule about a pair and never says to write one is the live half of
    this quietly not existing, on a build whose every other pin is green. */
 ok('…and both actually ASK for the second mark rather than only ruling on it',
    /you may give a SECOND spot/.test(HINT_SYS_SRC) &&
-   /Write a SECOND pointer marker/.test(LIVE_SYS_SRC),
+   /Use at most TWO focus markers when comparing/.test(LIVE_SYS_SRC),
    'every rule about a pair and nothing that says to write one is a feature nobody reaches');
 /* 👉 AND THE SAME HOLE WAS UNDER THE FIRST MARK. Every pin above reads
    what the prompts RULE about a gesture, and both of them ruled at length
@@ -3404,13 +3407,13 @@ ok('…and both actually ASK for the second mark rather than only ruling on it',
 ok('…and both ASK for the FIRST mark, not only for the second',
    /ALMOST EVERY HINT IS ABOUT SOMETHING PRINTED ON THE PAGE/.test(HINT_SYS_SRC) &&
    /belongs on almost/.test(HINT_SYS_SRC) && /is NOT a rare extra/.test(HINT_SYS_SRC) &&
-   /ALMOST EVERY REPLY IS ABOUT SOMETHING PRINTED ON AN ATTACHED PAGE/.test(LIVE_SYS_SRC) &&
-   /belongs on almost every one of them and is NOT a rare extra/.test(LIVE_SYS_SRC),
+   /Help the student find the relevant printed words/.test(LIVE_SYS_SRC) &&
+   /At the very front, use \[\[focus/.test(LIVE_SYS_SRC),
    'a prompt that only rules on a mark is a tutor that never draws one');
 ok('…and both name the everyday things worth marking',
    /the word that decides the question/.test(HINT_SYS_SRC) &&
-   /the word that decides the question/.test(LIVE_SYS_SRC) &&
-   /the row of the table/.test(HINT_SYS_SRC) && /the row of the table/.test(LIVE_SYS_SRC),
+   /diameter 60 cm/.test(LIVE_SYS_SRC) &&
+   /the row of the table/.test(HINT_SYS_SRC) && /Copy wording, numbers, units and punctuation faithfully/.test(LIVE_SYS_SRC),
    'an abstract condition is one a model reads as rarely true; an example is a trigger');
 /* …and the OPT-OUT is narrowed to the one thing it means. "If you cannot
    place it exactly" and "if you are not sure" read as a general escape
@@ -3420,9 +3423,9 @@ ok('…and both name the everyday things worth marking',
    a finger anywhere the code would have allowed it before. */
 ok('…and neither opt-out is left as a general escape hatch',
    /The ONE reason to leave "point" out/.test(HINT_SYS_SRC) &&
-   /The ONE reason to leave the marker out/.test(LIVE_SYS_SRC) &&
+   /If the words are not readable, omit the marker/.test(LIVE_SYS_SRC) &&
    /A short hint is not a reason/.test(HINT_SYS_SRC) &&
-   /A short reply is not a reason/.test(LIVE_SYS_SRC),
+   /a scan or ambiguous match shows a quote card instead/.test(LIVE_SYS_SRC),
    '"if you are not sure" is a door a model that is never sure walks through every time');
 ok('…and both ask for WORKING on a question that has steps in it',
    /WRITE IT on any question that has a calculation or a chain of/.test(HINT_SYS_SRC) &&
@@ -3447,20 +3450,20 @@ ok('…and the typed chat is left alone, because nothing there strips a marker',
    !/\[\[/.test(CHAT_SYS_SRC) && !/\[\[/.test(between('function worksheetContextRule()', '/* ================= Live tutoring', 'the shared worksheet rule')),
    'a marker written into the typed chat is read by nothing and printed to the student');
 ok('…and the live prompt bounds the run of markers it may write',
-   /At most THREE pointer markers and at most ONE working marker/.test(LIVE_SYS_SRC),
+   /At most TWO focus markers and at most ONE working marker/.test(LIVE_SYS_SRC),
    'an unbounded run is a page under magenta');
 ok('BOTH prompts refuse to guess',
    /a finger on the wrong question is worse/.test(HINT_SYS_SRC) &&
-   /a finger on the wrong question is worse/.test(LIVE_SYS_SRC),
+   /not guessed coordinates/.test(LIVE_SYS_SRC),
    'a gesture placed on a guess teaches the wrong question with a straight face');
 ok('\u2026and both measure on the same 0\u20131000 grid the marking\'s ticks use',
    /0 to 1000/.test(HINT_SYS_SRC) && /0\u20131000 grid/.test(LIVE_SYS_SRC) && /0 to 1000/.test(html.slice(html.indexOf('var MARK_WHERE_RULE'), html.indexOf('var MARK_SYS'))),
    'two grids is a finger that lands somewhere else on one of the two paths');
-ok('\u2026and both offer the same four shapes',
+ok('saved hints retain four shapes while live focus refuses numerical pointing',
    /"circle", "underline", "arrow" or "box"/.test(HINT_SYS_SRC) &&
-   /circle, underline, arrow or box/.test(LIVE_SYS_SRC));
+   /Do not emit numerical point markers/.test(LIVE_SYS_SRC));
 ok('the hint is told to point at the QUESTION, never the answer',
-   /Point at the QUESTION, never at the answer/.test(html));
+   /the QUESTION, never at the answer/.test(HINT_SYS_SRC) && /never quote an answer-key entry/.test(LIVE_SYS_SRC));
 
 
 /* =====================================================================
@@ -4005,8 +4008,8 @@ ok('the hint prompt says the grid is not part of the worksheet',
    /Never copy a grid number/.test(HINT_SYS_SRC));
 ok('…and so does the live one',
    /it is NOT part of the worksheet, so never read a grid number out/.test(html));
-ok('both prompts send the model to the grid rather than to an estimate',
-   /READ IT OFF THE TEAL GRID/.test(HINT_SYS_SRC) && /READ IT OFF THE GRID LINES rather than estimating/.test(LIVE_SYS_SRC));
+ok('hint geometry uses the grid while live focus requires a verified text match',
+   /READ IT OFF THE TEAL GRID/.test(HINT_SYS_SRC) && /app highlights only a unique match in the PDF text/.test(LIVE_SYS_SRC));
 ok('the live pages go through the ruler, not the plain composite',
    /var data = pageJpegForModel\(p, LIVE_PAGE_PX, LIVE_PAGE_QUALITY, null\);/.test(html),
    'a live reply’s marker is measured in 0–1000 on whatever picture was sent');

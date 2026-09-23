@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import test from 'node:test';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const focusSource = readFileSync(new URL('../tutor-focus.js', import.meta.url), 'utf8');
 const startMarker = '/* ================= Live tutoring ================= */';
 const endMarker = '/* ================= End live tutoring ================= */';
 const start = html.indexOf(startMarker);
@@ -64,6 +65,7 @@ function node(tagName = 'div') {
       }
     },
     appendChild(child) { this.children.push(child); child.parentNode = this; return child; },
+    insertBefore(child, before) { const at = this.children.indexOf(before); if (at < 0) return this.appendChild(child); this.children.splice(at, 0, child); child.parentNode = this; return child; },
     append(...children) { children.forEach(child => this.appendChild(child)); },
     replaceChildren(...children) { this.children = []; this.append(...children); },
     setAttribute(name, value) { attrs.set(name, String(value)); },
@@ -149,6 +151,7 @@ function harness(options = {}) {
   const c = {
     console: { log() {}, warn() {}, error() {} },
     document, $: element, RTCPeerConnection: PeerConnection,
+    el(tag, attrs) { const result = node(tag); Object.entries(attrs || {}).forEach(([key, value]) => result.setAttribute(key, value)); return result; },
     AbortController, AbortSignal, URL, JSON, Date, Promise, Math, String, Number, Array, Object,
     navigator: { mediaDevices: { getUserMedia: async constraint => {
       calls.media.push(constraint);
@@ -224,7 +227,7 @@ function harness(options = {}) {
       ? { page, at: spec.at, lines: spec.lines.slice(), answerOk: !!answerOk } : null),
     tutorWorkShow(w) { if (w) calls.works.push(w); return !!w; },
     tutorWorkClear() { calls.works.push(null); },
-    tutorMarksClear() { c.tutorPointClear(); c.tutorWorkClear(); },
+    tutorMarksClear() { c.tutorPointClear(); c.tutorWorkClear(); if (c.tutorFocusClear) c.tutorFocusClear(); },
     /* The RULER on the picture. It is `compositeJpeg` plus a grid, so the
        stub answers the same way the composite one does and the checks that
        count what was sent go on reading the same strings. */
@@ -240,6 +243,8 @@ function harness(options = {}) {
   };
   Object.assign(c, options.globals || {});
   vm.createContext(c);
+  vm.runInContext(focusSource, c, { filename: 'tutor-focus.js' });
+  c.window.TutorFocus = c.TutorFocus;
   vm.runInContext(source, c, { filename: 'index.html:live-tutoring' });
   Object.assign(c, options.globals || {});
   return { c, calls, nodes, track, stream, element };
@@ -1265,7 +1270,7 @@ test('a route that returns more than it streamed still has its tail spoken', asy
    tutor that has gone quiet.
    ------------------------------------------------------------------------ */
 
-test('the pointer marker is read, raises a gesture, and is never spoken', async () => {
+test('a cached numerical pointer is consumed without drawing guessed coordinates or speaking them', async () => {
   const s = stream();
   const h = await connected({ ai: s.ai });
   const channel = h.c.liveTutor.channel;
@@ -1276,16 +1281,14 @@ test('the pointer marker is read, raises a gesture, and is never spoken', async 
   assert.equal(comments(channel)[0].content, 'Look at the arrow on the diagram.',
     'not one character of the marker reaches the speaker');
   const raised = marksOn(h);
-  assert.equal(raised.length, 1, 'one marker is one gesture');
-  assert.equal(JSON.stringify(raised[0]),
-    JSON.stringify({ page: 2, shape: 'underline', at: [412, 300], to: null }));
+  assert.equal(raised.length, 0, 'legacy numerical markers must not draw guessed coordinates');
 
   await s.end('[[point p2 412,300 underline]] Look at the arrow on the diagram. What does it point to?');
   await work;
   assert.equal(comments(channel).map(e => e.content).join(' '),
     'Look at the arrow on the diagram. What does it point to?',
     'the marker cannot come back as part of the remainder either');
-  assert.equal(h.calls.points.filter(Boolean).length, 1, 'and it is never raised twice');
+  assert.equal(h.calls.points.filter(Boolean).length, 0, 'the obsolete marker never raises a gesture');
   h.c.stopLiveTutor();
 });
 
@@ -1325,19 +1328,18 @@ test('\u2026and an unfinished marker is never half-CONSUMED, which is how the cl
   const said = comments(channel).map(e => e.content).join(' ');
   assert.ok(!/\]\]|\[\[/.test(said), 'a bracket read to a child is the one thing this must never do: ' + said);
   assert.equal(said, 'Look at the arrow. What next?');
-  assert.equal(h.calls.points.filter(Boolean).length, 1, 'and the gesture still goes up');
+  assert.equal(h.calls.points.filter(Boolean).length, 0, 'the obsolete gesture stays suppressed');
   h.c.stopLiveTutor();
 });
 
-test('a second position rides with the marker', async () => {
+test('a second model-estimated position does not make a legacy pointer trustworthy', async () => {
   const s = stream();
   const h = await connected({ ai: s.ai });
   const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
   await flush();
   await s.end('[[point p3 412,300 412,700 underline]] Read the two numbers again.');
   await work;
-  assert.equal(JSON.stringify(marksOn(h)[0]),
-    JSON.stringify({ page: 3, shape: 'underline', at: [412, 300], to: [412, 700] }));
+  assert.equal(marksOn(h).length, 0);
   h.c.stopLiveTutor();
 });
 
@@ -1349,7 +1351,7 @@ test('a second position rides with the marker', async () => {
    pointer markers is ONE group, so the second must never REPLACE the first.
    ------------------------------------------------------------------------ */
 
-test('two pointer markers in one reply are ONE group, not one gesture twice', async () => {
+test('two legacy pointer markers are both suppressed while the comparison is still spoken', async () => {
   const s = stream();
   const h = await connected({ ai: s.ai });
   const channel = h.c.liveTutor.channel;
@@ -1358,16 +1360,14 @@ test('two pointer markers in one reply are ONE group, not one gesture twice', as
   await s.end('[[point p2 200,300 box]][[point p2 600,300 box]] What turns the first into the second?');
   await work;
   const on = marksOn(h);
-  assert.equal(on.length, 2, 'the second marker REPLACING the first is how a comparison came out as one box');
-  assert.equal(on[0].at[0], 200, 'and they keep the order the tutor wrote them in, which is what ① ② number');
-  assert.equal(on[1].at[0], 600);
+  assert.equal(on.length, 0, 'neither model-estimated point is evidence of a printed location');
   assert.equal(comments(channel).map(e => e.content).join(' '),
     'What turns the first into the second?',
     'not one character of either marker reaches the speaker');
   h.c.stopLiveTutor();
 });
 
-test('…and a pair SPLIT across two chunks is still one group', async () => {
+test('legacy pointers split across chunks are still both suppressed', async () => {
   /* The stream can cut a run of markers in half: the first flush consumes
      one, meets an unclosed `[[` and waits. A group collected per FLUSH would
      then show the second marker alone and the pair the tutor was describing
@@ -1378,24 +1378,22 @@ test('…and a pair SPLIT across two chunks is still one group', async () => {
   const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
   await flush();
   s.chunk('[[point p2 200,300 box]][[point p2 600,3');
-  assert.equal(marksOn(h).length, 1, 'the first is up while the second is still being written');
+  assert.equal(marksOn(h).length, 0, 'the first obsolete point is ignored while the next marker is incomplete');
   await s.end('[[point p2 200,300 box]][[point p2 600,300 box]] What turns the first into the second?');
   await work;
   const on = marksOn(h);
-  assert.equal(on.length, 2, 'the pair survives the chunk boundary');
-  assert.equal(on[0].at[0], 200);
-  assert.equal(on[1].at[0], 600);
+  assert.equal(on.length, 0, 'both obsolete coordinates are ignored');
   h.c.stopLiveTutor();
 });
 
-test('…and a finger and a line of working still travel together', async () => {
+test('suppressing a legacy pointer preserves the separate teaching work marker', async () => {
   const s = stream();
   const h = await connected({ ai: s.ai });
   const work = h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
   await flush();
   await s.end('[[point p1 200,300 box]][[work p1 560,120 | 3 units = 12 | 1 unit = ?]] Try the next line.');
   await work;
-  assert.equal(marksOn(h).length, 1, 'a working marker is never batched into the pointer group');
+  assert.equal(marksOn(h).length, 0, 'a legacy point remains suppressed beside a working marker');
   assert.equal(h.calls.works.filter(Boolean).length, 1, 'and the working still goes up');
   h.c.stopLiveTutor();
 });
@@ -1506,19 +1504,19 @@ test('a working marker raises a note, and not one character of it is spoken', as
    scrubbed away by `livePointStrip` and the note never goes up at all, in
    silence. Streaming hides this, because a second flush takes the second
    marker — which is exactly why this case has to be tested on its own. */
-test('a finger AND a line of working both survive a reply that never streams', async () => {
+test('a complete reply suppresses legacy pointing and preserves its working', async () => {
   const reply = '[[point p1 200,100 underline]][[work p1 560,120 | 3 units = 12 | 1 unit = ?]] Look at what three units is worth.';
   const h = await connected({ ai: () => reply });
   const channel = h.c.liveTutor.channel;
   await h.c.runLiveDelegation('teach-a', h.c.liveTutor.generation);
-  assert.equal(h.calls.points.filter(Boolean).length, 1, 'the finger goes up');
+  assert.equal(h.calls.points.filter(Boolean).length, 0, 'the unverified finger stays suppressed');
   assert.equal(h.calls.works.filter(Boolean).length, 1, '…and the working with it');
   assert.equal(comments(channel).map(e => e.content).join(' '), 'Look at what three units is worth.',
     'a RUN of markers is consumed, not just the first — the second one left behind is scrubbed and lost');
   h.c.stopLiveTutor();
 });
 
-test('a finger AND a line of working can open one streamed reply', async () => {
+test('a streamed reply suppresses legacy pointing and preserves its working', async () => {
   const s = stream();
   const h = await connected({ ai: s.ai });
   const channel = h.c.liveTutor.channel;
@@ -1526,10 +1524,134 @@ test('a finger AND a line of working can open one streamed reply', async () => {
   await flush();
   await s.end('[[point p1 200,100 underline]][[work p1 560,120 | 3 units = 12 | 1 unit = ?]] Look at what three units is worth.');
   await job;
-  assert.equal(h.calls.points.filter(Boolean).length, 1, 'the finger goes up');
+  assert.equal(h.calls.points.filter(Boolean).length, 0, 'the unverified finger stays suppressed');
   assert.equal(h.calls.works.filter(Boolean).length, 1, '…and the working with it');
   assert.equal(comments(channel).map(e => e.content).join(' '), 'Look at what three units is worth.',
     'neither marker reaches the speaker');
+  h.c.stopLiveTutor();
+});
+
+function focusTextPage(h, content) {
+  const page = h.c.pages[0];
+  page.viewport1 = { width: 100, height: 100, transform: [1, 0, 0, -1, 0, 100] };
+  page.page = { getTextContent: () => typeof content === 'function' ? content() : Promise.resolve(content) };
+  return page;
+}
+function focusTextContent(duplicate = false) {
+  const item = { str: 'diameter 60 cm', dir: 'ltr', width: 60, height: 10, transform: [10, 0, 0, 10, 20, 70], fontName: 'f1', hasEOL: true };
+  return { items: duplicate ? [item, { ...item, transform: [10, 0, 0, 10, 20, 30] }] : [item],
+    styles: { f1: { ascent: .8, descent: -.2, vertical: false } } };
+}
+
+test('an exact focus quote is shown immediately and speaks before PDF text matching finishes', async () => {
+  const text = deferred(), s = stream(), h = await connected({ ai: s.ai });
+  const page = focusTextPage(h, () => text.promise);
+  let scrolls = 0; page.wrap.scrollIntoView = () => { scrolls++; };
+  const before = JSON.stringify(h.c.annotations), channel = h.c.liveTutor.channel;
+  const job = h.c.runLiveDelegation('focus-one', h.c.liveTutor.generation); await flush();
+  s.chunk('[[focus p1 | Q7 | diameter 60 cm]] Read the diameter shown on the circle. What');
+  assert.equal(comments(channel)[0].content, 'Read the diameter shown on the circle.');
+  assert.equal(h.c.tutorFocusState.items[0].quote, 'diameter 60 cm');
+  assert.equal(h.c.tutorFocusState.items[0].status, 'pending');
+  assert.equal(h.element('tutorFocus').hidden, false);
+  text.resolve(focusTextContent()); await flush();
+  const item = h.c.tutorFocusState.items[0];
+  assert.equal(item.status, 'matched');
+  assert.equal(JSON.stringify(item.rects), JSON.stringify([{ left: 20, top: 22, width: 60, height: 10 }]));
+  assert.equal(scrolls, 0, 'matching never scrolls the worksheet away from the pen');
+  assert.equal(JSON.stringify(h.c.annotations), before, 'a focus highlight is not student ink');
+  h.c.tutorFocusReveal(item.id); assert.equal(scrolls, 1, 'only the explicit Show page button scrolls');
+  await s.end('[[focus p1 | Q7 | diameter 60 cm]] Read the diameter shown on the circle. What is its radius?'); await job;
+  assert.doesNotMatch(JSON.stringify(comments(channel)), /\[\[|Q7|focus p1/);
+  h.c.tutorFocusClose(item.id); assert.equal(h.c.tutorFocusState.items.length, 0); assert.equal(h.element('tutorFocus').hidden, true);
+  h.c.stopLiveTutor();
+});
+
+test('focus markers split across chunks show at most two quotes without speaking their syntax', async () => {
+  const s = stream(), h = await connected({ ai: s.ai }), channel = h.c.liveTutor.channel;
+  const job = h.c.runLiveDelegation('focus-pair', h.c.liveTutor.generation); await flush();
+  s.chunk('[[focus p1 | Q7 | diameter 60');
+  assert.equal(comments(channel).length, 0); assert.equal(h.c.tutorFocusState.items.length, 0);
+  s.chunk('[[focus p1 | Q7 | diameter 60 cm]][[focus p1 | Q8 | radius');
+  assert.equal(h.c.tutorFocusState.items.length, 1);
+  await s.end('[[focus p1 | Q7 | diameter 60 cm]][[focus p1 | Q8 | radius 30 cm]][[focus p1 | Q9 | total circumference]] Compare the diameter with the radius.'); await job; await flush();
+  assert.equal(h.c.tutorFocusState.items.length, 2);
+  assert.equal(h.c.tutorFocusState.items[0].quote, 'diameter 60 cm');
+  assert.equal(h.c.tutorFocusState.items[1].quote, 'radius 30 cm');
+  assert.equal(h.c.tutorFocusState.items[0].status, 'quote', 'a scanned page remains a quote, without a guessed position');
+  assert.equal(comments(channel).map(x => x.content).join(' '), 'Compare the diameter with the radius.');
+  h.c.stopLiveTutor(); assert.equal(h.c.tutorFocusState.items.length, 0);
+});
+
+test('printed brackets inside a focus quote survive a stream split at the marker delimiter', async () => {
+  const s = stream(), h = await connected({ ai: s.ai }), channel = h.c.liveTutor.channel;
+  const job = h.c.runLiveDelegation('focus-bracket', h.c.liveTutor.generation); await flush();
+  s.chunk('[[focus p1 | Q7 | diameter [60 cm]]');
+  assert.equal(comments(channel).length, 0); assert.equal(h.c.tutorFocusState.items.length, 0);
+  await s.end('[[focus p1 | Q7 | diameter [60 cm]]] Read the given diameter carefully.'); await job;
+  assert.equal(h.c.tutorFocusState.items[0].quote, 'diameter [60 cm]');
+  assert.equal(comments(channel).map(x => x.content).join(' '), 'Read the given diameter carefully.');
+  h.c.stopLiveTutor();
+});
+
+test('duplicate printed words stay quote-only rather than choosing an arbitrary occurrence', async () => {
+  const h = await connected({ ai: () => '[[focus p1 | Q7 | diameter 60 cm]] Read the diameter of this circle.' });
+  focusTextPage(h, focusTextContent(true));
+  await h.c.runLiveDelegation('focus-ambiguous', h.c.liveTutor.generation); await flush();
+  assert.equal(h.c.tutorFocusState.items[0].status, 'quote'); assert.equal(h.c.tutorFocusState.items[0].rects.length, 0);
+  assert.match(h.element('tutorFocus').children[0].children[2].textContent, /Find these words on page 1/);
+  h.c.stopLiveTutor();
+});
+
+test('a quote containing markup remains plain text in its card', async () => {
+  const quote = '<img src=x onerror=alert(1)>';
+  const h = await connected({ ai: () => '[[focus p1 | ' + quote + ']] Read these printed words carefully.' });
+  await h.c.runLiveDelegation('focus-plain', h.c.liveTutor.generation); await flush();
+  const rendered = h.element('tutorFocus').children[0].children[1];
+  assert.equal(rendered.textContent, quote); assert.equal(rendered.innerHTML, '');
+  assert.equal(rendered.children.length, 0, 'the quote cannot create an image or executable markup');
+  h.c.stopLiveTutor();
+});
+
+test('text extraction finishing after a new question cannot restore a stale focus', async () => {
+  const text = deferred(), h = await connected({ ai: () => '[[focus p1 | Q7 | diameter 60 cm]] Read the diameter of this circle.' });
+  focusTextPage(h, () => text.promise);
+  await h.c.runLiveDelegation('old-focus', h.c.liveTutor.generation);
+  assert.equal(h.c.tutorFocusState.items.length, 1);
+  h.c.tutorMarksClear();
+  text.resolve(focusTextContent()); await flush();
+  assert.equal(h.c.tutorFocusState.items.length, 0); assert.equal(h.element('tutorFocus').hidden, true);
+  h.c.stopLiveTutor();
+});
+
+test('focus cannot reveal or highlight a page newly hidden as an answer key', async () => {
+  const text = deferred(), h = await connected({ ai: () => '[[focus p1 | Q7 | diameter 60 cm]] Read the diameter of this circle.' });
+  const page = focusTextPage(h, () => text.promise); let scrolls = 0; page.wrap.scrollIntoView = () => { scrolls++; };
+  await h.c.runLiveDelegation('key-focus', h.c.liveTutor.generation);
+  const item = h.c.tutorFocusState.items[0];
+  h.c.studentPages = () => []; page.wrap.style.display = 'none'; h.c.tutorFocusSync();
+  h.c.tutorFocusReveal(item.id); text.resolve(focusTextContent()); await flush();
+  assert.equal(scrolls, 0); assert.equal(h.element('tutorFocus').hidden, true); assert.equal(item.rects.length, 0);
+  h.c.stopLiveTutor();
+});
+
+test('focus text extraction is cached per page and refreshed after the worksheet epoch changes', async () => {
+  const h = harness(); let reads = 0;
+  const page = focusTextPage(h, () => { reads++; return Promise.resolve(focusTextContent()); });
+  await h.c.tutorFocusIndex(page); await h.c.tutorFocusIndex(page); assert.equal(reads, 1);
+  h.c.wsEpoch++; await h.c.tutorFocusIndex(page); assert.equal(reads, 2);
+});
+
+test('Show page minimises the mobile panel while keeping live voice and its controls available', async () => {
+  const h = await connected({ ai: () => '[[focus p1 | Q7 | diameter 60 cm]] Read the diameter of this circle.' });
+  h.c.window.innerWidth = 390;
+  let scrolls = 0; h.c.pages[0].wrap.scrollIntoView = () => { scrolls++; };
+  await h.c.runLiveDelegation('focus-mobile', h.c.liveTutor.generation);
+  h.c.tutorFocusReveal(h.c.tutorFocusState.items[0].id);
+  assert.equal(scrolls, 1); assert.equal(h.element('buddy').classList.contains('closed'), true);
+  assert.equal(h.element('buddyFab').classList.contains('hidden'), false);
+  assert.equal(h.element('buddyFab').textContent, '🎧 Live tutor');
+  assert.equal(h.c.liveTutor.phase, 'live'); assert.equal(h.track.stopped, 0, 'showing the page must not disconnect voice');
   h.c.stopLiveTutor();
 });
 
