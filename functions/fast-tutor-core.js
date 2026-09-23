@@ -1,6 +1,7 @@
 'use strict';
 
 const { createHash, randomUUID } = require('node:crypto');
+const intents = require('./fast-tutor-intents');
 const VERSION = 'fast-tutor-v1';
 const LEVELS = ['nudge', 'concepts', 'method', 'answer'];
 const POLICY = Object.freeze({ prepPerDay: 60, paidPerDay: 1200, paidPerMinute: 12, cachedPages: 60, cacheMs: 7 * 86400000, leaseMs: 155000 });
@@ -32,11 +33,12 @@ function validate(body) {
     if (body[key] != null && (typeof body[key] !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(body[key]))) invalid();
   }
   if (body.forceFresh != null && typeof body.forceFresh !== 'boolean') invalid();
+  if (body.preparedOnly != null && (typeof body.preparedOnly !== 'boolean' || body.action !== 'reply')) invalid();
   if (body.history != null && (!Array.isArray(body.history) || body.history.length > 6 || body.history.some(x => !plain(x) || !['user', 'assistant'].includes(x.role) || typeof x.text !== 'string' || x.text.length > 2000))) invalid();
   return { action: body.action, worksheetId: body.worksheetId, page: body.page, studentIndex: body.studentIndex || 0,
     grounding: body.grounding || '', workContext: body.workContext || '', image: body.image || '', images: body.images || [], message: body.message?.trim() || '',
     sourceHash: body.sourceHash || '', cacheKey: body.cacheKey || '', questionId: body.questionId || '', afterResponseId: body.afterResponseId || '',
-    forceFresh: body.forceFresh === true || body.images?.length > 1, history: body.history || [] };
+    forceFresh: body.forceFresh === true || body.images?.length > 1, preparedOnly: body.preparedOnly === true, history: body.history || [] };
 }
 function revision(context, body, imageHash) {
   return hash(JSON.stringify({ version: VERSION, uid: context.uid, learner: context.learner, worksheetId: body.worksheetId,
@@ -57,24 +59,12 @@ function normalizePack(raw, ceiling) {
   });
   return { questions };
 }
-const cleanIntent = text => String(text).toLowerCase().replace(/[.!?,'’]/g, '').replace(/\s+/g, ' ').trim();
-const SPOKEN_NUMBERS = Object.freeze({ one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20 });
-function normalizeQuestionNumber(text) {
-  return String(text).replace(/\b(question|number|q)\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b/gi, (match, prefix, number) => prefix + ' ' + SPOKEN_NUMBERS[number.toLowerCase()]);
-}
-function explicitQuestion(text) { return /\b(?:question|number|q)\s*(\d+(?:\s*[a-z])?)(?=\b|\s|$)/i.exec(normalizeQuestionNumber(text)); }
-function intent(text) {
-  const s = cleanIntent(normalizeQuestionNumber(text)).replace(/^(please |can you |could you )/, '').replace(/ please$/, '').replace(/\s+(?:for|on)\s+(?:question|number|q)\s*\d+[a-z]?$/, '');
-  if (/^(?:(?:i need |give me )?help(?: me)? with )?(?:question|number|q)\s*\d+[a-z]?$/.test(s)) return 'next';
-  if (/^(repeat( that| it)?|say (that|it) again|again)$/.test(s)) return 'repeat';
-  if (/^(next( hint| step)?|another hint|give me (a|another|the next) hint|help me( start)?|a hint|hint|how (do i|to) start)$/.test(s)) return 'next';
-  if (/^(explain (that|it)( more)? simply|make (that|it) simpler|simpler|i dont understand( that| it)?)$/.test(s)) return 'simpler';
-  return '';
-}
+function explicitQuestion(text) { const value = intents.questionNumber(text); return value ? [null, value] : null; }
+const intent = intents.classify;
 // Conservatively route all answer/working judgements through fresh visual
 // reasoning. The selector can choose explanations, never decide correctness.
 function needsFresh(body) {
-  return body.forceFresh || /\b(check|correct|wrong|right|answer is|my answer|i got|i wrote|written|handwriting|working|calculated|calculation|instead|another method|different method|is it|did i|am i|look at|can you see|read (it|this|that)|ignore|instructions?|system|prompt|reveal|answer key)\b|[=+×÷]|\d\s*[-*/]\s*\d/i.test(body.message);
+  return body.forceFresh || intents.needsFresh(body.message);
 }
 function chosenQuestion(pack, body) {
   const explicit = explicitQuestion(body.message);

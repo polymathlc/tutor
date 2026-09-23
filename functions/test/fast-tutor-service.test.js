@@ -193,3 +193,48 @@ test('a fresh visual check drops the earlier question identity when the student 
   const explicit = await s.run({ ...common, message: 'Check question one here' });
   assert.equal(explicit.questionId, 'q1');
 });
+test('prepared-only lookup returns a direct next hint without images, selector calls or paid reservations', async () => {
+  const s = setup(), prep = await s.run(BODY), events = [];
+  const first = await s.run({ ...BODY, action: 'reply', cacheKey: prep.cacheKey, message: 'Give me a hint' });
+  const result = await s.run({ ...BODY, image: undefined, action: 'reply', preparedOnly: true, cacheKey: prep.cacheKey,
+    questionId: first.questionId, afterResponseId: first.responseId, message: 'Could you give me another clue please?' }, event => events.push(event));
+  assert.equal(result.route, 'prepared'); assert.notEqual(result.responseId, first.responseId);
+  assert.deepEqual(events, [{ type: 'delta', text: result.text }]);
+  assert.equal(s.calls.selector, 0); assert.equal(s.calls.fresh, 0); assert.equal(s.calls.reserves, 1); assert.equal(s.calls.releases, 1);
+});
+test('prepared-only misses return one JSON 409 before any text and never call a model or reserve quota', async () => {
+  const cases = [
+    { cacheKey: 'unknown' }, { sourceHash: hash('changed page') }, { grounding: 'changed notes' },
+    { message: 'What is important about equal groups?' }, { message: 'Next hint but my answer is 12' },
+    { message: 'Give me a hint for question 99' }, { forceFresh: true },
+    { message: 'Repeat that', afterResponseId: 'unknown' },
+    { message: 'Next hint', images: [{ page: 1, image: IMAGE }, { page: 2, image: 'data:image/jpeg;base64,cGFnZTI=' }] }
+  ];
+  for (const change of cases) {
+    const s = setup(), prep = await s.run(BODY);
+    const body = { ...BODY, action: 'reply', preparedOnly: true, cacheKey: prep.cacheKey, questionId: 'q1', message: 'Next hint', ...change };
+    if (!body.images) delete body.image;
+    const io = request(body); await s.service.handler(io.req, io.res);
+    assert.equal(io.res.statusCode, 409, JSON.stringify(change)); assert.equal(io.res.body.error.code, 'fresh_image_required');
+    assert.deepEqual(io.res.chunks, []); assert.equal(s.calls.reserves, 1); assert.equal(s.calls.selector, 0); assert.equal(s.calls.fresh, 0);
+  }
+});
+test('prepared-only rejects a stale teacher policy or expired pack without spending a paid turn', async () => {
+  for (const mutate of [s => { s.cached().expiresAt = 0; }, s => { s.context.ceiling = 'nudge'; s.context.authority.ceiling = 'nudge'; }]) {
+    const s = setup(), prep = await s.run(BODY); mutate(s);
+    await assert.rejects(s.run({ ...BODY, image: undefined, action: 'reply', preparedOnly: true, cacheKey: prep.cacheKey, message: 'another clue' }), error => error.code === 'fresh_image_required');
+    assert.equal(s.calls.reserves, 1); assert.equal(s.calls.fresh, 0); assert.equal(s.calls.selector, 0);
+  }
+});
+test('prepared-only still authenticates and rejects invalid option shapes', async () => {
+  const s = setup(), io = request({ ...BODY, image: undefined, action: 'reply', preparedOnly: true, message: 'next hint' }, { authorization: '' });
+  await s.service.handler(io.req, io.res); assert.equal(io.res.statusCode, 401); assert.equal(s.calls.resolves, 0);
+  assert.throws(() => validate({ ...BODY, preparedOnly: true }), TeachError);
+  assert.throws(() => validate({ ...BODY, action: 'reply', message: 'next', preparedOnly: 'true' }), TeachError);
+});
+test('ordinary full replies continue to select or freshly reason after a prepared-only miss', async () => {
+  const s = setup(), prep = await s.run(BODY);
+  const request = { ...BODY, action: 'reply', cacheKey: prep.cacheKey, questionId: 'q1', message: 'What should I focus on here?' };
+  await assert.rejects(s.run({ ...request, image: undefined, preparedOnly: true }), error => error.code === 'fresh_image_required');
+  const reply = await s.run(request); assert.equal(reply.route, 'selector'); assert.equal(s.calls.selector, 1); assert.equal(s.calls.reserves, 2);
+});

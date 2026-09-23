@@ -5,9 +5,11 @@
   function abortError() { var e = new Error('The question changed.'); e.name = 'AbortError'; return e; }
   function check(signal) { if (signal && signal.aborted) throw abortError(); }
   function canRepeat(message) {
+    if (root.FastTutorIntents) return root.FastTutorIntents.classify(message) === 'repeat' && !root.FastTutorIntents.questionNumber(message);
     return /^(?:please\s+)?(?:repeat(?:\s+(?:that|it|the last (?:hint|step|explanation)))?|say (?:that|it) again|can you (?:repeat (?:that|it)|say (?:that|it) again)|again)(?:\s+please)?[.!?\s]*$/i.test(String(message || '').trim());
   }
   function isFreshRequest(message) {
+    if (root.FastTutorIntents && root.FastTutorIntents.needsFresh(message)) return true;
     return /\b(?:correct|wrong|check|my (?:answer|work|working)|i (?:got|wrote|think|used)|this|that (?:one|number)|here|there|diagram|drawing|handwriting)\b/i.test(String(message || ''));
   }
   async function sha256(value) {
@@ -123,7 +125,49 @@
         throw error;
       }
     }
-    return { prepare: prepare, reply: reply, ready: function (key) { return packs.has(key); },
+    async function tryEarly(body, contextKey, config) {
+      config = config || {};
+      check(config.signal);
+      if (config.isCurrent && !config.isCurrent()) throw abortError();
+      var old = last, intent = root.FastTutorIntents && root.FastTutorIntents.classify(body.message);
+      if (!old || old.contextKey !== contextKey || body.forceFresh || isFreshRequest(body.message)) return null;
+      if (canRepeat(body.message)) {
+        if (config.onDispatch) config.onDispatch();
+        return reply(body, contextKey, config);
+      }
+      if (!intent || config.allowPrepared === false || !old.questionId ||
+        !(old.cacheKey || packs.has(config.packKey || contextKey))) return null;
+      var payload = Object.assign({}, body, { preparedOnly: true });
+      delete payload.image; delete payload.images;
+      var controller = new AbortController(), timer, cancel, emitted = false;
+      var deadline = new Promise(function (_, reject) {
+        timer = setTimeout(function () {
+          controller.abort(); var e = new Error('The prepared lookup took too long.'); e.name = 'TimeoutError'; reject(e);
+        }, config.probeTimeoutMs == null ? 2500 : config.probeTimeoutMs);
+        cancel = function () { controller.abort(); reject(abortError()); };
+        if (config.signal) config.signal.addEventListener('abort', cancel, { once: true });
+      });
+      try {
+        if (config.onDispatch) config.onDispatch();
+        return await Promise.race([deadline, reply(payload, contextKey, Object.assign({}, config, {
+          signal: controller.signal, onStream: function (text) {
+            emitted = !!text;
+            if (config.onStream) config.onStream(text);
+          }
+        }))]);
+      } catch (error) {
+        if (emitted || error.emitted) { last = null; error.emitted = true; throw error; }
+        check(config.signal);
+        if (config.isCurrent && !config.isCurrent()) throw abortError();
+        // A miss, a slow lookup or unavailable preparation leaves the exact
+        // previous response intact for the normal image-backed request.
+        return null;
+      } finally {
+        clearTimeout(timer); controller.abort();
+        if (config.signal && cancel) config.signal.removeEventListener('abort', cancel);
+      }
+    }
+    return { prepare: prepare, reply: reply, tryEarly: tryEarly, ready: function (key) { return packs.has(key); },
       remember: function (text, key) { last = { text: text, contextKey: key, route: 'fallback' }; },
       reset: function () { epoch++; packs.clear(); pending.clear(); last = null; } };
   }
