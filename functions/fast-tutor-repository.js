@@ -43,7 +43,7 @@ function createTeachRepository(db) {
       // republished; hashing its entire teaching metadata invalidates old packs.
       assignmentRevision: a ? hash(JSON.stringify({ guidance: a.guidance, keyRows: a.keyRows || [], keyPages: a.keyPages || [], keyPath: a.keyPath || '', createdAt: a.createdAt || null, updatedAt: a.updatedAt || null })) : ''
     };
-    return { uid, learner, authority, ceiling };
+    return { uid, learner, authority, ceiling, student };
   }
   async function read(context, body) { return (await packRef(context.uid, body.worksheetId, body.page).get()).data() || null; }
   async function reserve(context, body, kind, now) {

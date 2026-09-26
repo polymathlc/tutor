@@ -49,3 +49,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/answer-key-browser-check.mjs
+      - name: Check centre student creation, access and practice sessions
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/centre-admin-browser-check.mjs

@@ -1,4 +1,5 @@
 'use strict';
+const { isSupportedStudent, isCentrePractice } = require('./centre-auth');
 
 /* ⏱ THE RATIONS ARE OFF, AND `0` IS HOW THAT IS WRITTEN.
    ------------------------------------------------------------------
@@ -117,7 +118,7 @@ function validateBody(body) {
 // Dependencies are explicit so authentication, ownership and cleanup can be tested
 // without credentials or paid calls. No audio, SDP or transcript is persisted.
 function createLiveService({ auth, appCheck, repository, provider, now = Date.now, report = () => {} }) {
-  async function identify(req) {
+  async function identify(req, stopping = false) {
     const authorization = req.get('authorization') || '';
     const match = /^Bearer ([^\s]+)$/.exec(authorization);
     const appToken = req.get('x-firebase-appcheck');
@@ -126,14 +127,18 @@ function createLiveService({ auth, appCheck, repository, provider, now = Date.no
     let user;
     try { user = await auth.verifyIdToken(match[1], true); }
     catch { throw new LiveError(401, 'sign_in_required', 'Sign in again before starting a live lesson.'); }
-    if (!user.uid || user.firebase?.sign_in_provider !== 'google.com') {
-      throw new LiveError(403, 'sign_in_required', 'Use your Google sign-in to start a live lesson.');
+    // Ending a paid call remains possible after the centre practice window.
+    // The signed, revocation-checked identity still owns the lease; this
+    // exception authorizes cleanup only, never a new lesson.
+    const centreCleanup = stopping && isCentrePractice(user, (user.centrePracticeExpiresAt - 1) * 1000);
+    if (!isSupportedStudent(user, now()) && !centreCleanup) {
+      throw new LiveError(403, 'sign_in_required', 'Sign in with Google or ask your teacher to start centre practice.');
     }
     try {
       const claims = await appCheck.verifyToken(appToken);
       if (claims.appId !== APP_ID) throw new Error('wrong app');
     } catch { throw new LiveError(403, 'app_check_required', 'App verification failed. Refresh Study Buddy and try again.'); }
-    return user.uid;
+    return user;
   }
 
   async function closeLease(lease) {
@@ -182,7 +187,8 @@ function createLiveService({ auth, appCheck, repository, provider, now = Date.no
       if (!/^application\/json(?:;|$)/i.test(req.get('content-type') || '')) throw new LiveError(415, 'invalid_request', 'Send a JSON live request.');
       if (req.rawBody && req.rawBody.length > MAX_SDP_BYTES + 4096) throw new LiveError(413, 'invalid_request', 'The live request is too large.');
       const body = validateBody(req.body);
-      const uid = await identify(req);
+      const user = await identify(req, body.action === 'stop'), uid = user.uid;
+      if (body.action === 'start' && isCentrePractice(user, now())) await repository.checkCentreStudent(user, now());
       if (body.action === 'start') return res.status(200).json(await start(uid, body, abandoned));
       const lease = await repository.find(uid, body.sessionId);
       // Idempotent for this user, without revealing another user's session.

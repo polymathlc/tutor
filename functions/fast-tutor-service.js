@@ -1,6 +1,7 @@
 'use strict';
 
 const { APP_ID, allowedOrigin } = require('./live-service');
+const { isSupportedStudent, isCentrePractice, matchesCentreStudent } = require('./centre-auth');
 const { POLICY, TeachError, hash, validate, revision, normalizePack, needsFresh, explicitQuestion, chosenQuestion, candidates, selectDirect } = require('./fast-tutor-core');
 
 function createTeachService({ auth, appCheck, repository, provider, now = Date.now, report = () => {} }) {
@@ -16,15 +17,18 @@ function createTeachService({ auth, appCheck, repository, provider, now = Date.n
     let user;
     try { user = await auth.verifyIdToken(match[1], true); }
     catch { throw new TeachError(401, 'sign_in_required', 'Sign in again to use the tutor.'); }
-    if (!user.uid || user.firebase?.sign_in_provider !== 'google.com') throw new TeachError(403, 'sign_in_required', 'Use Google sign-in to use the tutor.');
+    if (!isSupportedStudent(user, now())) throw new TeachError(403, 'sign_in_required', 'Sign in with Google or ask your teacher to start centre practice.');
     try {
       const token = req.get('x-firebase-appcheck');
       if (!token || (await appCheck.verifyToken(token)).appId !== APP_ID) throw new Error('Wrong app.');
     } catch { throw new TeachError(403, 'app_check_required', 'Refresh Study Buddy to verify the app.'); }
-    return user.uid;
+    return user;
   }
-  async function run(uid, body, emit, signal) {
+  async function run(uid, body, emit, signal, user) {
     const context = await repository.resolve(uid, body);
+    if (user && isCentrePractice(user, now()) && (!context.student || !matchesCentreStudent(user, body.studentIndex, context.student, now()))) {
+      throw new TeachError(403, 'student_changed', 'This centre session belongs to a different student profile. Ask your teacher to start practice again.');
+    }
     checkPages(context, body);
     const cached = await repository.read(context, body);
     // The base worksheet is stable while the student writes. Its fingerprint
@@ -110,8 +114,9 @@ function createTeachService({ auth, appCheck, repository, provider, now = Date.n
     try {
       if (!/^application\/json(?:;|$)/i.test(req.get('content-type') || '')) throw new TeachError(415, 'invalid_request', 'Send a JSON teaching request.');
       if (req.rawBody?.length > 6000000) throw new TeachError(413, 'invalid_request', 'This teaching request is too large.');
-      const body = validate(req.body), uid = await identify(req);
-      const result = await run(uid, body, emit, controller.signal);
+      const body = validate(req.body), user = await identify(req);
+      if (isCentrePractice(user, now()) && !matchesCentreStudent(user, body.studentIndex, undefined, now())) throw new TeachError(403, 'student_changed', 'Use the student selected for this centre session.');
+      const result = await run(user.uid, body, emit, controller.signal, user);
       if (controller.signal.aborted) return;
       if (body.action === 'prepare') return res.status(200).json(result);
       emit(result); res.end();

@@ -101,6 +101,34 @@ test('anonymous users cannot start a paid voice session', async () => {
   assert.ok(!h.calls.some(call => call[0] === 'reserve'));
 });
 
+test('centre practice checks the selected profile before a paid voice lesson', async () => {
+  const { centreStudentKey } = require('../centre-auth');
+  const user = { uid: 'child', firebase: { sign_in_provider: 'custom' }, centrePractice: true, centreActorUid: 'teacher',
+    centreStudentIndex: 0, centreStudentKey: centreStudentKey({ name: 'Learner', level: 'P5', subject: 'science' }), centrePracticeExpiresAt: 14401 };
+  for (const scenario of ['valid', 'changed', 'expired', 'unmarked']) {
+    const claims = { ...user };
+    if (scenario === 'expired') claims.centrePracticeExpiresAt = 1;
+    if (scenario === 'unmarked') delete claims.centrePractice;
+    let checked = false;
+    const h = harness({ auth: { async verifyIdToken() { return claims; } }, repository: {
+      async checkCentreStudent(received) { checked = true; assert.equal(received.uid, 'child'); if (scenario === 'changed') throw new LiveError(403, 'student_changed', 'Student changed.'); }
+    } });
+    assert.equal((await h.request()).statusCode, scenario === 'valid' ? 200 : 403, scenario);
+    assert.equal(checked, ['valid', 'changed'].includes(scenario));
+    assert.equal(h.calls.some(row => row[0] === 'create'), scenario === 'valid');
+  }
+});
+
+test('an expired but authenticated centre session can still close its own paid call', async () => {
+  const user = { uid: 'child', firebase: { sign_in_provider: 'custom' }, centrePractice: true, centreActorUid: 'teacher',
+    centreStudentIndex: 0, centreStudentKey: 'a'.repeat(64), centrePracticeExpiresAt: 1 };
+  const h = harness({ auth: { async verifyIdToken() { return user; } } });
+  assert.equal((await h.request({ action: 'stop', sessionId: 'live-opaque-1' })).statusCode, 200);
+  assert.deepEqual(h.calls.find(row => row[0] === 'find'), ['find', 'child', 'live-opaque-1']);
+  assert.ok(h.calls.some(row => row[0] === 'close'));
+  assert.equal((await h.request()).statusCode, 403);
+});
+
 test('validates method, content type, worksheet paths and SDP size before authorization', async () => {
   const h = harness();
   assert.equal((await h.request(undefined, { method: 'GET' })).statusCode, 405);

@@ -26,7 +26,7 @@ function createGameRepository(db) {
     if (!allowUnavailableSubject && !subjects.includes(subject)) throw new GameError(403, 'subject_not_available', 'Choose a subject from this student profile.');
     const key = learnerKey(uid, student.name);
     if (expectedKey && expectedKey !== key) throw new GameError(409, 'profile_changed', 'The active student changed. Refresh your adventure and try again.');
-    return { uid, learnerKey: key, subject, level: student.level };
+    return { uid, learnerKey: key, subject, level: student.level, student };
   }
 
   async function snapshot(context, now) {

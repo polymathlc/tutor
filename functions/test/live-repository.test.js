@@ -58,6 +58,20 @@ function setup() {
   return { db, repo: createRepository(db), now: Date.parse('2026-09-16T01:00:00Z') };
 }
 
+test('centre voice practice fails when the selected student is removed or their access changes', async () => {
+  const { centreStudentKey } = require('../centre-auth');
+  const { db, repo, now } = setup();
+  const student = { name: 'Learner', level: 'P5', subject: 'science' };
+  const user = { uid: 'child', firebase: { sign_in_provider: 'custom' }, centrePractice: true,
+    centreActorUid: 'teacher', centreStudentIndex: 0, centreStudentKey: centreStudentKey(student), centrePracticeExpiresAt: Math.floor(now / 1000) + 14400 };
+  db.data.set('studentProfiles/child', { tutorOnboard: { students: [student] } });
+  await repo.checkCentreStudent(user, now);
+  db.data.get('studentProfiles/child').tutorOnboard.students[0].level = 'P6';
+  await assert.rejects(repo.checkCentreStudent(user, now), e => e.code === 'student_changed');
+  db.data.delete('studentProfiles/child');
+  await assert.rejects(repo.checkCentreStudent(user, now), e => e.code === 'student_changed');
+});
+
 test('worksheet ownership is checked inside the reservation transaction', async () => {
   const { db, repo, now } = setup();
   await assert.rejects(repo.reserve('other-child', 'sheet', now, LIMITS), error => error.status === 403);

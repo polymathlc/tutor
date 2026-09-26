@@ -18,6 +18,8 @@ const { createGameProvider } = require('./gamification-provider');
 const { createTeachService } = require('./fast-tutor-service');
 const { createTeachRepository } = require('./fast-tutor-repository');
 const { createTeachProvider } = require('./fast-tutor-provider');
+const { createCentreService } = require('./centre-admin-service');
+const { createCentreRepository } = require('./centre-admin-repository');
 
 initializeApp();
 const openaiKey = defineSecret('OPENAI_API_KEY');
@@ -60,3 +62,12 @@ exports.studyBuddyTeach = onRequest({
   region: 'us-central1', secrets: [openaiKey], timeoutSeconds: 180,
   minInstances: 1, maxInstances: 5, concurrency: 20, memory: '512MiB', invoker: 'public'
 }, teachService.handler);
+
+const centreService = createCentreService({
+  auth: getAuth(), appCheck: getAppCheck(), repository: createCentreRepository(getFirestore(), getAuth()),
+  report: code => logger.warn(code)
+});
+exports.studyBuddyCentre = onRequest({
+  region: 'us-central1', timeoutSeconds: 60,
+  maxInstances: 3, concurrency: 10, memory: '256MiB', invoker: 'public'
+}, centreService.handler);

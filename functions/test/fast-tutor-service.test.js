@@ -70,6 +70,26 @@ test('prepare returns only question labels and IDs, never solution or hint array
   assert.equal(s.cached().questions[0].responses.some(r => r.level === 'answer'), false);
   await s.run(BODY); assert.equal(s.calls.prep, 1); assert.equal(s.calls.releases, 1);
 });
+
+test('centre practice prepares guidance only for its selected unchanged student', async () => {
+  const { centreStudentKey } = require('../centre-auth');
+  const student = { name: 'Learner', level: 'P5', subject: 'science' };
+  for (const scenario of ['valid', 'sibling', 'changed', 'missing', 'expired', 'unmarked']) {
+    const s = setup();
+    const claims = { uid: 'child', firebase: { sign_in_provider: 'custom' }, centrePractice: true,
+      centreActorUid: 'teacher', centreStudentIndex: 0, centreStudentKey: centreStudentKey(student), centrePracticeExpiresAt: 15400 };
+    s.context.student = student;
+    if (scenario === 'changed') s.context.student = { ...student, level: 'P6' };
+    if (scenario === 'missing') delete s.context.student;
+    if (scenario === 'expired') claims.centrePracticeExpiresAt = 999;
+    if (scenario === 'unmarked') delete claims.centrePractice;
+    s.auth.verifyIdToken = async () => claims;
+    const { req, res } = request({ ...BODY, studentIndex: scenario === 'sibling' ? 1 : 0 });
+    await s.service.handler(req, res);
+    assert.equal(res.statusCode, scenario === 'valid' ? 200 : 403, scenario);
+    assert.equal(s.calls.prep, scenario === 'valid' ? 1 : 0, scenario);
+  }
+});
 test('every meaningful input invalidates preparation while exact cache hits make no paid call', async () => {
   for (const change of [{ grounding: 'Different teacher method' }, { image: 'data:image/jpeg;base64,YWJk' }]) {
     const s = setup(), initial = await s.run(BODY), next = await s.run({ ...BODY, ...change });
