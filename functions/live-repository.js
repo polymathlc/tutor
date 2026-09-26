@@ -3,6 +3,7 @@
 const { randomUUID, createHash } = require('node:crypto');
 const { LiveError, capOn, liveDuration } = require('./live-service');
 const { matchesCentreStudent } = require('./centre-auth');
+const { normalizeLevel } = require('./learner-guidance');
 
 // These collections are server-only; do not add client read/write rules for
 // them. Admin SDK bypasses the shared project's default-deny Firestore rules.
@@ -25,7 +26,7 @@ function createRepository(db) {
     }
   }
 
-  async function reserve(uid, worksheetId, now, policy) {
+  async function reserve(uid, worksheetId, now, policy, studentIndex = 0) {
     const id = randomUUID();
     const ownerKey = userKey(uid);
     const ownerRef = limits.doc(ownerKey);
@@ -37,12 +38,23 @@ function createRepository(db) {
       cleanupAt: now + 60000
     };
     await db.runTransaction(async tx => {
-      const [worksheet, owner, global] = await Promise.all([
-        tx.get(db.collection('tutorWorksheets').doc(worksheetId)), tx.get(ownerRef), tx.get(globalRef)
+      const [worksheet, owner, global, profile] = await Promise.all([
+        tx.get(db.collection('tutorWorksheets').doc(worksheetId)), tx.get(ownerRef), tx.get(globalRef), tx.get(db.collection('studentProfiles').doc(uid))
       ]);
       if (!worksheet.exists || worksheet.data().ownerUid !== uid) {
         throw new LiveError(403, 'worksheet_not_owned', 'Open one of your saved worksheets before starting a live lesson.');
       }
+      const savedWorksheet = worksheet.data();
+      let assignment;
+      if (savedWorksheet.assignmentId) {
+        if (typeof savedWorksheet.assignmentId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(savedWorksheet.assignmentId)) throw new LiveError(409, 'worksheet_changed', 'Reopen this worksheet to refresh its teaching settings.');
+        const snapshot = await tx.get(db.collection('tutorAssignments').doc(savedWorksheet.assignmentId));
+        if (snapshot.exists && snapshot.data().active) assignment = snapshot.data();
+      }
+      const students = (profile.data()?.tutorOnboard?.students || []).filter(s => s && String(typeof s === 'string' ? s : s.name || '').trim());
+      // Only allowlisted levels from the owned saved worksheet/assignment and
+      // selected saved profile influence the provider's system instructions.
+      lease.teachingContext = { worksheetLevel: normalizeLevel(assignment?.level) || normalizeLevel(savedWorksheet.level), studentLevel: normalizeLevel(students[studentIndex]?.level) };
       const ownerData = owner.data() || {};
       const globalData = global.data() || {};
       /* ONE STALE RULE FOR BOTH LOCKS. A reservation older than a whole

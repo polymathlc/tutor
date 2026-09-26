@@ -53,3 +53,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/centre-admin-browser-check.mjs
+      - name: Check worksheet-level tutoring and practice guidance
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/learner-guidance-browser-check.mjs

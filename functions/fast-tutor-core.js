@@ -2,7 +2,8 @@
 
 const { createHash, randomUUID } = require('node:crypto');
 const intents = require('./fast-tutor-intents');
-const VERSION = 'fast-tutor-v2-focus';
+const learnerGuidance = require('./learner-guidance');
+const VERSION = 'fast-tutor-v3-worksheet-level';
 const LEVELS = ['nudge', 'concepts', 'method', 'answer'];
 const POLICY = Object.freeze({ prepPerDay: 60, paidPerDay: 1200, paidPerMinute: 12, cachedPages: 60, cacheMs: 7 * 86400000, leaseMs: 155000 });
 class TeachError extends Error {
@@ -41,7 +42,7 @@ function validate(body) {
     forceFresh: body.forceFresh === true || body.images?.length > 1, preparedOnly: body.preparedOnly === true, history: body.history || [] };
 }
 function revision(context, body, imageHash) {
-  return hash(JSON.stringify({ version: VERSION, uid: context.uid, learner: context.learner, worksheetId: body.worksheetId,
+  return hash(JSON.stringify({ version: VERSION, guidanceVersion: learnerGuidance.VERSION, uid: context.uid, learner: context.learner, worksheetId: body.worksheetId,
     page: body.page, authority: context.authority, imageHash, grounding: hash(body.grounding) }));
 }
 function normalizePack(raw, ceiling) {

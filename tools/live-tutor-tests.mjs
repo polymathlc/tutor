@@ -8,6 +8,7 @@ import test from 'node:test';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const focusSource = readFileSync(new URL('../tutor-focus.js', import.meta.url), 'utf8');
+const learnerSource = readFileSync(new URL('../functions/learner-guidance.js', import.meta.url), 'utf8');
 const startMarker = '/* ================= Live tutoring ================= */';
 const endMarker = '/* ================= End live tutoring ================= */';
 const start = html.indexOf(startMarker);
@@ -243,6 +244,7 @@ function harness(options = {}) {
   };
   Object.assign(c, options.globals || {});
   vm.createContext(c);
+  vm.runInContext(learnerSource, c, { filename: 'learner-guidance.js' });
   vm.runInContext(focusSource, c, { filename: 'tutor-focus.js' });
   c.window.TutorFocus = c.TutorFocus;
   vm.runInContext(source, c, { filename: 'index.html:live-tutoring' });
@@ -461,7 +463,7 @@ test('the authenticated SDP exchange waits for session.started before enabling t
   assert.equal(request.url, h.c.LIVE_ENDPOINT);
   assert.equal(request.headers.Authorization, 'Bearer user-token');
   assert.equal(request.headers['X-Firebase-AppCheck'], 'app-check-token');
-  assert.deepEqual(JSON.parse(request.body), { action: 'start', sdp: 'offer-sdp', worksheetId: 'worksheet-a' });
+  assert.deepEqual(JSON.parse(request.body), { action: 'start', sdp: 'offer-sdp', worksheetId: 'worksheet-a', studentIndex: 0 });
   const channel = h.c.liveTutor.channel;
   channel.open();
   channel.receive({ type: 'session.delegation.created', delegation: { id: 'too-early', target: 'client' } });
@@ -475,6 +477,15 @@ test('the authenticated SDP exchange waits for session.started before enabling t
   assert.equal(h.calls.timers.size, timerCount, 'a duplicate startup event must not add another lifetime timer');
   assert.equal(h.c.liveTutor.phase, 'live');
   assert.equal(h.element('liveMuteBtn').hidden, false);
+  h.c.stopLiveTutor();
+});
+
+test('live startup identifies the selected learner for trusted level lookup', async () => {
+  const h = harness();
+  h.c._activeIdx = 2;
+  await h.c.startLiveTutor();
+  assert.equal(JSON.parse(h.calls.fetch[0].body).studentIndex, 2);
+  assert.equal(JSON.parse(h.calls.fetch[0].body).level, undefined, 'the browser does not send an authoritative grade');
   h.c.stopLiveTutor();
 });
 

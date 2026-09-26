@@ -3,6 +3,7 @@
 const { randomUUID } = require('node:crypto');
 const { TeachError, POLICY, hash, LEVELS, clip } = require('./fast-tutor-core');
 const { dayKey } = require('./live-repository');
+const { normalizeLevel } = require('./learner-guidance');
 
 function createTeachRepository(db) {
   const root = uid => db.collection('studyBuddyLiveLimits').doc(hash(uid));
@@ -35,7 +36,7 @@ function createTeachRepository(db) {
     const student = students.filter(s => s && (typeof s === 'string' ? s.trim() : String(s.name || '').trim()))[body.studentIndex];
     const learner = hash(uid + '|' + body.studentIndex + '|' + (typeof student === 'string' ? student : student?.name || 'account'));
     const authority = {
-      ceiling, worksheetGuidance, level: clip(a?.level || w.level, 40), subject: clip(a?.subject || w.subject, 40), pageCount: Number(w.pageCount) || 0,
+      ceiling, worksheetGuidance, level: normalizeLevel(a?.level) || normalizeLevel(w.level), studentLevel: normalizeLevel(student?.level), subject: clip(a?.subject || w.subject, 40), pageCount: Number(w.pageCount) || 0,
       assignmentId: w.assignmentId || '', locked: Boolean(a?.guidanceLocked), storagePath: clip(a?.storagePath || w.storagePath, 1000),
       keyPath: clip(a?.keyPath || w.keyPath || savedBody.key?.path, 1000), keyPages,
       keyRows: rows.slice(0, 400), bodyPath: clip(w.bodyPath, 1000),

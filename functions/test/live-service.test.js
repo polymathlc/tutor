@@ -101,6 +101,33 @@ test('anonymous users cannot start a paid voice session', async () => {
   assert.ok(!h.calls.some(call => call[0] === 'reserve'));
 });
 
+test('voice provider receives the reserved worksheet level and ignores client-provided levels', async () => {
+  for (const [worksheetLevel, studentLevel, expected] of [['P3', 'S1', /Primary 3 \(P3\)[\s\S]*concrete objects/], ['', 'S1', /Secondary 1 \(S1\)[\s\S]*student profile/], ['', '', /general beginner support/]]) {
+    const h = harness({ repository: { async reserve(...args) {
+      assert.equal(args[4], 1);
+      return { id: 'lease-1', uid: 'child', expiresAt: 601000, sessionId: null, teachingContext: { worksheetLevel, studentLevel } };
+    } } });
+    const result = await h.request({ action: 'start', worksheetId: 'worksheet1', sdp: offer, studentIndex: 1, level: 'P6', teachingContext: { worksheetLevel: 'P6' } });
+    assert.equal(result.statusCode, 200);
+    const sent = h.calls.find(call => call[0] === 'create')[2];
+    assert.match(sent.instructions, expected);
+    assert.match(sent.instructions, /Delegate EVERY academic question/);
+    assert.match(sent.instructions, /Preserve its simple vocabulary/);
+    assert.match(sent.instructions, /Never reveal an answer key/);
+    assert.doesNotMatch(sent.instructions, /Language and teaching target: Primary 6/);
+  }
+});
+
+test('invalid voice student selections and attempts to switch centre profiles fail before reservation', async () => {
+  const h = harness();
+  for (const studentIndex of [-1, 8, 1.5, '1']) assert.equal((await h.request({ action: 'start', worksheetId: 'worksheet1', sdp: offer, studentIndex })).statusCode, 400);
+  assert.deepEqual(h.calls, []);
+  const user = { uid: 'child', firebase: { sign_in_provider: 'custom' }, centrePractice: true, centreActorUid: 'teacher', centreStudentIndex: 0, centreStudentKey: 'a'.repeat(64), centrePracticeExpiresAt: 14401 };
+  const centre = harness({ auth: { async verifyIdToken() { return user; } } });
+  assert.equal((await centre.request({ action: 'start', worksheetId: 'worksheet1', sdp: offer, studentIndex: 1 })).statusCode, 403);
+  assert.ok(!centre.calls.some(call => call[0] === 'reserve'));
+});
+
 test('centre practice checks the selected profile before a paid voice lesson', async () => {
   const { centreStudentKey } = require('../centre-auth');
   const user = { uid: 'child', firebase: { sign_in_provider: 'custom' }, centrePractice: true, centreActorUid: 'teacher',
