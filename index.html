@@ -8,6 +8,7 @@
      actually stops iOS zooming into them. -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Study Buddy — Polymath Learning Centre</title>
+<link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <!-- The browser tab and the home-screen icon. There was neither before,
      so a worksheet pinned to an iPad home screen wore a screenshot of
      itself. -->
@@ -2670,9 +2671,11 @@
 <!-- ============ Who has signed in (admin only) ============ -->
 <div class="modalBack" id="peopleModal">
   <div class="modalCard tnWide">
-    <div class="modalHead"><h2>👥 Who has signed in</h2></div>
+    <div class="modalHead"><h2>👥 Students and accounts</h2></div>
+    <div style="padding:0 20px"><label for="peopleSearch">Find a student or account</label><input id="peopleSearch" type="search" placeholder="Student, parent or email" style="display:block;width:100%;font:inherit;padding:10px;margin-top:6px"></div>
     <div class="modalBody" id="peopleBody"></div>
     <div class="modalFoot">
+      <button class="btn btnPrimary" id="peopleAddStudent">+ Add centre student</button>
       <button class="btn" id="peopleMist">📕 What the class gets wrong</button>
       <button class="btn" id="peopleCopy">📋 Copy</button>
       <button class="btn btnPrimary" id="peopleClose">Done</button>
@@ -2933,6 +2936,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+<script src="centre-admin.js?v=1.58.0"></script>
 <script>
 'use strict';
 
@@ -23978,7 +23982,9 @@ var STUDENT_LEVELS = ['P3', 'P4', 'P5', 'P6'];
 var STUDENT_SUBJECTS = [
   { value: 'science', label: 'Science' },
   { value: 'math',    label: 'Mathematics' },
-  { value: 'both',    label: 'Both' }
+  { value: 'both',    label: 'Maths & Science' },
+  { value: 'english', label: 'English' },
+  { value: 'chinese', label: 'Chinese' }
 ];
 /* ONLY P3 is special. Every other level — including one from outside the
    range, such as a Sec 1 row set up in Ans Key — keeps every subject rather
@@ -24096,6 +24102,17 @@ async function onboardRequire(user) {
     readFailed = true;
     console.warn('roster: profile could not be read', e);
   }
+  if (typeof CentreAdmin !== 'undefined' && CentreAdmin.isPractice()) {
+    var chosen = normStudents(profile && profile.tutorOnboard && profile.tutorOnboard.students)[CentreAdmin.lockedStudentIndex()];
+    if (readFailed || !studentComplete(chosen)) {
+      toast('This student profile is unavailable. Ask your teacher to start centre practice again.', 6000);
+      await auth.signOut();
+      return;
+    }
+    adoptStudents(profile);
+    noteSignedIn(user, profile);
+    return;
+  }
   if (!onboardNeeds(profile) && !readFailed) {
     adoptStudents(profile);
     noteSignedIn(user, profile);
@@ -24119,16 +24136,22 @@ var myStudents = [];          // [{ name, level, subject }] for the signed-in ac
 var _activeIdx = 0;
 
 function loadActiveIdx() {
+  if (typeof CentreAdmin !== 'undefined' && CentreAdmin.isPractice()) {
+    _activeIdx = CentreAdmin.lockedStudentIndex();
+    return;
+  }
   try { _activeIdx = parseInt(localStorage.getItem(ACTIVE_KEY), 10) || 0; }
   catch (e) { _activeIdx = 0; }
 }
 function setActiveIdx(i) {
+  if (typeof CentreAdmin !== 'undefined' && CentreAdmin.isPractice()) i = CentreAdmin.lockedStudentIndex();
   _activeIdx = i;
   try { localStorage.setItem(ACTIVE_KEY, String(i)); } catch (e) {}
 }
 function activeStudent() {
   if (!myStudents.length) return null;
   var i = _activeIdx;
+  if (typeof CentreAdmin !== 'undefined' && CentreAdmin.isPractice() && !(i >= 0 && i < myStudents.length)) return null;
   if (!(i >= 0 && i < myStudents.length)) i = 0;
   return myStudents[i];
 }
@@ -25116,7 +25139,10 @@ function renderPeople(state) {
     body.innerHTML = '<p class="sub">The roster could not be read: ' + escHtml(state) + '</p>';
     return;
   }
-  var rows = _peopleRows || [];
+  var search = $('peopleSearch') ? $('peopleSearch').value.trim().toLowerCase() : '';
+  var rows = (_peopleRows || []).filter(function (r) {
+    return !search || [r.students.join(' '), r.name, r.parent, r.email].join(' ').toLowerCase().indexOf(search) !== -1;
+  });
   var signedIn = rows.filter(function (r) { return r.seen > 0; });
   var paying = rows.filter(function (r) { return r.paying; });
 
@@ -25135,7 +25161,7 @@ function renderPeople(state) {
   body.appendChild(sum);
 
   if (!rows.length) {
-    body.innerHTML += '<p class="sub" style="margin-top:16px">Nobody has signed in yet.</p>';
+    body.innerHTML += '<p class="sub" style="margin-top:16px">' + (search ? 'No matching students or accounts.' : 'No students yet. Add a centre student to get started.') + '</p>';
     return;
   }
 
@@ -25204,6 +25230,7 @@ function renderPeople(state) {
    The row answers "how much"; this answers "what, and when". It is a READ:
    nothing in here writes anything anywhere. */
 function openPersonUsage(id) {
+  if (!isAdmin(currentUser)) return;
   var r = (_peopleRows || []).find(function (x) { return x.id === id; });
   if (!r) return;
   var body = $('personBody');
@@ -25216,6 +25243,8 @@ function openPersonUsage(id) {
     r.managed ? 'added by hand' : !r.answered ? 'has not answered the first questions'
       : r.enrolled ? 'enrolled — free' : 'paying ' + (r.fee || APP_FEE)].filter(Boolean).join(' · ');
   body.appendChild(sub);
+
+  if (typeof CentreAdmin !== 'undefined') CentreAdmin.appendAccountControls(body, r);
 
   var u = r.usage;
   if (typeof StudyAdventure !== 'undefined') StudyAdventure.teacherControls(r, body);
@@ -25580,15 +25609,16 @@ function renderAuth() {
   if (signedIn && isAdmin(currentUser)) who = ADMIN_DISPLAY_NAME;
   else if (signedIn && st) {
     who = st.name + ' · ' + levelLabel(st.level) + ' ' + subjectLabel(studentSubject(st));
-    if (myStudents.length > 1) who += ' ▾';
+    if (myStudents.length > 1 && !(typeof CentreAdmin !== 'undefined' && CentreAdmin.isPractice())) who += ' ▾';
   } else if (signedIn) who = currentUser.displayName || currentUser.email || '';
   $('whoAmI').textContent = who;
-  var canSwitch = signedIn && !isAdmin(currentUser) && myStudents.length > 1;
+  var canSwitch = signedIn && !isAdmin(currentUser) && myStudents.length > 1 && !(typeof CentreAdmin !== 'undefined' && CentreAdmin.isPractice());
   $('whoAmI').title = canSwitch ? 'Switch student' : '';
   $('whoAmI').style.cursor = canSwitch ? 'pointer' : '';
   applyNotesVisibility();
   refreshAiEngineNames();
   if (typeof StudyAdventure !== 'undefined') StudyAdventure.sync();
+  if (typeof CentreAdmin !== 'undefined') CentreAdmin.renderSession();
 }
 
 function signIn() {
@@ -25605,7 +25635,10 @@ function signIn() {
     toast('Could not sign in: ' + ((e && e.message) || e), 5000);
   });
 }
-function signOut() { if (auth) auth.signOut(); }
+function signOut() {
+  if (typeof CentreAdmin !== 'undefined' && CentreAdmin.isPractice()) return CentreAdmin.endPractice();
+  if (auth) auth.signOut();
+}
 
 
 /* =====================================================================
@@ -29517,7 +29550,18 @@ $('playlistStop').addEventListener('click', lessonPlaylistStopAll);
 /* Nothing below here can run without the Firebase SDK, so the whole
    listener is skipped rather than throwing on `auth.` and taking the
    wiring at the bottom of the file down with it. */
-if (auth) auth.onAuthStateChanged(function (user) {
+var authChangeEpoch = 0;
+if (auth) auth.onAuthStateChanged(async function (user) {
+  var authEpoch = ++authChangeEpoch;
+  try {
+    if (typeof CentreAdmin !== 'undefined') await CentreAdmin.authReady(user);
+  } catch (error) {
+    if (authEpoch !== authChangeEpoch) return;
+    toast(error.message || 'Centre practice ended. Please sign in again.', 6000);
+    await auth.signOut();
+    return;
+  }
+  if (authEpoch !== authChangeEpoch) return;
   stopLiveTutor();
   liveTutor.transcript = [];
   renderLiveTutor();
@@ -29648,6 +29692,8 @@ $('engineBtn').addEventListener('click', openEngineModal);
 $('engineClose').addEventListener('click', function () { $('engineModal').classList.remove('open'); });
 
 $('peopleBtn').addEventListener('click', openPeople);
+$('peopleSearch').addEventListener('input', function () { if (isAdmin(currentUser)) renderPeople(); });
+$('peopleAddStudent').addEventListener('click', function () { CentreAdmin.openCreate(); });
 $('peopleClose').addEventListener('click', function () { $('peopleModal').classList.remove('open'); });
 $('personClose').addEventListener('click', function () { $('personModal').classList.remove('open'); });
 $('peopleCopy').addEventListener('click', function () { copyText(peopleAsText(), 'Roster copied'); });
@@ -29667,6 +29713,7 @@ $('qnSave').addEventListener('click', quickNoteSave);
    It is a plain rotation rather than a menu: with two children on one login
    a tap is the whole interaction, and there is nothing to find. */
 $('whoAmI').addEventListener('click', function () {
+  if (typeof CentreAdmin !== 'undefined' && CentreAdmin.isPractice()) return;
   if (!currentUser || isAdmin(currentUser) || myStudents.length < 2) return;
   var next = (_activeIdx + 1) % myStudents.length;
   setActiveIdx(next);

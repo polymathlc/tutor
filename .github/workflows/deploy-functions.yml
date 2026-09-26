@@ -26,6 +26,9 @@ on:
       - '.firebaserc'
       - '.github/workflows/deploy-functions.yml'
       - 'tools/gamification-rules.mjs'
+      - 'tools/centre-admin-rules.mjs'
+      - 'tools/gamification-rules-tests.mjs'
+      - 'tools/centre-admin-rules-tests.mjs'
   workflow_dispatch:        # …and a deploy can be asked for by hand, for the first one
 
 permissions:
@@ -56,6 +59,9 @@ jobs:
       - name: The functions' own tests
         run: npm test --prefix functions
 
+      - name: Shared rules protection tests
+        run: node --test tools/gamification-rules-tests.mjs tools/centre-admin-rules-tests.mjs
+
       - name: Is the deploy key set?
         id: key
         env:
@@ -84,6 +90,8 @@ jobs:
           # quietly taking another app's function off the project.
           npm install --prefix "$RUNNER_TEMP/firebase-cli" --no-audit --no-fund firebase-tools@14
           node tools/gamification-rules.mjs \
+            --firebase-tools "$RUNNER_TEMP/firebase-cli/node_modules/firebase-tools" --apply
+          node tools/centre-admin-rules.mjs \
             --firebase-tools "$RUNNER_TEMP/firebase-cli/node_modules/firebase-tools" --apply
           npx --yes firebase-tools@14 deploy \
             --only 'functions:study-buddy-live' \

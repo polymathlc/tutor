@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { addGameServerRules, GAME_RULE, GAME_COLLECTIONS, gameRuleTests, publishGameRules } from './gamification-rules.mjs';
+import { addCentreAdminServerRules, CENTRE_RULE } from './centre-admin-rules.mjs';
 
 const source = `rules_version = '2';
 service cloud.firestore {
@@ -24,6 +25,17 @@ test('unexpected or partly installed rules fail closed', () => {
   assert.throws(() => addGameServerRules(source.replace('!isPolymathEnquiryServerPath()', 'unknownGuard()')));
   assert.throws(() => addGameServerRules(source.replace('return false;', 'return false; // isTutorGamePath')));
   assert.throws(() => addGameServerRules(source + source));
+});
+test('Adventure protection preserves centre guards on first and repeat deployments', () => {
+  const centreOnly = addCentreAdminServerRules(source);
+  const both = addGameServerRules(centreOnly);
+  assert.ok(both.includes(CENTRE_RULE));
+  assert.ok(both.includes('&& !isTutorGamePath() && !isTutorCentreAdminPath()'));
+  assert.equal(both.replace(GAME_RULE, '').replace(' && !isTutorGamePath()', ''), centreOnly);
+  assert.equal(addGameServerRules(both), both);
+  const deployedOrder = addCentreAdminServerRules(addGameServerRules(source));
+  assert.equal(addGameServerRules(deployedOrder), deployedOrder);
+  assert.throws(() => addGameServerRules(both.replace('!isTutorCentreAdminPath()', '!unrecognizedPath()')));
 });
 test('permission suite covers browser/admin writes and nested reads for all roots', () => {
   const cases = gameRuleTests();

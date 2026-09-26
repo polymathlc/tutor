@@ -2,6 +2,7 @@
 
 const { randomUUID, createHash } = require('node:crypto');
 const { LiveError, capOn, liveDuration } = require('./live-service');
+const { matchesCentreStudent } = require('./centre-auth');
 
 // These collections are server-only; do not add client read/write rules for
 // them. Admin SDK bypasses the shared project's default-deny Firestore rules.
@@ -14,6 +15,15 @@ function createRepository(db) {
   const sessions = db.collection(SESSION_COLLECTION);
   const limits = db.collection(LIMIT_COLLECTION);
   const globalRef = limits.doc('_global');
+
+  async function checkCentreStudent(user, now) {
+    const snap = await db.collection('studentProfiles').doc(user.uid).get();
+    const students = (snap.data()?.tutorOnboard?.students || []).filter(s => s && String(typeof s === 'string' ? s : s.name || '').trim());
+    const student = students[user.centreStudentIndex];
+    if (!student || !matchesCentreStudent(user, user.centreStudentIndex, student, now)) {
+      throw new LiveError(403, 'student_changed', 'This student profile changed. Ask your teacher to start centre practice again.');
+    }
+  }
 
   async function reserve(uid, worksheetId, now, policy) {
     const id = randomUUID();
@@ -169,7 +179,7 @@ function createRepository(db) {
     return snap.docs.map(doc => doc.data());
   }
 
-  return { reserve, activate, recover, release, find, expired };
+  return { reserve, activate, recover, release, find, expired, checkCentreStudent };
 }
 
 module.exports = { createRepository, dayKey, userKey, SESSION_COLLECTION, LIMIT_COLLECTION };

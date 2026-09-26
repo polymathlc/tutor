@@ -784,7 +784,7 @@ test('every way off a worksheet or an account tears the replay, the playlist and
     'a new worksheet closes the old one\'s videos before the epoch moves');
   const open = fnSrc('openWorksheet');
   assert.ok(open.indexOf("showView('ws');") > 0 && open.indexOf('lessonVideosOpen(w);') > open.indexOf("showView('ws');"));
-  const auth = cut('if (auth) auth.onAuthStateChanged(function (user) {', 'stopTeachingNotes();');
+  const auth = cut('if (auth) auth.onAuthStateChanged(async function (user) {', 'stopTeachingNotes();');
   assert.ok(auth.indexOf('currentUser = user || null;') < auth.indexOf('lessonRoleChanged();'), 'the new account is known before the old one\'s things are dropped');
   const role = fnSrc('lessonRoleChanged');
   for (const call of ['lessonExitPlayback();', 'lessonPlaylistStop();', 'lessonPlaylistClosePanel();', 'lessonPillMenuClose();', 'lessonVideosUnwatch();',

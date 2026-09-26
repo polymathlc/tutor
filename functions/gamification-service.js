@@ -1,6 +1,7 @@
 'use strict';
 
 const { APP_ID, allowedOrigin } = require('./live-service');
+const { isSupportedStudent, isCentrePractice, matchesCentreStudent } = require('./centre-auth');
 const { SUBJECTS, COMPANIONS, FRAMES, GameError } = require('./gamification-core');
 const ADMIN_EMAIL = 'chungzhikai@gmail.com';
 const MAX_REQUEST_BYTES = 1500000;
@@ -64,7 +65,7 @@ function createGameService({ auth, appCheck, repository, provider, now = Date.no
     let user;
     try { user = await auth.verifyIdToken(match[1], true); }
     catch { throw new GameError(401, 'sign_in_required', 'Sign in again to save your adventure.'); }
-    if (!user.uid || user.firebase?.sign_in_provider !== 'google.com') throw new GameError(403, 'sign_in_required', 'Use Google sign-in to save your adventure.');
+    if (!isSupportedStudent(user, now())) throw new GameError(403, 'sign_in_required', 'Sign in with Google or ask your teacher to start centre practice.');
     try {
       const claims = await appCheck.verifyToken(token);
       if (claims.appId !== APP_ID) throw new Error('wrong app');
@@ -87,9 +88,11 @@ function createGameService({ auth, appCheck, repository, provider, now = Date.no
       const body = validateBody(req.body);
       const user = await identify(req);
       const adminAction = ['inspectMember', 'approveMember'].includes(body.action);
+      if (isCentrePractice(user, now()) && !matchesCentreStudent(user, body.studentIndex, undefined, now())) throw new GameError(403, 'student_changed', 'Use the student selected for this centre session.');
       if (adminAction && !(user.email_verified === true && user.email?.toLowerCase() === ADMIN_EMAIL)) throw new GameError(403, 'teacher_required', 'Only the teacher can approve learning groups.');
       const context = await repository.resolve(adminAction ? body.targetUid : user.uid, body.studentIndex, body.subject, body.learnerKey,
         adminAction && (body.action === 'inspectMember' || body.approved === false));
+      if (isCentrePractice(user, now()) && (!context.student || !matchesCentreStudent(user, body.studentIndex, context.student, now()))) throw new GameError(403, 'student_changed', 'This student profile changed. Ask your teacher to start centre practice again.');
       if (body.action === 'inspectMember') return res.status(200).json(await repository.inspectMember(context));
       if (body.action === 'approveMember') return res.status(200).json(await repository.approveMember(context, body.approved, user.uid, now()));
       if (body.action === 'preferences') await repository.preferences(context, body, now());

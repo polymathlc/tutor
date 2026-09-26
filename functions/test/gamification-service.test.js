@@ -77,6 +77,26 @@ test('duplicate awards skip paid verification', async () => {
   assert.ok(!h.calls.some(row => row[0] === 'verify'));
 });
 
+test('centre students keep their own rewards and cannot choose siblings or teacher actions', async () => {
+  const { centreStudentKey } = require('../centre-auth');
+  const student = { name: 'Learner', level: 'P5', subject: 'science' };
+  for (const scenario of ['valid', 'sibling', 'changed', 'missing', 'expired', 'teacher']) {
+    const h = harness();
+    Object.assign(h.user, { firebase: { sign_in_provider: 'custom' }, centrePractice: true, centreActorUid: 'teacher',
+      centreStudentIndex: 0, centreStudentKey: centreStudentKey(student), centrePracticeExpiresAt: 14401 });
+    h.context.student = student;
+    if (scenario === 'changed') h.context.student = { ...student, level: 'P6' };
+    if (scenario === 'missing') delete h.context.student;
+    if (scenario === 'expired') h.user.centrePracticeExpiresAt = 1;
+    const response = await h.request(scenario === 'teacher'
+      ? { action: 'approveMember', targetUid: 'another', studentIndex: 0, subject: 'science', approved: true }
+      : { ...attempt, studentIndex: scenario === 'sibling' ? 1 : 0 });
+    assert.equal(response.statusCode, scenario === 'valid' ? 200 : 403, scenario);
+    assert.equal(h.calls.some(row => row[0] === 'verify'), scenario === 'valid', scenario);
+    if (scenario === 'valid') assert.equal(h.calls.find(row => row[0] === 'resolve')[1], h.user.uid);
+  }
+});
+
 test('upstream failures release the lease and return no secret or alleged XP', async () => {
   const h = harness(); h.deps.provider.verify = async () => { throw new Error('secret-api-key'); };
   const response = await h.request(attempt);

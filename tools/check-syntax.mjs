@@ -15,7 +15,7 @@ try {
     execFileSync(process.execPath, ['--check', file], { stdio: 'inherit' });
   }
   console.log(`${scripts.length} inline scripts passed syntax checks.`);
-  for (const file of ['adventure.js', 'adventure-ui.js', 'functions/fast-tutor-intents.js', 'fast-tutor.js', 'tutor-focus.js']) {
+  for (const file of ['adventure.js', 'adventure-ui.js', 'functions/fast-tutor-intents.js', 'fast-tutor.js', 'tutor-focus.js', 'centre-admin.js']) {
     execFileSync(process.execPath, ['--check', fileURLToPath(new URL('../' + file, import.meta.url))], { stdio: 'inherit' });
   }
 } finally {

@@ -4553,11 +4553,11 @@ eq('everything answered is', S.onboardValid({ parent: 'p', students: okStu, enro
 section('The levels, and what each one takes');
 
 eq('the centre takes P3 to P6', S.STUDENT_LEVELS, ['P3', 'P4', 'P5', 'P6']);
-eq('three subjects are offered', S.STUDENT_SUBJECTS.map(function (x) { return x.value; }),
-   ['science', 'math', 'both']);
+eq('all four subjects and the Maths/Science pairing are offered', S.STUDENT_SUBJECTS.map(function (x) { return x.value; }),
+   ['science', 'math', 'both', 'english', 'chinese']);
 eq('P3 offers Science and nothing else', S.levelSubjects('P3'), ['science']);
-eq('P4 offers all three', S.levelSubjects('P4'), ['science', 'math', 'both']);
-eq('P6 offers all three', S.levelSubjects('P6'), ['science', 'math', 'both']);
+eq('P4 offers all subjects', S.levelSubjects('P4'), ['science', 'math', 'both', 'english', 'chinese']);
+eq('P6 offers all subjects', S.levelSubjects('P6'), ['science', 'math', 'both', 'english', 'chinese']);
 ok('P6 + Mathematics is allowed', S.subjectOkForLevel('P6', 'math'));
 ok('P6 + Both is allowed', S.subjectOkForLevel('P6', 'both'));
 ok('P3 + Mathematics is refused', !S.subjectOkForLevel('P3', 'math'));
@@ -4565,8 +4565,10 @@ ok('P3 + Both is refused', !S.subjectOkForLevel('P3', 'both'));
 ok('P5 + Mathematics is allowed', S.subjectOkForLevel('P5', 'math'));
 /* ONLY P3 is special. A level from outside the range — a Sec 1 row set up
    in Ans Key — keeps every subject rather than being silently re-tagged. */
-eq('a level from outside the range keeps all three', S.levelSubjects('S1'),
-   ['science', 'math', 'both']);
+eq('a level from outside the range keeps all subjects', S.levelSubjects('S1'),
+   ['science', 'math', 'both', 'english', 'chinese']);
+eq('English access remains English', S.studentSubjectList({ level: 'P5', subject: 'english' }), ['english']);
+eq('Chinese access remains Chinese', S.studentSubjectList({ level: 'P6', subject: 'chinese' }), ['chinese']);
 eq('a P6 student stored as "both" is left alone',
    S.studentSubject({ level: 'P6', subject: 'both' }), 'both');
 
