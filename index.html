@@ -2937,6 +2937,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
+<script src="functions/learner-guidance.js?v=1.59.0"></script>
 <script>
 'use strict';
 
@@ -3007,24 +3008,33 @@ function aiWithDeadline(work, timeoutMs, signal, message) {
     }).then(function (value) { finish(null, value); }, function (error) { finish(error); });
   });
 }
+/* Context may be a saved mistake from another worksheet. Only its level and
+   the active learner's level reach the shared, allowlisted teaching policy. */
+function learnerGuidance(context) {
+  var source = context === undefined ? wsMeta : context;
+  var student = typeof activeStudent === 'function' ? activeStudent() : null;
+  return '\n\nLEARNER GUIDANCE (' + window.TutorLevelGuidance.VERSION + '):\n' +
+    window.TutorLevelGuidance.instructions(source && source.level, student && student.level);
+}
 function tutorMethodRule() {
   return '\nMATHEMATICS TEACHING METHOD: Use step-by-step arithmetic and the unitary method as the default. ' +
     'Name what each quantity represents and why each addition, subtraction, multiplication or division is needed. ' +
     'For the unitary method, find the value of ONE actual item, group, percentage point or other named quantity, then scale to the required amount. ' +
-    'Do not introduce algebraic unknowns such as x or y, simultaneous equations, or disguised algebra labelled as units. ' +
+    'Do not introduce algebraic unknowns such as x or y, simultaneous equations, or disguised algebra labelled as units when the worksheet can be taught with arithmetic. ' +
+    'If the worksheet explicitly teaches or requires algebra, explain its symbols and each operation in language suitable for the worksheet level. ' +
     'Use units and parts ONLY when this is very obviously a units-and-parts question with clear proportional relationships; ' +
     'do not turn an ordinary arithmetic, fraction or ratio question into units and parts merely because it can be done that way. ' +
     'Read the matching answer-key entry AND its working FIRST, before planning your explanation or checking an answer. ' +
-    'Follow its arithmetic method where available; if its solution uses algebra, translate it into clear arithmetic or a unitary method. ' +
+    'Follow its arithmetic method where available; if its solution uses algebra on an arithmetic question, translate it into clear arithmetic or a unitary method. ' +
     'Check the result against the key. If the key and printed question conflict, explain the discrepancy and ask Mr Chung to check; do not force a false derivation. ' +
     'If the key has no matching entry, never claim to have checked against it. ' +
-    'In LIVE tutoring, give ONE short arithmetic step, ask the pupil to do it, and wait for their reply before the next step. ' +
+    'In LIVE tutoring, give ONE short teaching step, ask the pupil to do it, and wait for their reply before the next step. ' +
     'Keep the worksheet help ceiling: knowing the key is not permission to reveal the final answer. ' +
     'These method preferences guide your teaching; do not mark a mathematically valid student solution wrong merely for using another method.\n';
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.57.0';
+var APP_VERSION = 'v1.59.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -4280,19 +4290,21 @@ function noteSubjects(n) {
   });
   return out;
 }
-function noteAppliesHere(n) {
-  var subj = wsMeta.subject || '';
-  var lvl = wsMeta.level || '';
+function noteAppliesHere(n, context) {
+  var source = context === undefined ? wsMeta : context;
+  var subj = source && source.subject || '';
+  var lvl = source && source.level || '';
   var subs = noteSubjects(n);
   var lvls = Array.isArray(n.levels) ? n.levels.filter(Boolean) : [];
   if (subs.length && subj && subs.indexOf(subj) === -1) return false;
   if (lvls.length && lvl && lvls.indexOf(lvl) === -1) return false;
   return true;
 }
-function notesRelevant() {
+function notesRelevant(context) {
   if (!teachingNotes.length) return [];
-  var rel = teachingNotes.filter(noteAppliesHere);
-  return rel.length ? rel : teachingNotes;
+  var rel = teachingNotes.filter(function (n) { return noteAppliesHere(n, context); });
+  // A saved question must not inherit unrelated notes from the open worksheet.
+  return rel.length || context !== undefined ? rel : teachingNotes;
 }
 /* What the LAST digest could not fit. Rebuilt on every aiGrounding() call,
    because a note quietly left out of every prompt is exactly what the
@@ -4726,8 +4738,9 @@ function styleCorpusCount() {
    says which bucket the voice was learned from and how many corrections are
    being followed, because a hint grounded on the global fallback looks
    exactly like one grounded on this worksheet's own bucket. */
-function styleBlock(kind, q) {
-  var lvl = wsMeta && wsMeta.level, sub = wsMeta && wsMeta.subject;
+function styleBlock(kind, q, context) {
+  var source = context === undefined ? wsMeta : context;
+  var lvl = source && source.level, sub = source && source.subject;
   var pick = styleProfilePick(lvl, sub);
   var isMark = kind === 'mark';
   /* NO EARLY RETURN ON A MISSING PROFILE — see _styleProfileBits. */
@@ -4756,8 +4769,8 @@ function styleBlock(kind, q) {
                    because those are what a hint is BUILT from, and not the
                    marking standards — a hint is not a mark
          'teach'   explaining */
-function notesBlock(kind) {
-  var rel = notesRelevant();
+function notesBlock(kind, context) {
+  var rel = notesRelevant(context);
   if (!rel.length) return '';
   var kw = notesKeywordList(rel);
   var std = notesJoinField(rel, 'markingStandards', NOTES_STD_CHARS);
@@ -4784,11 +4797,11 @@ function notesBlock(kind) {
    The teacher's own standing instructions, typed straight in with "Add a
    note". Unlike the extracted fields these are house rules, so they go to
    every kind of call and they lead the digest. */
-function notesGuidance() {
-  return notesJoinField(notesRelevant(), 'guidance', NOTES_GUIDE_CHARS);
+function notesGuidance(context) {
+  return notesJoinField(notesRelevant(context), 'guidance', NOTES_GUIDE_CHARS);
 }
-function guidanceBlock() {
-  var guide = notesGuidance();
+function guidanceBlock(context) {
+  var guide = notesGuidance(context);
   if (!guide) return '';
   return "\n\nTHE TEACHER'S GENERAL GUIDANCE (standing instructions they typed themselves — house rules for this app, obey them on every question):\n" +
     guide;
@@ -4798,22 +4811,22 @@ function guidanceBlock() {
    prompt. ONE call site per AI feature, so nothing can be grounded on the
    notes in one place and not another. */
 function aiGrounding(kind, opts) {
-  /* `opts.q` is the question in hand, handed to the style block so the
-     exemplars and the corrections are retrieved for THIS question. Omitting
-     it is the old behaviour byte for byte, so every existing call site is
-     unaffected. */
+  /* Retrieve examples for the current question. A saved mistake supplies its
+     own context; every route receives the learner guidance even without notes. */
   var q = (opts && opts.q) ? String(opts.q) : '';
+  var context = opts && opts.context;
+  var learner = learnerGuidance(context);
   notesLedgerReset();
-  var guide = guidanceBlock();
-  var notes = notesBlock(kind);
-  var style = styleBlock(kind, q);
-  if (!guide && !notes && !style) return '';
+  var guide = guidanceBlock(context);
+  var notes = notesBlock(kind, context);
+  var style = styleBlock(kind, q, context);
+  if (!guide && !notes && !style) return learner;
   var authority = kind === 'mark'
     ? "\n\nAUTHORITY ORDER: what the worksheet itself prints always wins — never mark against it. Then the general guidance above. Use the notes and the style for the keywords, the phrasing and the standard expected; fall back to ordinary syllabus knowledge only where they say nothing."
     : kind === 'hint'
       ? "\n\nAUTHORITY ORDER: what the worksheet itself prints or shows always wins — never contradict it, and what the student has already written on it is never evidence of anything. Then the general guidance above. Build the hint out of the notes and the style FIRST — the concept, the keywords and the wording are theirs — and fall back to ordinary syllabus knowledge only where they say nothing."
       : "\n\nAUTHORITY ORDER: what the worksheet itself prints or shows always wins — never contradict it. Then the general guidance above. Otherwise base the content AND the wording on the notes and the style, and fall back to ordinary syllabus knowledge only where they say nothing.";
-  return guide + notes + style + authority;
+  return guide + notes + style + authority + learner;
 }
 
 /* Whether what is about to be written is grounded on anything at all — said
@@ -15384,7 +15397,7 @@ function fastTutor() {
   return fastTutorState.client;
 }
 function fastTutorGrounding() {
-  var key = JSON.stringify([wsMeta, typeof teachingNotes === 'undefined' ? [] : teachingNotes,
+  var key = JSON.stringify([wsMeta, learnerGuidance(), typeof teachingNotes === 'undefined' ? [] : teachingNotes,
     typeof wsKey === 'undefined' ? {} : wsKey, typeof aiStyle === 'undefined' ? null : aiStyle,
     typeof cerStyle === 'undefined' ? null : cerStyle]);
   if (key === fastTutorState.groundingKey) return fastTutorState.grounding;
@@ -15403,7 +15416,7 @@ function fastTutorBinding(contextPages) {
   syncActiveTextEditValue();
   var nums = contextPages.map(function (p) { return p.num; });
   return JSON.stringify([fastTutorOwner(), nums, worksheetContextPages({ max: LIVE_CONTEXT_MAX, dominant: LIVE_CONTEXT_DOMINANT }).map(function (p) { return p.num; }),
-    wsMeta, typeof wsKey === 'undefined' ? {} : wsKey,
+    wsMeta, learnerGuidance(), typeof wsKey === 'undefined' ? {} : wsKey,
     typeof teachingNotes === 'undefined' ? [] : teachingNotes,
     typeof aiStyle === 'undefined' ? null : aiStyle, typeof cerStyle === 'undefined' ? null : cerStyle,
     typeof notesWatching === 'undefined' ? '' : notesWatching, typeof _notesAttachSeq === 'undefined' ? 0 : _notesAttachSeq,
@@ -16748,7 +16761,8 @@ async function startLiveTutor() {
     await waitLiveIce(pc);
     if (!liveCurrent(generation)) return;
     liveStatus('Connecting your live tutor…');
-    var answer = await liveRequest({ action: 'start', sdp: pc.localDescription.sdp, worksheetId: currentDocId }, headers);
+    var answer = await liveRequest({ action: 'start', sdp: pc.localDescription.sdp, worksheetId: currentDocId,
+      studentIndex: typeof _activeIdx === 'number' ? _activeIdx : 0 }, headers);
     if (!liveCurrent(generation)) { closeLiveRemote(answer.sessionId, headers); return; }
     liveTutor.sessionId = answer.sessionId;
     liveTutor.maxSeconds = Number(answer.maxDurationSeconds) || 0;   // how long THIS lesson may run, from the server that decides it
@@ -19224,7 +19238,7 @@ async function pracCheck() {
     else if (mistSkipped(m)) lines.push('They LEFT THIS QUESTION BLANK the first time — they did not attempt it at all.');
     lines.push('What they have written NOW: ' + mine);
     var raw = await window.askGemini(lines.join('\n'), {
-      system: PRAC_SYS + aiGrounding('mark') + tutorMethodRule(),
+      system: PRAC_SYS + aiGrounding('mark', { context: m, q: m.question }) + tutorMethodRule(),
       maxOutputTokens: 2400, temperature: 0.2, json: true, timeoutMs: 60000, routeTimeoutMs: 25000
     });
     var out = _parseAIJson(raw) || {};

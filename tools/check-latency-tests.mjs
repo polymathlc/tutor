@@ -141,8 +141,10 @@ test('only a rejected thinking setting retries at the supported floor', async ()
 test('teaching explicitly uses arithmetic, unitary steps, restricted units-and-parts and the key first', () => {
   const h = harness(), rule = h.c.tutorMethodRule();
   for (const phrase of ['step-by-step arithmetic', 'unitary method', 'Do not introduce algebraic unknowns',
-    'ONLY when this is very obviously', 'working FIRST', 'ONE short arithmetic step', 'wait for their reply',
+    'ONLY when this is very obviously', 'working FIRST', 'ONE short teaching step', 'wait for their reply',
     'do not mark a mathematically valid student solution wrong']) assert.ok(rule.includes(phrase), phrase);
+  if (tutor) assert.ok(rule.includes('If the worksheet explicitly teaches or requires algebra'),
+    'arithmetic preferences still allow symbols when the worksheet requires them');
 });
 
 if (!tutor) {

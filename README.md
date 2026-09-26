@@ -12,6 +12,19 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.59.0 — Advice matched to the worksheet level
+
+Chat, hints, feedback, practice and live tutoring now share specific teaching
+guidance for P3–P6 and Secondary 1. The worksheet level sets the language and
+step size; an untagged worksheet uses the selected student's level. New terms
+are explained simply, and confusion calls for smaller steps while keeping the
+teacher's limit on help.
+
+Saved practice questions use their original level even when another worksheet
+is open. Prepared replies refresh when their level or teaching policy changes.
+See [worksheet-level guidance](docs/learner-guidance.md) for implementation and
+verification details.
+
 ## v1.57.0 — Clearer tutor focus and complete answer-key discovery
 
 Live tutoring names the question and quotes the exact printed words in a compact

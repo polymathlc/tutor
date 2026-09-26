@@ -32,6 +32,7 @@ import vm from 'node:vm';
 const here = dirname(fileURLToPath(import.meta.url));
 const FILE = join(here, '..', 'index.html');
 const html = readFileSync(FILE, 'utf8').replace(/\r\n/g, '\n');
+const learnerSource = readFileSync(join(here, '..', 'functions', 'learner-guidance.js'), 'utf8');
 
 let failures = 0;
 let checks = 0;
@@ -166,6 +167,7 @@ const sandbox = {
   Map, Set, AbortController
 };
 vm.createContext(sandbox);
+vm.runInContext(learnerSource, sandbox, { filename: 'learner-guidance.js' });
 vm.runInContext(SRC_DEADLINES + '\n' + SRC_CORE + '\n' + SRC_ANN + '\n' + SRC_PIC + '\n' + SRC_KEY + '\n' + SRC_BUDDY +
                 '\n' + SRC_SIZE + '\n' + SRC_BODY + '\n' + SRC_STAMP + '\n' + SRC_SAVE +
                 '\n' + SRC_PRAC + '\n' + SRC_PEOPLE + '\n' + SRC_COVER + '\n' + SRC_GUIDE +
@@ -407,7 +409,8 @@ ok('the hint authority order puts the worksheet first', /worksheet itself prints
 
 S.teachingNotes = [];
 S.aiStyle = null;
-eq('no notes and no style is an EMPTY digest, not an empty heading', S.aiGrounding('hint'), '');
+eq('no notebook still gets the worksheet learning level', S.aiGrounding('hint'), S.learnerGuidance());
+ok('an empty notebook does not add an empty reference heading', !S.aiGrounding('hint').includes('REFERENCE NOTES'));
 
 /* =====================================================================
    The teacher's corrections reach this app (v1.14.0)
@@ -7468,6 +7471,65 @@ ok('a picture with no stored ratio is resized freely',
 ok('the resize reads `picFitRatio` rather than carrying its own arithmetic',
    /var fit = picFitRatio\(pt\.x - ax, pt\.y - ay, a\.ratio, PASTE_MIN_PX, PASTE_MIN_PX\);/.test(html)
    && (html.match(/function picFitRatio\(/g) || []).length === 1);
+
+section('Worksheet level in real teaching requests');
+S.teachingNotes = []; S.aiStyle = null; S.cerStyle = null;
+S.myStudents = [{ name: 'Private learner name', level: 'P4', subject: 'science' }];
+S._activeIdx = 0; S.hints = []; S.pages = []; S.wsKey = { rows: [] };
+const gradePrompts = [];
+S.window.askGemini = async (prompt, config) => {
+  gradePrompts.push({ prompt, config });
+  return JSON.stringify({ question: 'Explain the change.', rungs: [{ key: 'nudge', text: 'Look at what changed.' }] });
+};
+for (const [grade, label, teaching] of [
+  ['P3', 'Primary 3', 'concrete objects'],
+  ['P6', 'Primary 6', 'multi-step questions'],
+  ['S1', 'Secondary 1', 'each variable represents']
+]) {
+  S.wsMeta = { level: grade, subject: 'science', guidance: 'nudge' };
+  await S.hintLadderFor({ num: 1, baseH: 800, canvas: { width: 0, height: 0 } }, { x: 10, y: 100 });
+  const system = gradePrompts.at(-1).config.system;
+  ok(label + ' hints carry its own teaching guidance', system.includes(label + ' (' + grade + ')') && system.includes(teaching));
+  ok(label + ' worksheet takes priority over the active profile', !system.includes('Primary 4 (P4)'));
+  ok(label + ' advice still respects the answer limit', system.includes('never raise the allowed help ceiling'));
+  ok(label + ' guidance does not disclose a student name', !system.includes('Private learner name'));
+}
+S.wsMeta = { level: '', subject: 'science', guidance: 'nudge' };
+await S.kwQuizBuild({ question: 'Where does the water go?', keywords: ['evaporation'] });
+ok('a keyword quiz on an untagged worksheet uses the active profile level',
+   gradePrompts.at(-1).config.system.includes('Primary 4 (P4)'));
+S.myStudents = [];
+ok('without a worksheet or profile level, teaching does not invent an age',
+   S.aiGrounding('teach').includes('Do not invent a school level or age'));
+
+// Practising a saved P3 mistake while a P6 worksheet remains open must use
+// the original question's context for both the explanation and teacher notes.
+S.wsMeta = { level: 'P6', subject: 'math', guidance: 'nudge' };
+S.myStudents = [{ level: 'S1', subject: 'science' }];
+const savedQuestion = { id: 'grade-retry', level: 'P3', subject: 'science',
+  question: 'Why can the plant grow?', answer: 'It receives light.', studentAnswer: 'It is green.',
+  verdict: 'wrong', docName: 'Primary 3 plants' };
+S.teachingNotes = [
+  { id: 'original-note', levels: ['P3'], subjects: ['science'], guidance: 'ORIGINAL_QUESTION_NOTE' },
+  { id: 'other-note', levels: ['P6'], subjects: ['math'], guidance: 'OTHER_WORKSHEET_NOTE' }
+];
+S.mistakes = [savedQuestion]; S.prac = { ids: [savedQuestion.id], i: 0, busy: false, typed: 'It gets water.', done: 0 };
+S.pracRender = noop; S.usageNote = noop; S.usageAdd = noop;
+S.loadTeachingNotes = async () => [];
+S.aiAvailable = () => true;
+S.$ = id => id === 'pracAnswer' ? { value: 'It gets water.' } : null;
+S.window.askGemini = async (prompt, config) => {
+  gradePrompts.push({ prompt, config });
+  return JSON.stringify({ verdict: 'partial', feedback: 'You remembered water. Think about what else the plant needs.' });
+};
+await S.pracCheck();
+const retrySystem = gradePrompts.at(-1).config.system;
+ok('saved mistake feedback uses the original worksheet level', retrySystem.includes('Primary 3 (P3)'));
+ok('saved mistake feedback does not inherit the open worksheet or profile level',
+   !retrySystem.includes('Primary 6 (P6)') && !retrySystem.includes('Secondary 1 (S1)'));
+ok('saved mistake feedback uses the original level and subject teacher notes',
+   retrySystem.includes('ORIGINAL_QUESTION_NOTE') && !retrySystem.includes('OTHER_WORKSHEET_NOTE'));
+ok('retry checking still returns its marking verdict', S.prac.result.verdict === 'partial');
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'
