@@ -1661,7 +1661,7 @@ test('Show page minimises the mobile panel while keeping live voice and its cont
   h.c.tutorFocusReveal(h.c.tutorFocusState.items[0].id);
   assert.equal(scrolls, 1); assert.equal(h.element('buddy').classList.contains('closed'), true);
   assert.equal(h.element('buddyFab').classList.contains('hidden'), false);
-  assert.equal(h.element('buddyFab').textContent, '🎧 Live tutor');
+  assert.equal(h.element('buddyFab').textContent, 'Open live controls');
   assert.equal(h.c.liveTutor.phase, 'live'); assert.equal(h.track.stopped, 0, 'showing the page must not disconnect voice');
   h.c.stopLiveTutor();
 });

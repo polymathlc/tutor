@@ -347,7 +347,7 @@
   .saveBad { background: var(--warn-bg, #fdecec); border-color: var(--warn-line, #e6b0b0); color: #8a2b2b; }
 
   /* ---------- Worksheet view: the pages ---------- */
-  #wsMain { flex: 1; min-height: 0; display: flex; }
+  #wsMain { flex: 1; min-height: 0; display: flex; position: relative; }
   #viewerArea {
     flex: 1; min-width: 0; overflow: auto; -webkit-overflow-scrolling: touch;
     background: var(--bg-soft); padding: 20px 0 60px;
@@ -858,6 +858,14 @@
     background: var(--bg); border-left: 1px solid var(--line); min-height: 0;
   }
   #buddy.closed { display: none; }
+  /* Keep the way back beside the closed panel, above the desktop lesson
+     controls. On phones it stays in the existing bottom control strip. */
+  #buddyFab {
+    position: absolute; right: 16px; top: 12px; z-index: 85;
+    border-radius: 999px; padding: 13px 20px; min-height: 44px;
+    box-shadow: var(--shadow-card);
+  }
+  #buddyFab:focus-visible { outline: 3px solid var(--accent-deep); outline-offset: 3px; }
   .buddyHead {
     display: flex; align-items: center; gap: 10px; padding: 14px 18px;
     border-bottom: 1px solid var(--line);
@@ -1552,12 +1560,10 @@
     }
     #buddy.closed { display: none; }
     #buddyFab {
-      position: fixed; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
-      z-index: 85; border-radius: 999px; padding: 13px 20px;
+      position: fixed; top: auto; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
     }
     #wsTitle { max-width: 34vw; }
   }
-  @media (min-width: 901px) { #buddyFab { display: none; } }
   /* Live tutoring keeps controls separate from the scrolling captions. */
   .liveCard { padding: 20px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius); }
   .liveCard h3 { font-size: 1.15rem; margin-bottom: 10px; }
@@ -2268,11 +2274,11 @@
         <div id="viewerArea"><div id="pagesContainer"></div></div>
 
         <!-- The study buddy -->
-        <aside id="buddy">
+        <aside id="buddy" aria-label="Tutor control panel">
           <div class="buddyHead">
             <div class="bWho" id="bWho"></div>
             <img class="adventureTutorAccent" data-adventure-companion="thinking" src="assets/companions/orbit-thinking.webp" width="43" height="43" alt="" onerror="this.hidden=true">
-            <button class="btn btnSm btnGhost" id="buddyClose" title="Hide Chung GPT">✕</button>
+            <button class="btn btnSm btnGhost" id="buddyClose" type="button" aria-label="Close control panel" title="Close control panel">✕</button>
           </div>
           <div class="buddyTabs">
             <button class="bTab on" data-bpane="hints">💡 Hints</button>
@@ -2326,7 +2332,7 @@
           <div class="buddyFoot" id="buddyFoot"></div>
         </aside>
 
-        <button class="btn btnPrimary" id="buddyFab">💬 Ask Chung GPT</button>
+        <button class="btn btnPrimary hidden" id="buddyFab" type="button" aria-controls="buddy" aria-expanded="true" title="Open hints, marking, chat and live tutor controls">Open control panel</button>
         <!-- Painted by renderVoiceBar(); empty and hidden until the mic is on. -->
         <div id="voiceBar" role="status" aria-live="polite"></div>
         <!-- What the tutor is saying, over the page. Painted by renderLiveSubs(). -->
@@ -3034,7 +3040,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.59.0';
+var APP_VERSION = 'v1.59.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -16299,7 +16305,8 @@ function tutorFocusReveal(id) {
   // The mobile buddy covers most of the worksheet. Minimise its panel without
   // ending the voice session; the floating Live tutor button reopens controls.
   if (window.innerWidth <= 900 && liveActive()) {
-    $('buddy').classList.add('closed'); $('buddyFab').classList.remove('hidden'); renderLiveTutor();
+    $('buddy').classList.add('closed'); $('buddyFab').classList.remove('hidden');
+    $('buddyFab').setAttribute('aria-expanded', 'false'); renderLiveTutor();
   }
   // Only this explicit button moves the page. Reduced motion gets no animation.
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -16441,7 +16448,7 @@ function renderLiveTutor() {
   if (!status) return;
   status.textContent = liveTutor.message;
   var fab = $('buddyFab');
-  if (fab) { fab.textContent = liveActive() ? '🎧 Live tutor' : '💬 Ask Chung GPT'; fab.setAttribute('aria-label', liveActive() ? 'Open live tutor controls' : 'Ask Chung GPT'); }
+  if (fab) { fab.textContent = liveActive() ? 'Open live controls' : 'Open control panel'; fab.setAttribute('aria-label', liveActive() ? 'Open live tutor controls' : 'Open control panel'); }
   $('liveStartBtn').hidden = liveActive();
   $('liveEndBtn').hidden = !liveActive();
   $('liveEndBtn').disabled = liveTutor.phase === 'closing';
@@ -17087,7 +17094,7 @@ function showView(v) {
   ['home', 'ws', 'mistake'].forEach(function (k) {
     $(k + 'View').classList.toggle('on', k === v);
   });
-  // The buddy's phone button is fixed to the viewport, so it would otherwise
+  // The reopen button is fixed to the viewport on phones, so it would otherwise
   // float over the worksheet list and the mistake book as well.
   $('buddyFab').classList.toggle('hidden', v !== 'ws' || !$('buddy').classList.contains('closed'));
   renderKeyChip();
@@ -17101,14 +17108,18 @@ function showView(v) {
 function openBuddy(pane) {
   $('buddy').classList.remove('closed');
   $('buddyFab').classList.add('hidden');
+  $('buddyFab').setAttribute('aria-expanded', 'true');
   if (pane) showBuddyPane(pane);
   // Reopened on the live tab: the orb's frame loop stopped when it was hidden, so paint restarts it.
   else if (buddyPane === 'live') liveOrbPaint();
 }
 function closeBuddy() {
+  var returnFocus = $('buddy').contains(document.activeElement);
   stopLiveTutor();
   $('buddy').classList.add('closed');
   $('buddyFab').classList.remove('hidden');
+  $('buddyFab').setAttribute('aria-expanded', 'false');
+  if (returnFocus && view === 'ws') $('buddyFab').focus({ preventScroll: true });
 }
 function showBuddyPane(pane) {
   if (pane !== 'live') stopLiveTutor();
@@ -29857,7 +29868,12 @@ document.querySelectorAll('.bTab').forEach(function (b) {
   b.addEventListener('click', function () { showBuddyPane(b.getAttribute('data-bpane')); });
 });
 $('buddyClose').addEventListener('click', closeBuddy);
-$('buddyFab').addEventListener('click', function () { openBuddy(buddyPane); });
+$('buddyFab').addEventListener('click', function () {
+  // Keep the existing pane and any unfinished chat text when reopening.
+  openBuddy();
+  var target = buddyPane === 'chat' ? $('chatInput') : document.querySelector('.bTab.on');
+  if (target) target.focus({ preventScroll: true });
+});
 
 $('viewerArea').addEventListener('scroll', scheduleRaster, { passive: true });
 $('viewerArea').addEventListener('scroll', function () { fastTutorPrepareSoon(); }, { passive: true });

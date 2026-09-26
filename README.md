@@ -12,6 +12,13 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.59.1 — Reopen the control panel
+
+Closing the tutor panel now leaves a clear **Open control panel** button at the
+top-right of the worksheet on desktop and bottom-right on mobile. It restores
+the last selected tab, supports keyboard navigation, and stays clear of the
+desktop live lesson controls.
+
 ## v1.59.0 — Advice matched to the worksheet level
 
 Chat, hints, feedback, practice and live tutoring now share specific teaching
