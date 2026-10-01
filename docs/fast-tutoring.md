@@ -3,7 +3,8 @@
 Study Buddy prepares short teaching hints while a saved worksheet is open, then
 reuses them during a live lesson. No Jev account or key is needed. GPT-Live still
 handles speech and interruptions; the new `studyBuddyTeach` function handles the
-teaching work with the existing `OPENAI_API_KEY` secret.
+teaching work with `OPENAI_API_KEY`, followed by the server-side
+`GEMINI_API_KEY` and `MOONSHOT_API_KEY` backups.
 
 ## Response paths
 
@@ -11,10 +12,10 @@ teaching work with the existing `OPENAI_API_KEY` secret.
   learner, worksheet, visible page, writing and teaching settings still match.
 - **Prepared guidance:** the server selects the next permitted hint or a simpler
   explanation from the prepared question. This path makes no model request.
-- **Intent selection:** GPT-6 Luna selects an existing permitted response for a
+- **Intent selection:** GPT-6.1 Sol selects an existing permitted response for a
   known question. It cannot write a new answer or decide that work is correct.
   Uncertain or failed selection falls through to fresh reasoning.
-- **Fresh reasoning:** GPT-6 Astra reads the current worksheet and writing and
+- **Fresh reasoning:** GPT-6.1 Sol reads the current worksheet and writing and
   streams its guidance. The browser sends complete useful sentences to GPT-Live
   as they arrive. A changed question cancels the previous request immediately.
 
@@ -49,7 +50,7 @@ Text extraction runs asynchronously and never blocks speech. Old `point`
 markers are removed from live speech and no longer draw a coordinate-based cue.
 Prepared packs use a new revision so old underlines are not reused.
 
-Preparation uses Astra with medium reasoning and structured output, up to eight
+Preparation uses GPT-6.1 Sol with medium reasoning and structured output, up to eight
 readable questions per page. Each question has a progressive hint ladder,
 simpler explanations and relevant misconception explanations. Question images
 and teacher references are data, never authority to change the help ceiling.
@@ -77,7 +78,16 @@ subcollection. It does not change existing session counters or shared Firestore
 rules. Caches are scoped to the account, learner, worksheet, page, source content,
 teaching references and current server policy. They expire after seven days,
 replace older versions of the same page and are bounded to 60 pages per account.
-Raw uploaded page images are not persisted in the cache.
+Raw uploaded page images are not persisted in the cache. Version 1.60.0 changes
+the preparation revision so packs created under the older model are regenerated.
+
+The server tries OpenAI, Gemini, then Kimi. Every backup receives the same
+question images, teacher instructions and response schema. Malformed or truncated
+structured output is rejected before use. Each configured route has a bounded
+share of the overall timeout so a stalled first route leaves time for backups.
+After the first streamed text, failure stops the request rather than combining
+responses from two providers. Gemini and Kimi backups deliver one complete reply;
+OpenAI continues streaming useful text as it arrives.
 
 The new endpoint requires Firebase Google sign-in, the app's App Check token,
 an allowed origin and ownership of the saved worksheet. Model names, reasoning
@@ -89,7 +99,9 @@ not use this paid quota. Reaching it returns to the existing tutor.
 
 `studyBuddyTeach` keeps one minimum instance warm to reduce cold starts. This
 adds a small ongoing hosting cost. It otherwise uses the existing Firebase
-project and OpenAI account. Deploy only this function when releasing this change:
+project and provider accounts. Bind the existing shared project secrets
+`OPENAI_API_KEY`, `GEMINI_API_KEY` and `MOONSHOT_API_KEY` to both the teaching and
+adventure functions when deploying. Deploy only this function when releasing this change:
 
 ```sh
 firebase deploy --only functions:study-buddy-live:studyBuddyTeach --project mathgen--app
@@ -117,5 +129,5 @@ speech playback overhead and must not be reported as end-to-end voice latency.
 
 References: [GPT-Live delegation](https://developers.openai.com/api/docs/guides/live-delegation),
 [streaming Responses](https://developers.openai.com/api/docs/guides/streaming-responses),
-[GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra),
-[GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna).
+[GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol),
+[Gemini structured output](https://ai.google.dev/gemini-api/docs/generate-content/structured-output).

@@ -13,7 +13,7 @@ function sse(events, split = 17) {
     controller.close();
   } }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
 }
-test('preparation fixes Astra medium reasoning and a strict bounded schema without storing provider data', async () => {
+test('preparation fixes the default model with medium reasoning and a strict bounded schema without storing provider data', async () => {
   let sent;
   const provider = createTeachProvider({ apiKey: () => 'private', fetchImpl: async (url, req) => {
     assert.equal(url, 'https://api.openai.com/v1/responses'); assert.equal(req.headers.Authorization, 'Bearer private');
@@ -28,13 +28,13 @@ test('preparation fixes Astra medium reasoning and a strict bounded schema witho
   assert.match(sent.instructions, /exact contiguous quote/);
   assert.match(sent.instructions, /Never emit \[\[point\]\]/);
 });
-test('selector fixes Luna none reasoning, bounds available response IDs, and receives no student image or key', async () => {
+test('selector fixes the default model with low reasoning, bounds available response IDs, and receives no student image or key', async () => {
   let sent;
   const provider = createTeachProvider({ apiKey: () => 'private', fetchImpl: async (url, req) => {
     sent = JSON.parse(req.body); return Response.json(completed({ responseId: 'opaque-id', confidence: .95 }));
   } });
   const result = await provider.select(context, body, { label: '1', summary: 'Equal groups' }, [{ id: 'opaque-id', text: 'Look at the groups.', when: 'Needs nudge', level: 'nudge' }]);
-  assert.equal(result.responseId, 'opaque-id'); assert.equal(sent.model, MODELS.select); assert.equal(sent.reasoning.effort, 'none');
+  assert.equal(result.responseId, 'opaque-id'); assert.equal(sent.model, MODELS.select); assert.equal(sent.reasoning.effort, 'low');
   assert.deepEqual(sent.text.format.schema.properties.responseId.enum, ['FRESH', 'opaque-id']);
   assert.equal(JSON.stringify(sent.input).includes('image_url'), false); assert.equal(JSON.stringify(sent.input).includes('serverAnswerKey'), false);
 });
@@ -51,7 +51,7 @@ test('fresh teaching forwards deltas while the stream is arriving and requires c
 test('upstream truncation, refusal and failure cannot masquerade as a completed answer', async () => {
   for (const ending of [null, { type: 'response.incomplete' }, { type: 'response.failed', response: { error: 'PRIVATE' } }, { type: 'response.refusal.delta', delta: 'No' }]) {
     const provider = createTeachProvider({ apiKey: () => 'private', fetchImpl: async () => sse([{ type: 'response.output_text.delta', delta: 'Partial' }, ...(ending ? [ending] : [])]) });
-    await assert.rejects(provider.fresh(context, body, () => {}), /stream|response/);
+    await assert.rejects(provider.fresh(context, body, () => {}), /check this|stream|response/);
   }
 });
 test('request abort signals are forwarded and upstream error bodies never leak', async () => {
@@ -66,7 +66,7 @@ test('request abort signals are forwarded and upstream error bodies never leak',
 test('teacher ceiling is repeated in every provider path and structured response refuses incomplete output', async () => {
   assert.match(teachingInstructions({ ...context, ceiling: 'nudge' }), /NO named method/);
   const provider = createTeachProvider({ apiKey: () => 'private', fetchImpl: async () => Response.json({ status: 'incomplete', output: [] }) });
-  await assert.rejects(provider.prepare(context, body), /Incomplete/);
+  await assert.rejects(provider.prepare(context, body), /check this/);
   const unconfigured = createTeachProvider({ apiKey: () => '', fetchImpl: async () => { throw new Error('must not call'); } });
   await assert.rejects(unconfigured.prepare(context, body), error => error.code === 'teaching_not_configured');
 });

@@ -23,6 +23,9 @@ const { createCentreRepository } = require('./centre-admin-repository');
 
 initializeApp();
 const openaiKey = defineSecret('OPENAI_API_KEY');
+const geminiKey = defineSecret('GEMINI_API_KEY');
+const kimiKey = defineSecret('MOONSHOT_API_KEY');
+const textProviderOptions = { apiKey: () => openaiKey.value(), geminiApiKey: () => geminiKey.value(), kimiApiKey: () => kimiKey.value() };
 const service = createLiveService({
   auth: getAuth(), appCheck: getAppCheck(), repository: createRepository(getFirestore()),
   provider: createProvider({ apiKey: () => openaiKey.value(), connect: (url, options) => new WebSocket(url, options) }),
@@ -45,21 +48,21 @@ exports.studyBuddyLiveCleanup = onSchedule({
 
 const gameService = createGameService({
   auth: getAuth(), appCheck: getAppCheck(), repository: createGameRepository(getFirestore()),
-  provider: createGameProvider({ apiKey: () => openaiKey.value() }),
+  provider: createGameProvider(textProviderOptions),
   report: code => logger.warn(code)
 });
 exports.studyBuddyGame = onRequest({
-  region: 'us-central1', secrets: [openaiKey], timeoutSeconds: 60,
+  region: 'us-central1', secrets: [openaiKey, geminiKey, kimiKey], timeoutSeconds: 60,
   maxInstances: 5, concurrency: 20, memory: '256MiB', invoker: 'public'
 }, gameService.handler);
 
 const teachService = createTeachService({
   auth: getAuth(), appCheck: getAppCheck(), repository: createTeachRepository(getFirestore()),
-  provider: createTeachProvider({ apiKey: () => openaiKey.value() }),
+  provider: createTeachProvider(textProviderOptions),
   report: code => logger.warn(code)
 });
 exports.studyBuddyTeach = onRequest({
-  region: 'us-central1', secrets: [openaiKey], timeoutSeconds: 180,
+  region: 'us-central1', secrets: [openaiKey, geminiKey, kimiKey], timeoutSeconds: 180,
   minInstances: 1, maxInstances: 5, concurrency: 20, memory: '512MiB', invoker: 'public'
 }, teachService.handler);
 

@@ -3040,7 +3040,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.59.1';
+var APP_VERSION = 'v1.60.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -4121,16 +4121,20 @@ async function resolveNotesOwner() {
    account change, or one account's setting governs the next person to sign in
    on a shared iPad.
 
-   An unset field means Gemini — the default this app already had — so a
-   centre that never touches it is unaffected, and a read that is DENIED
-   changes nothing: Gemini leads, exactly as it did before any of this. */
+   OpenAI is the default. Old unmarked preferences migrate on read; a teacher's
+   deliberate choice (By/At metadata or the manual marker) remains in force. */
+function aiEngineSavedPreference(d) {
+  d = d || {};
+  return (d.aiEngineManual === true || d.aiEngineBy || d.aiEngineAt) &&
+    ['openai', 'gemini', 'kimi'].indexOf(d.aiEngine) >= 0 ? d.aiEngine : 'openai';
+}
 var _aiCfgStop = null;
 function aiEngineWatchShared() {
   if (_aiCfgStop || !db) return;
   try {
     _aiCfgStop = db.collection('config').doc('admin').onSnapshot(function (snap) {
       var d = (snap && snap.exists && snap.data()) || {};
-      if (window.aiSetEngine) window.aiSetEngine(d.aiEngine || 'gemini');
+      if (window.aiSetEngine) window.aiSetEngine(aiEngineSavedPreference(d));
       refreshAiEngineNames();
       if ($('engineModal') && $('engineModal').classList.contains('open')) renderEngineBody();
     }, function (err) {
@@ -4151,6 +4155,7 @@ async function aiEngineSetShared(engine) {
   if (!isAdmin(currentUser)) return;
   await db.collection('config').doc('admin').set({
     aiEngine: engine,
+    aiEngineManual: true,
     aiEngineAt: new Date().toISOString(),
     aiEngineBy: (currentUser && currentUser.email) || ''
   }, { merge: true });
@@ -23893,8 +23898,8 @@ function renderEngineBody() {
     h += '<p class="sub" style="margin-top:10px">' + (mOpen
       ? 'ChatGPT last answered on <b>' + escHtml(mOpen) + '</b>.'
       : 'ChatGPT has not been asked yet this session, so the model it runs is not known here.') +
-      ' The <code>askOpenAi</code> function in the Maths repo chooses it, deliberately — a page that could ' +
-      'name a model could name an expensive one, and the bill is the centre’s.</p>';
+      ' The default is GPT-6.1 Sol for text, vision and reasoning; Gemini and Kimi are backups. ' +
+      'The shared server validates the model and reports the model actually used.</p>';
     if (st.last) {
       h += '<p class="sub" style="margin-top:10px">The last answer came from <b>' + escHtml(st.last) + '</b>' +
            (st.fellBack ? ', after an earlier route refused.' : '.') + '</p>';
@@ -30207,8 +30212,8 @@ window.transcribeRouteNote = function transcribeRouteNote() {
    every reply comes back `[429] Your billing account has exceeded its
    monthly spending cap` — the same answer to every call, on every device,
    until the month turns over. One engine is one thing standing between a
-   child and a dead app, so Gemini is the engine and ChatGPT and Kimi are
-   behind it.
+   child and a dead app. ChatGPT leads all text, vision and thinking calls,
+   with Gemini then Kimi available when the preferred route fails.
 
    `window.askGemini` KEEPS ITS NAME AND ITS SHAPE, and that is the whole
    reason this is one change rather than fifteen. It is the ONE door every
@@ -30231,23 +30236,14 @@ window.transcribeRouteNote = function transcribeRouteNote() {
    WORDS, rather than reporting it as an AI error the teacher would go
    looking for in the wrong place.
    ===================================================================== */
-const AI_ENGINES = ["gemini", "openai", "kimi"];
+const AI_ENGINES = ["openai", "gemini", "kimi"];
+const AI_DEFAULT_MODEL = "gpt-6.1-sol";
 const AI_ROUTE_LABEL = { gemini: "Gemini", openai: "ChatGPT (server key)", kimi: "Kimi (server key)" };
 const AI_ENGINE_VENDOR = { gemini: "Gemini", openai: "ChatGPT", kimi: "Kimi" };
 
-/* \ud83e\udd16 WHICH MODEL ANSWERED IS READ BACK, NEVER NAMED HERE.
-   The centre teaches on ChatGPT `gpt-6-astra`, and the ONE place that is
-   decided is the `askOpenAi` Cloud Function in `polymathlc/math` — which
-   picks the model SERVER-SIDE on purpose, because a client that could name
-   a model could name an expensive one and the bill is the centre's. So
-   nothing here asks for one: a field this app sent would be ignored, and a
-   constant mirroring the server's would go stale in silence the first time
-   that function was redeployed — leaving the admin's panel confidently
-   naming a model nothing had used for months.
-   BOTH CALLABLES RETURN THE MODEL THEY REALLY USED, so the panel reports a
-   fact rather than an intention, and it corrects itself the moment the
-   server moves. Before the first call it knows nothing and says so — the
-   rule that whole panel is built on. */
+/* The default is explicit in every shared OpenAI call. The server allowlist
+   controls which models an admin may request; student requests remain pinned
+   server-side. The model returned by the callable is the fact shown below. */
 const _aiModel = { openai: "", kimi: "" };
 
 /* WHICH ENGINE LEADS CAN DEPEND ON THE TASK, and exactly one task asks:
@@ -30267,7 +30263,7 @@ const AI_TASK_ENGINE = { teach: "openai" };
 const AI_DOWN_MS = 10 * 60 * 1000;
 const _aiDown = { gemini: 0, openai: 0, kimi: 0 };
 const _aiWhy = { gemini: "", openai: "", kimi: "" };
-let _aiPreferred = "gemini";
+let _aiPreferred = "openai";
 let _aiLast = { engine: "", fellBack: false };
 
 function aiEngineIsDown(e) { return (_aiDown[e] || 0) > Date.now(); }
@@ -30282,7 +30278,7 @@ function _aiMarkUp(e) { _aiDown[e] = 0; _aiWhy[e] = ""; }
    every route rather than an empty list — a stale word in the shared
    setting would otherwise take the AI off every device at once. */
 window.aiSetEngine = function aiSetEngine(engine) {
-  _aiPreferred = AI_ENGINES.indexOf(engine) >= 0 ? engine : "gemini";
+  _aiPreferred = AI_ENGINES.indexOf(engine) >= 0 ? engine : "openai";
 };
 
 /* `openai` and `kimi` are ALWAYS listed. Whether the function is deployed
@@ -30329,14 +30325,16 @@ async function _aiServerAsk(name, prompt, opts, extra) {
   if (typeof used === "string" && used.trim()) _aiModel[name === "askKimi" ? "kimi" : "openai"] = used.trim();
   return text.trim();
 }
-/* NOTHING IS SENT TO A SERVER ROUTE BUT THE ASK. No temperature — a
-   reasoning model runs only at its own default and one sent is a 400 rather
-   than a worse answer. No model either, to EITHER of them: both functions
-   choose server-side on purpose, so a name from here is at best ignored and
-   at worst a client deciding what the centre is billed for.
-   `thinkingLevel` is deliberately not translated — an argument a model does
-   not know is a failed call. */
-function askOpenAiServer(prompt, opts) { return _aiServerAsk("askOpenAi", prompt, opts); }
+/* NOTHING IS SENT TO A SERVER ROUTE except the ask and validated model/effort.
+   Shared OpenAI accepts its allowlisted model and valid reasoning effort.
+   No sampling controls are sent to reasoning models. Kimi keeps its server
+   model so a shared backend update can move the backup independently. */
+function askOpenAiServer(prompt, opts) {
+  return _aiServerAsk("askOpenAi", prompt, opts, {
+    model: AI_DEFAULT_MODEL,
+    reasoningEffort: ["low", "medium", "high", "xhigh", "max"].indexOf(opts.thinkingLevel) >= 0 ? opts.thinkingLevel : "low"
+  });
+}
 function askKimiServer(prompt, opts) { return _aiServerAsk("askKimi", prompt, opts); }
 
 function _aiRun(engine, prompt, opts) {
@@ -30402,7 +30400,7 @@ async function aiAskRoutes(prompt, opts, order) {
 window.aiEngines = function aiEngines() {
   return {
     preferred: _aiPreferred,
-    vendor: AI_ENGINE_VENDOR[_aiLast.engine === "openai" ? "openai" : _aiLast.engine === "kimi" ? "kimi" : _aiPreferred] || "Gemini",
+    vendor: AI_ENGINE_VENDOR[_aiLast.engine || _aiPreferred] || "ChatGPT",
     order: aiEngineOrder().map(e => AI_ROUTE_LABEL[e] || e),
     /* An app whose TEACHING runs on a different engine from its marking
        looks, from every screen, exactly like one that does not — so the
@@ -30424,7 +30422,7 @@ window.aiEngines = function aiEngines() {
 window.openAiActive = function openAiActive() { return _aiLast.engine === "openai"; };
 window.kimiActive = function kimiActive() { return _aiLast.engine === "kimi"; };
 
-window.aiReady = () => !!geminiModel;
+window.aiReady = () => !!geminiModel || (typeof firebase !== "undefined" && !!firebase.functions);
 
 // Gemini's ceiling is far below what a long marking run may ask for, and an
 // over-large budget is a 400 rather than a long answer — so it is clamped

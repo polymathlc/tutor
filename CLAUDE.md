@@ -1810,23 +1810,24 @@ literal rather than a `var` assigned up there.
   is worse than one that spends a call finding out. The mark expires by itself
   after `AI_DOWN_MS` and a success clears it. `sort` is stable, so the
   preference order survives underneath the down-marking.
-- **NO TEMPERATURE IS SENT TO A SERVER ROUTE.** A reasoning model runs only at
-  its own default and one sent is a **400** — not a worse answer, no answer at
-  all. `thinkingLevel` is deliberately not translated either.
-- **⚡ NO MODEL IS SENT TO EITHER SERVER ROUTE, AND WHICH ONE ANSWERED IS READ
-  BACK.** The centre teaches on ChatGPT **`gpt-6-astra`**, and the ONE place
-  that is decided is the `askOpenAi` Cloud Function in `polymathlc/math`, which
-  picks it **server-side on purpose** — *"a client that could name a model could
-  name an expensive one, and the bill is the centre's"*, in that file's own
-  words. So a model named here is ignored on the way out, and **a constant
-  mirroring the server's would go stale in silence on the way back**, leaving
-  the admin's panel confidently naming a model nothing had used for months.
-  Both callables **return** the model they really used, so `_aiModel` records it
-  and the panel reports a FACT rather than an intention — and corrects itself the
-  moment that function moves. **A reply carrying no model leaves the last one
-  alone**: "the server stopped saying" and "nothing has answered yet" are
-  different things, and only one is worth printing as a gap. The harness pins
-  that **no model id is a VALUE anywhere in this file**.
+- **NO SAMPLING CONTROLS ARE SENT TO THE OPENAI REASONING ROUTE.** The explicit
+  default is `AI_DEFAULT_MODEL` (`gpt-6.1-sol`), with valid `reasoningEffort`
+  (`low`, `medium`, `high`, `xhigh`, `max`). Unsupported `none`/`minimal` become
+  `low`. The shared server validates models and pins student requests to its
+  default. Kimi still uses its server-selected model.
+- **WHICH MODEL ANSWERED IS READ BACK.** `_aiModel` records the callable's actual
+  model; a missing model leaves the last known one alone. The admin's panel names
+  the provider that actually answered, including Gemini after OpenAI fails.
+- **ALL ORDINARY TEXT, VISION AND REASONING START WITH OPENAI**, followed by
+  Gemini then Kimi. `aiEngineSavedPreference` migrates missing and unmarked old
+  defaults; `aiEngineBy`, `aiEngineAt` or `aiEngineManual: true` preserve a teacher's
+  deliberate override. Picker writes are merged and marked manual. Gemini setup
+  failure must not make an available shared OpenAI route look unavailable.
+- **THE SERVER USES THE SAME CHAIN** for prepared/fresh tutoring and reward
+  verification (`functions/ai-router.js`). Bound secrets stay server-side. Every
+  backup retains images, instructions and strict schema validation. A partial
+  stream never starts a replacement answer. Refused reward checks remain false.
+  Speech/Live, transcription and generated images retain their specialised models.
 - **⚡ WHICH ENGINE LEADS CAN DEPEND ON THE TASK, AND EXACTLY ONE TASK ASKS**
   (`AI_TASK_ENGINE`, `aiEngineOrder(task)`, `askGemini(…, { task: 'teach' })`).
   **TEACHING** — the 💡 hint ladder, the 🎧 live reply and the ✏️ maths pad's two
@@ -1879,9 +1880,9 @@ literal rather than a `var` assigned up there.
   Learning Portal loses the question bank. Only the admin may write it, and
   **that is checked in `aiEngineSetShared` rather than only on the picker**:
   hiding a control is never the lock.
-- **An unset field means Gemini**, the default this app already had, so a
-  centre that never touches it is unaffected — and a read that is DENIED
-  changes nothing at all.
+- **An unset field means OpenAI.** Old unmarked defaults migrate to OpenAI; a
+  deliberately saved engine remains in force. A denied read leaves the current
+  session preference unchanged.
 - **A write that FAILED is reported.** A teacher told nothing would believe the
   whole centre had moved.
 - **`aiVendorName()` reads `window.aiEngines()`**, the one door, rather than
@@ -4759,12 +4760,9 @@ and nothing on any screen says what changed.
   the live reply files itself under the `liveFlush` declared inside it and the census goes green
   over a call it never checked. Take the other engines out from behind ChatGPT and an OpenAI
   account out of credit is no hint at all rather than a slower one; let an unknown task fall
-  through to an empty order and a typo takes the AI off every device at once. Name a model to
-  EITHER server route and it is a page deciding what the centre is billed for — both functions
-  choose server-side on purpose and ignore it anyway. And mirror the server's id into a constant
-  here and the panel goes on naming it for months after that shared function was redeployed, with
-  nothing anywhere able to say so: read it back off the reply, which is what both callables
-  return it for.
+  through to an empty order and a typo takes the AI off every device at once. The shared OpenAI route now accepts an allowlisted default model and valid reasoning
+  effort while retaining server control for students. Kimi keeps its server model. Read the
+  actual provider model off every reply so the panel reports what answered.
 - After touching **📎 the pasted picture** (`annPastePic`, `annLocked`, `annLockedId`,
   `annPicWarm`, `annPicFor`, `annPicsReady`, `shrinkImageDataUrl`, `imageRatio`, `pastePicBox`,
   `pasteGoesToWorksheet`, `pasteImageOntoPage`, `pasteImagesFromClipboard`, `pastePicNode`,
@@ -5812,7 +5810,9 @@ and nothing on any screen says what changed.
   browser, and it would be in the repository history for good.
 - After editing `index.html`, syntax-check both script blocks:
   `python3 -c "import re;s=open('index.html').read();b=re.findall(r'<script(?![^>]*src=)[^>]*>(.*?)</script>',s,re.S);open('/tmp/c0.js','w').write(b[0]);open('/tmp/c1.mjs','w').write(b[1])" && node --check /tmp/c0.js && node --check /tmp/c1.mjs`
-- Commit messages and pushed artifacts must not contain the model identifier.
+- Never include provider credentials in commit messages or pushed artifacts. Model
+  identifiers belong in source defaults and documentation when the user requests
+  a model migration; commit titles should describe the resulting behaviour.
 
 ## Versioning convention — applies to EVERY change (do this every time)
 1. **Bump the version.** In `index.html`, update `var APP_VERSION = 'vX.Y.Z'`. Patch bump for
