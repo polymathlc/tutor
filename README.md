@@ -12,6 +12,19 @@ Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on f
 
 ---
 
+## v1.60.0 — One default, with automatic backups
+
+Text, worksheet vision and reasoning now start with GPT-6.1 Sol. Gemini and Kimi
+remain automatic backups, including the server's prepared tutoring and adventure
+reward checks. Existing unmarked defaults migrate to ChatGPT; deliberate teacher
+engine choices remain available. The engine panel reports the provider and model
+that actually answered. Speech, transcription and image generation keep their
+specialised models.
+
+Both `studyBuddyTeach` and `studyBuddyGame` require a functions redeploy to bind
+`GEMINI_API_KEY` and `MOONSHOT_API_KEY` alongside `OPENAI_API_KEY`. These are the
+same secrets used by the shared Maths project. Prepared packs use a new revision.
+
 ## v1.59.1 — Reopen the control panel
 
 Closing the tutor panel now leaves a clear **Open control panel** button at the

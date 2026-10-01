@@ -7109,13 +7109,11 @@ ok('…and `askGeminiDirect` is reached only through the dispatcher',
    ignored on the way out and would go stale in silence on the way back,
    leaving this panel confidently naming a model nothing had used for
    months. */
-ok('no model id is a VALUE anywhere in this file',
-   !/["']gpt-[0-9]/.test(html),
-   'a mirrored id goes stale the first time the shared function is redeployed, and nothing here would say so');
-ok('…and neither server route sends one',
-   /function askOpenAiServer\(prompt, opts\) \{ return _aiServerAsk\("askOpenAi", prompt, opts\); \}/.test(html) &&
-   /function askKimiServer\(prompt, opts\) \{ return _aiServerAsk\("askKimi", prompt, opts\); \}/.test(html),
-   'both functions choose server-side, so a name from here is a client deciding what the centre is billed for');
+ok('the OpenAI request pins the new default and passes a supported reasoning effort',
+   /const AI_DEFAULT_MODEL = "gpt-6\.1-sol"/.test(html) &&
+   /model: AI_DEFAULT_MODEL/.test(html) && /reasoningEffort:/.test(html));
+ok('Kimi remains server-selected',
+   /function askKimiServer\(prompt, opts\) \{ return _aiServerAsk\("askKimi", prompt, opts\); \}/.test(html));
 ok('…it is READ BACK off the reply instead',
    /_aiModel\[name === "askKimi" \? "kimi" : "openai"\] = used\.trim\(\);/.test(html),
    'the panel then reports a fact rather than an intention, and corrects itself when the server moves');
@@ -7269,9 +7267,10 @@ ok('the write is a MERGE, always',
 ok('…and only the admin may write it',
    /async function aiEngineSetShared\(engine\) \{\s*\n\s*if \(!isAdmin\(currentUser\)\) return;/.test(html),
    'hiding the picker is never the lock');
-ok('an unset field means Gemini',
-   /window\.aiSetEngine\(d\.aiEngine \|\| 'gemini'\)/.test(html),
-   'a centre that never touches this must be unaffected');
+ok('unset and unmarked legacy preferences use ChatGPT; explicit teacher choices survive',
+   /window\.aiSetEngine\(aiEngineSavedPreference\(d\)\)/.test(html) &&
+   /d\.aiEngineManual === true \|\| d\.aiEngineBy \|\| d\.aiEngineAt/.test(html) &&
+   /\? d\.aiEngine : 'openai'/.test(html));
 ok('a failed write is REPORTED',
    /Could not save the centre-wide setting/.test(html),
    'a teacher told nothing would believe the whole centre had moved');

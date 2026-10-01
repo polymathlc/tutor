@@ -3,7 +3,7 @@
 const { createHash, randomUUID } = require('node:crypto');
 const intents = require('./fast-tutor-intents');
 const learnerGuidance = require('./learner-guidance');
-const VERSION = 'fast-tutor-v3-worksheet-level';
+const VERSION = 'fast-tutor-v4-default-routing';
 const LEVELS = ['nudge', 'concepts', 'method', 'answer'];
 const POLICY = Object.freeze({ prepPerDay: 60, paidPerDay: 1200, paidPerMinute: 12, cachedPages: 60, cacheMs: 7 * 86400000, leaseMs: 155000 });
 class TeachError extends Error {

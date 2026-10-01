@@ -57,15 +57,21 @@ browser-written profile fields can grant teacher authority.
   streak while the personal best remains.
 
 The server independently checks question text, the student's answer and an
-optional question crop with a fixed model, `gpt-4.1-mini-2025-04-14`. Its strict
+optional question crop with a fixed model, `gpt-6.1-sol`. Its strict
 boolean response must identify the work as relevant and confidently assessable.
 No points are awarded for ambiguous, incomplete, irrelevant or refused input.
+If OpenAI cannot complete the check, the server tries Gemini then Kimi with the
+same question, optional diagram and boolean schema. Invalid results remain
+unavailable; refusals never become a correct verdict or award rewards. The
+function binds `OPENAI_API_KEY`, `GEMINI_API_KEY` and `MOONSHOT_API_KEY` from the
+existing shared Firebase project.
+
 Browser claims about marks, correctness, XP, answer keys, models and grade levels
 are ignored. The server supplies the level from the account's student profile.
 The verifier returns no answer key or solution to the browser.
 
 The [Responses structured-output format](https://developers.openai.com/api/docs/guides/structured-outputs)
-and [model image/structured-output support](https://developers.openai.com/api/docs/models/gpt-4.1-mini)
+and [model image/structured-output support](https://developers.openai.com/api/docs/models/gpt-6.1-sol)
 are documented by OpenAI. The verification request uses `store: false`; the game
 records retain only hashes and reward metadata, not question images or answers.
 
