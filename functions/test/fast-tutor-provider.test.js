@@ -28,14 +28,15 @@ test('preparation fixes the default model with medium reasoning and a strict bou
   assert.match(sent.instructions, /exact contiguous quote/);
   assert.match(sent.instructions, /Never emit \[\[point\]\]/);
 });
-test('selector fixes the default model with low reasoning, bounds available response IDs, and receives no student image or key', async () => {
+test('selector uses Decisions, bounds available response IDs, and receives no student image or key', async () => {
   let sent;
   const provider = createTeachProvider({ apiKey: () => 'private', fetchImpl: async (url, req) => {
-    sent = JSON.parse(req.body); return Response.json(completed({ responseId: 'opaque-id', confidence: .95 }));
+    assert.equal(url, 'https://api.openai.com/v1/decisions');
+    sent = JSON.parse(req.body); return Response.json({ answers: [{ name: 'response', type: 'choice', choice: 'opaque-id', confidence: .95, probabilities: [{ value: 'FRESH', probability: .05 }, { value: 'opaque-id', probability: .95 }] }] });
   } });
   const result = await provider.select(context, body, { label: '1', summary: 'Equal groups' }, [{ id: 'opaque-id', text: 'Look at the groups.', when: 'Needs nudge', level: 'nudge' }]);
-  assert.equal(result.responseId, 'opaque-id'); assert.equal(sent.model, MODELS.select); assert.equal(sent.reasoning.effort, 'low');
-  assert.deepEqual(sent.text.format.schema.properties.responseId.enum, ['FRESH', 'opaque-id']);
+  assert.equal(result.responseId, 'opaque-id'); assert.equal(sent.model, MODELS.select); assert.equal(sent.reasoning, undefined);
+  assert.deepEqual(sent.questions[0].choices.map(c => c.value), ['FRESH', 'opaque-id']);
   assert.equal(JSON.stringify(sent.input).includes('image_url'), false); assert.equal(JSON.stringify(sent.input).includes('serverAnswerKey'), false);
 });
 test('fresh teaching forwards deltas while the stream is arriving and requires completed status', async () => {
@@ -113,3 +114,19 @@ test('outgoing preparation uses the profile only for untagged worksheets and nev
     if (!expected) assert.match(sent.instructions, /general beginner support/);
   }
 });
+
+ test('selector refusals, invalid choices and upstream failures fail closed for the fresh fallback', async () => {
+  for (const payload of [{ answers: [{ type: 'refusal', name: 'response' }] }, { answers: [] },
+    { answers: [{ type: 'choice', name: 'response', choice: 'hidden-answer', confidence: 1, probabilities: [] }] }]) {
+    const provider = createTeachProvider({ apiKey: () => 'private', fetchImpl: async () => Response.json(payload) });
+    await assert.rejects(provider.select(context, body, { label: '1' }, [{ id: 'hint', text: 'Look.' }]), e => e.code === 'teaching_unavailable');
+  }
+  const provider = createTeachProvider({ apiKey: () => 'private', fetchImpl: async () => new Response('SECRET', { status: 429 }) });
+  await assert.rejects(provider.select(context, body, { label: '1' }, [{ id: 'hint' }]), e => !e.message.includes('SECRET'));
+ });
+ test('selector empty choices and already-cancelled requests never call the provider', async () => {
+  const provider = createTeachProvider({ apiKey: () => 'private', fetchImpl: async () => { assert.fail('unexpected request'); } });
+  assert.deepEqual(await provider.select(context, body, {}, []), { responseId: 'FRESH', confidence: 1 });
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(provider.select(context, body, {}, [{ id: 'hint' }], controller.signal));
+ });
