@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sample worksheet · Polymath Study Buddy</title>
+  <link rel="stylesheet" href="sample.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script defer src="sample.js"></script>
+</head>
+<body>
+  <main>
+    <header><div><span class="eyebrow" id="subjectLabel">Study Buddy</span><h1 id="title">Sample worksheet</h1></div><span class="badge">Try our online suite</span></header>
+    <p id="notice" role="status">Loading the sample worksheet…</p>
+    <section class="workspace" id="workspace" hidden>
+      <div class="paperPanel">
+        <div class="toolbar" aria-label="Worksheet controls">
+          <button id="previous" aria-label="Previous page">←</button><span id="pageLabel"></span><button id="next" aria-label="Next page">→</button>
+          <label>Writing tool <select id="tool"><option value="pen">Pen</option><option value="highlighter">Highlight</option></select></label>
+          <button id="undo">Undo</button><button id="clear">Clear page</button>
+        </div>
+        <div class="paperScroll"><div class="paper" id="paper"><canvas id="pdfCanvas"></canvas><canvas id="inkCanvas" aria-label="Write your working on the worksheet"></canvas></div></div>
+        <label class="working">Type your working <textarea id="working" maxlength="2000" rows="2" placeholder="You can write on the worksheet or type your working here."></textarea></label>
+      </div>
+      <aside>
+        <div class="liveCard">
+          <div class="liveHeading"><strong>Live tutor</strong><label><input id="liveEnabled" type="checkbox" checked> On</label></div>
+          <p id="liveStatus" role="status">Live tutoring is on. Allow your microphone to talk with your tutor.</p>
+          <div class="actions"><button id="start" class="primary">Start live tutor</button><button id="stop" hidden>End conversation</button><button id="mute" hidden>Mute microphone</button><button id="play" hidden>Enable tutor audio</button></div>
+          <p class="small">Your AI tutor gives hints one step at a time. Voice trials last up to 5 minutes. Your microphone is off when the conversation ends.</p>
+          <div id="audioHost"></div>
+        </div>
+        <h2>Ask Study Buddy</h2>
+        <div id="conversation" class="conversation" aria-live="polite"></div>
+        <form id="askForm"><label for="question">Your question</label><textarea id="question" rows="2" maxlength="1000" placeholder="Which part would you like help with?"></textarea><div class="actions"><button id="ask" class="primary">Ask tutor</button><button type="button" id="hint">Give me a hint</button><button type="button" id="check">Check my working</button></div></form>
+        <p class="small">This is a sample lesson. Your writing stays on this page and is cleared when you leave. No student sign-in is needed.</p>
+      </aside>
+    </section>
+  </main>
+</body>
+</html>

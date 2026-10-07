@@ -4,6 +4,7 @@ const { initializeApp } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
 const { getAppCheck } = require('firebase-admin/app-check');
 const { getFirestore } = require('firebase-admin/firestore');
+const { getStorage } = require('firebase-admin/storage');
 const { onRequest } = require('firebase-functions/v2/https');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { defineSecret } = require('firebase-functions/params');
@@ -20,6 +21,8 @@ const { createTeachRepository } = require('./fast-tutor-repository');
 const { createTeachProvider } = require('./fast-tutor-provider');
 const { createCentreService } = require('./centre-admin-service');
 const { createCentreRepository } = require('./centre-admin-repository');
+const { createSampleRepository, createSampleService, BUCKET } = require('./sample-materials-service');
+const { createSampleQuestionService } = require('./sample-questions');
 
 initializeApp();
 const openaiKey = defineSecret('OPENAI_API_KEY');
@@ -74,3 +77,26 @@ exports.studyBuddyCentre = onRequest({
   region: 'us-central1', timeoutSeconds: 60,
   maxInstances: 3, concurrency: 10, memory: '256MiB', invoker: 'public'
 }, centreService.handler);
+
+// Public trials have their own short-lived sessions and finite budget. The
+// existing signed-in worksheet services retain their authentication policies.
+const sampleService = createSampleService({
+  auth: getAuth(), repository: createSampleRepository(getFirestore()),
+  liveProvider: createProvider({ apiKey: () => openaiKey.value(), connect: (url, options) => new WebSocket(url, options) }),
+  teachProvider: createTeachProvider(textProviderOptions),
+  questionService: createSampleQuestionService({ db: getFirestore(), providerOptions: textProviderOptions }),
+  bucket: getStorage().bucket(BUCKET), report: code => logger.warn(code)
+});
+exports.studyBuddySample = onRequest({
+  region: 'us-central1', secrets: [openaiKey, geminiKey, kimiKey], timeoutSeconds: 120,
+  maxInstances: 3, concurrency: 10, memory: '512MiB', invoker: 'public'
+}, sampleService.handler);
+exports.sampleMaterialsAdmin = onRequest({
+  region: 'us-central1', timeoutSeconds: 120, maxInstances: 2,
+  concurrency: 10, memory: '512MiB', invoker: 'public'
+}, sampleService.adminHandler);
+exports.studyBuddySampleCleanup = onSchedule({
+  region: 'us-central1', secrets: [openaiKey], schedule: 'every 1 minutes',
+  timeZone: 'Asia/Singapore', timeoutSeconds: 180, maxInstances: 1,
+  memory: '256MiB', retryCount: 3, minBackoffSeconds: 10, maxBackoffSeconds: 60
+}, sampleService.sweep);

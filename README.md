@@ -10,6 +10,11 @@ everything it says is grounded in the way **Mr Chung** actually teaches.
 
 Live at <https://polymathlc.github.io/tutor/> once GitHub Pages is switched on for the repo.
 
+The public [sample worksheet](https://polymathlc.github.io/tutor/sample.html?subject=math)
+supports separate Maths and Science trials, PDF writing and an AI live tutor enabled
+by default. The website administrator publishes worksheets and selected question
+bank trials through the dedicated sample API. See [sample materials](docs/sample-materials.md).
+
 ---
 
 ## v1.60.0 — One default, with automatic backups
