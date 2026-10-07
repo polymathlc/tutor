@@ -35,11 +35,13 @@ function validate(body) {
   }
   if (body.forceFresh != null && typeof body.forceFresh !== 'boolean') invalid();
   if (body.preparedOnly != null && (typeof body.preparedOnly !== 'boolean' || body.action !== 'reply')) invalid();
+  if (body.allowDecision != null && (typeof body.allowDecision !== 'boolean' || body.action !== 'reply' || !body.preparedOnly)) invalid();
   if (body.history != null && (!Array.isArray(body.history) || body.history.length > 6 || body.history.some(x => !plain(x) || !['user', 'assistant'].includes(x.role) || typeof x.text !== 'string' || x.text.length > 2000))) invalid();
   return { action: body.action, worksheetId: body.worksheetId, page: body.page, studentIndex: body.studentIndex || 0,
     grounding: body.grounding || '', workContext: body.workContext || '', image: body.image || '', images: body.images || [], message: body.message?.trim() || '',
     sourceHash: body.sourceHash || '', cacheKey: body.cacheKey || '', questionId: body.questionId || '', afterResponseId: body.afterResponseId || '',
-    forceFresh: body.forceFresh === true || body.images?.length > 1, preparedOnly: body.preparedOnly === true, history: body.history || [] };
+    forceFresh: body.forceFresh === true || body.images?.length > 1, preparedOnly: body.preparedOnly === true,
+    allowDecision: body.allowDecision === true, history: body.history || [] };
 }
 function revision(context, body, imageHash) {
   return hash(JSON.stringify({ version: VERSION, guidanceVersion: learnerGuidance.VERSION, uid: context.uid, learner: context.learner, worksheetId: body.worksheetId,

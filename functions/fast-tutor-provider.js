@@ -70,7 +70,10 @@ function createTeachProvider(options) {
           ...choices.map(choice => [choice.id, JSON.stringify(choice)])])
       } }
     };
-    const linked = signal ? AbortSignal.any([signal, AbortSignal.timeout(3500)]) : AbortSignal.timeout(3500);
+    // Leave room inside the browser's 2.5s early-probe budget for auth and
+    // worksheet policy checks. Full requests retain their original budget.
+    const timeout = AbortSignal.timeout(body.preparedOnly ? 1200 : 3500);
+    const linked = signal ? AbortSignal.any([signal, timeout]) : timeout;
     try {
       linked.throwIfAborted();
       const response = await (options.fetchImpl || fetch)('https://api.openai.com/v1/decisions', {

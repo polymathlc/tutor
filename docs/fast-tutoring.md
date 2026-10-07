@@ -12,7 +12,7 @@ teaching work with `OPENAI_API_KEY`, followed by the server-side
   learner, worksheet, visible page, writing and teaching settings still match.
 - **Prepared guidance:** the server selects the next permitted hint or a simpler
   explanation from the prepared question. This path makes no model request.
-- **Intent selection:** GPT-6.1 Sol selects an existing permitted response for a
+- **Intent selection:** OpenAI Decisions (`gpt-6-luna`) selects an existing permitted response for a
   known question. It cannot write a new answer or decide that work is correct.
   Uncertain or failed selection falls through to fresh reasoning.
 - **Fresh reasoning:** GPT-6.1 Sol reads the current worksheet and writing and
@@ -27,8 +27,7 @@ Since v1.56.1, exact repeats are checked before loading teaching references or
 rendering and encoding worksheet images. Familiar follow-ups with an unchanged
 context can also make an image-free `reply` request with `preparedOnly: true`.
 The server still checks authentication, worksheet ownership and current teaching
-settings. This request can only return a directly matched prepared response;
-it never calls a model or reserves a paid teaching turn. A miss returns
+settings. Older clients request only directly matched prepared responses, without a model call or paid teaching turn. Current clients also send `allowDecision: true`: when the direct phrase matcher has no result, Decisions may choose from the server-approved hints for the known question. The request carries no worksheet image and cannot generate a new explanation. A miss returns
 `fresh_image_required` before any text, allowing the browser to capture the
 current worksheet and continue through the full teaching path once.
 
@@ -135,3 +134,17 @@ References: [GPT-Live delegation](https://developers.openai.com/api/docs/guides/
 ## Decisions selector
 
 The prepared-response selector calls OpenAI Decisions (`/v1/decisions`, `gpt-6-luna`) using the existing server-side `OPENAI_API_KEY`. It chooses only `FRESH` or a server-approved response ID. Named answer and probability arrays are validated; malformed/refused responses and timeouts use the existing fresh-teaching fallback. The 0.90 confidence threshold, help ceilings, worksheet revision checks and interruption handling remain in force. Pack preparation and fresh teaching retain their existing models. Redeploy `functions:study-buddy-live` to activate.
+
+## Decisions before worksheet capture
+
+For an unchanged learner, worksheet, visible page, writing, references and help level, live follow-ups now try the prepared hint selector before loading notes, rasterising the page, encoding JPEGs or uploading worksheet images. Natural requests such as “Could you explain why equal groups matter?” can use this path; repeats remain local and familiar next/simpler requests still use deterministic lookup.
+
+The early Decisions request has a 1.2-second provider deadline inside the client's existing 2.5-second probe limit. These are timeout budgets, not promised response times. Low confidence, refusal, invalid IDs, unavailable packs and provider failures return a miss before any teaching is emitted. The client then captures the current worksheet once and forces fresh reasoning, avoiding a second selection attempt for the same utterance. A miss marker is consumed by the next full request and cannot affect a later turn. A partial spoken response never restarts through a fallback.
+
+The server still checks authentication, ownership, policy revision and the 0.90 threshold. Decisions receives only the eligible hint choices; final answers remain excluded. Answer checks, new writing, changed state and multiple visible pages require fresh evidence. Paid selection uses the existing quota and lease; an image-backed fallback is a separate paid request. No raw audio or worksheet images reach Decisions in this early path.
+
+The real-browser fixture exercises the actual live delegation and commentary handoff. It verifies zero note/key waits, rasterisations, JPEGs, encodes and hashes on a selected natural follow-up, and exactly one image capture on a miss. These synthetic checks do not establish microphone-to-speech latency with the live APIs.
+
+Deployment still requires `FIREBASE_SERVICE_ACCOUNT` in this repository and a redeploy of `studyBuddyTeach`. Older deployed backends ignore the new opt-in and return the existing miss/fresh fallback. The frontend change is in `fast-tutor.js`; refresh the page after deployment to load it.
+
+See [Connect voice to Decisions](https://developers.openai.com/api/docs/guides/decisions-voice).

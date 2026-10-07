@@ -57,7 +57,7 @@ function createTeachService({ auth, appCheck, repository, provider, now = Date.n
         if (question) {
           selected = selectDirect(question, body, context.ceiling);
           if (selected) route = 'prepared';
-          else if (!body.preparedOnly) {
+          else if (!body.preparedOnly || body.allowDecision) {
             lease = await repository.reserve(context, body, 'reply', now());
             try {
               const choices = candidates(question, body, context.ceiling);
@@ -75,7 +75,9 @@ function createTeachService({ auth, appCheck, repository, provider, now = Date.n
       }
       if (selected) {
         // Recheck after an asynchronous selector before emitting anything.
+        if (signal.aborted) throw signal.reason || new Error('Cancelled.');
         if (revision(await repository.resolve(uid, body), body, imageHash) !== cacheKey) throw new TeachError(409, 'worksheet_changed', 'The teaching settings changed. Please ask again.');
+        if (signal.aborted) throw signal.reason || new Error('Cancelled.');
         emit({ type: 'delta', text: selected.text });
         return { type: 'done', text: selected.text, route, questionId: question.id, responseId: selected.id, cacheKey };
       }

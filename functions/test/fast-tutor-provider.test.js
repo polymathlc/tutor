@@ -130,3 +130,16 @@ test('outgoing preparation uses the profile only for untagged worksheets and nev
   const controller = new AbortController(); controller.abort();
   await assert.rejects(provider.select(context, body, {}, [{ id: 'hint' }], controller.signal));
  });
+
+test('early Decisions has a short deadline and aborts a stalled provider before the image fallback', async () => {
+  let signal;
+  const keepAlive = setTimeout(() => {}, 2000);
+  try {
+    const provider = createTeachProvider({ apiKey: () => 'private', fetchImpl: async (_url, req) => {
+      signal = req.signal;
+      return new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('provider timeout')), { once: true }));
+    } });
+    await assert.rejects(provider.select(context, { ...body, preparedOnly: true }, { label: '1' }, [{ id: 'hint' }]), e => e.code === 'teaching_unavailable');
+    assert.equal(signal.aborted, true);
+  } finally { clearTimeout(keepAlive); }
+});
