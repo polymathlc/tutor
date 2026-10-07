@@ -75,6 +75,8 @@ async function installFixture() {
     window.__done = false;
     window.__failure = '';
     if (typeof fastTutorReset === 'function') { fastTutorReset(); fastTutorState.client = null; FAST_TUTOR_ENDPOINT = endpoint; }
+    // Drive preparation explicitly below; UI timers otherwise race request counts.
+    fastTutorPrepareSoon = () => { clearTimeout(fastTutorState.timer); fastTutorState.timer = null; };
     currentUser = { uid: 'fast-fixture-user', email: 'fixture@example.invalid', getIdToken: async () => 'fixture-token' };
     myStudents = [{ name: 'Test Learner', level: 'P5', subject: 'math' }];
     _activeIdx = 0;
@@ -324,6 +326,18 @@ try {
     assertNoImage(requests.at(-1).body, message);
     await assertNoPreparation(message);
   }
+  const beforeDecision = requests.length;
+  result.route = 'selector';
+  await resetCost();
+  await startLiveReply('Could you explain why equal groups matter?', 'live-decisions'); await liveFinished('live-decisions');
+  assert.equal(requests.length - beforeDecision, 1, 'natural follow-up sends one early decision request');
+  assert.equal(requests.at(-1).body.allowDecision, true);
+  assert.equal(requests.at(-1).body.preparedOnly, true);
+  assertNoImage(requests.at(-1).body, 'Decisions follow-up');
+  await assertNoPreparation('Decisions follow-up');
+  assert.equal((await spoken('live-decisions')).join(' '), whole, 'selected guidance reaches the real Live commentary path');
+  result.route = 'prepared';
+
   const naturalRepeatStart = requests.length;
   await resetCost(); await startLiveReply('Could you repeat that please?', 'live-natural-repeat'); await liveFinished('live-natural-repeat');
   assert.equal(requests.length, naturalRepeatStart, 'a natural repeat request also avoids the network');
@@ -336,6 +350,7 @@ try {
   assert.equal(missed.length, 2, 'a prepared miss performs one lookup and one full teaching request');
   assert.equal(missed[0].body.preparedOnly, true); assertNoImage(missed[0].body, 'Missed prepared lookup');
   assert.notEqual(missed[1].body.preparedOnly, true);
+  assert.equal(missed[1].body.forceFresh, true, 'an early miss never repeats the selector on its full continuation');
   assert.match(missed[1].body.image, /^data:image\/jpeg;base64,/, 'a miss resumes with the current worksheet image');
   assert.equal((await cost()).raster, 1, 'a prepared miss rasterises the page only once');
   assert.equal((await cost()).jpeg, 1, 'a prepared miss composites the worksheet only once');
@@ -343,8 +358,7 @@ try {
 
   replyMode = 'complete';
   for (const [message, id] of [
-    ['Next hint please, but my answer is 12.', 'live-mixed-answer'],
-    ['Could you explain why equal groups matter?', 'live-unmatched']
+    ['Next hint please, but my answer is 12.', 'live-mixed-answer']
   ]) {
     const start = requests.length;
     await resetCost(); await startLiveReply(message, id); await liveFinished(id);

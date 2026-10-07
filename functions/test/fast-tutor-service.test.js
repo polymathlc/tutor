@@ -258,3 +258,47 @@ test('ordinary full replies continue to select or freshly reason after a prepare
   await assert.rejects(s.run({ ...request, image: undefined, preparedOnly: true }), error => error.code === 'fresh_image_required');
   const reply = await s.run(request); assert.equal(reply.route, 'selector'); assert.equal(s.calls.selector, 1); assert.equal(s.calls.reserves, 2);
 });
+
+ test('opted-in image-free Decisions selects permitted guidance without fresh reasoning', async () => {
+  const s = setup(), prep = await s.run(BODY), events = [];
+  const reply = await s.run({ ...BODY, action: 'reply', image: undefined, preparedOnly: true, allowDecision: true,
+    cacheKey: prep.cacheKey, questionId: 'q1', message: 'Could you unpack equal groups a little?' }, e => events.push(e));
+  assert.equal(reply.route, 'selector'); assert.equal(s.calls.selector, 1); assert.equal(s.calls.fresh, 0);
+  assert.equal(s.calls.reserves, 2); assert.equal(s.calls.releases, 2);
+  assert.deepEqual(events, [{ type: 'delta', text: reply.text }]);
+ });
+ test('early Decisions misses, refusals and errors request current images without speaking or fresh generation', async () => {
+  for (const choice of [{ responseId: 'FRESH', confidence: 1 }, { responseId: 'invented', confidence: 1 }, { confidence: .2 }, new Error('refused')]) {
+    const s = setup(), prep = await s.run(BODY), events = [];
+    s.provider.select = async (_ctx, _body, _q, choices) => { if (choice instanceof Error) throw choice; return { responseId: choices[0].id, ...choice }; };
+    await assert.rejects(s.run({ ...BODY, action: 'reply', image: undefined, preparedOnly: true, allowDecision: true,
+      cacheKey: prep.cacheKey, questionId: 'q1', message: 'Could you unpack equal groups a little?' }, e => events.push(e)), e => e.code === 'fresh_image_required');
+    assert.deepEqual(events, []); assert.equal(s.calls.fresh, 0); assert.equal(s.calls.reserves, 2); assert.equal(s.calls.releases, 2);
+  }
+ });
+ test('early Decisions still blocks new working, unknown questions and stale policy before spending', async () => {
+  for (const change of [{ message: 'I wrote 12. Is that correct?' }, { message: 'Help with question 99' }, { forceFresh: true }, { cacheKey: 'stale' }]) {
+    const s = setup(), prep = await s.run(BODY);
+    await assert.rejects(s.run({ ...BODY, action: 'reply', image: undefined, preparedOnly: true, allowDecision: true,
+      cacheKey: prep.cacheKey, questionId: 'q1', message: 'Could you unpack equal groups a little?', ...change }), e => e.code === 'fresh_image_required');
+    assert.equal(s.calls.selector, 0); assert.equal(s.calls.fresh, 0); assert.equal(s.calls.reserves, 1);
+  }
+ });
+ test('cancellation or lowered teacher ceiling while Decisions runs cannot emit its selection', async () => {
+  for (const cancel of [true, false]) {
+    const s = setup(), prep = await s.run(BODY), events = [], controller = new AbortController();
+    s.provider.select = async (_ctx, _body, _q, choices) => {
+      if (cancel) controller.abort(); else s.context.authority.ceiling = s.context.ceiling = 'nudge';
+      return { responseId: choices[0].id, confidence: 1 };
+    };
+    await assert.rejects(s.run({ ...BODY, action: 'reply', image: undefined, preparedOnly: true, allowDecision: true,
+      cacheKey: prep.cacheKey, questionId: 'q1', message: 'Could you unpack equal groups a little?' }, e => events.push(e), controller.signal));
+    assert.deepEqual(events, []); assert.equal(s.calls.releases, 2);
+  }
+ });
+ test('Decisions opt-in is confined to image-free lookup semantics', () => {
+  for (const extra of [{ allowDecision: 'yes', preparedOnly: true }, { allowDecision: true }, { allowDecision: true, preparedOnly: false }]) {
+    assert.throws(() => validate({ ...BODY, action: 'reply', message: 'help', ...extra }), TeachError);
+  }
+  assert.throws(() => validate({ ...BODY, allowDecision: true, preparedOnly: true }), TeachError);
+ });

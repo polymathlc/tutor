@@ -150,10 +150,10 @@ test('an early lookup miss preserves question context for exactly one ordinary c
   assert.equal(h.calls[2].questionId, 'q1'); assert.equal(h.calls[2].afterResponseId, 'step1');
 });
 
-test('unknown, correctness, changed-work and two-page next requests never start an early lookup', async () => {
+test('correctness, changed-work and two-page next requests never start an early lookup', async () => {
   const h = harness(async () => lines([done()]));
   await h.client.reply(base, 'work', { packKey: 'page' });
-  for (const message of ['Why does division work?', 'Can you give me a hint and check my answer?', 'Look at this number']) {
+  for (const message of ['Can you give me a hint and check my answer?', 'Look at this number']) {
     assert.equal(await h.client.tryEarly({ ...base, message }, 'work', { packKey: 'page' }), null);
   }
   assert.equal(await h.client.tryEarly(base, 'edited-work', { packKey: 'page' }), null);
@@ -203,3 +203,29 @@ test('partial text from an early lookup can never become a miss and duplicate sp
   await assert.rejects(h.client.tryEarly(base, 'work', { packKey: 'page' }), error => error.emitted === true);
   assert.equal(h.calls.length, 2);
 });
+
+ test('natural follow-ups ask Decisions before any image work and request only existing guidance', async () => {
+  const h = harness(async () => lines([done('Think about one equal group.', { route: 'selector' })]));
+  await h.client.reply(base, 'work', { packKey: 'page' });
+  const chunks = [];
+  const result = await h.client.tryEarly({ ...base, message: 'Could you unpack equal groups a little?', image: 'omit', images: ['omit'] }, 'work', { packKey: 'page', onStream: t => chunks.push(t) });
+  assert.equal(result.route, 'selector'); assert.equal(h.calls.length, 2);
+  assert.equal(h.calls[1].allowDecision, true); assert.equal(h.calls[1].preparedOnly, true);
+  assert.equal(h.calls[1].image, undefined); assert.equal(h.calls[1].images, undefined);
+  assert.equal(h.calls[1].questionId, 'q1'); assert.deepEqual(chunks, [result.text]);
+ });
+ test('an early Decisions miss bypasses the selector once, only for the matching turn', async () => {
+  const h = harness(async (_url, init) => JSON.parse(init.body).preparedOnly ? Response.json({ error: { code: 'fresh_image_required' } }, { status: 409 }) : lines([done()]));
+  const request = { ...base, message: 'Could you unpack equal groups a little?' };
+  await h.client.reply(base, 'work', { packKey: 'page' });
+  assert.equal(await h.client.tryEarly(request, 'work', { packKey: 'page' }), null);
+  await h.client.reply({ ...request, image: 'current' }, 'work', { packKey: 'page' });
+  assert.equal(h.calls.at(-1).forceFresh, true);
+  await h.client.reply(request, 'work', { packKey: 'page' });
+  assert.equal(h.calls.at(-1).forceFresh, undefined);
+  await h.client.tryEarly(request, 'work', { packKey: 'page' });
+  await h.client.reply({ ...request, message: 'Give me a clue' }, 'work', { packKey: 'page' });
+  assert.equal(h.calls.at(-1).forceFresh, undefined);
+  await h.client.reply(request, 'work', { packKey: 'page' });
+  assert.equal(h.calls.at(-1).forceFresh, undefined, 'unrelated continuation clears the old miss');
+ });

@@ -18,7 +18,10 @@
   }
   function create(options) {
     options = options || {};
-    var packs = new Map(), pending = new Map(), last = null, epoch = 0;
+    var packs = new Map(), pending = new Map(), last = null, epoch = 0, missedProbe = null;
+    function probeKey(body, contextKey) {
+      return JSON.stringify([contextKey, body.worksheetId, body.page, body.message]);
+    }
     var requestFetch = options.fetch || root.fetch.bind(root);
     async function send(body, signal) {
       check(signal);
@@ -72,6 +75,12 @@
       }
       var handle = packs.get(config.packKey || contextKey);
       var payload = Object.assign({}, body, { action: 'reply' });
+      // An early miss already tried prepared guidance for this exact turn.
+      // Its image-backed continuation must not pay for the same selector twice.
+      if (!body.preparedOnly) {
+        if (missedProbe === probeKey(body, contextKey)) payload.forceFresh = true;
+        missedProbe = null;
+      }
       if (handle) payload.cacheKey = handle.cacheKey;
       // Writing changes the exact repeat binding, not which printed question
       // the student was discussing. A fresh check keeps that question context.
@@ -129,15 +138,17 @@
       config = config || {};
       check(config.signal);
       if (config.isCurrent && !config.isCurrent()) throw abortError();
-      var old = last, intent = root.FastTutorIntents && root.FastTutorIntents.classify(body.message);
+      var old = last;
       if (!old || old.contextKey !== contextKey || body.forceFresh || isFreshRequest(body.message)) return null;
       if (canRepeat(body.message)) {
         if (config.onDispatch) config.onDispatch();
         return reply(body, contextKey, config);
       }
-      if (!intent || config.allowPrepared === false || !old.questionId ||
+      if (config.allowPrepared === false || !old.questionId ||
         !(old.cacheKey || packs.has(config.packKey || contextKey))) return null;
-      var payload = Object.assign({}, body, { preparedOnly: true });
+      // Decisions can match natural follow-ups to an existing permitted hint.
+      // The server may not generate teaching without a current page image.
+      var payload = Object.assign({}, body, { preparedOnly: true, allowDecision: true });
       delete payload.image; delete payload.images;
       var controller = new AbortController(), timer, cancel, emitted = false;
       var deadline = new Promise(function (_, reject) {
@@ -159,8 +170,8 @@
         if (emitted || error.emitted) { last = null; error.emitted = true; throw error; }
         check(config.signal);
         if (config.isCurrent && !config.isCurrent()) throw abortError();
-        // A miss, a slow lookup or unavailable preparation leaves the exact
-        // previous response intact for the normal image-backed request.
+        // Preserve question context, but skip selection on this turn's fallback.
+        missedProbe = probeKey(body, contextKey);
         return null;
       } finally {
         clearTimeout(timer); controller.abort();
@@ -169,7 +180,7 @@
     }
     return { prepare: prepare, reply: reply, tryEarly: tryEarly, ready: function (key) { return packs.has(key); },
       remember: function (text, key) { last = { text: text, contextKey: key, route: 'fallback' }; },
-      reset: function () { epoch++; packs.clear(); pending.clear(); last = null; } };
+      reset: function () { epoch++; packs.clear(); pending.clear(); last = null; missedProbe = null; } };
   }
   root.FastTutorClient = { create: create, sha256: sha256, canRepeat: canRepeat, isFreshRequest: isFreshRequest };
 })(typeof window !== 'undefined' ? window : globalThis);
