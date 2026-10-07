@@ -131,3 +131,7 @@ References: [GPT-Live delegation](https://developers.openai.com/api/docs/guides/
 [streaming Responses](https://developers.openai.com/api/docs/guides/streaming-responses),
 [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol),
 [Gemini structured output](https://ai.google.dev/gemini-api/docs/generate-content/structured-output).
+
+## Decisions selector
+
+The prepared-response selector calls OpenAI Decisions (`/v1/decisions`, `gpt-6-luna`) using the existing server-side `OPENAI_API_KEY`. It chooses only `FRESH` or a server-approved response ID. Named answer and probability arrays are validated; malformed/refused responses and timeouts use the existing fresh-teaching fallback. The 0.90 confidence threshold, help ceilings, worksheet revision checks and interruption handling remain in force. Pack preparation and fresh teaching retain their existing models. Redeploy `functions:study-buddy-live` to activate.
