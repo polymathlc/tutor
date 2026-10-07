@@ -57,3 +57,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/learner-guidance-browser-check.mjs
+      - name: Check public sample worksheets and microphone cleanup
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/sample-browser-check.mjs
