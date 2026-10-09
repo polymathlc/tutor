@@ -3040,7 +3040,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.60.0';
+var APP_VERSION = 'v1.61.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -7958,8 +7958,9 @@ async function paperReadEnds() {
   var raw = await window.askGemini(
     'These are pages ' + got.join(', ') + ' of a ' + pages.length + '-page paper, in that order. ' +
     'What subject and level is it, what is it called, and which of these pages are its answer key?',
+    // ⚡ Metadata, filled only into blanks — `task: 'light'`, see AI_LIGHT_MODEL.
     { system: PAPER_READ_SYS, maxOutputTokens: 500, temperature: 0, json: true, thinkingLevel: 'low',
-      images: imgs, timeoutMs: 45000, routeTimeoutMs: 25000 });
+      images: imgs, timeoutMs: 45000, routeTimeoutMs: 25000, task: 'light' });
   check();
   return paperReadClean(_parseAIJson(raw), got);
 }
@@ -9129,6 +9130,8 @@ async function kwQuizBuild(source, opts) {
   var raw = await window.askGemini(qLines.join('\n'), {
     system: KWQ_SYS + aiGrounding('hint') + keyRuleBlock(source.question) + sylPromptBlock(matches) + kwQuizCeilingRule(),
     maxOutputTokens: 700, temperature: 0.4, json: true, thinkingLevel: 'low',
+    // ⚡ kwQuizClean and the key guard check every quiz — see AI_LIGHT_MODEL.
+    task: 'light',
     timeoutMs: 30000, routeTimeoutMs: 12000, signal: opts.signal
   });
   var quiz = kwQuizClean(_parseAIJson(raw), source);
@@ -23891,6 +23894,13 @@ function renderEngineBody() {
            'written and checked against — and fall back through ' +
            escHtml(st.teachOrder.slice(1).join(', ')) + ' exactly as everything else does.</p>';
     }
+    /* ⚡ THE LIGHT JOBS ARE NAMED TOO — two calls answering on a smaller model
+       than the line below would otherwise be invisible from every screen. */
+    if (st.lightOrder && st.lightOrder.length) {
+      h += '<p class="sub" style="margin-top:14px"><b>Reading a paper at upload and building a keyword check</b> ask ' +
+           'ChatGPT for <b>' + escHtml(st.lightModel || 'gpt-6-luna') + '</b>, the cheapest GPT-6 tier, and fall back through ' +
+           escHtml(st.lightOrder.slice(1).join(', ')) + '. Hints, the live tutor, marking and the chat never do.</p>';
+    }
     /* WHICH MODEL, read back off the reply rather than named here — so it
        is what really answered, and it corrects itself the moment the shared
        function moves. Silence before the first call is the honest answer. */
@@ -30238,6 +30248,18 @@ window.transcribeRouteNote = function transcribeRouteNote() {
    ===================================================================== */
 const AI_ENGINES = ["openai", "gemini", "kimi"];
 const AI_DEFAULT_MODEL = "gpt-6.1-sol";
+/* ⚡ THE LIGHT MODEL — GPT-6 Luna, the cheapest GPT-6 tier ($0.10 / $0.50 per
+   million tokens), for the two jobs where a smaller model's mistake is caught
+   before it reaches a child: 📖 reading a paper's subject, level, name and key
+   pages at upload (`paperReadEnds` — `paperApplyRead` fills blanks and
+   overrides nothing, and `paperReadClean` drops a key page the model never
+   saw) and 🧩 building a keyword check (`kwQuizBuild` — `kwQuizClean` and the
+   key guard refuse a quiz that gives the answer away or cannot be checked).
+   NOTHING ELSE MAY ASK FOR IT: the hints, the live tutor, the marking and the
+   chat stay on the full model, and the census in tools/tutor-tests.mjs fails
+   in both directions. The server decides whether the name is honoured; an
+   older `askOpenAi` simply answers on GPT-6.1 Sol. */
+const AI_LIGHT_MODEL = "gpt-6-luna";
 const AI_ROUTE_LABEL = { gemini: "Gemini", openai: "ChatGPT (server key)", kimi: "Kimi (server key)" };
 const AI_ENGINE_VENDOR = { gemini: "Gemini", openai: "ChatGPT", kimi: "Kimi" };
 
@@ -30256,7 +30278,13 @@ const _aiModel = { openai: "", kimi: "" };
    hint from Gemini, never no hint at all. Everything else in the app — the
    marking run, the chat, the mistake reader — is untouched and still leads
    with whatever `config/admin.aiEngine` says. */
-const AI_TASK_ENGINE = { teach: "openai" };
+const AI_TASK_ENGINE = { teach: "openai", light: "openai" };
+/* …and the one task that names its own MODEL as well as its engine. */
+/* A refusal of that NAMED model says nothing certain about the route — it may
+   only be the model — so `aiAskRoutes` records it without marking ChatGPT
+   down: the hints and the marking must not lose ChatGPT for ten minutes
+   because Luna was refused. */
+const AI_TASK_MODEL = { light: AI_LIGHT_MODEL };
 /* How long an engine that refused is skipped over. Long enough that one
    capped marking run does not pay for the discovery on every question;
    short enough that a cap lifted is found again inside one sitting. */
@@ -30331,7 +30359,7 @@ async function _aiServerAsk(name, prompt, opts, extra) {
    model so a shared backend update can move the backup independently. */
 function askOpenAiServer(prompt, opts) {
   return _aiServerAsk("askOpenAi", prompt, opts, {
-    model: AI_DEFAULT_MODEL,
+    model: (opts.task && AI_TASK_MODEL[opts.task]) || AI_DEFAULT_MODEL,
     reasoningEffort: ["low", "medium", "high", "xhigh", "max"].indexOf(opts.thinkingLevel) >= 0 ? opts.thinkingLevel : "low"
   });
 }
@@ -30347,6 +30375,15 @@ function aiAskWith(prompt, opts, order) {
   return aiWithDeadline(function (signal) {
     return aiAskRoutes(prompt, Object.assign({}, opts, { signal: signal }), order);
   }, opts.timeoutMs || 90000, opts.signal);
+}
+
+/* A refusal is marked down — EXCEPT ChatGPT refusing a light job's NAMED
+   model (see AI_TASK_MODEL), which may only be that model. It is recorded so
+   the panel can say it, and nothing else on ChatGPT loses its turn. */
+function _aiRefused(engine, opts, e) {
+  const why = String((e && e.message) || e || "");
+  if (engine === "openai" && opts.task && AI_TASK_MODEL[opts.task]) _aiWhy[engine] = why;
+  else _aiMarkDown(engine, why);
 }
 
 async function aiAskRoutes(prompt, opts, order) {
@@ -30377,7 +30414,7 @@ async function aiAskRoutes(prompt, opts, order) {
       return out;
     } catch (e) {
       aiThrowIfAborted(opts.signal);
-      _aiMarkDown(engine, String((e && e.message) || e || ""));
+      _aiRefused(engine, opts, e);
       if (!first) first = e;
       console.warn("AI route " + engine + " refused:", e);
       if (emitted) throw e;
@@ -30407,6 +30444,8 @@ window.aiEngines = function aiEngines() {
        panel says both orders and names the model rather than leaving it to
        be assumed. */
     teachOrder: aiEngineOrder("teach").map(e => AI_ROUTE_LABEL[e] || e),
+    lightOrder: aiEngineOrder("light").map(e => AI_ROUTE_LABEL[e] || e),
+    lightModel: AI_LIGHT_MODEL,
     models: Object.assign({}, _aiModel),
     last: _aiLast.engine ? (AI_ROUTE_LABEL[_aiLast.engine] || _aiLast.engine) : "",
     fellBack: !!_aiLast.fellBack,

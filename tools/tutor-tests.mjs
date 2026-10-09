@@ -7111,7 +7111,7 @@ ok('…and `askGeminiDirect` is reached only through the dispatcher',
    months. */
 ok('the OpenAI request pins the new default and passes a supported reasoning effort',
    /const AI_DEFAULT_MODEL = "gpt-6\.1-sol"/.test(html) &&
-   /model: AI_DEFAULT_MODEL/.test(html) && /reasoningEffort:/.test(html));
+   /model: \(opts\.task && AI_TASK_MODEL\[opts\.task\]\) \|\| AI_DEFAULT_MODEL,/.test(html) && /reasoningEffort:/.test(html));
 ok('Kimi remains server-selected',
    /function askKimiServer\(prompt, opts\) \{ return _aiServerAsk\("askKimi", prompt, opts\); \}/.test(html));
 ok('…it is READ BACK off the reply instead',
@@ -7125,7 +7125,7 @@ ok('no temperature is sent to a server route either',
    'a reasoning model runs only at its own, and one sent is a 400 rather than a worse answer');
 
 ok('the teaching task leads with ChatGPT',
-   /const AI_TASK_ENGINE = \{ teach: "openai" \};/.test(html) &&
+   /const AI_TASK_ENGINE = \{ teach: "openai", light: "openai" \};/.test(html) &&
    /const first = \(task && AI_TASK_ENGINE\[task\]\) \|\| _aiPreferred;/.test(html));
 ok('…and the other engines stay BEHIND it rather than being taken away',
    /\[first\]\.concat\(AI_ENGINES\.filter\(e => e !== first\)\)/.test(html),
@@ -7178,6 +7178,38 @@ ok('…and all four of them are really there',
    askSites.filter(c => TEACH_CALLS.has(c.fn)).length === TEACH_CALLS.size,
    'a renamed function leaves a stale name on the list and the census going green over nothing: ' +
    askSites.map(c => c.fn).join(', '));
+/* ⚡ THE LIGHT JOBS ANSWER ON GPT-6 LUNA, and only they do. Reading a paper
+   at upload and building a keyword check ask for the cheapest GPT-6 tier;
+   both are guarded by code that checks what comes back. Both directions are
+   silent: a light job that stops naming the task goes back to the full model
+   and the bill does not move, and a HINT or a MARK that starts naming it is a
+   smaller model writing what a child reads, with nothing to say so. */
+ok('the light model is GPT-6 Luna, and only the light task names it',
+   /const AI_LIGHT_MODEL = "gpt-6-luna";/.test(html) &&
+   /const AI_TASK_MODEL = \{ light: AI_LIGHT_MODEL \};/.test(html));
+ok('…a refused named model does not mark ChatGPT down for the hints and the marking',
+   /if \(engine === "openai" && opts\.task && AI_TASK_MODEL\[opts\.task\]\) _aiWhy\[engine\] = why;\s*\n\s*else _aiMarkDown\(engine, why\);/.test(html) &&
+   /_aiRefused\(engine, opts, e\);/.test(html));
+ok('…and the panel names the light jobs and their model',
+   /lightOrder: aiEngineOrder\("light"\)/.test(html) && /Reading a paper at upload and building a keyword check/.test(html));
+const LIGHT_CALLS = new Set([
+  'paperReadEnds',   // 📖 the paper read at upload — paperApplyRead fills blanks only
+  'kwQuizBuild'      // 🧩 the keyword check — kwQuizClean and the key guard refuse a bad one
+]);
+ok('every light call names the task', (() => {
+  const missing = askSites.filter(c => LIGHT_CALLS.has(c.fn) && !/task: 'light'/.test(c.opts)).map(c => c.fn);
+  return missing.length === 0 || missing.join(', ');
+})() === true, 'a light job that stops naming it goes back to the full model and the bill does not move');
+ok('…and nothing else does', (() => {
+  const extra = askSites.filter(c => !LIGHT_CALLS.has(c.fn) && /task: 'light'/.test(c.opts)).map(c => c.fn);
+  return extra.length === 0 || extra.join(', ');
+})() === true, 'a hint, a mark or the live tutor on the light model is a smaller model writing what a child reads');
+ok('…and both of them are really there',
+   askSites.filter(c => LIGHT_CALLS.has(c.fn)).length === LIGHT_CALLS.size,
+   'a renamed function leaves a stale name on the list: ' + askSites.map(c => c.fn).join(', '));
+ok('…and no light call is also a teaching call',
+   ![...LIGHT_CALLS].some(n => TEACH_CALLS.has(n)));
+
 ok('the backups are SERVER-KEYED and there is no key box',
    /askOpenAi/.test(html) && /askKimi/.test(html) && !/type="password"/.test(html),
    'this app is opened by children on shared iPads — a key field here is a key typed on the wrong device');
