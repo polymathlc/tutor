@@ -1828,7 +1828,7 @@ literal rather than a `var` assigned up there.
   backup retains images, instructions and strict schema validation. A partial
   stream never starts a replacement answer. Refused reward checks remain false.
   Speech/Live, transcription and generated images retain their specialised models.
-- **⚡ WHICH ENGINE LEADS CAN DEPEND ON THE TASK, AND EXACTLY ONE TASK ASKS**
+- **⚡ WHICH ENGINE LEADS CAN DEPEND ON THE TASK, AND EXACTLY TWO TASKS ASK**
   (`AI_TASK_ENGINE`, `aiEngineOrder(task)`, `askGemini(…, { task: 'teach' })`).
   **TEACHING** — the 💡 hint ladder, the 🎧 live reply and the ✏️ maths pad's two
   calls, the ones that write the working and the steps a child reads — leads
@@ -1846,6 +1846,31 @@ literal rather than a `var` assigned up there.
   thirty students' papers on a bill nobody asked for. It resolves the enclosing
   function at **column 0 only**, because the live reply declares `liveFlush`
   inside itself and above its own call.
+- **🌙 THE LIGHT TASK ANSWERS ON GPT-6 LUNA** (v1.61.0 — `AI_LIGHT_MODEL`,
+  `AI_TASK_MODEL`, `askGemini(…, { task: 'light' })`, `_aiRefused`). Two calls
+  ask for it: **📖 the paper read at upload** (`paperReadEnds`) and **🧩 the
+  keyword quiz build** (`kwQuizBuild`). Both are metadata or a structured job
+  the code already checks — `paperApplyRead` fills blanks and overrides
+  nothing, and `kwQuizClean` refuses a quiz that gives the answer away — so the
+  cheapest GPT-6 tier is enough. **Hints and the live tutor stay on the
+  teaching model** and must never take the light task: what a child is told
+  next is the one place a smaller model's slip looks exactly like help.
+  - **The model rides the TASK, never a call-site argument**: `askOpenAiServer`
+    reads `AI_TASK_MODEL[opts.task]`, so a light call names the job and the
+    model follows. Every other call sends `AI_DEFAULT_MODEL` exactly as before.
+  - **A refused NAMED model does not mark the route down** (`_aiRefused`). The
+    refusal is recorded in `_aiWhy` so the panel can say it, and the call falls
+    through to Gemini — but Luna being refused says nothing about the ChatGPT
+    route, and marking it down would send every HINT to the back of the order
+    for ten minutes.
+  - **The server decides.** `askOpenAi` in `polymathlc/math/functions` allows
+    `gpt-6-luna` for every signed-in user (it is cheaper than the default, so a
+    student naming it cannot raise the bill). An older server ignores the name
+    and answers on Sol — nothing breaks before that deploy.
+  - **The census fails both ways** (`LIGHT_CALLS`): a light call that loses the
+    task goes quietly back to the full model, and the task spreading to a hint,
+    the chat or the marking is a silent downgrade on exactly the calls a child
+    reads.
 - **THE PANEL SAYS BOTH ORDERS AND NAMES THE MODEL.** An app whose hints and
   working come from one engine while its marking comes from another looks, from
   every other screen, exactly like one that does not — which is how a whole term

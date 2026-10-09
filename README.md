@@ -17,6 +17,21 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.61.0 — Light jobs on GPT-6 Luna
+
+Two background jobs now answer on GPT-6 Luna, the cheapest GPT-6 tier: **reading
+a paper at upload** (its subject, level, name and answer-key pages) and
+**building a keyword check**. Both are checked by the app before anything is
+used — the paper read only fills blanks, and a keyword check that would give
+the answer away is refused — so the smaller model is enough. **Hints, the live
+tutor, the chat and marking are unchanged** and stay on the teaching model.
+
+If Luna is refused, the job falls through to Gemini exactly as before, and the
+ChatGPT route stays open for hints. The engine panel lists the light-job order
+and model. Student devices reach Luna once the shared `askOpenAi` function in
+the Maths project is redeployed; until then the server answers those two jobs on
+GPT-6.1 Sol.
+
 ## v1.60.0 — One default, with automatic backups
 
 Text, worksheet vision and reasoning now start with GPT-6.1 Sol. Gemini and Kimi
