@@ -3040,7 +3040,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.61.0';
+var APP_VERSION = 'v1.62.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -11870,6 +11870,236 @@ function markProgress(done, total, text) {
   $('markProgText').textContent = text;
 }
 
+/* =====================================================================
+   ⏩ MARKING AHEAD — the page they scrolled past is marked while they read
+   the next one (v1.62.0)
+
+   Pressing ✅ Mark my work used to start the whole paper from nothing:
+   every page rasterised, composited, uploaded and read, three at a time,
+   while the student watched a progress bar. But the student has already
+   TOLD the app when a page is finished — they scrolled past it and stopped
+   on the next question. That pause, while they read, is free time. So the
+   pages behind them are marked then, quietly, and the result is KEPT, not
+   shown: nothing reaches the marking pane, the ticks, the score or the
+   mistake book until they press Mark themselves, and then the run picks the
+   kept answers up instead of asking again.
+
+   - IT IS THE SAME CALL, NOT A SECOND MARKER. `markBatchAsk` is the ONE
+     place a batch of pages is marked, and both the run and this go through
+     it — same system prompt, same help ceiling, same grounding, same key.
+     A second copy of that call is a marker that drifts, and the drift reads
+     as "the marks were different when I pressed it twice".
+   - A KEPT ANSWER IS USED ONLY WHEN NOTHING IT WAS BUILT FROM HAS CHANGED.
+     Every segment remembers the ink on each of its pages (`premarkInkSig`),
+     the question the page before it ended part-way through (`carry`) and
+     the whole system prompt (`premarkCtxSig`, which carries the help level,
+     the notes, the key and the syllabus). One stroke added afterwards, a
+     help level changed, a key read since — and that segment is simply not
+     used, so the run reads the page fresh. It can only ever make the run
+     FASTER; it can never make a mark different from the one a fresh read
+     would give.
+   - THE SEGMENTS ARE A CHAIN, in paper order, because the marking is one.
+     A question that runs over a page break is stitched by `carry`, so a
+     segment is only marked once everything before it is in hand, and the
+     run walks the same chain (`premarkReuse`) from the first page — a kept
+     segment whose `carry` no longer matches is a segment that was marked
+     against a different paper.
+   - ONE PAGE AT A TIME WHEN THEY READ ONE PAGE AT A TIME. A segment covers
+     the pages passed since the last one, up to `MARK_BATCH`, so a student
+     who scrolls page by page has each page marked as they leave it rather
+     than in threes.
+   - IT IS NEVER SHOWN. `marking` is not touched, `renderMarking` is not
+     called, no toast, no progress bar. A child who has not pressed Mark has
+     not asked to be marked, and a tick appearing while they are still
+     working is the app marking a paper nobody handed in.
+   - IT ONLY SPENDS A CALL ON WORK THAT IS THERE. A segment with no ink on
+     it is marked only when the student has written on a page AFTER it (they
+     went past it — the 🕳 rule); a paper being scrolled through and read is
+     not marked at all. `PREMARK_MAX_CALLS` bounds a worksheet's worth of
+     re-marks after edits, a worksheet already marked is left alone, and a
+     hidden tab marks nothing.
+   - ONE AT A TIME, AND THE RUN WAITS FOR IT. `_premark.busy` is the lock;
+     a segment in flight when Mark is pressed is awaited rather than asked
+     for a second time, which is the same wait the run would have spent.
+   ===================================================================== */
+var PREMARK_IDLE_MS = 1200;
+var PREMARK_MAX_CALLS = 30;
+var PREMARK_SEGS_MAX = 60;
+var _premark = { epoch: -1, segs: [], busy: null, calls: 0, timer: 0 };
+
+/* THE ONE PLACE A BATCH OF PAGES IS MARKED. */
+async function markBatchAsk(imgs, pageNums, total, carry) {
+  var raw = await window.askGemini(markPrompt(pageNums, total, carry), {
+    // The ceiling goes in the SYSTEM prompt, beside the grounding and
+    // exactly where the chat's does. A hard constraint carried in the
+    // user message is a constraint the next question can talk over.
+    // The paper's own answer key goes in BESIDE the grounding, never
+    // instead of it: the key says what the answer is, the teaching
+    // notes say what counts as a full-mark one.
+    // The syllabus list goes in last, so the report can file every
+    // question under the objective it tests — see THE DIAGNOSTIC.
+    system: MARK_SYS + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
+            markSyllabusBlock(wsMeta.subject, wsMeta.level),
+    maxOutputTokens: 8000, temperature: 0.2, json: true, thinkingLevel: 'high',
+    timeoutMs: 120000, routeTimeoutMs: 45000,
+    images: imgs
+  });
+  return raw;
+}
+
+/* What the marking was told, as one short string. It is the SAME expression
+   `markBatchAsk` sends — the harness pins the two side by side. */
+function markSystemPrompt() {
+  return MARK_SYS + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
+         markSyllabusBlock(wsMeta.subject, wsMeta.level);
+}
+
+function premarkHash(s) {
+  s = String(s == null ? '' : s);
+  var h = 0x811c9dc5;
+  for (var i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(36) + ':' + s.length.toString(36);
+}
+/* Everything on one page that the picture the model reads is made of. */
+function premarkInkSig(num) {
+  return premarkHash(JSON.stringify((annotations || []).filter(function (a) { return a && a.page === num; })));
+}
+function premarkCtxSig() {
+  try { return premarkHash(markSystemPrompt()); } catch (e) { return ''; }
+}
+/* A worksheet closed or swapped takes its kept answers with it. */
+function premarkSync() {
+  if (_premark.epoch === wsEpoch) return;
+  _premark.epoch = wsEpoch;
+  _premark.segs = [];
+  _premark.calls = 0;
+}
+function premarkInk(num) {
+  return (annotations || []).some(function (a) { return a && a.page === num; });
+}
+/* Is this stretch of pages worth a call? Ink on it, or ink AFTER it — a
+   page they went past without writing on is still a page to mark. */
+function premarkWorth(work, from, to) {
+  for (var i = from; i < work.length; i++) if (premarkInk(work[i].num)) return true;
+  return false;
+}
+
+/* The kept segment that starts at `start` and still holds: same pages in the
+   same order, same ink on each, same carried question, same prompt. */
+function premarkReuse(work, start, carry, ctx) {
+  premarkSync();
+  if (!ctx) return null;
+  for (var s = 0; s < _premark.segs.length; s++) {
+    var seg = _premark.segs[s];
+    if (seg.ctx !== ctx || seg.carry !== carry) continue;
+    if (start + seg.pageNums.length > work.length) continue;
+    var ok = true;
+    for (var k = 0; k < seg.pageNums.length && ok; k++) {
+      var p = work[start + k];
+      if (!p || p.num !== seg.pageNums[k] || premarkInkSig(p.num) !== seg.inks[k]) ok = false;
+    }
+    if (ok) return { seg: seg, batch: work.slice(start, start + seg.pageNums.length) };
+  }
+  return null;
+}
+
+/* Walk the chain from page one, folding each kept segment exactly as the run
+   would, to find where the next segment starts and what it carries in. */
+function premarkChain(work, ctx) {
+  var at = 0, carry = '', items = [];
+  for (var guard = 0; guard < work.length; guard++) {
+    var hit = premarkReuse(work, at, carry, ctx);
+    if (!hit) break;
+    _markFoldRows(hit.seg.rows, hit.seg.pageNums, items, { subject: wsMeta.subject, level: wsMeta.level });
+    var last = items[items.length - 1];
+    carry = last ? _mkStr(last.question, 300) : '';
+    at += hit.seg.pageNums.length;
+  }
+  return { next: at, carry: carry };
+}
+
+function premarkKeep(seg) {
+  var mine = {};
+  seg.pageNums.forEach(function (n) { mine[n] = 1; });
+  // A kept segment that shares a page with this one was marked against ink
+  // or a carry that no longer holds, or it would not have been redone.
+  _premark.segs = _premark.segs.filter(function (s) {
+    return !s.pageNums.some(function (n) { return mine[n]; });
+  });
+  _premark.segs.push(seg);
+  if (_premark.segs.length > PREMARK_SEGS_MAX) _premark.segs.splice(0, _premark.segs.length - PREMARK_SEGS_MAX);
+}
+
+/* Scrolling has stopped: wait a beat, then look behind them. */
+function premarkSoon() {
+  if (_premark.timer) clearTimeout(_premark.timer);
+  _premark.timer = setTimeout(premarkTick, PREMARK_IDLE_MS);
+}
+function premarkCancel() {
+  if (_premark.timer) clearTimeout(_premark.timer);
+  _premark.timer = 0;
+}
+
+async function premarkTick() {
+  _premark.timer = 0;
+  if (!pages.length || marking.running || marking.runAt || _markFiling || _premark.busy) return;
+  if (typeof document !== 'undefined' && document.hidden) return;
+  premarkSync();
+  if (_premark.calls >= PREMARK_MAX_CALLS) return;
+  if (!aiAvailable(true)) return;
+  var here = visiblePage();
+  if (!here || studentPages().indexOf(here) <= 0) return;
+  var epoch = wsEpoch;
+  var job = (async function () {
+    // What the marking is told has to be in hand before the prompt is
+    // fingerprinted — the same two waits the run makes.
+    try {
+      await Promise.all([loadTeachingNotes(), keyEnsureReady()]);
+    } catch (e) { return; }
+    if (epoch !== wsEpoch || marking.running || marking.runAt) return;
+    var work = studentPages(); // the key scan may have hidden pages since
+    var hereIdx = work.indexOf(visiblePage());
+    if (hereIdx <= 0) return;
+    var ctx = premarkCtxSig();
+    if (!ctx) return;
+    var chain = premarkChain(work, ctx);
+    if (chain.next >= hereIdx) return;
+    var end = Math.min(hereIdx, chain.next + MARK_BATCH);
+    if (!premarkWorth(work, chain.next, end)) return;
+    var batch = work.slice(chain.next, end);
+    var imgs = [], pageNums = [], inks = [];
+    for (var b = 0; b < batch.length; b++) {
+      await ensurePageRaster(batch[b]);
+      if (epoch !== wsEpoch || marking.running) return;
+      // The ink is fingerprinted in the SAME tick the picture is taken, so
+      // a stroke added a moment later is a stroke this segment never saw.
+      var data = compositeJpeg(batch[b], 1500, 0.86);
+      if (!data) return; // a page that will not render is the run's to report
+      imgs.push({ mimeType: 'image/jpeg', data: data });
+      pageNums.push(batch[b].num);
+      inks.push(premarkInkSig(batch[b].num));
+    }
+    _premark.calls++;
+    var raw = await markBatchAsk(imgs, pageNums, work.length, chain.carry);
+    if (epoch !== wsEpoch) return;
+    var res = _parseAIJson(raw);
+    if (!res || !Array.isArray(res.questions)) return;
+    premarkKeep({ pageNums: pageNums, inks: inks, carry: chain.carry, ctx: ctx,
+                  rows: res.questions, at: Date.now() });
+    // They may have gone several pages on while that was read.
+    if (end < hereIdx) premarkSoon();
+  })().catch(function (e) {
+    // Marking ahead is a head start, never a fault anybody is told about:
+    // the run reads the page itself when they press Mark.
+    console.warn('Marking ahead stood down', e);
+  });
+  _premark.busy = job;
+  try { await job; } finally { if (_premark.busy === job) _premark.busy = null; }
+}
+
 async function runMarking() {
   var adventureContext = typeof StudyAdventure !== 'undefined' ? StudyAdventure.capture(wsMeta.subject) : null;
   if (!pages.length) { toast('Open a worksheet first.'); return; }
@@ -11897,7 +12127,11 @@ async function runMarking() {
   var work;
   markProgress(0, studentPages().length, '✨ ' + aiEngineName() + ' is reading your worksheet…');
   var failed = [];
+  /* ⏩ A page being marked ahead right now is waited for, never asked for
+     twice — it is the same wait this run would have spent on it. */
+  premarkCancel();
   try {
+    if (_premark.busy) { try { await _premark.busy; } catch (e) {} }
     await Promise.all([aiWithDeadline(function () { return loadTeachingNotes(); }, 10000, null, 'Teaching notes took too long to load. Please try again.'), keyEnsureReady()]);
     if (run !== _markRun || epoch !== wsEpoch) return;
     work = studentPages(); // the key scan may have released questions or hidden solutions
@@ -11907,18 +12141,31 @@ async function runMarking() {
        so the refill cannot live inside it — see `markRation`. */
     markRation();
     var mistFiled = 0, mistPast = 0;
-    for (var start = 0; start < total; start += MARK_BATCH) {
+    var aheadCtx = premarkCtxSig(), aheadPages = 0, step = MARK_BATCH;
+    for (var start = 0; start < total; start += step) {
       if (run !== _markRun || epoch !== wsEpoch) return;
       var batch = work.slice(start, start + MARK_BATCH);
+      /* ⏩ MARKED AHEAD: a kept segment that still holds — same pages, same
+         ink, same carried question, same prompt — is folded straight in,
+         with no picture taken and no call made. */
+      var ahead = premarkReuse(work, start, carry, aheadCtx);
+      if (ahead) batch = ahead.batch;
+      step = batch.length;
       // Counted over the pages the STUDENT has, not the PDF's own numbers:
       // this is a progress bar, and "page 9–10 of 8" is what page numbers
       // read as once an answer key has been taken out of the middle.
-      markProgress(start, total, '✨ Marking page ' + (start + 1) +
+      markProgress(start, total, (ahead ? '⏩ Already read page ' : '✨ Marking page ') + (start + 1) +
         (batch.length > 1 ? '–' + (start + batch.length) : '') + ' of ' + total + '…' +
         (marking.items.length ? '  (' + marking.items.length + ' question' + (marking.items.length === 1 ? '' : 's') + ' so far)' : ''));
       var imgs = [];
       var pageNums = [];
-      for (var b = 0; b < batch.length; b++) {
+      var rows = null;
+      if (ahead) {
+        pageNums = ahead.seg.pageNums.slice();
+        rows = ahead.seg.rows;
+        aheadPages += batch.length;
+      }
+      for (var b = 0; !ahead && b < batch.length; b++) {
         await ensurePageRaster(batch[b]);
         var data = compositeJpeg(batch[b], 1500, 0.86);
         // The picture and its page number are pushed TOGETHER, so a page
@@ -11927,26 +12174,15 @@ async function runMarking() {
         if (data) { imgs.push({ mimeType: 'image/jpeg', data: data }); pageNums.push(batch[b].num); }
         else failed.push(batch[b].num);
       }
-      if (!imgs.length) continue;
+      if (!ahead && !imgs.length) continue;
       try {
-        var raw = await window.askGemini(markPrompt(pageNums, total, carry), {
-          // The ceiling goes in the SYSTEM prompt, beside the grounding and
-          // exactly where the chat's does. A hard constraint carried in the
-          // user message is a constraint the next question can talk over.
-          // The paper's own answer key goes in BESIDE the grounding, never
-          // instead of it: the key says what the answer is, the teaching
-          // notes say what counts as a full-mark one.
-          // The syllabus list goes in last, so the report can file every
-          // question under the objective it tests — see THE DIAGNOSTIC.
-          system: MARK_SYS + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
-                  markSyllabusBlock(wsMeta.subject, wsMeta.level),
-          maxOutputTokens: 8000, temperature: 0.2, json: true, thinkingLevel: 'high',
-          timeoutMs: 120000, routeTimeoutMs: 45000,
-          images: imgs
-        });
-        if (run !== _markRun || epoch !== wsEpoch) return;
-        var res = _parseAIJson(raw);
-        _markFoldRows((res && res.questions) || [], pageNums, marking.items,
+        if (!ahead) {
+          var raw = await markBatchAsk(imgs, pageNums, total, carry);
+          if (run !== _markRun || epoch !== wsEpoch) return;
+          var res = _parseAIJson(raw);
+          rows = (res && res.questions) || [];
+        }
+        _markFoldRows(rows, pageNums, marking.items,
                       { subject: wsMeta.subject, level: wsMeta.level });
       } catch (e) {
         // ONE unreadable batch never sinks the rest of the worksheet: those
@@ -11968,13 +12204,21 @@ async function runMarking() {
          AWAITED, never fired and forgotten: it writes documents, uploads
          pictures and reloads the book, and two passes in flight would race
          over `have`, the ration and `mistakes` itself. The next batch's
-         reading is the wait, which is time this would have spent anyway. */
-      try {
-        var got = await fileMistakes({ marked: true, quiet: true });
-        mistFiled += got.filed;
-      } catch (e) { console.warn('Mistakes could not be filed for this batch', e); }
-      if (run !== _markRun || epoch !== wsEpoch) return;
+         reading is the wait, which is time this would have spent anyway.
+
+         ⏩ A batch that was MARKED AHEAD is not filed here: there is no
+         reading to hide the wait behind, so filing it would hold back the
+         marks the student is waiting for — and the end-of-run pass below
+         files every question anyway, a moment after they are on screen. */
+      if (!ahead) {
+        try {
+          var got = await fileMistakes({ marked: true, quiet: true });
+          mistFiled += got.filed;
+        } catch (e) { console.warn('Mistakes could not be filed for this batch', e); }
+        if (run !== _markRun || epoch !== wsEpoch) return;
+      }
     }
+    if (aheadPages) console.info('⏩ ' + aheadPages + ' page(s) were marked ahead and reused');
     marking.runAt = Date.now();
     if (typeof StudyAdventure !== 'undefined') StudyAdventure.marked(marking.items, adventureContext);
     usageNote('mark', docName || '');
@@ -29892,6 +30136,9 @@ $('buddyFab').addEventListener('click', function () {
 
 $('viewerArea').addEventListener('scroll', scheduleRaster, { passive: true });
 $('viewerArea').addEventListener('scroll', function () { fastTutorPrepareSoon(); }, { passive: true });
+/* ⏩ When the scrolling STOPS, the pages behind them are marked ahead — kept,
+   never shown, until they press Mark (see MARKING AHEAD). */
+$('viewerArea').addEventListener('scroll', function () { premarkSoon(); }, { passive: true });
 window.addEventListener('resize', function () {
   if (fittedWidth) fitWidth();
   scheduleRaster();

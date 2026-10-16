@@ -3051,10 +3051,14 @@ eq('nothing at all is nothing', S.progressRows([]).length, 0);
 
 section('The diagnostic — against index.html itself');
 const runSrc = html.slice(html.indexOf('async function runMarking()'), html.indexOf('function markTally()'));
+const askSrc = html.slice(html.indexOf('async function markBatchAsk('), html.indexOf('function markSystemPrompt()'));
 ok('the marking\'s system prompt carries the syllabus list',
-   /system: MARK_SYS \+ markBlankRule\(\) \+ aiGrounding\('mark'\) \+ keyRuleBlock\(\) \+ tutorMethodRule\(\) \+\s*markSyllabusBlock\(wsMeta\.subject, wsMeta\.level\)/.test(runSrc));
+   /system: MARK_SYS \+ markBlankRule\(\) \+ aiGrounding\('mark'\) \+ keyRuleBlock\(\) \+ tutorMethodRule\(\) \+\s*markSyllabusBlock\(wsMeta\.subject, wsMeta\.level\)/.test(askSrc));
+ok('…and the run reads every fresh batch through that ONE call',
+   /var raw = await markBatchAsk\(imgs, pageNums, total, carry\);/.test(runSrc) && !/window\.askGemini\(/.test(runSrc));
 ok('…and the fold is told the subject and level, or nothing is filed',
-   /_markFoldRows\(\(res && res\.questions\) \|\| \[\], pageNums, marking\.items,\s*\{ subject: wsMeta\.subject, level: wsMeta\.level \}\)/.test(runSrc));
+   /_markFoldRows\(rows, pageNums, marking\.items,\s*\{ subject: wsMeta\.subject, level: wsMeta\.level \}\)/.test(runSrc) &&
+   /rows = \(res && res\.questions\) \|\| \[\];/.test(runSrc));
 ok('the reply shape asks for the objective id', /"lo":"the learning objective/.test(html));
 const saveSrc = html.slice(html.indexOf('async function performSave('), html.indexOf('function applyWorksheetBody('));
 ok('the summary rides every save beside the score', /score: scoreOf\(\),[\s\S]{0,300}diagnostic: diagSummary\(\),/.test(saveSrc));
@@ -7561,6 +7565,152 @@ ok('saved mistake feedback does not inherit the open worksheet or profile level'
 ok('saved mistake feedback uses the original level and subject teacher notes',
    retrySystem.includes('ORIGINAL_QUESTION_NOTE') && !retrySystem.includes('OTHER_WORKSHEET_NOTE'));
 ok('retry checking still returns its marking verdict', S.prac.result.verdict === 'partial');
+
+/* =====================================================================
+   ⏩ MARKING AHEAD — the page they scrolled past, marked while they read
+   the next one, and KEPT until they press Mark
+   ===================================================================== */
+section('⏩ Marking ahead');
+{
+  const PM_SRC = between('/* =====================================================================\n   ⏩ MARKING AHEAD', 'async function runMarking() {', 'marking ahead');
+  const calls = [];
+  const timers = [];
+  const pm = {
+    console: { warn() {}, info() {} },
+    JSON, Math, Date, Promise, Array, String, Object,
+    setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+    clearTimeout: () => {},
+    document: { hidden: false },
+    MARK_BATCH: 3, wsEpoch: 1, pages: [], annotations: [], wsMeta: { subject: 'science', level: 'P5', guidance: 'full' },
+    marking: { items: [], runAt: null, running: false }, _markFiling: false,
+    MARK_SYS: 'SYS', markBlankRule: () => '', aiGrounding: () => '[G]', keyRuleBlock: () => '', tutorMethodRule: () => '',
+    markSyllabusBlock: () => '', markPrompt: (nums, total, carry) => 'pages ' + nums.join(',') + ' carry=' + carry,
+    aiAvailable: () => true, loadTeachingNotes: async () => [], keyEnsureReady: async () => true,
+    ensurePageRaster: async () => {}, compositeJpeg: p => 'JPEG' + p.num,
+    _parseAIJson: raw => JSON.parse(raw), _mkStr: (v) => String(v || ''),
+    _markFoldRows: (rows, nums, into) => rows.forEach(r => into.push({ question: r.question, page: nums[0] })),
+    window: {}
+  };
+  pm.window.askGemini = async (prompt, cfg) => {
+    calls.push({ prompt, cfg });
+    return JSON.stringify({ questions: [{ question: 'Q on ' + prompt, continuation: false }] });
+  };
+  const ctxPM = vm.createContext(pm);
+  vm.runInContext(PM_SRC + '\nthis._pm = { get state() { return _premark; } };', ctxPM, { filename: 'index.html' });
+  const P = n => ({ num: n });
+  pm.pages = [P(1), P(2), P(3), P(4), P(5)];
+  pm.studentPages = () => pm.pages;
+  let here = pm.pages[0];
+  pm.visiblePage = () => here;
+  const ink = (page, text) => pm.annotations.push({ id: 'a' + pm.annotations.length, page, type: 'text', text });
+
+  /* Reading page one and nothing passed yet: nothing is marked. */
+  await pm.premarkTick();
+  eq('nothing is marked while they are still on the first page', calls.length, 0);
+
+  /* Scrolled to page 2, but no ink anywhere — a paper being read, not done. */
+  here = pm.pages[1];
+  await pm.premarkTick();
+  eq('a paper being scrolled through and READ is not marked at all', calls.length, 0);
+
+  /* They wrote on page 1 and moved to page 2: page 1, alone, is marked. */
+  ink(1, 'evaporation');
+  await pm.premarkTick();
+  eq('the page they just left is marked when they stop on the next', calls.length, 1);
+  ok('…ONE page, not a batch of three, when they read one page at a time',
+     /^pages 1 carry=$/.test(calls[0].prompt), calls[0].prompt);
+  ok('…through the same system prompt the run sends, ceiling and grounding included',
+     calls[0].cfg.system === 'SYS[G]' && calls[0].cfg.json === true && calls[0].cfg.thinkingLevel === 'high');
+  eq('…and NOTHING reaches the marking the student can see', pm.marking.items.length, 0);
+  eq('…one segment is kept', pm._pm.state.segs.length, 1);
+
+  /* Stopping on page 2 again does not ask again. */
+  await pm.premarkTick();
+  eq('a page already marked ahead is not asked for twice', calls.length, 1);
+
+  /* Jump to page 5: pages 2–4 go as ONE segment, carrying page 1's question. */
+  here = pm.pages[4];
+  ink(4, '12 cm');
+  await pm.premarkTick();
+  eq('pages passed in one jump go up together, as the run would batch them', calls.length, 2);
+  ok('…carrying the question the page before ended on', /^pages 2,3,4 carry=Q on pages 1 carry=$/.test(calls[1].prompt), calls[1].prompt);
+
+  /* The run's view: walk the chain from page one. */
+  const ctx = pm.premarkCtxSig();
+  const first = pm.premarkReuse(pm.pages, 0, '', ctx);
+  ok('the run finds the kept segment at page one', first && first.batch.length === 1 && first.batch[0].num === 1);
+  const second = pm.premarkReuse(pm.pages, 1, 'Q on pages 1 carry=', ctx);
+  ok('…and the next one, under the carry it was marked with', second && second.batch.map(p => p.num).join() === '2,3,4');
+  ok('…but never under a DIFFERENT carry — that was a different paper',
+     pm.premarkReuse(pm.pages, 1, 'something else', ctx) === null);
+  ok('…nor under a different prompt — a help level, a key or a note changed since',
+     pm.premarkReuse(pm.pages, 0, '', 'other') === null);
+
+  /* One more stroke on page 1 and its kept answer is no longer the answer. */
+  ink(1, 'condensation');
+  ok('a stroke added after the page was marked ahead throws that segment away',
+     pm.premarkReuse(pm.pages, 0, '', ctx) === null);
+  eq('…and the chain stops there, so nothing after it is trusted either', pm.premarkChain(pm.pages, ctx).next, 0);
+
+  /* Stopping again re-marks page 1 alone and drops the stale copy. */
+  await pm.premarkTick();
+  eq('the edited page is marked again on the next stop', calls.length, 3);
+  ok('…and the stale copy of it is dropped rather than kept beside the new one',
+     pm._pm.state.segs.filter(s => s.pageNums.includes(1)).length === 1);
+
+  /* A paper already marked, a run in flight, a hidden tab: nothing. */
+  const before = calls.length;
+  pm.annotations.push({ id: 'zz', page: 2, type: 'pen', points: [[1, 1]] });
+  pm.marking.runAt = 1; await pm.premarkTick();
+  pm.marking.runAt = null; pm.marking.running = true; await pm.premarkTick();
+  pm.marking.running = false; pm.document.hidden = true; await pm.premarkTick();
+  pm.document.hidden = false;
+  eq('a marked paper, a run in progress and a hidden tab mark nothing ahead', calls.length, before);
+
+  /* A new worksheet takes every kept answer with it. */
+  pm.wsEpoch = 2;
+  eq('a worksheet swapped takes its kept answers with it', pm.premarkReuse(pm.pages, 0, '', ctx), null);
+  eq('…and its own budget starts again', pm._pm.state.calls, 0);
+
+  /* The bound. */
+  pm._pm.state.calls = pm.PREMARK_MAX_CALLS;
+  const b2 = calls.length;
+  await pm.premarkTick();
+  eq('PREMARK_MAX_CALLS bounds the re-marks one worksheet can buy', calls.length, b2);
+
+  /* A failed read is a head start lost, never a fault on screen. */
+  pm._pm.state.calls = 0;
+  pm.window.askGemini = async () => { throw new Error('busy'); };
+  let threw = false;
+  try { await pm.premarkTick(); } catch (e) { threw = true; }
+  ok('a read that FAILS stands down quietly and keeps nothing', !threw && pm._pm.state.busy === null);
+
+  /* Against index.html itself. */
+  const RUN = between('async function runMarking() {', 'function markTally() {', 'the marking run');
+  ok('the run walks the kept chain from the first page, with the prompt\'s fingerprint',
+     /var aheadCtx = premarkCtxSig\(\)/.test(RUN) && /var ahead = premarkReuse\(work, start, carry, aheadCtx\);/.test(RUN));
+  ok('…steps by the segment it used, so the chain and the run stay in step',
+     /for \(var start = 0; start < total; start \+= step\)/.test(RUN) && /step = batch\.length;/.test(RUN));
+  ok('…and takes no picture and makes no call for a kept segment',
+     /for \(var b = 0; !ahead && b < batch\.length; b\+\+\)/.test(RUN) && /if \(!ahead\) \{\n\s*var raw = await markBatchAsk/.test(RUN));
+  ok('…waits for a segment in flight rather than asking for it twice',
+     /premarkCancel\(\);[\s\S]{0,40}try \{\n\s*if \(_premark\.busy\) \{ try \{ await _premark\.busy; \}/.test(RUN));
+  ok('…and files a kept batch at the END, so the marks are not held back behind the book',
+     /if \(!ahead\) \{\n\s*try \{\n\s*var got = await fileMistakes/.test(RUN));
+  ok('the ONE marking call and the fingerprint are the same expression',
+     (() => {
+       const a = between('async function markBatchAsk(', 'function markSystemPrompt()', 'the batch call');
+       const b = between('function markSystemPrompt()', 'function premarkHash(', 'the fingerprint');
+       const sysA = (a.match(/system: ([\s\S]*?),\n/) || [])[1];
+       const sysB = (b.match(/return ([\s\S]*?);\n/) || [])[1];
+       return !!sysA && !!sysB && sysA.replace(/\s+/g, ' ') === sysB.replace(/\s+/g, ' ');
+     })(), 'a fingerprint over a different prompt is a kept mark reused after the prompt changed');
+  ok('marking ahead never touches what the student sees',
+     !/renderMarking\(|marking\s*=|marking\.items\.push|markProgress\(|toast\(/.test(PM_SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')));
+  ok('…and it is started when the scrolling STOPS',
+     /\$\('viewerArea'\)\.addEventListener\('scroll', function \(\) \{ premarkSoon\(\); \}, \{ passive: true \}\);/.test(html) &&
+     /_premark\.timer = setTimeout\(premarkTick, PREMARK_IDLE_MS\);/.test(PM_SRC));
+}
 
 console.log('\n' + (failures
   ? '✗ ' + failures + ' of ' + checks + ' checks failed'
