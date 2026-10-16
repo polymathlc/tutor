@@ -17,6 +17,29 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.62.0 — Marking ahead, so ✅ Mark my work is ready sooner
+
+When a student scrolls on to the next page and **stops** to read it, the page
+they just left is now marked quietly in the background. Nothing is shown: no
+ticks, no score, no marking cards and nothing in the mistake book, until the
+student presses **✅ Mark my work** themselves. Then every page that was already
+marked ahead is used straight away instead of being read again, so the marks
+appear almost at once and only the pages still unread are sent off.
+
+- A page is marked ahead about a second after the scrolling stops, one page at
+  a time when the student reads one page at a time (up to three when they jump
+  further).
+- A kept mark is only reused when **nothing has changed**: the same ink on the
+  page, the same help level, notes, answer key and syllabus, and the same
+  question carried over from the page before. Write one more stroke on a page
+  and it is simply marked again, so a kept mark can never differ from a fresh
+  one.
+- Only pages with work on them, or pages a student went past to write on a
+  later one, are marked ahead. A paper that is only being scrolled through is
+  not marked at all, and each worksheet has a cap on background re-marks.
+- Questions from pages marked ahead are filed into the mistake book in the
+  final pass, just after the marks are on screen.
+
 ## v1.61.0 — Light jobs on GPT-6 Luna
 
 Two background jobs now answer on GPT-6 Luna, the cheapest GPT-6 tier: **reading

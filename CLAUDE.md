@@ -3051,6 +3051,39 @@ slider at it.
   make it usable with a thumb.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## ⏩ MARKING AHEAD — the page they scrolled past, marked while they read the next (v1.62.0)
+
+`PREMARK_IDLE_MS` / `PREMARK_MAX_CALLS` / `PREMARK_SEGS_MAX` / `_premark` / **`markBatchAsk`** /
+**`markSystemPrompt`** / `premarkHash` / **`premarkInkSig`** / **`premarkCtxSig`** / `premarkSync` /
+`premarkWorth` / **`premarkReuse`** / **`premarkChain`** / `premarkKeep` / `premarkSoon` /
+`premarkCancel` / **`premarkTick`** (search `MARKING AHEAD`), the `aheadCtx` / `ahead` / `step`
+walk and the `_premark.busy` wait in `runMarking`, and the third `scroll` listener on `#viewerArea`.
+
+When scrolling stops on a later page, the pages behind are marked in the background and the rows
+are KEPT, not shown. ✅ Mark my work then folds a kept segment in with no picture and no call.
+
+- **`markBatchAsk` IS THE ONE MARKING CALL**, and the run and the head start both go through it.
+  `markSystemPrompt` is the same expression, used only to fingerprint it; the harness pins the two
+  as identical text. A second copy of the call is a marker that drifts.
+- **A KEPT SEGMENT IS USED ONLY WHEN NOTHING IT WAS BUILT FROM HAS CHANGED**: the same pages in
+  order, each page's ink (`premarkInkSig`, taken in the same tick as its picture), the same
+  `carry`, the same prompt fingerprint. Anything else and the run reads the page fresh, so this
+  can only make marking FASTER, never different.
+- **THE SEGMENTS ARE A CHAIN IN PAPER ORDER**, because `carry` stitches a question over a page
+  break. `premarkChain` folds kept segments exactly as the run does to find where the next one
+  starts; the run's loop steps by the segment it used (`start += step`).
+- **IT IS NEVER SHOWN.** Nothing in the block touches `marking`, `renderMarking`, the progress bar
+  or a toast; the harness checks the source. A tick appearing before Mark is pressed is the app
+  marking a paper nobody handed in.
+- **IT ONLY SPENDS A CALL ON WORK THAT IS THERE**: ink on the segment or on a later page (🕳 the
+  went-past rule). A marked paper, a run in flight, a hidden tab and `PREMARK_MAX_CALLS` all stop
+  it. A failed read stands down silently: it is a head start lost, never an error.
+- **A KEPT BATCH IS FILED AT THE END, NOT PER BATCH.** Per-batch filing hides its wait behind the
+  next batch's reading; a kept batch has none, so filing it there would hold back the marks.
+  The end-of-run `fileMistakes({ quiet: true })` files every question anyway.
+- **ONE AT A TIME, AND THE RUN WAITS FOR IT** (`_premark.busy`), rather than asking twice.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 📕 A QUESTION IS IN THE BOOK AS SOON AS IT IS MARKED (v1.44.0)
 
 **`fileMistakes(opts)`** and its `{ filed, wentPast }` answer, **`markRation`** beside it, and the
