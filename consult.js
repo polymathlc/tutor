@@ -372,19 +372,167 @@
       return { t: 'laser', ws: typeof m.ws === 'string' ? m.ws.slice(0, 200) : '', page: page, x: clamp01(m.x), y: clamp01(m.y) };
     }
     if (m.t === 'view') return { t: 'view', view: cleanView(m.view) };
+    if (m.t === 'nav') { var n = cleanNav(m); return n ? n : null; }
     return null;
   }
 
+  /* ---------------- The teacher moves the student's page ----------------
+     A NAV is an instruction, never a picture: "zoom by this much", "fit the
+     width", "next page", "put this spot in the middle", "scroll by this
+     much". The student's own app does the moving, through the very same
+     zoomAt / fitWidth / scroll the child's own fingers use, so nothing here
+     can leave the worksheet in a state the child could not have put it in.
+
+     Every number is clamped HERE, once: a factor past NAV_ZOOM_MAX is one
+     tap turning the page into a single word, and a pan past one page is a
+     teacher's slip throwing the child to the end of the paper. A nav with
+     no id is refused, because the id is what stops the same instruction
+     arriving twice — once on the channel and once on the document — and
+     being obeyed twice. */
+  var NAV_OPS = { zoom: 1, fit: 1, page: 1, center: 1, pan: 1 };
+  var NAV_ZOOM_MIN = 0.5, NAV_ZOOM_MAX = 2;
+  var NAV_PAN_MAX = 1;
+  var NAV_FRESH_MS = 60 * 1000;
+  function navIdOk(id) { return typeof id === 'string' && /^[A-Za-z0-9_-]{6,40}$/.test(id); }
+  function cleanNav(m) {
+    if (!m || typeof m !== 'object') return null;
+    if (!navIdOk(m.id) || !NAV_OPS[m.op]) return null;
+    var out = { t: 'nav', id: m.id, op: m.op, ws: typeof m.ws === 'string' ? m.ws.slice(0, 200) : '' };
+    var at = Number(m.at);
+    out.at = at > 0 && isFinite(at) ? Math.floor(at) : 0;
+    if (m.op === 'zoom') {
+      var f = Number(m.f);
+      if (!(f > 0) || !isFinite(f)) return null;
+      out.f = Math.round(Math.min(NAV_ZOOM_MAX, Math.max(NAV_ZOOM_MIN, f)) * 10000) / 10000;
+      if (out.f === 1) return null;
+      var zp = Number(m.page);
+      if (zp >= 1 && zp <= 2000 && m.x != null && m.y != null && isFinite(Number(m.x)) && isFinite(Number(m.y))) {
+        out.page = Math.floor(zp); out.x = clamp01(m.x); out.y = clamp01(m.y);
+      }
+    } else if (m.op === 'page') {
+      var step = Number(m.step);
+      if (step !== 1 && step !== -1) return null;
+      out.step = step;
+    } else if (m.op === 'center') {
+      var cp = Number(m.page);
+      if (!(cp >= 1 && cp <= 2000)) return null;
+      if (!isFinite(Number(m.x)) || !isFinite(Number(m.y))) return null;
+      out.page = Math.floor(cp); out.x = clamp01(m.x); out.y = clamp01(m.y);
+    } else if (m.op === 'pan') {
+      var dx = Number(m.dx), dy = Number(m.dy);
+      if (!isFinite(dx)) dx = 0;
+      if (!isFinite(dy)) dy = 0;
+      dx = Math.max(-NAV_PAN_MAX, Math.min(NAV_PAN_MAX, dx));
+      dy = Math.max(-NAV_PAN_MAX, Math.min(NAV_PAN_MAX, dy));
+      if (Math.abs(dx) < 0.0005 && Math.abs(dy) < 0.0005) return null;
+      // Signed: round4 clamps to 0..1, which would throw every leftward or
+      // upward pan away.
+      out.dx = Math.round(dx * 10000) / 10000; out.dy = Math.round(dy * 10000) / 10000;
+    }
+    return out;
+  }
+
+  /* Whether a nav read off the DOCUMENT is still worth obeying. The channel
+     is instant; the document is the fallback, and a nav left on it from a
+     minute ago — a reconnect, a reload — must never move a page the child
+     has since moved for themselves. The clocks are two devices', so the
+     window is generous rather than exact. */
+  function navFresh(n, t) {
+    if (!n || !n.at) return false;
+    return Math.abs((t || Date.now()) - n.at) < NAV_FRESH_MS;
+  }
+
+  /* The zoom the teacher's toolbar shows, as a whole percentage. */
+  function zoomPercent(z) {
+    z = Number(z);
+    if (!(z > 0) || !isFinite(z)) return '';
+    return Math.round(z * 100) + '%';
+  }
+
+  /* Two continuous navs folded into one, for the DOCUMENT fallback. Over the
+     channel every drag step goes as it happens; when the channel is down the
+     same steps would be a Firestore write each, a dozen a second, so they are
+     gathered and written as one every NAV_DOC_MS. Two pans add, two zooms
+     multiply (and keep the LATEST point, which is where the fingers are
+     now). Anything else does not fold, and the caller writes the first
+     before starting on the second. The result is clamped exactly as
+     cleanNav clamps, so a long drag cannot fold into a jump past one page. */
+  var NAV_STEP = 1.25;
+  var NAV_NOTE_MS = 2200;
+  var NAV_DOC_MS = 400;
+  function navMerge(a, b) {
+    if (!a || !b || a.op !== b.op || a.ws !== b.ws) return null;
+    if (a.op === 'pan') {
+      var dx = Math.max(-NAV_PAN_MAX, Math.min(NAV_PAN_MAX, (Number(a.dx) || 0) + (Number(b.dx) || 0)));
+      var dy = Math.max(-NAV_PAN_MAX, Math.min(NAV_PAN_MAX, (Number(a.dy) || 0) + (Number(b.dy) || 0)));
+      return { t: 'nav', id: b.id, op: 'pan', ws: b.ws, at: b.at, dx: Math.round(dx * 10000) / 10000, dy: Math.round(dy * 10000) / 10000 };
+    }
+    if (a.op === 'zoom') {
+      var f = Math.max(NAV_ZOOM_MIN, Math.min(NAV_ZOOM_MAX, (Number(a.f) || 1) * (Number(b.f) || 1)));
+      var out = { t: 'nav', id: b.id, op: 'zoom', ws: b.ws, at: b.at, f: Math.round(f * 10000) / 10000 };
+      var src = b.page ? b : (a.page ? a : null);
+      if (src) { out.page = src.page; out.x = src.x; out.y = src.y; }
+      return out;
+    }
+    return null;
+  }
+
+  /* Two fingers on the stage: how far apart, and the point between them. */
+  function pinchSpan(p1, p2) {
+    if (!p1 || !p2) return null;
+    var dx = p2.x - p1.x, dy = p2.y - p1.y;
+    return { d: Math.sqrt(dx * dx + dy * dy), x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+  }
+
+  /* The page after or before the one in view, among the pages the student
+     HAS — a key page the teacher hid is not a page to step onto. Null at
+     either end, so the caller can say so rather than doing nothing. */
+  function stepPage(nums, current, step) {
+    if (!Array.isArray(nums) || !nums.length) return null;
+    var list = nums.filter(function (n) { return typeof n === 'number' && n >= 1; }).sort(function (a, b) { return a - b; });
+    if (!list.length) return null;
+    var i = list.indexOf(current);
+    if (i < 0) {
+      // Not on a page the student has: the nearest one in the direction asked.
+      for (var k = 0; k < list.length; k++) if (step > 0 ? list[k] > current : list[list.length - 1 - k] < current) return step > 0 ? list[k] : list[list.length - 1 - k];
+      return null;
+    }
+    var j = i + (step > 0 ? 1 : -1);
+    return j >= 0 && j < list.length ? list[j] : null;
+  }
+
   function cleanView(v) {
-    if (!v || typeof v !== 'object') return { ws: '', page: 0, n: 0, aspect: 1.4142, title: '' };
+    if (!v || typeof v !== 'object') return { ws: '', page: 0, n: 0, aspect: 1.4142, title: '', zoom: 0, box: null };
     var aspect = Number(v.aspect);
     return {
       ws: typeof v.ws === 'string' ? v.ws.slice(0, 200) : '',
       page: Number(v.page) >= 1 ? Math.floor(Number(v.page)) : 0,
       n: Number(v.n) >= 0 ? Math.floor(Number(v.n)) : 0,
       aspect: aspect > 0.2 && aspect < 5 ? aspect : 1.4142,
-      title: cleanText(v.title, TITLE_MAX)
+      title: cleanText(v.title, TITLE_MAX),
+      zoom: cleanZoom(v.zoom),
+      box: cleanBox(v.box)
     };
+  }
+
+  /* How far the student is zoomed in, and the part of the page on their
+     screen. Both are what the teacher's toolbar READS, never what decides
+     anything on the student's side — a zoom out of the app's own range is
+     nothing at all, and a box that is not four numbers in order is no box. */
+  function cleanZoom(z) {
+    z = Number(z);
+    return z >= 0.25 && z <= 4 ? Math.round(z * 1000) / 1000 : 0;
+  }
+  function cleanBox(b) {
+    if (!Array.isArray(b) || b.length !== 4) return null;
+    var o = b.map(function (x) { return round4(clamp01(x)); });
+    if (!(o[2] > o[0]) || !(o[3] > o[1])) return null;
+    return o;
+  }
+  /* The zoom changed enough to be worth telling the document about. A box
+     changes on every scroll and goes over the channel only. */
+  function sameZoom(a, b) {
+    return !!a && !!b && Math.abs((a.zoom || 0) - (b.zoom || 0)) < 0.005;
   }
 
   function sameView(a, b) {
@@ -510,10 +658,16 @@
   }
   function currentView() {
     var p = currentPage();
-    if (!p) return { ws: '', page: 0, n: 0, aspect: 1.4142, title: '' };
+    if (!p) return cleanView(null);
+    var box = null;
+    try {
+      var area = global.document.getElementById('viewerArea');
+      if (p.wrap && area) box = visibleBox(p.wrap.getBoundingClientRect(), area.getBoundingClientRect());
+    } catch (e) { box = null; }
     return cleanView({
       ws: global.currentDocId || '', page: p.num, n: studentPageCount(),
-      aspect: p.baseW > 0 ? p.baseH / p.baseW : 1.4142, title: global.docName || ''
+      aspect: p.baseW > 0 ? p.baseH / p.baseW : 1.4142, title: global.docName || '',
+      zoom: typeof global.scale === 'number' ? global.scale : 0, box: box
     });
   }
 
@@ -528,7 +682,8 @@
     strokes: {}, live: {}, laser: null, laserTimer: null,
     heartbeat: null, supervisor: null, lastSnap: 0, liveSince: 0, connectedAt: 0,
     notify: null, panel: null, minimized: false, asking: false, busy: false, gen: 0,
-    view: null, soundBlocked: false
+    view: null, soundBlocked: false,
+    seenNav: {}, seenNavOrder: [], navNoteAt: 0, navNoteText: '', navNoteTimer: null
   };
 
   function studentAvailable() {
@@ -719,6 +874,13 @@
       S.handledRev = null;
     }
     if (needsAnswer(data, S.handledRev)) await answer(data);
+    // The document's copy of a nav, for a call whose channel never opened
+    // (a school network that blocks WebRTC). A stale one is never obeyed.
+    if (S.status === 'live' && data.nav) {
+      var nv = cleanNav(data.nav);
+      if (nv && navFresh(nv, now())) applyNav(nv);
+      else if (nv) navSeen(nv.id);
+    }
     var pc = S.pc;
     if (pc && pc.remoteDescription && Number(data.rev) === S.rev) {
       unpackCandidates(data.tc, S.rev, S.seenTc).forEach(function (c) {
@@ -823,13 +985,110 @@
       } else if (m.t === 'laser') {
         S.laser = { ws: m.ws, page: m.page, x: m.x, y: m.y, at: now() };
         renderLaser();
+      } else if (m.t === 'nav') {
+        applyNav(m);
       }
     };
   }
 
+  /* ---------------- The teacher moves the page ----------------
+     The ONE door a nav comes in by, from the channel and the document
+     alike. It is obeyed only while the call is live, only on the worksheet
+     the teacher is looking at, and only once: the id is remembered, so the
+     copy that arrives on the document a moment after the channel's is
+     dropped rather than zooming the page a second time. */
+  var NAV_SEEN_MAX = 80;
+  function navSeen(id) {
+    if (S.seenNav[id]) return true;
+    S.seenNav[id] = 1;
+    S.seenNavOrder.push(id);
+    while (S.seenNavOrder.length > NAV_SEEN_MAX) delete S.seenNav[S.seenNavOrder.shift()];
+    return false;
+  }
+  function pageByNum(n) {
+    var list = Array.isArray(global.pages) ? global.pages : [];
+    for (var i = 0; i < list.length; i++) if (list[i] && list[i].num === n) return list[i];
+    return null;
+  }
+  function studentPageNums() {
+    var list = null;
+    try { if (typeof global.studentPages === 'function') list = global.studentPages(); } catch (e) { list = null; }
+    if (!Array.isArray(list)) list = Array.isArray(global.pages) ? global.pages : [];
+    return list.map(function (p) { return p && p.num; }).filter(function (n) { return typeof n === 'number'; });
+  }
+  function applyNav(m) {
+    if (!m || !m.id || navSeen(m.id)) return false;
+    if (S.status !== 'live' || !onWorksheet()) return false;
+    if (m.ws && m.ws !== (global.currentDocId || '')) return false;
+    var area = global.document.getElementById('viewerArea');
+    if (!area) return false;
+    var ar = area.getBoundingClientRect();
+    var cur = currentPage();
+    var p = null, r = null;
+    try {
+      if (m.op === 'zoom') {
+        var cx = ar.left + ar.width / 2, cy = ar.top + ar.height / 2;
+        if (m.page) {
+          p = pageByNum(m.page);
+          if (p && p.wrap) {
+            r = p.wrap.getBoundingClientRect();
+            var px = r.left + m.x * r.width, py = r.top + m.y * r.height;
+            // Zoom about the teacher's spot only when it is on the child's
+            // screen; zooming about a point off the screen throws the page.
+            if (px >= ar.left && px <= ar.right && py >= ar.top && py <= ar.bottom) { cx = px; cy = py; }
+          }
+        }
+        if (typeof global.zoomAt === 'function') global.zoomAt(cx, cy, m.f);
+        else if (typeof global.zoomBy === 'function') global.zoomBy(m.f);
+        else return false;
+      } else if (m.op === 'fit') {
+        if (typeof global.fitWidth !== 'function') return false;
+        global.fitWidth();
+      } else if (m.op === 'page') {
+        var next = stepPage(studentPageNums(), cur ? cur.num : 0, m.step);
+        p = next ? pageByNum(next) : null;
+        if (!p || !p.wrap) { navNote(m.step > 0 ? 'That is the last page.' : 'That is the first page.'); return false; }
+        r = p.wrap.getBoundingClientRect();
+        area.scrollTop += r.top - ar.top - 8;
+      } else if (m.op === 'center') {
+        p = pageByNum(m.page);
+        if (!p || !p.wrap) return false;
+        r = p.wrap.getBoundingClientRect();
+        area.scrollLeft += (r.left + m.x * r.width) - (ar.left + ar.width / 2);
+        area.scrollTop += (r.top + m.y * r.height) - (ar.top + ar.height / 2);
+      } else if (m.op === 'pan') {
+        p = cur;
+        if (!p || !p.wrap) return false;
+        r = p.wrap.getBoundingClientRect();
+        area.scrollLeft += m.dx * r.width;
+        area.scrollTop += m.dy * r.height;
+      } else return false;
+    } catch (e) { return false; }
+    navNote();
+    drawMirror(true);
+    sendView(true);
+    return true;
+  }
+
+  /* A page that moves by itself under a child's pencil reads as the app
+     going wrong, so it SAYS who moved it — briefly, and without a timer
+     per nav: one note, re-armed. */
+  function navNote(text) {
+    S.navNoteAt = now();
+    S.navNoteText = text || '';
+    var host = S.panel && S.panel.querySelector('.consultNav');
+    if (host) { host.textContent = text || (teacherName() + ' moved your page'); host.hidden = false; }
+    if (S.navNoteTimer) clearTimeout(S.navNoteTimer);
+    S.navNoteTimer = setTimeout(function () {
+      S.navNoteTimer = null;
+      var h = S.panel && S.panel.querySelector('.consultNav');
+      if (h) h.hidden = true;
+    }, NAV_NOTE_MS);
+  }
+
   function sendView(force) {
     var v = currentView();
-    var changed = !sameView(v, S.view);
+    var changed = !sameView(v, S.view) || !sameZoom(v, S.view);
     S.view = v;
     if (S.channel && S.channel.readyState === 'open') {
       try { S.channel.send(JSON.stringify({ t: 'view', view: v })); } catch (e) {}
@@ -1086,6 +1345,81 @@
     return root;
   }
 
+  /* The panel can be DRAGGED by its head. On a phone it covers the bottom
+     of the screen, which is very often exactly where the question is; a
+     card that cannot be moved is a card the child has to minimise just to
+     read their own page. The position is kept for the visit (S.panelPos)
+     and pulled back onto the screen on every render and every resize, so a
+     tablet turned on its side never leaves the panel off the edge. */
+  function clampPanelPos(pos, w, h, vw, vh, margin) {
+    if (!pos) return null;
+    var m = margin == null ? 8 : margin;
+    var x = Number(pos.x), y = Number(pos.y);
+    if (!isFinite(x) || !isFinite(y)) return null;
+    var maxX = Math.max(m, vw - w - m), maxY = Math.max(m, vh - h - m);
+    return { x: Math.round(Math.min(maxX, Math.max(m, x))), y: Math.round(Math.min(maxY, Math.max(m, y))) };
+  }
+
+  function viewportSize() {
+    var vv = global.visualViewport;
+    return {
+      w: (vv && vv.width) || global.innerWidth || 0,
+      h: (vv && vv.height) || global.innerHeight || 0
+    };
+  }
+
+  function placePanel(root) {
+    if (!root || !S.panelPos) return;
+    var r = root.getBoundingClientRect ? root.getBoundingClientRect() : { width: 0, height: 0 };
+    var vp = viewportSize();
+    var p = clampPanelPos(S.panelPos, r.width || 0, r.height || 0, vp.w, vp.h, 8);
+    if (!p) { S.panelPos = null; return; }
+    S.panelPos = p;
+    root.style.left = p.x + 'px';
+    root.style.top = p.y + 'px';
+    root.style.right = 'auto';
+    root.style.bottom = 'auto';
+    root.classList.add('consultMoved');
+  }
+
+  function bindPanelDrag(root, head) {
+    head.classList.add('consultDrag');
+    head.addEventListener('pointerdown', function (e) {
+      if (e.button > 0) return;
+      // A tap on a button in the head is a button press, never a drag.
+      if (e.target && e.target.closest && e.target.closest('button')) return;
+      var r = root.getBoundingClientRect();
+      var drag = { id: e.pointerId, ox: e.clientX - r.left, oy: e.clientY - r.top, sx: e.clientX, sy: e.clientY, moved: false };
+      try { head.setPointerCapture(e.pointerId); } catch (err) {}
+      function move(ev) {
+        if (ev.pointerId !== drag.id) return;
+        if (!drag.moved && Math.abs(ev.clientX - drag.sx) + Math.abs(ev.clientY - drag.sy) < 6) return;
+        drag.moved = true;
+        S.panelPos = { x: ev.clientX - drag.ox, y: ev.clientY - drag.oy };
+        placePanel(root);
+        ev.preventDefault();
+      }
+      function up(ev) {
+        if (ev.pointerId !== drag.id) return;
+        head.removeEventListener('pointermove', move);
+        head.removeEventListener('pointerup', up);
+        head.removeEventListener('pointercancel', up);
+        head.removeEventListener('lostpointercapture', up);
+      }
+      head.addEventListener('pointermove', move);
+      head.addEventListener('pointerup', up);
+      head.addEventListener('pointercancel', up);
+      head.addEventListener('lostpointercapture', up);
+    });
+    if (!S.panelResizeBound && global.addEventListener) {
+      S.panelResizeBound = true;
+      var again = function () { if (S.panel) placePanel(S.panel); };
+      global.addEventListener('resize', again);
+      global.addEventListener('orientationchange', again);
+      if (global.visualViewport && global.visualViewport.addEventListener) global.visualViewport.addEventListener('resize', again);
+    }
+  }
+
   function renderPanel() {
     if (!global.document || !global.document.body) return;
     var showing = S.asking || !!S.id;
@@ -1108,6 +1442,8 @@
         S.minimized ? 'Show the video' : 'Make the window smaller'));
     }
     root.appendChild(head);
+    bindPanelDrag(root, head);
+    placePanel(root);
 
     if (S.asking) {
       root.appendChild(el('p', 'consultText', teacherName() + ' will get an email and a pop-up. When he joins, he can see this page, write on it to show you, and talk to you on video.'));
@@ -1144,6 +1480,17 @@
       sound.hidden = !S.soundBlocked;
       cam.appendChild(sound);
       root.appendChild(cam);
+      // Where the teacher's own hand on THIS screen is announced — "Mr Chung
+      // zoomed in" — so a page that moved by itself is never a mystery.
+      var navLine = el('p', 'consultNote consultNav');
+      navLine.setAttribute('aria-live', 'polite');
+      // The panel is rebuilt on every change of state, and a nav changes the
+      // view the panel describes — so a note that is still fresh is drawn
+      // again rather than lost to the very rebuild the nav caused.
+      var fresh = S.navNoteAt && now() - S.navNoteAt < NAV_NOTE_MS;
+      navLine.textContent = fresh ? (S.navNoteText || (teacherName() + ' moved your page')) : '';
+      navLine.hidden = !fresh;
+      root.appendChild(navLine);
       var state = S.pc ? S.pc.connectionState : '';
       if (state && state !== 'connected') {
         root.appendChild(el('p', 'consultNote', state === 'failed'
@@ -1205,7 +1552,9 @@
     stopHeartbeat(); closePc(); stopMic(); stopMirror();
     clearStudentInk();
     S.id = ''; S.ref = null; S.data = null; S.status = ''; S.endedBy = ''; S.asking = false;
-    S.notify = null; S.minimized = false; S.panelClosed = false; S.view = null;
+    if (S.navNoteTimer) { clearTimeout(S.navNoteTimer); S.navNoteTimer = null; }
+    S.seenNav = {}; S.seenNavOrder = [];
+    S.notify = null; S.minimized = false; S.panelClosed = false; S.view = null; S.panelPos = null;
     renderPanel(); syncButton();
     if (!silent) { /* nothing more to say */ }
   }
@@ -1442,12 +1791,19 @@
     renderRoomHead();
   }
 
+  /* The view is STORED even when it is the "same" page: `sameView` ignores
+     the zoom and the visible box, and those are exactly what the teacher's
+     zoom label and the box on the stage show. Returning early on a same
+     page is a label stuck on the zoom the consult opened at. */
   function setTeacherView(v) {
-    if (sameView(v, T.view)) return;
+    var same = sameView(v, T.view);
     T.view = v;
+    if (same) { renderZoomLabel(); renderViewBox(); return; }
     renderRoomHead();
     sizeStage();
     renderTeacherInk();
+    renderZoomLabel();
+    renderViewBox();
   }
 
   /* ---------------- The room's DOM ---------------- */
@@ -1470,7 +1826,22 @@
     var modes = el('div', 'cGroup');
     modes.appendChild(roomToolBtn('✏️', 'pen', 'Pen — write on the page'));
     modes.appendChild(roomToolBtn('👉', 'laser', 'Point — a dot the student sees, nothing is written'));
+    modes.appendChild(roomToolBtn('✋', 'move', 'Move — drag to scroll their page, tap to bring a spot to the middle, pinch to zoom'));
     tools.appendChild(modes);
+    /* 🔍 THE TEACHER STEERS THE STUDENT'S PAGE. Every button is an
+       instruction the student's own app carries out (applyNav) — the same
+       zoom and scroll the child's fingers use — so nothing here can put the
+       worksheet somewhere the child could not have put it themselves. */
+    var nav = el('div', 'cGroup cNav');
+    nav.appendChild(btn('−', 'btnGhost cNavBtn', function () { navZoomStep(1 / NAV_STEP); }, 'Zoom their page out'));
+    var zl = el('span', 'cZoom', '');
+    zl.title = 'How far the student is zoomed in';
+    nav.appendChild(zl);
+    nav.appendChild(btn('+', 'btnGhost cNavBtn', function () { navZoomStep(NAV_STEP); }, 'Zoom their page in'));
+    nav.appendChild(btn('↔ Fit', 'btnGhost cNavBtn', function () { sendNav('fit', {}); }, 'Fit their page to the width of their screen'));
+    nav.appendChild(btn('◀', 'btnGhost cNavBtn', function () { sendNav('page', { step: -1 }); }, 'Their previous page'));
+    nav.appendChild(btn('▶', 'btnGhost cNavBtn', function () { sendNav('page', { step: 1 }); }, 'Their next page'));
+    tools.appendChild(nav);
     var colors = el('div', 'cGroup cColors');
     INK_COLORS.forEach(function (ic) {
       var b = el('button', 'cSwatch');
@@ -1513,6 +1884,11 @@
     var ink = svgEl('svg', { viewBox: '0 0 1000 1414', preserveAspectRatio: 'none' });
     ink.setAttribute('class', 'cInk');
     stage.appendChild(ink);
+    // What the student can see of the page, outlined — so the teacher knows
+    // whether the spot they are about to write on is on the child's screen.
+    var vb = el('div', 'cViewBox');
+    vb.hidden = true;
+    stage.appendChild(vb);
     stage.appendChild(el('div', 'cStageNote', ''));
     main.appendChild(stage);
     var sound = btn('🔊 Turn on sound', 'btnPrimary cSound', function () { playTeacherRemote(true); });
@@ -1528,10 +1904,22 @@
     T.root = root;
     bindStage(ink);
     if (!T.onResize) {
-      T.onResize = function () { sizeStage(); };
+      // A tablet turned on its side changes the room's shape without always
+      // firing `resize` straight away (iOS fires `orientationchange` first
+      // and settles the size a beat later), and the on-screen keyboard only
+      // moves the VISUAL viewport. All three re-fit the stage.
+      T.onResize = function () {
+        sizeStage(); renderViewBox();
+        if (T.resizeLate) clearTimeout(T.resizeLate);
+        T.resizeLate = setTimeout(function () { T.resizeLate = null; sizeStage(); renderViewBox(); }, 350);
+      };
       global.addEventListener('resize', T.onResize);
+      global.addEventListener('orientationchange', T.onResize);
+      if (global.visualViewport && global.visualViewport.addEventListener) global.visualViewport.addEventListener('resize', T.onResize);
     }
     renderTools();
+    renderZoomLabel();
+    renderViewBox();
   }
 
   function roomToolBtn(text, mode, title) {
@@ -1574,6 +1962,29 @@
     if (v.page >= 1) bits.push('page ' + v.page + (v.n ? ' of ' + v.n : ''));
     else bits.push('not on a worksheet just now');
     if (where) where.textContent = bits.join(' · ');
+  }
+
+  function renderZoomLabel() {
+    if (!T.root) return;
+    var z = T.root.querySelector('.cZoom');
+    if (z) z.textContent = (T.view && zoomPercent(T.view.zoom)) || '—';
+    var on = !!(T.view && T.view.page >= 1);
+    Array.prototype.forEach.call(T.root.querySelectorAll('.cNavBtn'), function (b) { b.disabled = !on; });
+  }
+
+  function renderViewBox() {
+    if (!T.root) return;
+    var vb = T.root.querySelector('.cViewBox');
+    if (!vb) return;
+    var box = T.view && T.view.page >= 1 ? T.view.box : null;
+    // A box that is the whole page says nothing worth an outline.
+    var whole = box && box[0] <= 0.005 && box[1] <= 0.005 && box[2] >= 0.995 && box[3] >= 0.995;
+    if (!box || whole) { vb.hidden = true; return; }
+    vb.hidden = false;
+    vb.style.left = (box[0] * 100) + '%';
+    vb.style.top = (box[1] * 100) + '%';
+    vb.style.width = Math.max(0, (box[2] - box[0]) * 100) + '%';
+    vb.style.height = Math.max(0, (box[3] - box[1]) * 100) + '%';
   }
 
   function renderRoomStatus() {
@@ -1654,8 +2065,25 @@
     }
   }
 
-  /* ---------------- Drawing on the stage ---------------- */
+  /* ---------------- Drawing on the stage ----------------
+     Three things a finger can do here, and the stage tells them apart:
+       • ONE finger in ✏️ pen mode writes, in 👉 point mode points, and in
+         ✋ move mode DRAGS the student's page (a tap brings that spot to
+         the middle of their screen);
+       • TWO fingers, in ANY mode, pinch-zoom the student's page — the
+         gesture every tablet user already knows, and the one that makes the
+         ✋ button optional on an iPad. A second finger landing mid-stroke
+         takes the stroke back: half a word written by the first finger of a
+         pinch is ink nobody meant;
+       • a mouse wheel with Ctrl (a laptop trackpad's pinch arrives as one)
+         zooms, and in ✋ move mode a plain wheel scrolls. */
+  var MOVE_TAP_PX = 8;
+  var PINCH_MIN_RATIO = 0.06;
+  var MOVE_SEND_MS = 70;
+  var WHEEL_SEND_MS = 120;
+
   function bindStage(ink) {
+    T.pointers = {};
     ink.addEventListener('pointerdown', function (e) {
       if (e.button > 0) return;
       var pt = stagePoint(e, ink);
@@ -1663,6 +2091,13 @@
       if (!T.view || T.view.page < 1) { toast('The student is not on a worksheet just now.', 3500); return; }
       e.preventDefault();
       try { ink.setPointerCapture(e.pointerId); } catch (err) {}
+      T.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var ids = Object.keys(T.pointers);
+      if (ids.length >= 2) { startPinch(ink); return; }
+      if (T.mode === 'move') {
+        T.moving = { pointer: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, moved: false, pt: pt, last: 0, dx: 0, dy: 0 };
+        return;
+      }
       if (T.mode === 'laser') { sendLaser(pt, true); T.lasering = e.pointerId; return; }
       T.drawing = { id: rid(20), ws: T.view.ws, page: T.view.page, c: T.color, w: T.width, pts: [pt], at: now(), pending: true, pointer: e.pointerId };
       T.strokes[T.drawing.id] = T.drawing;
@@ -1670,6 +2105,9 @@
       sendLive(true);
     });
     ink.addEventListener('pointermove', function (e) {
+      if (T.pointers && T.pointers[e.pointerId]) T.pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if (T.pinch) { pinchMove(ink); return; }
+      if (T.mode === 'move') { moveDrag(e, ink); return; }
       var pt = stagePoint(e, ink);
       if (T.mode === 'laser') {
         if (pt && (T.lasering === e.pointerId || e.pointerType === 'mouse')) sendLaser(pt, false);
@@ -1688,14 +2126,192 @@
       sendLive(false);
     });
     function finish(e) {
+      if (T.pointers) delete T.pointers[e.pointerId];
+      if (T.pinch) {
+        // The pinch ends when the fingers lift; whatever is left down is
+        // not the start of a stroke or a drag — it is a finger on its way up.
+        if (Object.keys(T.pointers || {}).length < 2) { flushPinch(); T.pinch = null; }
+        return;
+      }
+      if (T.moving && T.moving.pointer === e.pointerId) { endMove(e.type === 'pointercancel'); return; }
       if (T.lasering === e.pointerId) { T.lasering = null; return; }
       var d = T.drawing;
       if (!d || d.pointer !== e.pointerId) return;
       T.drawing = null;
+      if (e.type === 'pointercancel' && d.pts.length < 3) { abandonStroke(d); return; }
       commitStroke(d);
     }
     ink.addEventListener('pointerup', finish);
     ink.addEventListener('pointercancel', finish);
+    ink.addEventListener('lostpointercapture', function (e) { if (T.pointers && T.pointers[e.pointerId]) finish(e); });
+    ink.addEventListener('wheel', function (e) { stageWheel(e, ink); }, { passive: false });
+  }
+
+  /* A stroke the teacher never finished — the first finger of a pinch, a
+     cancelled touch — is taken back off both screens, never saved. */
+  function abandonStroke(d) {
+    if (!d) return;
+    delete T.strokes[d.id];
+    renderTeacherInk();
+    if (T.channel && T.channel.readyState === 'open') { try { T.channel.send(JSON.stringify({ t: 'drop', id: d.id })); } catch (e) {} }
+  }
+
+  function startPinch(ink) {
+    if (T.drawing) { var d = T.drawing; T.drawing = null; abandonStroke(d); }
+    T.moving = null; T.lasering = null;
+    var ids = Object.keys(T.pointers);
+    var sp = pinchSpan(T.pointers[ids[0]], T.pointers[ids[1]]);
+    if (!sp || !(sp.d > 0)) { T.pinch = null; return; }
+    T.pinch = { ids: ids.slice(0, 2), d0: sp.d, x: sp.x, y: sp.y, last: 0, f: 1, cx: sp.x, cy: sp.y };
+  }
+
+  function pinchMove(ink) {
+    var P = T.pinch;
+    if (!P) return;
+    var sp = pinchSpan(T.pointers[P.ids[0]], T.pointers[P.ids[1]]);
+    if (!sp || !(sp.d > 0)) return;
+    var ratio = sp.d / P.d0;
+    // Two fingers sliding together without spreading is a PAN.
+    var r = ink.getBoundingClientRect ? ink.getBoundingClientRect() : null;
+    if (r && r.width > 0 && Math.abs(ratio - 1) < PINCH_MIN_RATIO) {
+      var pdx = (P.x - sp.x) / r.width, pdy = (P.y - sp.y) / r.height;
+      if (Math.abs(pdx) > 0.01 || Math.abs(pdy) > 0.01) {
+        if (now() - P.last >= MOVE_SEND_MS) {
+          P.last = now(); P.x = sp.x; P.y = sp.y;
+          sendNav('pan', { dx: pdx, dy: pdy }, true);
+        }
+      }
+      return;
+    }
+    if (Math.abs(ratio - 1) < PINCH_MIN_RATIO) return;
+    if (now() - P.last < MOVE_SEND_MS * 2) return;
+    P.last = now();
+    var pt = normFromRect(sp.x, sp.y, r, 0.5);
+    var extra = { f: ratio };
+    if (pt && T.view) { extra.page = T.view.page; extra.x = pt[0]; extra.y = pt[1]; }
+    sendNav('zoom', extra, true);
+    P.d0 = sp.d; P.x = sp.x; P.y = sp.y;
+  }
+
+  function flushPinch() { flushNavDoc(); }
+
+  function moveDrag(e, ink) {
+    var M = T.moving;
+    if (!M || M.pointer !== e.pointerId) return;
+    var r = ink.getBoundingClientRect ? ink.getBoundingClientRect() : null;
+    if (!r || !(r.width > 0) || !(r.height > 0)) return;
+    if (!M.moved && Math.abs(e.clientX - M.x0) < MOVE_TAP_PX && Math.abs(e.clientY - M.y0) < MOVE_TAP_PX) return;
+    M.moved = true;
+    // The teacher drags the student's VIEW the way the outline on the stage
+    // should go — the same sign the outline moves in.
+    M.dx += (e.clientX - M.x) / r.width;
+    M.dy += (e.clientY - M.y) / r.height;
+    M.x = e.clientX; M.y = e.clientY;
+    if (now() - M.last < MOVE_SEND_MS) return;
+    sendMoveBit();
+  }
+
+  function sendMoveBit() {
+    var M = T.moving;
+    if (!M || (Math.abs(M.dx) < 0.0005 && Math.abs(M.dy) < 0.0005)) return;
+    M.last = now();
+    var dx = M.dx, dy = M.dy;
+    M.dx = 0; M.dy = 0;
+    sendNav('pan', { dx: dx, dy: dy }, true);
+  }
+
+  function endMove(cancelled) {
+    var M = T.moving;
+    T.moving = null;
+    if (!M) return;
+    if (M.moved) {
+      T.moving = M; sendMoveBit(); T.moving = null;
+      flushNavDoc();
+      return;
+    }
+    if (!cancelled && M.pt && T.view) sendNav('center', { page: T.view.page, x: M.pt[0], y: M.pt[1] });
+  }
+
+  function stageWheel(e, ink) {
+    if (!T.view || T.view.page < 1) return;
+    var zooming = !!e.ctrlKey;
+    if (!zooming && T.mode !== 'move') return;
+    e.preventDefault();
+    var r = ink.getBoundingClientRect ? ink.getBoundingClientRect() : null;
+    if (!r || !(r.width > 0)) return;
+    var unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? r.height : 1);
+    T.wheel = T.wheel || { f: 1, dx: 0, dy: 0, last: 0, pt: null };
+    var Wh = T.wheel;
+    if (zooming) {
+      Wh.f *= Math.exp(-e.deltaY * unit * 0.0025);
+      Wh.pt = normFromRect(e.clientX, e.clientY, r, 0.5);
+    } else {
+      Wh.dx += (e.deltaX * unit) / r.width;
+      Wh.dy += (e.deltaY * unit) / r.height;
+    }
+    if (now() - Wh.last < WHEEL_SEND_MS) return;
+    Wh.last = now();
+    if (Math.abs(Wh.f - 1) >= 0.02) {
+      var extra = { f: Wh.f };
+      if (Wh.pt) { extra.page = T.view.page; extra.x = Wh.pt[0]; extra.y = Wh.pt[1]; }
+      sendNav('zoom', extra, true);
+      Wh.f = 1;
+    }
+    if (Math.abs(Wh.dx) > 0.002 || Math.abs(Wh.dy) > 0.002) {
+      sendNav('pan', { dx: Wh.dx, dy: Wh.dy }, true);
+      Wh.dx = 0; Wh.dy = 0;
+    }
+    if (T.wheelFlush) clearTimeout(T.wheelFlush);
+    T.wheelFlush = setTimeout(function () { T.wheelFlush = null; flushNavDoc(); }, NAV_DOC_MS);
+  }
+
+  function navZoomStep(f) {
+    sendNav('zoom', { f: f });
+  }
+
+  /* THE ONE DOOR a nav leaves the teacher's tab by. Over the channel it goes
+     at once; a DISCRETE one (a button, a tap) is ALSO written to the
+     document, so a student whose channel has not opened — a school network
+     that blocks the call — is still steered, and the id stops it being
+     obeyed twice. A CONTINUOUS one (a drag, a pinch) goes to the document
+     only when there is no channel, and then folded (navMerge) and written
+     once every NAV_DOC_MS rather than a dozen times a second. */
+  function sendNav(op, extra, continuous) {
+    if (!T.ref || !T.view || T.view.page < 1) { toast('The student is not on a worksheet just now.', 3500); return false; }
+    var raw = { t: 'nav', id: rid(16), op: op, ws: T.view.ws, at: now() };
+    Object.keys(extra || {}).forEach(function (k) { raw[k] = extra[k]; });
+    var m = cleanNav(raw);
+    if (!m) return false;
+    var open = !!(T.channel && T.channel.readyState === 'open');
+    if (open) { try { T.channel.send(JSON.stringify(m)); } catch (e) { open = false; } }
+    if (!continuous) { writeNavDoc(m); return true; }
+    if (open) return true;
+    if (T.navAcc) {
+      var merged = navMerge(T.navAcc, m);
+      if (merged) T.navAcc = merged;
+      else { flushNavDoc(); T.navAcc = m; }
+    } else T.navAcc = m;
+    if (!T.navTimer) T.navTimer = setTimeout(function () { T.navTimer = null; flushNavDoc(); }, NAV_DOC_MS);
+    return true;
+  }
+
+  function flushNavDoc() {
+    if (T.navTimer) { clearTimeout(T.navTimer); T.navTimer = null; }
+    var acc = T.navAcc;
+    T.navAcc = null;
+    if (!acc) return;
+    // A fresh id and clock: the folded nav is one instruction, and the
+    // student must not take it for any of the steps it was folded from.
+    var raw = {};
+    Object.keys(acc).forEach(function (k) { raw[k] = acc[k]; });
+    raw.id = rid(16); raw.at = now();
+    var m = cleanNav(raw);
+    if (m) writeNavDoc(m);
+  }
+
+  function writeNavDoc(m) {
+    if (!T.ref || !m) return;
+    T.ref.update({ nav: m }).catch(function (e) { console.warn('consult: nav not written', e); });
   }
 
   function stagePoint(e, ink) {
@@ -1822,6 +2438,18 @@
     T.unsub = T.inkUnsub = T.frameUnsub = null;
     if (T.heartbeat) clearInterval(T.heartbeat);
     T.heartbeat = null;
+    // A drag folded for the document is written before the room goes, so
+    // the last bit of a scroll is not lost; then every timer comes down.
+    flushNavDoc();
+    if (T.wheelFlush) { clearTimeout(T.wheelFlush); T.wheelFlush = null; }
+    if (T.resizeLate) { clearTimeout(T.resizeLate); T.resizeLate = null; }
+    T.wheel = null; T.pinch = null; T.moving = null; T.pointers = {};
+    if (T.onResize) {
+      global.removeEventListener('resize', T.onResize);
+      global.removeEventListener('orientationchange', T.onResize);
+      if (global.visualViewport && global.visualViewport.removeEventListener) global.visualViewport.removeEventListener('resize', T.onResize);
+      T.onResize = null;
+    }
     closeTeacherPc();
     stopLocal();
     if (T.root && T.root.parentNode) T.root.parentNode.removeChild(T.root);
@@ -2002,7 +2630,11 @@
     consultFresh: consultFresh, consultAgo: consultAgo, consultSummary: consultSummary, subjectWord: subjectWord,
     mirrorSize: mirrorSize, fitStage: fitStage, normFromRect: normFromRect, visibleBox: visibleBox,
     parseMessage: parseMessage, cleanView: cleanView, sameView: sameView, strokeOnView: strokeOnView,
-    statusWords: statusWords, notifyWords: notifyWords, rid: rid
+    statusWords: statusWords, notifyWords: notifyWords, rid: rid,
+    NAV_ZOOM_MIN: NAV_ZOOM_MIN, NAV_ZOOM_MAX: NAV_ZOOM_MAX, NAV_PAN_MAX: NAV_PAN_MAX, NAV_FRESH_MS: NAV_FRESH_MS,
+    NAV_STEP: NAV_STEP, NAV_DOC_MS: NAV_DOC_MS,
+    cleanNav: cleanNav, navFresh: navFresh, zoomPercent: zoomPercent, stepPage: stepPage,
+    navMerge: navMerge, pinchSpan: pinchSpan, clampPanelPos: clampPanelPos
   };
 
   global.TutorConsult = {

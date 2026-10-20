@@ -17,6 +17,32 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.64.0 — 🙋 Consult: Mr Chung moves the page, and it works on a tablet or phone
+
+Mr Chung no longer has to ask a student to scroll or zoom. From the consult room he
+moves the student's own page for them.
+
+- **Zoom, fit and turn the page.** A row of controls in the room — **−**, the
+  student's zoom in per cent, **+**, **↔ Fit**, **◀** and **▶** — moves the page on the
+  student's screen. The student's panel says *Mr Chung moved your page* each time.
+- **✋ Move.** In this mode a drag scrolls the student's page, a tap brings that spot to
+  the middle of their screen, and nothing is written. A pinch zooms and a two-finger
+  drag pans in any mode, so a pinch never leaves a stroke behind. Ctrl + the mouse
+  wheel zooms on a laptop.
+- **He sees what they see.** A dashed box on his copy of the page shows the part on
+  the student's screen, and the zoom label reads their zoom back.
+- **Your voice already goes to the student.** The teacher's microphone travels with
+  the video; if a phone blocks sound until it is tapped, the student is shown a 🔊 to
+  tap.
+- **Tablets and phones.** Bigger buttons on touch screens; the room fits a short
+  landscape phone and stays clear of the notch and the home bar. The student can drag
+  their panel by its heading off the question they are working on, and it always
+  stays on screen when the phone is turned.
+- Every move travels over the call; when the call cannot connect it falls back to the
+  consult's own record, merged so a pinch is a few writes rather than hundreds.
+
+---
+
 ## v1.63.0 — 🙋 Consult: ask Mr Chung to join you on the page
 
 A student stuck on a worksheet presses **🙋 Consult** in the worksheet bar. Mr Chung
