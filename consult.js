@@ -1,5 +1,5 @@
 /* =====================================================================
-   🙋 CONSULT — a student asks for Mr Chung, and he joins their page (v1.63.0)
+   🙋 CONSULT — a student asks for Mr Chung, who joins their page (v1.63.0)
    ---------------------------------------------------------------------
    One button on the worksheet bar. A student who is stuck presses it, a
    document goes up in `tutorConsults`, and the teacher is told twice over:
@@ -564,6 +564,23 @@
     return '';
   }
 
+  /* What the TEACHER is told when the room they were opening or sitting in
+     is no longer a call, by the status a guarded write or a snapshot found.
+     Pure; exported for the harness. */
+  function roomGoneText(status, data) {
+    var who = cleanText(data && data.studentName, NAME_MAX) || 'The student';
+    switch (status) {
+      case 'question': return who + ' left a question instead — answer it with a recording.';
+      case 'answered': return 'That question has already been answered.';
+      case 'later': return who + ' has been asked to leave a question instead.';
+      case 'cancelled': return who + ' cancelled this consult.';
+      case 'ended': return data && data.endedBy === 'student' ? who + ' ended the consult.' : 'The consult has ended.';
+      case 'live': return 'That consult is already open on another screen.';
+      case 'failed': return 'Could not reach the consult just now — try again.';
+      default: return 'That consult is no longer there.';
+    }
+  }
+
   function notifyWords(result) {
     if (!result) return '';
     if (result.ok) return '📧 ' + teacherName() + ' has been emailed.';
@@ -599,6 +616,38 @@
     return F && F.arrayUnion ? F.arrayUnion.apply(F, items) : items;
   }
   function now() { return Date.now(); }
+
+  /* A write that must not land on a consult that has moved on. It RE-READS
+     the status inside a transaction and writes only when the status is one
+     of `allowed`; otherwise it writes nothing and says what it found. Two
+     screens, two people and a heartbeat all write this one document, and a
+     plain `update` from any of them can undo what another just did: a
+     question the student left, overwritten by `live` and an offer from a
+     teacher's tab that opened a moment earlier, is a question lost.
+     Resolves to 'ok', the status it found, 'gone' or 'failed'; never throws. */
+  async function guardedUpdate(ref, allowed, patch) {
+    if (!ref) return 'gone';
+    var d = db();
+    try {
+      if (!d || typeof d.runTransaction !== 'function') {
+        // No transactions here (an old harness): the plain write, as before.
+        await ref.update(patch);
+        return 'ok';
+      }
+      return await d.runTransaction(async function (tx) {
+        var snap = await tx.get(ref);
+        if (!snap.exists) return 'gone';
+        var x = snap.data() || {};
+        var st = typeof x.status === 'string' ? x.status : '';
+        if (allowed.indexOf(st) < 0) return st || 'gone';
+        tx.update(ref, patch);
+        return 'ok';
+      });
+    } catch (e) {
+      console.warn('consult: a guarded write failed', e);
+      return 'failed';
+    }
+  }
   function $(id) { return global.document ? global.document.getElementById(id) : null; }
   function el(tag, cls, text) {
     var n = global.document.createElement(tag);
@@ -685,7 +734,7 @@
     notify: null, panel: null, minimized: false, asking: false, busy: false, gen: 0,
     view: null, soundBlocked: false,
     seenNav: {}, seenNavOrder: [], navNoteAt: 0, navNoteText: '', navNoteTimer: null,
-    pick: null, pickBound: false
+    pick: null, pickBound: false, goneBusy: false
   };
 
   function studentAvailable() {
@@ -1157,7 +1206,14 @@
       var connected = !!(S.pc && S.pc.connectionState === 'connected');
       var tseen = stampMs(S.data && S.data.tseen);
       if (!connected && tseen && t - tseen > TEACHER_GONE_MS) {
-        S.ref.update({ status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] }).catch(function () {});
+        // Guarded: the teacher's silence may be because they pressed "Not
+        // now" on another screen, and `waiting` must never undo that.
+        // One at a time: the supervisor ticks every second, a transaction
+        // takes longer than that.
+        if (S.goneBusy) return;
+        S.goneBusy = true;
+        guardedUpdate(S.ref, ['live'], { status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] })
+          .then(function () { S.goneBusy = false; });
         return;
       }
       var since = S.liveSince || t;
@@ -1470,7 +1526,7 @@
     placePanel(root);
 
     if (S.asking) {
-      root.appendChild(el('p', 'consultText', teacherName() + ' will get an email and a pop-up. When he joins, he can see this page, write on it to show you, and talk to you on video.'));
+      root.appendChild(el('p', 'consultText', teacherName() + ' will get an email and a pop-up. Once they join, they can see this page, write on it to show you, and talk to you on video.'));
       var row = el('div', 'consultRow');
       row.appendChild(btn('Ask for help', 'btnPrimary', function () { startConsult(); }, 'Ask ' + teacherName() + ' to join'));
       row.appendChild(btn('Not now', 'btnGhost', function () { S.asking = false; renderPanel(); }));
@@ -1492,11 +1548,11 @@
     if (S.status === 'waiting') {
       var waitedFor = S.data && stampMs(S.data.at) ? consultAgo(now() - stampMs(S.data.at)) : '';
       root.appendChild(el('p', 'consultText', S.data && S.data.teacherLeft
-        ? teacherName() + '’s connection dropped. Stay here — he can join again.'
-        : 'Keep working — ' + teacherName() + ' will appear here when he joins.' + (waitedFor ? ' (asked ' + waitedFor + ')' : '')));
+        ? teacherName() + '’s connection dropped. Stay here — they can join again.'
+        : 'Keep working — ' + teacherName() + ' will appear here as soon as they join.' + (waitedFor ? ' (asked ' + waitedFor + ')' : '')));
       var note = S.notify && S.notify.pending ? 'Sending ' + teacherName() + ' an email…' : notifyWords(S.notify);
       if (note) root.appendChild(el('p', 'consultNote', note));
-      if (!S.mic) root.appendChild(el('p', 'consultNote', '🎤 Your microphone is off, so ' + teacherName() + ' will not hear you. He can still see your page and talk to you.'));
+      if (!S.mic) root.appendChild(el('p', 'consultNote', '🎤 Your microphone is off, so ' + teacherName() + ' will not hear you, but can still see your page and talk to you.'));
       var waitedMs = S.data && stampMs(S.data.at) ? now() - stampMs(S.data.at) : 0;
       if (waitedMs >= LATER_NUDGE_MS) root.appendChild(el('p', 'consultNote', teacherName() + ' may not be on Study Buddy right now. You can leave your question and get a recorded answer back.'));
       var r2 = el('div', 'consultRow');
@@ -1603,7 +1659,10 @@
      may never land, and the heartbeat's silence covers that case. */
   function studentPageHide() {
     if (S.ref && (S.status === 'waiting' || S.status === 'live' || S.status === 'later')) {
-      try { S.ref.update({ status: 'ended', endedBy: 'student', endedAt: now(), offer: null, answer: null, tc: [], sc: [] }); } catch (e) {}
+      try {
+        var pr = S.ref.update({ status: 'ended', endedBy: 'student', endedAt: now(), offer: null, answer: null, tc: [], sc: [] });
+        if (pr && pr.catch) pr.catch(function () {});
+      } catch (e) {}
     }
   }
 
@@ -1830,12 +1889,37 @@
       var wsId = cleanText(global.currentDocId || '', 80);
       var wsName = cleanText(global.docName || '', TITLE_MAX) || cleanText(S.data && S.data.worksheetName, TITLE_MAX);
       var question = { text: text, page: p.num, ws: wsId, box: q.box || null, at: now() };
-      await ref.update({
+      // Only a call still ringing (`waiting`) or one the teacher asked to
+      // wait (`later`) becomes a question. A teacher who joined while the
+      // student was typing has the call open, and writing `question` over it
+      // would cut them off; a consult that ended is not reopened.
+      var outcome = await guardedUpdate(ref, ['waiting', 'later'], {
         status: 'question', question: question, seen: now(),
         worksheetId: wsId, worksheetName: wsName,
         offer: null, answer: null, tc: [], sc: []
       });
       if (gen !== S.gen) return;
+      if (outcome !== 'ok') {
+        if (S.pick) S.pick.sending = false;
+        if (outcome === 'live') {
+          stopPick(); renderPanel();
+          toast(teacherName() + ' has just joined — ask your question on the call.', 6500);
+          return;
+        }
+        if (outcome === 'question' || outcome === 'answered') {
+          stopPick(); resetStudent(true);
+          toast('Your question is already with ' + teacherName() + '.', 5000);
+          return;
+        }
+        if (outcome === 'failed') {
+          renderPanel();
+          toast('Your question could not be sent just now — try again.', 6500);
+          return;
+        }
+        stopPick(); resetStudent(true);
+        toast('This consult has ended, so the question was not sent. Press 🙋 Consult to ask again.', 7000);
+        return;
+      }
       usage('consultQuestion', cleanText(wsName, 80));
       stopPick();
       resetStudent(true);
@@ -2128,6 +2212,10 @@
     }
     T.id = id; T.ref = ref; T.data = data; T.view = cleanView(data.view);
     T.strokes = {}; T.order = []; T.ending = false; T.connectedOnce = false;
+    // The FIRST offer of a room may be made over `later` (the teacher pressed
+    // "Not now" and then changed their mind) or `live` (this teacher's own
+    // other screen); every later offer is only ever a reconnect.
+    T.firstOffer = true;
     buildRoom();
     renderRoom();
     await openLocalMedia();
@@ -2135,6 +2223,9 @@
     renderSelf();
     watchRoom();
     await negotiate();
+    // The offer may have found the consult turned into a question, or the
+    // teacher may have opened another one while it was being written.
+    if (gen !== T.gen || T.id !== id) return false;
     T.heartbeat = setInterval(function () {
       if (T.ref) T.ref.update({ tseen: now() }).catch(function () {});
     }, HEARTBEAT_MS);
@@ -2216,11 +2307,29 @@
       await pc.setLocalDescription(offer);
       if (T.pc !== pc) return;
       var buf = T.buf.slice(); T.buf = [];
-      await T.ref.update({
+      var allowed = T.firstOffer ? ['waiting', 'later', 'live'] : ['waiting', 'live'];
+      var outcome = await guardedUpdate(T.ref, allowed, {
         status: 'live', teacherUid: (user() && user().uid) || '', teacherName: teacherName(),
         offer: sdpOf(pc.localDescription || offer), rev: rev, tc: buf, answer: null, arev: null, sc: [],
         joinedAt: now(), tseen: now(), teacherLeft: false
       });
+      if (T.pc !== pc) return;
+      if (outcome === 'failed') {
+        // Nothing was written; the room stays, and End still works.
+        toast('Could not start the call just now — try joining again.', 7000);
+        renderRoomStatus();
+        return;
+      }
+      if (outcome !== 'ok') {
+        // The consult is not a call any more: the student left a question,
+        // cancelled, or another screen asked them to. Nothing was written
+        // over it; the room goes, and a question goes to the recorder.
+        var goneId = T.id, goneData = T.data;
+        roomEnded(roomGoneText(outcome, goneData));
+        if (outcome === 'question') { var api = answerApi(); if (api) api.open(goneId); }
+        return;
+      }
+      T.firstOffer = false;
       T.docReady = true;
       if (T.buf.length) {
         var late = T.buf.slice(); T.buf = [];
@@ -2294,6 +2403,20 @@
       if (!T.ending) roomEnded(data.endedBy === 'student'
         ? cleanText(data.studentName, NAME_MAX) + ' ended the consult.'
         : 'The consult has ended.');
+      return;
+    }
+    // The student left a question while this room was open (or it has
+    // already been answered from another screen): it is not a call any more.
+    // The question shows up in the pop-up's list, with 📝 Answer.
+    if (data.status === 'question' || data.status === 'answered') {
+      if (!T.ending) roomEnded(roomGoneText(data.status, data));
+      return;
+    }
+    // "Not now" pressed on another screen AFTER this room's own offer had
+    // landed. The first snapshot of a room opened from `later` still says
+    // `later` and is not that — this tab's offer has not been written yet.
+    if (data.status === 'later' && T.docReady && (Number(data.rev) || 0) >= T.rev) {
+      if (!T.ending) roomEnded(roomGoneText('later', data));
       return;
     }
     if (data.view) setTeacherView(cleanView(data.view));
@@ -2948,12 +3071,15 @@
   async function leaveRoom(end) {
     T.ending = true;
     var ref = T.ref;
+    // Both writes are guarded: End never closes a question the student left
+    // a moment ago (it stays to be answered), and leaving puts the consult
+    // back to `waiting` only when it is still this room's live call.
     if (ref && end) {
-      try { await ref.update({ status: 'ended', endedBy: 'teacher', endedAt: now(), offer: null, answer: null, tc: [], sc: [] }); }
-      catch (e) { toast('Could not end the consult cleanly: ' + ((e && e.message) || e), 6000); }
+      var outcome = await guardedUpdate(ref, ['waiting', 'live', 'later'], { status: 'ended', endedBy: 'teacher', endedAt: now(), offer: null, answer: null, tc: [], sc: [] });
+      if (outcome === 'failed') toast('Could not end the consult cleanly — it will time out by itself.', 6000);
       try { await ref.collection('frames').doc('latest').delete(); } catch (e) {}
     } else if (ref) {
-      try { await ref.update({ status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] }); } catch (e) {}
+      await guardedUpdate(ref, ['live'], { status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] });
     }
     teardownRoom();
   }
@@ -2990,49 +3116,114 @@
   /* The teacher's tab is going away mid-consult: it goes back to WAITING,
      not ended, so the pop-up comes back and a reload rejoins it. */
   function teacherPageHide() {
-    if (T.ref && !T.ending) {
-      try { T.ref.update({ status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] }); } catch (e) {}
+    // No transaction here — a page going away does not wait for one — so it
+    // goes by the last snapshot: only a call this room has LIVE is put back.
+    // A `later`, a `question` and an `answered` are never written over.
+    if (T.ref && !T.ending && T.data && T.data.status === 'live') {
+      try {
+        var pr = T.ref.update({ status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] });
+        if (pr && pr.catch) pr.catch(function () {});
+      } catch (e) {}
     }
   }
 
   /* ===================================================================
      TEACHER — the pop-up on any Study Buddy screen
      =================================================================== */
-  var W = { unsub: null, items: {}, dismissed: {}, root: null, tick: null, seenIds: {}, baseTitle: '' };
+  /* Two listeners, one list. A call still RINGING (`waiting`) and a
+     question a student LEFT (`question`) are both things the teacher should
+     see the moment they open Study Buddy, on any screen; they are two
+     equality queries rather than one `in`, so neither needs an index the
+     project does not have. Each card is keyed `id:kind`: the same consult
+     goes from a call to a question, and the question is a new thing to be
+     told about (a chime, a card), not the call's card relabelled.
+
+     - A call card: Join · ✋ Not now (the student is asked to leave a
+       question instead, `ConsultAnswer.askLater`) · Hide.
+     - A question card: 📝 Answer (the recorder, `ConsultAnswer.open`) · Hide.
+     - At most ALERT_SHOW_MAX cards, calls first; the rest are counted.
+     - Hide is this tab's alone and writes nothing: the question stays in
+       the list for the next screen and the next visit. */
+  var ALERT_SHOW_MAX = 4;
+  var W = { unsub: null, unsubQ: null, items: {}, dismissed: {}, root: null, tick: null, seenIds: {}, baseTitle: '' };
+
+  function answerApi() {
+    var CA = global.ConsultAnswer;
+    if (!CA || typeof CA.open !== 'function' || !admin() || practice()) return null;
+    return CA;
+  }
+  function questionFreshHere(data, t) {
+    var CA = global.ConsultAnswer && global.ConsultAnswer.pure;
+    if (CA && typeof CA.questionFresh === 'function') return CA.questionFresh(data, t);
+    return !!data && data.status === 'question';
+  }
+  function itemFresh(item, t) {
+    return item.kind === 'question' ? questionFreshHere(item.data, t) : consultFresh(item.data, t);
+  }
+  function itemAt(item) {
+    if (item.kind === 'question') return stampMs(item.data.question && item.data.question.at) || stampMs(item.data.at);
+    return stampMs(item.data.at);
+  }
 
   function startWatcher() {
     stopWatcher();
     var d = db();
     if (!d || !admin()) return;
-    W.unsub = d.collection(COLLECTION).where('status', '==', 'waiting').onSnapshot(function (qs) {
-      var next = {};
-      (qs.docs || []).forEach(function (doc) { next[doc.id] = doc.data() || {}; });
-      var fresh = Object.keys(next).filter(function (id) { return !W.seenIds[id] && consultFresh(next[id], now()); });
-      W.items = next;
-      fresh.forEach(function (id) { W.seenIds[id] = true; });
-      if (fresh.length) chime();
-      renderAlerts();
-    }, function (err) { console.warn('consult: the waiting list could not be read', err); });
+    var listen = function (status, kind) {
+      return d.collection(COLLECTION).where('status', '==', status).onSnapshot(function (qs) {
+        var t = now();
+        var next = {};
+        Object.keys(W.items).forEach(function (k) { if (W.items[k].kind !== kind) next[k] = W.items[k]; });
+        var fresh = [];
+        (qs.docs || []).forEach(function (doc) {
+          if (!consultIdOk(doc.id)) return;
+          var key = doc.id + ':' + kind;
+          var item = { key: key, id: doc.id, kind: kind, data: doc.data() || {} };
+          next[key] = item;
+          if (!W.seenIds[key] && itemFresh(item, t)) fresh.push(key);
+        });
+        W.items = next;
+        fresh.forEach(function (k) { W.seenIds[k] = true; });
+        if (fresh.length) chime();
+        renderAlerts();
+      }, function (err) { console.warn('consult: the ' + kind + ' list could not be read', err); });
+    };
+    W.unsub = listen('waiting', 'call');
+    W.unsubQ = listen('question', 'question');
     W.tick = setInterval(renderAlerts, 30000);
   }
   function stopWatcher() {
     if (W.unsub) { try { W.unsub(); } catch (e) {} }
+    if (W.unsubQ) { try { W.unsubQ(); } catch (e) {} }
     if (W.tick) clearInterval(W.tick);
-    W.unsub = null; W.tick = null; W.items = {};
+    W.unsub = null; W.unsubQ = null; W.tick = null; W.items = {};
     renderAlerts();
   }
 
-  function waitingList() {
+  // Every card there is to show, calls first (someone is waiting on the
+  // other end), then questions, each oldest first.
+  function alertList() {
     var t = now();
     return Object.keys(W.items)
-      .filter(function (id) { return !W.dismissed[id] && id !== T.id && consultFresh(W.items[id], t); })
-      .map(function (id) { return { id: id, data: W.items[id] }; })
-      .sort(function (a, b) { return stampMs(a.data.at) - stampMs(b.data.at); });
+      .map(function (k) { return W.items[k]; })
+      .filter(function (it) {
+        if (W.dismissed[it.key]) return false;
+        if (it.kind === 'call' && it.id === T.id) return false;
+        return itemFresh(it, t);
+      })
+      .sort(function (a, b) {
+        if (a.kind !== b.kind) return a.kind === 'call' ? -1 : 1;
+        return itemAt(a) - itemAt(b);
+      });
+  }
+  // The calls alone — what the harness and the console have always read.
+  function waitingList() {
+    return alertList().filter(function (it) { return it.kind === 'call'; });
   }
 
   function renderAlerts() {
     if (!global.document || !global.document.body) return;
-    var list = admin() ? waitingList() : [];
+    var list = admin() ? alertList() : [];
     updateTitle(list.length);
     if (!list.length) {
       if (W.root && W.root.parentNode) W.root.parentNode.removeChild(W.root);
@@ -3046,21 +3237,72 @@
       global.document.body.appendChild(W.root);
     }
     while (W.root.firstChild) W.root.removeChild(W.root.firstChild);
-    list.forEach(function (item) {
-      var card = el('div', 'consultAlert');
-      var top = el('div', 'consultAlertTop');
-      top.appendChild(el('span', 'consultIcon', '🙋'));
-      var words = el('div', 'consultAlertWords');
-      words.appendChild(el('b', '', (cleanText(item.data.studentName, NAME_MAX) || 'A student') + (item.data.teacherLeft ? ' is waiting for you to come back' : ' is asking for help')));
-      words.appendChild(el('span', 'consultAlertWhere', [consultSummary(item.data), consultAgo(now() - stampMs(item.data.at))].filter(Boolean).join(' · ')));
-      top.appendChild(words);
-      card.appendChild(top);
-      var row = el('div', 'consultRow');
-      row.appendChild(btn('Join', 'btnPrimary', function () { openRoom(item.id); renderAlerts(); }, 'Join this consult now'));
-      row.appendChild(btn('Later', 'btnGhost', function () { W.dismissed[item.id] = true; renderAlerts(); }, 'Hide this pop-up — the email still has the link'));
-      card.appendChild(row);
-      W.root.appendChild(card);
+    list.slice(0, ALERT_SHOW_MAX).forEach(function (item) {
+      W.root.appendChild(item.kind === 'question' ? questionCard(item) : callCard(item));
     });
+    if (list.length > ALERT_SHOW_MAX) {
+      var more = list.length - ALERT_SHOW_MAX;
+      W.root.appendChild(el('div', 'consultAlertMore', '+ ' + more + ' more waiting — hide one to see the next'));
+    }
+  }
+
+  function hideCard(item) { W.dismissed[item.key] = true; renderAlerts(); }
+
+  function callCard(item) {
+    var card = el('div', 'consultAlert');
+    var top = el('div', 'consultAlertTop');
+    top.appendChild(el('span', 'consultIcon', '🙋'));
+    var words = el('div', 'consultAlertWords');
+    words.appendChild(el('b', '', (cleanText(item.data.studentName, NAME_MAX) || 'A student') + (item.data.teacherLeft ? ' is waiting for you to come back' : ' is asking for help')));
+    words.appendChild(el('span', 'consultAlertWhere', [consultSummary(item.data), consultAgo(now() - stampMs(item.data.at))].filter(Boolean).join(' · ')));
+    top.appendChild(words);
+    card.appendChild(top);
+    var row = el('div', 'consultRow');
+    row.appendChild(btn('Join', 'btnPrimary', function () { openRoom(item.id); renderAlerts(); }, 'Join this consult now'));
+    var api = answerApi();
+    if (api && typeof api.askLater === 'function') {
+      var later = btn('✋ Not now', 'btnGhost consultNotNow', async function () {
+        later.disabled = true;
+        var ok = false;
+        try { ok = await api.askLater(item.id); } catch (e) { ok = false; }
+        if (ok) { W.dismissed[item.key] = true; renderAlerts(); }
+        else later.disabled = false;
+      }, 'Ask them to show you the question instead — you answer it later with a recording');
+      row.appendChild(later);
+    }
+    row.appendChild(btn('Hide', 'btnGhost', function () { hideCard(item); }, 'Hide this pop-up — the email still has the link'));
+    card.appendChild(row);
+    return card;
+  }
+
+  function questionCard(item) {
+    var CA = global.ConsultAnswer && global.ConsultAnswer.pure;
+    var w = CA && typeof CA.questionWords === 'function'
+      ? CA.questionWords(item.data)
+      : { title: (cleanText(item.data.studentName, NAME_MAX) || 'A student') + ' left a question', where: consultSummary(item.data), text: '' };
+    var ago = CA && typeof CA.questionAgo === 'function' ? CA.questionAgo(now() - itemAt(item)) : consultAgo(now() - itemAt(item));
+    var card = el('div', 'consultAlert consultAlertQ');
+    var top = el('div', 'consultAlertTop');
+    top.appendChild(el('span', 'consultIcon', '📝'));
+    var words = el('div', 'consultAlertWords');
+    words.appendChild(el('b', '', w.title));
+    words.appendChild(el('span', 'consultAlertWhere', [w.where, ago].filter(Boolean).join(' · ')));
+    // What the student wrote, painted as text and cut short on the card;
+    // the recorder shows all of it.
+    if (w.text) {
+      var short = w.text.length > 140 ? w.text.slice(0, 139).trim() + '…' : w.text;
+      words.appendChild(el('span', 'consultAlertQText', '“' + short + '”'));
+    }
+    top.appendChild(words);
+    card.appendChild(top);
+    var row = el('div', 'consultRow');
+    var api = answerApi();
+    if (api) {
+      row.appendChild(btn('📝 Answer', 'btnPrimary', function () { api.open(item.id); }, 'Write on their page and record your answer'));
+    }
+    row.appendChild(btn('Hide', 'btnGhost', function () { hideCard(item); }, 'Hide this for now — it stays in your list'));
+    card.appendChild(row);
+    return card;
   }
 
   function updateTitle(n) {
@@ -3116,6 +3358,10 @@
       if (T.id) teardownRoom();
       stopWatcher();
       W.dismissed = {}; W.seenIds = {};
+      // Answers waiting for the last account, and a recorder open for it,
+      // are never the next person's either.
+      replyWatchStop();
+      try { if (global.ConsultAnswer && typeof global.ConsultAnswer.stop === 'function') global.ConsultAnswer.stop(); } catch (e) {}
     }
     lastUid = uid;
     syncButton();
@@ -3126,9 +3372,14 @@
     if (admin() && !practice()) {
       startWatcher();
       if (pendingJoin) { var id = pendingJoin; pendingJoin = ''; openRoom(id); }
-    } else if (pendingJoin) {
-      pendingJoin = '';
-      toast('That consult link is for the teacher.', 6000);
+    } else {
+      // A student (or the teacher practising as one): the answers to the
+      // questions they left come back here, whichever device they asked on.
+      if (!admin() && R.uid !== u.uid) replyWatchStart(u);
+      if (pendingJoin) {
+        pendingJoin = '';
+        toast('That consult link is for the teacher.', 6000);
+      }
     }
   }
 
@@ -3162,7 +3413,9 @@
     NAV_ZOOM_MIN: NAV_ZOOM_MIN, NAV_ZOOM_MAX: NAV_ZOOM_MAX, NAV_PAN_MAX: NAV_PAN_MAX, NAV_FRESH_MS: NAV_FRESH_MS,
     NAV_STEP: NAV_STEP, NAV_DOC_MS: NAV_DOC_MS,
     cleanNav: cleanNav, navFresh: navFresh, zoomPercent: zoomPercent, stepPage: stepPage,
-    navMerge: navMerge, pinchSpan: pinchSpan, clampPanelPos: clampPanelPos
+    navMerge: navMerge, pinchSpan: pinchSpan, clampPanelPos: clampPanelPos,
+    QUESTION_MAX: QUESTION_MAX, LATER_NUDGE_MS: LATER_NUDGE_MS, ALERT_SHOW_MAX: ALERT_SHOW_MAX,
+    qBoxFrom: qBoxFrom, qClean: qClean, roomGoneText: roomGoneText
   };
 
   global.TutorConsult = {
@@ -3181,12 +3434,17 @@
           connection: S.pc ? S.pc.connectionState : '', mic: !!S.mic, asking: S.asking },
         teacher: { id: T.id, rev: T.rev, strokes: Object.keys(T.strokes).length, connection: T.pc ? T.pc.connectionState : '',
           channel: T.channel ? T.channel.readyState : '', view: T.view, mode: T.mode },
-        waiting: waitingList().map(function (w) { return w.id; })
+        waiting: waitingList().map(function (w) { return w.id; }),
+        questions: alertList().filter(function (w) { return w.kind === 'question'; }).map(function (w) { return w.id; }),
+        picking: S.pick ? { page: S.pick.page, box: S.pick.box, form: S.pick.form, sending: S.pick.sending } : null,
+        replies: R.items.map(function (x) { return x.id; })
       };
     },
     _internals: { S: S, T: T, W: W, renderStudentInk: renderStudentInk, renderAlerts: renderAlerts, drawMirror: drawMirror,
       onOwn: onOwn, onRoomDoc: onRoomDoc, notifyTeacher: notifyTeacher, currentView: currentView, takeParam: takeParam,
-      pendingJoin: function () { return pendingJoin; } }
+      pendingJoin: function () { return pendingJoin; },
+      R: R, guardedUpdate: guardedUpdate, startPick: startPick, stopPick: stopPick, sendQuestion: sendQuestion,
+      renderReplies: renderReplies, replyWatchStart: replyWatchStart, alertList: alertList, answerApi: answerApi }
   };
 
   takeParam();

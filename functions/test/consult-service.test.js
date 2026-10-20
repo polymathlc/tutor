@@ -4,7 +4,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const {
   CONSULT_EMAIL, MAIL_COLLECTION, LIMIT_COLLECTION, MIN_GAP_MS, DAILY_MAX, FRESH_MS,
-  validateBody, stampMs, cleanText, escapeHtml, dayKey, consultLink, buildConsultMail,
+  validateBody, stampMs, cleanText, escapeHtml, dayKey, consultLink, buildConsultMail, buildQuestionMail, QUESTION_MAX,
   createConsultRepository, createConsultService
 } = require('../consult-service');
 const { ADMIN_EMAIL } = require('../centre-auth');
@@ -236,4 +236,64 @@ test('the endpoint is exported without a secret and the file names no other addr
   const src = fs.readFileSync(path.join(__dirname, '..', 'consult-service.js'), 'utf8');
   const emails = src.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || [];
   assert.deepEqual(emails, [], 'the recipient comes from centre-auth, never a literal here');
+});
+
+/* ---------------- v1.65.0: a question left instead of a call ---------------- */
+
+function questionDoc(extra = {}) {
+  return consultDoc({ status: 'question', question: { text: 'Why is <i>Q3</i> 40°C?', page: 2, ws: 'ws1', box: [0.1, 0.2, 0.5, 0.6], at: time - 500 }, ...extra });
+}
+
+test('a question gets its own email, escaped, with the same constant recipient and link', () => {
+  const mail = buildQuestionMail(questionDoc(), ID, time);
+  assert.deepEqual(mail.to, [CONSULT_EMAIL]);
+  assert.ok(mail.message.subject.startsWith('📝 Ada <b>Lovelace</b> left you a question'), mail.message.subject);
+  assert.ok(!/[\r\n]/.test(mail.message.subject));
+  assert.ok(mail.message.text.includes('Why is <i>Q3</i> 40°C?'), 'the text part carries the question as typed');
+  assert.ok(mail.message.text.includes(consultLink(ID)));
+  assert.ok(mail.message.text.includes('page 2 (a part of it, boxed)'));
+  assert.ok(!/<i>Q3/.test(mail.message.html), 'nothing a student typed is markup');
+  assert.ok(mail.message.html.includes('Why is &lt;i&gt;Q3&lt;/i&gt; 40°C?'));
+  assert.ok(mail.message.html.includes(escapeHtml(consultLink(ID))));
+  const long = buildQuestionMail(questionDoc({ question: { text: 'x'.repeat(QUESTION_MAX * 3), page: 1, at: time } }), ID, time);
+  assert.ok(long.message.text.length < QUESTION_MAX + 1000, 'the question is bounded');
+});
+
+test('the question is queued once, as <id>_q, beside the call\'s own email', async () => {
+  const s = store();
+  s.records.set('tutorConsults/' + ID, consultDoc());
+  assert.equal((await s.repository.queue('kid', ID, time)).status, 'queued');
+  // The teacher could not take the call; seconds later the question is left.
+  s.records.set('tutorConsults/' + ID, { ...s.records.get('tutorConsults/' + ID), ...questionDoc({ emailQueued: time }) });
+  assert.deepEqual(await s.repository.queue('kid', ID, time + 5000), { status: 'queued' }, 'not held back by the gap: the same ask');
+  const q = s.records.get(MAIL_COLLECTION + '/' + ID + '_q');
+  assert.ok(q, 'the question mail has its own id');
+  assert.equal(q.kind, 'question');
+  assert.deepEqual(q.to, [CONSULT_EMAIL]);
+  assert.equal(s.records.get(MAIL_COLLECTION + '/' + ID).kind, 'call');
+  assert.equal(s.records.get('tutorConsults/' + ID).questionEmailQueued, time + 5000);
+  assert.equal(s.records.get(LIMIT_COLLECTION + '/kid').count, 2, 'the daily ceiling still counts it');
+  assert.deepEqual(await s.repository.queue('kid', ID, time + 10 * MIN_GAP_MS), { status: 'already' });
+  assert.equal([...s.records.keys()].filter(k => k.startsWith(MAIL_COLLECTION)).length, 2, 'two emails at most per consult');
+});
+
+test('a question with no call email waits out the gap; an empty or stale one is refused', async () => {
+  const s = store();
+  const other = 'Other1234567890abcd';
+  s.records.set('tutorConsults/' + other, consultDoc({ createdAt: null, at: time }));
+  assert.equal((await s.repository.queue('kid', other, time)).status, 'queued');
+  // A DIFFERENT consult's question, a moment after that email: the gap holds.
+  s.records.set('tutorConsults/' + ID, questionDoc());
+  await assert.rejects(s.repository.queue('kid', ID, time + 1000), err => err.code === 'too_soon');
+  assert.equal((await s.repository.queue('kid', ID, time + MIN_GAP_MS)).status, 'queued');
+  const s2 = store();
+  s2.records.set('tutorConsults/' + ID, questionDoc({ question: { text: '   ', page: 1, at: time } }));
+  await assert.rejects(s2.repository.queue('kid', ID, time), err => err.code === 'closed');
+  s2.records.set('tutorConsults/' + ID, questionDoc({ question: { text: 'hi', page: 1, at: time - FRESH_MS - 1 } }));
+  await assert.rejects(s2.repository.queue('kid', ID, time), err => err.code === 'closed');
+  s2.records.set('tutorConsults/' + ID, questionDoc({ status: 'answered' }));
+  await assert.rejects(s2.repository.queue('kid', ID, time), err => err.code === 'closed', 'an answered question is not mailed');
+  s2.records.set('tutorConsults/' + ID, questionDoc({ studentUid: 'someone-else' }));
+  await assert.rejects(s2.repository.queue('kid', ID, time), err => err.code === 'not_found');
+  assert.ok(![...s2.records.keys()].some(k => k.startsWith(MAIL_COLLECTION)));
 });

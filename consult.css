@@ -463,6 +463,152 @@ svg.consultInk path {
   .cViewBox { transition: none; }
 }
 
+/* ---------------- Leaving a question (v1.65.0) ----------------
+   The student shows WHERE: a tap is the whole page, a drag is a box. The
+   box is a div inside the page's own `.pageWrap` with `pointer-events:
+   none` — it is never ink, never saved and never printed, and the pen
+   under it is never reached while the pick is on (consult.js swallows the
+   pointer in the capture phase). */
+body.consultPicking .pageWrap { cursor: crosshair; }
+body.consultPicking .pageWrap * { cursor: crosshair; }
+body.consultPicking .pageWrap { outline: 2px dashed rgba(216, 27, 96, 0.55); outline-offset: 3px; }
+.consultQBox {
+  position: absolute;
+  z-index: 40;
+  border: 3px solid #D81B60;
+  border-radius: 6px;
+  background: rgba(216, 27, 96, 0.07);
+  box-shadow: 0 0 0 9999px rgba(26, 26, 26, 0.08);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+/* A tap: the whole page, outlined rather than shaded. */
+.consultQBox.consultQBoxPage { box-shadow: none; background: transparent; }
+.consultPanel textarea.consultQText {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 88px;
+  resize: vertical;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.consultPanel textarea.consultQText:focus { outline: 2px solid var(--accent-strong); outline-offset: 1px; }
+.consultQMic.recording { background: var(--danger); border-color: var(--danger); color: #FFF; }
+.consultQMic.recording::before {
+  content: '';
+  display: inline-block;
+  width: 8px; height: 8px; margin-right: 6px;
+  border-radius: 50%;
+  background: #FFF;
+  vertical-align: middle;
+  animation: consultPulse 1.2s ease-in-out infinite;
+}
+
+/* The teacher's question card: the student's words, quoted and clipped. */
+.consultAlert.consultAlertQ { border-color: #D81B60; }
+.consultAlert.consultAlertQ .consultIcon { background: rgba(216, 27, 96, 0.12); }
+.consultAlertQText {
+  margin-top: 4px;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.consultAlertMore {
+  align-self: flex-end;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-modal);
+  font-family: var(--font);
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+/* ---------------- The answer coming back to the student ----------------
+   Small cards, bottom-LEFT so they never sit on the 🙋 panel, and never a
+   modal; ▶ Watch opens the player, which is. */
+.consultReplies {
+  position: fixed;
+  left: calc(18px + env(safe-area-inset-left, 0px));
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  z-index: 1190;
+  display: flex; flex-direction: column; gap: 10px;
+  width: min(330px, calc(100vw - 32px));
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+}
+.consultReply {
+  background: var(--bg);
+  border: 1px solid var(--accent-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-modal);
+  padding: 12px 14px 10px;
+  display: flex; flex-direction: column; gap: 6px;
+  font-family: var(--font);
+  color: var(--ink);
+  animation: consultIn 0.22s ease-out both;
+}
+.consultReplyTitle { font-weight: 700; font-size: 0.92rem; line-height: 1.35; }
+.consultReplyQ {
+  font-size: 0.84rem;
+  line-height: 1.4;
+  color: var(--ink-soft);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  max-height: 5.6em;
+  overflow: hidden;
+}
+.consultReplyPlayer {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  margin: auto;
+  width: min(820px, calc(100vw - 24px));
+  height: fit-content;
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45), var(--shadow-modal);
+  padding: 14px 16px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  font-family: var(--font);
+  color: var(--ink);
+}
+.consultReplyMedia {
+  width: 100%;
+  max-height: calc(100vh - 220px);
+  border-radius: var(--radius-sm);
+  background: #111;
+}
+audio.consultReplyMedia { background: transparent; }
+@supports (height: 100dvh) {
+  .consultReplies { max-height: calc(100dvh - 36px); }
+  .consultReplyPlayer { max-height: calc(100dvh - 24px); }
+  .consultReplyMedia { max-height: calc(100dvh - 220px); }
+}
+@media (pointer: coarse) {
+  .consultReply .btn, .consultReplyPlayer .btn { min-height: 40px; min-width: 40px; }
+}
+@media (max-width: 640px) {
+  .consultReplies { left: 10px; right: 10px; bottom: 10px; width: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .consultReply, .consultQMic.recording::before { animation: none; }
+}
+
 @media print {
-  .consultPanel, .consultRoom, .consultAlerts, svg.consultInk { display: none !important; }
+  .consultPanel, .consultRoom, .consultAlerts, svg.consultInk,
+  .consultQBox, .consultReplies, .consultReplyPlayer { display: none !important; }
+  body.consultPicking .pageWrap { outline: none !important; }
 }

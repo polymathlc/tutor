@@ -9,7 +9,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Study Buddy — Polymath Learning Centre</title>
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
-<link rel="stylesheet" href="consult.css?v=1.63.0">
+<link rel="stylesheet" href="consult.css?v=1.65.0">
+<link rel="stylesheet" href="consult-answer.css?v=1.65.0">
 <!-- The browser tab and the home-screen icon. There was neither before,
      so a worksheet pinned to an iPad home screen wore a screenshot of
      itself. -->
@@ -3042,7 +3043,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.64.0';
+var APP_VERSION = 'v1.65.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -25110,7 +25111,13 @@ var USAGE_EVENTS = {
   // 🎬 Watched one of the teacher's video solutions.
   video:    { label: 'Watched a video solution', count: 'videos' },
   // 🙋 Asked the teacher to join them on the page (consult.js).
-  consult:  { label: 'Asked for a consult', count: 'consults' }
+  consult:  { label: 'Asked for a consult', count: 'consults' },
+  // 📝 Left the teacher a question instead of a call, and watched the
+  // recorded answer that came back (consult.js); the teacher's own
+  // "answered one" is counted from consult-answer.js.
+  consultQuestion: { label: 'Left the teacher a question', count: 'questions' },
+  consultReply:    { label: 'Watched a recorded answer', count: 'answers' },
+  consultAnswer:   { label: 'Answered a question with a recording', count: 'answered' }
 };
 function usageLabel(key) {
   var e = USAGE_EVENTS[key];
@@ -30804,7 +30811,8 @@ async function askGeminiDirect(prompt, { maxOutputTokens = 512, temperature = 0.
 <script src="tutor-focus.js?v=1.57.0"></script>
 <script src="functions/fast-tutor-intents.js?v=1.57.0"></script>
 <script src="fast-tutor.js?v=1.57.0"></script>
-<script src="consult.js?v=1.63.0"></script>
+<script src="consult-answer.js?v=1.65.0"></script>
+<script src="consult.js?v=1.65.0"></script>
 <script src="adventure-ui.js?v=1.54.0"></script>
 <script src="adventure.js?v=1.54.0"></script>
 </body>

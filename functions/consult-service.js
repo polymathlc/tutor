@@ -32,6 +32,15 @@
      account and `DAILY_MAX` a day (Singapore days), kept server side in
      `tutorCentreAdmin/consultLimits/records/{uid}`. A child who cancels and
      asks again twenty times must not be twenty emails.
+   - A QUESTION LEFT INSTEAD IS ONE MORE EMAIL, AND ONLY ONE (v1.65.0). When
+     the teacher cannot take the call, the student leaves a question (status
+     `question`) and the browser calls this same endpoint with the same
+     `{ consultId }`. The server reads the question off the document and
+     queues it under `<consultId>_q`, so a consult is at most two emails —
+     the call and the question — however often either is retried. The
+     question's own email is not held back by `MIN_GAP_MS` when the last
+     email this student sent was this consult's own call (that is one
+     person asking once, in two steps); `DAILY_MAX` still counts it.
    - IT NEEDS NO SECRET. Delivery is the "Trigger Email from Firestore"
      extension's job (its SMTP connection is configured in the extension, in
      the Firebase console), so this function deploys with nothing to set and
@@ -55,6 +64,7 @@ const DAILY_MAX = 12;
 const CONSULT_ID = /^[A-Za-z0-9]{12,40}$/;
 const NAME_MAX = 80;
 const TITLE_MAX = 120;
+const QUESTION_MAX = 500;
 const TIME_ZONE = 'Asia/Singapore';
 
 const plain = value => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -148,6 +158,46 @@ function buildConsultMail(data, consultId, time) {
   return { to: [CONSULT_EMAIL], message: { subject: subjectLine, text, html } };
 }
 
+/* The email for a question the student LEFT. Same rules as the call's: a
+   constant recipient, every word off the document and escaped. Pure. */
+function buildQuestionMail(data, consultId, time) {
+  const name = cleanText(data && data.studentName, NAME_MAX) || 'A student';
+  const sheet = cleanText(data && data.worksheetName, TITLE_MAX);
+  const level = cleanText(data && data.level, 12);
+  const subject = subjectWord(cleanText(data && data.subject, 20));
+  const q = data && plain(data.question) ? data.question : {};
+  const question = cleanText(q.text, QUESTION_MAX);
+  const page = Number(q.page) >= 1 ? Math.floor(Number(q.page)) : 0;
+  const part = Array.isArray(q.box) && q.box.length === 4;
+  const link = consultLink(consultId);
+  const when = clockWords(stampMs(q.at) || time);
+  const where = [[level, subject].filter(Boolean).join(' '), sheet, page ? 'page ' + page + (part ? ' (a part of it, boxed)' : '') : '']
+    .filter(Boolean).join(' · ');
+  const subjectLine = '📝 ' + name + ' left you a question' + (sheet ? ' — ' + sheet : '');
+  const text = [
+    name + ' could not reach you on a call, so they left a question in Study Buddy.',
+    where ? 'Worksheet: ' + where : null,
+    question ? 'Their question: "' + question + '"' : null,
+    'Left: ' + when + ' (Singapore time)',
+    '',
+    'Answer it (their page, your pen, your camera and voice — recorded and sent back to them): ' + link,
+    '',
+    'It is also waiting under 📝 in Study Buddy and Ans Key until you answer it.'
+  ].filter(line => line !== null).join('\n');
+  const html = '<div style="font-family:Century Gothic,Segoe UI,Arial,sans-serif;color:#1A1A1A;line-height:1.5;max-width:520px">'
+    + '<p style="font-size:17px;margin:0 0 12px"><b>' + escapeHtml(name) + '</b> left you a question in Study Buddy.</p>'
+    + (where ? '<p style="margin:0 0 6px;color:#55554F">' + escapeHtml(where) + '</p>' : '')
+    + (question ? '<blockquote style="margin:0 0 12px;padding:10px 14px;border-left:4px solid #D81B60;background:#FDF2F7;border-radius:6px">'
+      + escapeHtml(question) + '</blockquote>' : '')
+    + '<p style="margin:0 0 18px;color:#8A8A84;font-size:13px">' + escapeHtml(when) + ' (Singapore time)</p>'
+    + '<p style="margin:0 0 18px"><a href="' + escapeHtml(link) + '" style="display:inline-block;background:#FFE0B2;border:1px solid #FFCC80;'
+    + 'border-radius:11px;padding:12px 22px;color:#1A1A1A;text-decoration:none;font-weight:700">Answer ' + escapeHtml(name) + '</a></p>'
+    + '<p style="margin:0 0 6px;color:#55554F;font-size:13px">You write on their page and record your voice and camera; the video goes back to them.</p>'
+    + '<p style="margin:0;color:#8A8A84;font-size:12px">It also waits under 📝 in Study Buddy and <a href="' + escapeHtml(ANSKEY_URL) + '">Ans Key</a> until you answer it.</p>'
+    + '</div>';
+  return { to: [CONSULT_EMAIL], message: { subject: subjectLine, text, html } };
+}
+
 function createConsultRepository(db) {
   const docAt = path => {
     const parts = path.split('/');
@@ -157,28 +207,41 @@ function createConsultRepository(db) {
   };
   async function queue(uid, consultId, time) {
     const consultRef = docAt(CONSULT_COLLECTION + '/' + consultId);
-    const mailRef = docAt(MAIL_COLLECTION + '/' + consultId);
+    const callMailRef = docAt(MAIL_COLLECTION + '/' + consultId);
+    const questionMailRef = docAt(MAIL_COLLECTION + '/' + consultId + '_q');
     const limitRef = docAt(LIMIT_COLLECTION + '/' + uid);
     return db.runTransaction(async tx => {
-      const [consult, mail, limit] = await Promise.all([tx.get(consultRef), tx.get(mailRef), tx.get(limitRef)]);
+      const [consult, callMail, questionMail, limit] = await Promise.all([
+        tx.get(consultRef), tx.get(callMailRef), tx.get(questionMailRef), tx.get(limitRef)]);
       // Somebody else's consult reads exactly like a missing one: the answer
       // must not confirm that an id exists.
       if (!consult.exists) throw new ConsultError(404, 'not_found', 'That consult was not found.');
       const data = consult.data() || {};
       if (data.studentUid !== uid) throw new ConsultError(404, 'not_found', 'That consult was not found.');
+      // Which email this press is for is decided by the DOCUMENT: a call
+      // that is ringing, or a question that has been left.
+      const isQuestion = data.status === 'question';
+      const mail = isQuestion ? questionMail : callMail;
       if (mail.exists) return { status: 'already' };
-      if (data.status !== 'waiting') throw new ConsultError(409, 'closed', 'That consult has already ended.');
-      const age = consultAgeMs(data);
+      if (data.status !== 'waiting' && !isQuestion) throw new ConsultError(409, 'closed', 'That consult has already ended.');
+      const age = isQuestion ? (stampMs(plain(data.question) ? data.question.at : 0) || 0) : consultAgeMs(data);
       if (!age || time - age > FRESH_MS || age - time > FRESH_MS) throw new ConsultError(409, 'closed', 'That consult is too old to email about.');
+      if (isQuestion && !cleanText(plain(data.question) ? data.question.text : '', QUESTION_MAX)) {
+        throw new ConsultError(409, 'closed', 'That question is empty.');
+      }
       const lim = limit.exists ? (limit.data() || {}) : {};
       const today = dayKey(time);
       const last = Number(lim.last) || 0;
-      if (last && time - last < MIN_GAP_MS) throw new ConsultError(429, 'too_soon', 'Mr Chung was emailed a moment ago.');
+      // The question that follows this consult's own call is the same
+      // person asking once; anything else waits out the gap.
+      const sameAsk = isQuestion && callMail.exists && last && Number(data.emailQueued) === last;
+      if (last && time - last < MIN_GAP_MS && !sameAsk) throw new ConsultError(429, 'too_soon', 'Mr Chung was emailed a moment ago.');
       const count = lim.day === today ? (Number(lim.count) || 0) : 0;
       if (count >= DAILY_MAX) throw new ConsultError(429, 'daily_limit', 'Today’s consult emails are used up. Mr Chung will still see a pop-up.');
-      tx.set(mailRef, { ...buildConsultMail(data, consultId, time), consultId, studentUid: uid, createdAt: time });
+      const built = isQuestion ? buildQuestionMail(data, consultId, time) : buildConsultMail(data, consultId, time);
+      tx.set(isQuestion ? questionMailRef : callMailRef, { ...built, consultId, studentUid: uid, kind: isQuestion ? 'question' : 'call', createdAt: time });
       tx.set(limitRef, { day: today, count: count + 1, last: time });
-      tx.update(consultRef, { emailQueued: time });
+      tx.update(consultRef, isQuestion ? { questionEmailQueued: time } : { emailQueued: time });
       return { status: 'queued' };
     });
   }
@@ -227,5 +290,5 @@ function createConsultService({ auth, appCheck, repository, now = Date.now, repo
 module.exports = {
   CONSULT_EMAIL, CONSULT_COLLECTION, MAIL_COLLECTION, LIMIT_COLLECTION, JOIN_BASE, MAX_REQUEST_BYTES,
   FRESH_MS, MIN_GAP_MS, DAILY_MAX, ConsultError, validateBody, stampMs, cleanText, escapeHtml, dayKey,
-  consultLink, buildConsultMail, createConsultRepository, createConsultService
+  consultLink, buildConsultMail, buildQuestionMail, QUESTION_MAX, createConsultRepository, createConsultService
 };
