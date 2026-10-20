@@ -1,5 +1,5 @@
 /* =====================================================================
-   🙋 CONSULT — a student asks for Mr Chung, and he joins their page (v1.63.0)
+   🙋 CONSULT — a student asks for Mr Chung, who joins their page (v1.63.0)
    ---------------------------------------------------------------------
    One button on the worksheet bar. A student who is stuck presses it, a
    document goes up in `tutorConsults`, and the teacher is told twice over:
@@ -558,9 +558,27 @@
   function statusWords(status, endedBy) {
     if (status === 'waiting') return 'Waiting for ' + teacherName() + '…';
     if (status === 'live') return teacherName() + ' is with you';
+    if (status === 'later') return teacherName() + ' cannot take the call just now';
     if (status === 'cancelled') return 'You cancelled the consult.';
     if (status === 'ended') return endedBy === 'teacher' ? teacherName() + ' ended the consult.' : 'The consult has ended.';
     return '';
+  }
+
+  /* What the TEACHER is told when the room they were opening or sitting in
+     is no longer a call, by the status a guarded write or a snapshot found.
+     Pure; exported for the harness. */
+  function roomGoneText(status, data) {
+    var who = cleanText(data && data.studentName, NAME_MAX) || 'The student';
+    switch (status) {
+      case 'question': return who + ' left a question instead — answer it with a recording.';
+      case 'answered': return 'That question has already been answered.';
+      case 'later': return who + ' has been asked to leave a question instead.';
+      case 'cancelled': return who + ' cancelled this consult.';
+      case 'ended': return data && data.endedBy === 'student' ? who + ' ended the consult.' : 'The consult has ended.';
+      case 'live': return 'That consult is already open on another screen.';
+      case 'failed': return 'Could not reach the consult just now — try again.';
+      default: return 'That consult is no longer there.';
+    }
   }
 
   function notifyWords(result) {
@@ -598,6 +616,38 @@
     return F && F.arrayUnion ? F.arrayUnion.apply(F, items) : items;
   }
   function now() { return Date.now(); }
+
+  /* A write that must not land on a consult that has moved on. It RE-READS
+     the status inside a transaction and writes only when the status is one
+     of `allowed`; otherwise it writes nothing and says what it found. Two
+     screens, two people and a heartbeat all write this one document, and a
+     plain `update` from any of them can undo what another just did: a
+     question the student left, overwritten by `live` and an offer from a
+     teacher's tab that opened a moment earlier, is a question lost.
+     Resolves to 'ok', the status it found, 'gone' or 'failed'; never throws. */
+  async function guardedUpdate(ref, allowed, patch) {
+    if (!ref) return 'gone';
+    var d = db();
+    try {
+      if (!d || typeof d.runTransaction !== 'function') {
+        // No transactions here (an old harness): the plain write, as before.
+        await ref.update(patch);
+        return 'ok';
+      }
+      return await d.runTransaction(async function (tx) {
+        var snap = await tx.get(ref);
+        if (!snap.exists) return 'gone';
+        var x = snap.data() || {};
+        var st = typeof x.status === 'string' ? x.status : '';
+        if (allowed.indexOf(st) < 0) return st || 'gone';
+        tx.update(ref, patch);
+        return 'ok';
+      });
+    } catch (e) {
+      console.warn('consult: a guarded write failed', e);
+      return 'failed';
+    }
+  }
   function $(id) { return global.document ? global.document.getElementById(id) : null; }
   function el(tag, cls, text) {
     var n = global.document.createElement(tag);
@@ -683,7 +733,8 @@
     heartbeat: null, supervisor: null, lastSnap: 0, liveSince: 0, connectedAt: 0,
     notify: null, panel: null, minimized: false, asking: false, busy: false, gen: 0,
     view: null, soundBlocked: false,
-    seenNav: {}, seenNavOrder: [], navNoteAt: 0, navNoteText: '', navNoteTimer: null
+    seenNav: {}, seenNavOrder: [], navNoteAt: 0, navNoteText: '', navNoteTimer: null,
+    pick: null, pickBound: false, goneBusy: false
   };
 
   function studentAvailable() {
@@ -696,7 +747,7 @@
     if (!b) return;
     var u = user();
     b.hidden = !u || admin();
-    var on = !!S.id && (S.status === 'waiting' || S.status === 'live');
+    var on = !!S.id && (S.status === 'waiting' || S.status === 'live' || S.status === 'later');
     b.classList.toggle('consultOn', on);
     b.textContent = on ? (S.status === 'live' ? '🙋 With ' + teacherName() : '🙋 Waiting…') : '🙋 Consult';
     b.title = on ? 'Your consult with ' + teacherName() : 'Ask ' + teacherName() + ' to join you on this worksheet';
@@ -705,7 +756,7 @@
   function onButton() {
     if (!user()) { toast('Sign in to ask ' + teacherName() + ' for help.'); return; }
     if (admin()) { toast('This is the button students press to call you.'); return; }
-    if (S.id && (S.status === 'waiting' || S.status === 'live')) { S.minimized = false; renderPanel(); return; }
+    if (S.id && (S.status === 'waiting' || S.status === 'live' || S.status === 'later')) { S.minimized = false; renderPanel(); return; }
     if (!onWorksheet()) { toast('Open a worksheet first, so ' + teacherName() + ' can see it.'); return; }
     S.asking = true;
     S.minimized = false;
@@ -822,7 +873,7 @@
   function startHeartbeat() {
     stopHeartbeat();
     S.heartbeat = setInterval(function () {
-      if (!S.ref || !(S.status === 'waiting' || S.status === 'live')) return;
+      if (!S.ref || !(S.status === 'waiting' || S.status === 'live' || S.status === 'later')) return;
       S.ref.update({ seen: now() }).catch(function () {});
     }, HEARTBEAT_MS);
     S.supervisor = setInterval(supervise, 1000);
@@ -865,9 +916,31 @@
     var was = S.status;
     S.status = data.status || '';
     if (S.status === 'cancelled' || S.status === 'ended') {
+      stopPick();
       finishStudent(S.status, data.endedBy || '');
       return;
     }
+    // A question left (here or in another tab) or answered is no longer a
+    // call: the reply watcher carries it from here. sendQuestion finishes its
+    // own exit, so a snapshot that lands mid-send is left to it.
+    if (S.status === 'question' || S.status === 'answered') {
+      if (S.pick && S.pick.sending) return;
+      stopPick(); resetStudent(true);
+      return;
+    }
+    // The teacher pressed "Not now": the call stops ringing and the student
+    // is asked for the question instead.
+    if (S.status === 'later' && was !== 'later') {
+      closePc(); S.handledRev = null;
+      if (!S.pick) { S.minimized = false; startPick(); return; }
+    }
+    // The teacher joined after all (a "Not now" they changed their mind
+    // about, or the email's link): the call is back on, so the picker that
+    // was waiting for a tap on the page stands down — left up, it would
+    // swallow every tap the student makes on the page they are being shown.
+    // A question already on its way is left to finish; the room closes on
+    // the `question` it writes.
+    if (S.status === 'live' && S.pick && !S.pick.sending) stopPick();
     if (S.status === 'waiting' && was === 'live') {
       // The teacher's tab went away. Their writing stays; the call does not.
       closePc();
@@ -1133,7 +1206,14 @@
       var connected = !!(S.pc && S.pc.connectionState === 'connected');
       var tseen = stampMs(S.data && S.data.tseen);
       if (!connected && tseen && t - tseen > TEACHER_GONE_MS) {
-        S.ref.update({ status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] }).catch(function () {});
+        // Guarded: the teacher's silence may be because they pressed "Not
+        // now" on another screen, and `waiting` must never undo that.
+        // One at a time: the supervisor ticks every second, a transaction
+        // takes longer than that.
+        if (S.goneBusy) return;
+        S.goneBusy = true;
+        guardedUpdate(S.ref, ['live'], { status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] })
+          .then(function () { S.goneBusy = false; });
         return;
       }
       var since = S.liveSince || t;
@@ -1446,7 +1526,7 @@
     placePanel(root);
 
     if (S.asking) {
-      root.appendChild(el('p', 'consultText', teacherName() + ' will get an email and a pop-up. When he joins, he can see this page, write on it to show you, and talk to you on video.'));
+      root.appendChild(el('p', 'consultText', teacherName() + ' will get an email and a pop-up. Once they join, they can see this page, write on it to show you, and talk to you on video.'));
       var row = el('div', 'consultRow');
       row.appendChild(btn('Ask for help', 'btnPrimary', function () { startConsult(); }, 'Ask ' + teacherName() + ' to join'));
       row.appendChild(btn('Not now', 'btnGhost', function () { S.asking = false; renderPanel(); }));
@@ -1454,15 +1534,29 @@
       return;
     }
 
+    if (S.pick) { renderPickPanel(root); return; }
+
+    if (S.status === 'later') {
+      root.appendChild(el('p', 'consultText', teacherName() + ' is here but cannot take a call just now. Show the part of the page you need help with and ask your question — you will get a recorded answer back.'));
+      var rl = el('div', 'consultRow');
+      rl.appendChild(btn('✍️ Leave a question', 'btnPrimary', startPick, 'Show where on the page and ask'));
+      rl.appendChild(btn('Cancel', 'btnGhost', function () { endStudent('cancelled'); }, 'Cancel the consult'));
+      root.appendChild(rl);
+      return;
+    }
+
     if (S.status === 'waiting') {
       var waitedFor = S.data && stampMs(S.data.at) ? consultAgo(now() - stampMs(S.data.at)) : '';
       root.appendChild(el('p', 'consultText', S.data && S.data.teacherLeft
-        ? teacherName() + '’s connection dropped. Stay here — he can join again.'
-        : 'Keep working — ' + teacherName() + ' will appear here when he joins.' + (waitedFor ? ' (asked ' + waitedFor + ')' : '')));
+        ? teacherName() + '’s connection dropped. Stay here — they can join again.'
+        : 'Keep working — ' + teacherName() + ' will appear here as soon as they join.' + (waitedFor ? ' (asked ' + waitedFor + ')' : '')));
       var note = S.notify && S.notify.pending ? 'Sending ' + teacherName() + ' an email…' : notifyWords(S.notify);
       if (note) root.appendChild(el('p', 'consultNote', note));
-      if (!S.mic) root.appendChild(el('p', 'consultNote', '🎤 Your microphone is off, so ' + teacherName() + ' will not hear you. He can still see your page and talk to you.'));
+      if (!S.mic) root.appendChild(el('p', 'consultNote', '🎤 Your microphone is off, so ' + teacherName() + ' will not hear you, but can still see your page and talk to you.'));
+      var waitedMs = S.data && stampMs(S.data.at) ? now() - stampMs(S.data.at) : 0;
+      if (waitedMs >= LATER_NUDGE_MS) root.appendChild(el('p', 'consultNote', teacherName() + ' may not be on Study Buddy right now. You can leave your question and get a recorded answer back.'));
       var r2 = el('div', 'consultRow');
+      r2.appendChild(btn('✍️ Leave a question instead', waitedMs >= LATER_NUDGE_MS ? 'btnPrimary' : 'btnGhost', startPick, 'Show where on the page and ask — ' + teacherName() + ' answers with a video'));
       r2.appendChild(btn('Cancel', 'btnGhost', function () { endStudent('cancelled'); }, 'Cancel the consult'));
       root.appendChild(r2);
       return;
@@ -1546,6 +1640,7 @@
 
   function resetStudent(silent) {
     S.gen++;
+    stopPick();
     if (S.unsub) { try { S.unsub(); } catch (e) {} }
     if (S.inkUnsub) { try { S.inkUnsub(); } catch (e) {} }
     S.unsub = null; S.inkUnsub = null;
@@ -1563,10 +1658,513 @@
      the teacher should still be shown. Best effort — a write in `pagehide`
      may never land, and the heartbeat's silence covers that case. */
   function studentPageHide() {
-    if (S.ref && (S.status === 'waiting' || S.status === 'live')) {
-      try { S.ref.update({ status: 'ended', endedBy: 'student', endedAt: now(), offer: null, answer: null, tc: [], sc: [] }); } catch (e) {}
+    if (S.ref && (S.status === 'waiting' || S.status === 'live' || S.status === 'later')) {
+      try {
+        var pr = S.ref.update({ status: 'ended', endedBy: 'student', endedAt: now(), offer: null, answer: null, tc: [], sc: [] });
+        if (pr && pr.catch) pr.catch(function () {});
+      } catch (e) {}
     }
   }
+
+  /* ===================================================================
+     STUDENT — leaving a question instead (v1.65.0)
+
+     The teacher is not there, or is there and cannot take the call. The
+     student shows WHERE on the page (a tap is the whole page, a drag is a
+     box round the part), types or SAYS the question, and it goes up as
+     status `question` with a picture of the page — their own ink on it and
+     the box drawn in magenta — at `frames/question`. The teacher answers it
+     later from Study Buddy or Ans Key (consult-answer.js) and the video
+     comes back to the student (the reply watcher, R, below).
+
+     - THE PICK NEVER WRITES ON THE PAGE. It is a capture-phase listener on
+       the window that swallows the pointer before the overlay sees it, and
+       the box is a div with `pointer-events: none` inside the page's own
+       wrap. Nothing goes into `annotations`; nothing is saved or marked.
+     - THE PANEL IS STILL NOT A MODAL. The page under it is exactly what the
+       student is pointing at.
+     - THE QUESTION IS TEXT AND IT IS CAPPED (`QUESTION_MAX`, 500), painted
+       with textContent wherever it is shown.
+     - THE EMAIL IS STILL `{ consultId }` AND NOTHING ELSE. The server reads
+       the question off the document.
+     =================================================================== */
+  var QUESTION_MAX = 500;
+  var Q_TAP_PX = 8;               // a press that moved less than this is a tap: the whole page
+  var Q_SNAP_LONG = 1100;         // the picture of the page the teacher writes on
+  var Q_VOICE_MAX_MS = 60000;     // one spoken question, not a lesson
+  var LATER_NUDGE_MS = 90 * 1000; // after this long waiting, the panel offers the question first
+  var Q_BOX_COLOR = '#D81B60';
+
+  /* Pure: a box from two points in a rect, as fractions 0..1, or null for a
+     tap. Exported for the harness. */
+  function qBoxFrom(x0, y0, x1, y1, w, h) {
+    w = Number(w) || 0; h = Number(h) || 0;
+    if (!(w > 0 && h > 0)) return null;
+    if (Math.abs(x1 - x0) < Q_TAP_PX && Math.abs(y1 - y0) < Q_TAP_PX) return null;
+    var c = function (v) { return Math.max(0, Math.min(1, v)); };
+    var r = function (v) { return Math.round(v * 10000) / 10000; };
+    var a = [c(Math.min(x0, x1) / w), c(Math.min(y0, y1) / h), c(Math.max(x0, x1) / w), c(Math.max(y0, y1) / h)].map(r);
+    if (a[2] - a[0] < 0.01 || a[3] - a[1] < 0.01) return null;
+    return a;
+  }
+  function qClean(text) {
+    return String(text == null ? '' : text).replace(/\r\n?/g, '\n').replace(/[^\S\n]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n').trim().slice(0, QUESTION_MAX);
+  }
+
+  function pageOfWrap(wrap) {
+    var list = Array.isArray(global.pages) ? global.pages : [];
+    for (var i = 0; i < list.length; i++) if (list[i] && list[i].wrap === wrap) return list[i];
+    return null;
+  }
+  function startPick() {
+    if (!S.id || !(S.status === 'waiting' || S.status === 'later')) return;
+    if (!onWorksheet()) { toast('Open the worksheet your question is about first.'); return; }
+    S.pick = { page: 0, box: null, form: false, drag: null, text: (S.pick && S.pick.text) || '', voice: null, sending: false };
+    S.minimized = false;
+    bindPick();
+    try { global.document.body.classList.add('consultPicking'); } catch (e) {}
+    clearQBox();
+    renderPanel();
+  }
+  function stopPick() {
+    if (S.pick && S.pick.voice) voiceStopQ(true);
+    S.pick = null;
+    try { global.document.body.classList.remove('consultPicking'); } catch (e) {}
+    clearQBox();
+  }
+  function rePick() {
+    if (!S.pick) return;
+    S.pick.form = false; S.pick.page = 0; S.pick.box = null;
+    try { global.document.body.classList.add('consultPicking'); } catch (e) {}
+    clearQBox();
+    renderPanel();
+  }
+
+  function pickTarget(e) {
+    if (!S.pick || S.pick.form) return null;
+    var t = e && e.target;
+    if (!t || !t.closest) return null;
+    if (t.closest('#consultPanel')) return null;
+    var wrap = t.closest('.pageWrap');
+    if (!wrap) return null;
+    return wrap;
+  }
+  function pickDown(e) {
+    var wrap = pickTarget(e);
+    if (!wrap) return;
+    if (e.button > 0) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    var r = wrap.getBoundingClientRect();
+    S.pick.drag = { wrap: wrap, r: r, x0: e.clientX - r.left, y0: e.clientY - r.top, x1: e.clientX - r.left, y1: e.clientY - r.top, id: e.pointerId };
+    try { if (wrap.setPointerCapture) wrap.setPointerCapture(e.pointerId); } catch (er) {}
+    drawQBox(wrap, null, S.pick.drag);
+  }
+  function pickMove(e) {
+    var d = S.pick && S.pick.drag;
+    if (!d) { if (pickTarget(e)) { e.preventDefault(); e.stopImmediatePropagation(); } return; }
+    e.preventDefault(); e.stopImmediatePropagation();
+    d.x1 = e.clientX - d.r.left; d.y1 = e.clientY - d.r.top;
+    drawQBox(d.wrap, null, d);
+  }
+  function pickUp(e) {
+    var d = S.pick && S.pick.drag;
+    if (!d) { if (pickTarget(e)) { e.preventDefault(); e.stopImmediatePropagation(); } return; }
+    e.preventDefault(); e.stopImmediatePropagation();
+    S.pick.drag = null;
+    if (e.type === 'pointercancel') { clearQBox(); return; }
+    d.x1 = e.clientX - d.r.left; d.y1 = e.clientY - d.r.top;
+    var p = pageOfWrap(d.wrap);
+    if (!p) { clearQBox(); return; }
+    var box = qBoxFrom(d.x0, d.y0, d.x1, d.y1, d.r.width, d.r.height);
+    S.pick.page = p.num; S.pick.box = box; S.pick.form = true;
+    try { global.document.body.classList.remove('consultPicking'); } catch (er) {}
+    drawQBox(d.wrap, box, null);
+    renderPanel();
+    setTimeout(function () {
+      var ta = S.panel && S.panel.querySelector('textarea.consultQText');
+      if (ta) { try { ta.focus(); } catch (er) {} }
+    }, 0);
+  }
+  // A touch screen's own touch events reach the navigation and the undo
+  // gestures even when the pointer event was swallowed; they are swallowed too.
+  function pickTouch(e) {
+    if (!S.pick || S.pick.form) return;
+    var t = e.target;
+    if (!t || !t.closest || t.closest('#consultPanel') || !t.closest('.pageWrap')) return;
+    if (e.cancelable) e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+  function bindPick() {
+    if (S.pickBound) return;
+    S.pickBound = true;
+    global.addEventListener('pointerdown', pickDown, true);
+    global.addEventListener('pointermove', pickMove, true);
+    global.addEventListener('pointerup', pickUp, true);
+    global.addEventListener('pointercancel', pickUp, true);
+    global.addEventListener('touchstart', pickTouch, { capture: true, passive: false });
+    global.addEventListener('touchmove', pickTouch, { capture: true, passive: false });
+  }
+
+  function clearQBox() {
+    try {
+      var old = global.document.querySelectorAll('.consultQBox');
+      for (var i = 0; i < old.length; i++) if (old[i].parentNode) old[i].parentNode.removeChild(old[i]);
+    } catch (e) {}
+  }
+  function drawQBox(wrap, box, drag) {
+    clearQBox();
+    if (!wrap) return;
+    var n = el('div', 'consultQBox');
+    n.setAttribute('aria-hidden', 'true');
+    var l, t, w, h;
+    if (drag) {
+      var x0 = Math.min(drag.x0, drag.x1), y0 = Math.min(drag.y0, drag.y1);
+      l = x0 / drag.r.width; t = y0 / drag.r.height;
+      w = Math.abs(drag.x1 - drag.x0) / drag.r.width; h = Math.abs(drag.y1 - drag.y0) / drag.r.height;
+    } else if (box) {
+      l = box[0]; t = box[1]; w = box[2] - box[0]; h = box[3] - box[1];
+    } else {
+      n.classList.add('consultQBoxPage');
+      l = 0; t = 0; w = 1; h = 1;
+    }
+    n.style.left = (l * 100) + '%'; n.style.top = (t * 100) + '%';
+    n.style.width = (w * 100) + '%'; n.style.height = (h * 100) + '%';
+    wrap.appendChild(n);
+  }
+
+  /* The picture the teacher answers on: the page as the student sees it,
+     their own ink on it, and the box in magenta. */
+  function questionImage(p, box) {
+    if (!p || !global.document) return '';
+    try { if (typeof global.syncActiveTextEditValue === 'function') global.syncActiveTextEditValue(); } catch (e) {}
+    try { if (!(p.canvas && p.canvas.width) && typeof global.ensurePageRaster === 'function') global.ensurePageRaster(p); } catch (e) {}
+    var size = mirrorSize(p.baseW, p.baseH, Q_SNAP_LONG);
+    var c = global.document.createElement('canvas');
+    c.width = size.w; c.height = size.h;
+    var ctx = c.getContext('2d');
+    if (!ctx) return '';
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, c.width, c.height);
+    try { if (p.canvas && p.canvas.width && p.canvas.height) ctx.drawImage(p.canvas, 0, 0, c.width, c.height); } catch (e) {}
+    try {
+      if (typeof global.drawAnnsOnCtx === 'function' && p.baseW && p.baseH) {
+        global.drawAnnsOnCtx(ctx, c.width / p.baseW, c.height / p.baseH, global.annotations || [], p.num);
+      }
+    } catch (e) {}
+    if (box) {
+      var x0 = box[0] * c.width, y0 = box[1] * c.height, x1 = box[2] * c.width, y1 = box[3] * c.height;
+      ctx.fillStyle = 'rgba(26,26,26,0.08)';
+      ctx.fillRect(0, 0, c.width, y0);
+      ctx.fillRect(0, y1, c.width, c.height - y1);
+      ctx.fillRect(0, y0, x0, y1 - y0);
+      ctx.fillRect(x1, y0, c.width - x1, y1 - y0);
+      ctx.strokeStyle = Q_BOX_COLOR;
+      ctx.lineWidth = Math.max(4, c.width / 220);
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    }
+    var url = '';
+    try {
+      url = c.toDataURL('image/jpeg', 0.82);
+      if (url.length > SNAP_MAX_CHARS) url = c.toDataURL('image/jpeg', 0.55);
+      if (url.length > SNAP_MAX_CHARS) url = c.toDataURL('image/jpeg', 0.35);
+    } catch (e) { url = ''; }
+    return url.length > SNAP_MAX_CHARS ? '' : url;
+  }
+
+  async function sendQuestion() {
+    var q = S.pick;
+    if (!q || q.sending || !S.ref) return;
+    var text = qClean(q.text);
+    if (!text) { toast('Type or say your question first.'); return; }
+    var p = pageByNum(q.page);
+    if (!p) { toast('Show where on the page first.'); rePick(); return; }
+    q.sending = true; renderPanel();
+    var ref = S.ref, id = S.id, gen = S.gen;
+    try {
+      var img = questionImage(p, q.box);
+      if (img) await ref.collection('frames').doc('question').set({ img: img, at: now() });
+      // The consult is re-pointed at the worksheet the question is on: the
+      // student may have moved to another paper since they first asked, and
+      // the teacher's card, the email and the answer all name THIS one.
+      var wsId = cleanText(global.currentDocId || '', 80);
+      var wsName = cleanText(global.docName || '', TITLE_MAX) || cleanText(S.data && S.data.worksheetName, TITLE_MAX);
+      var question = { text: text, page: p.num, ws: wsId, box: q.box || null, at: now() };
+      // Only a call still ringing (`waiting`) or one the teacher asked to
+      // wait (`later`) becomes a question. A teacher who joined while the
+      // student was typing has the call open, and writing `question` over it
+      // would cut them off; a consult that ended is not reopened.
+      var outcome = await guardedUpdate(ref, ['waiting', 'later'], {
+        status: 'question', question: question, seen: now(),
+        worksheetId: wsId, worksheetName: wsName,
+        offer: null, answer: null, tc: [], sc: []
+      });
+      if (gen !== S.gen) return;
+      if (outcome !== 'ok') {
+        if (S.pick) S.pick.sending = false;
+        if (outcome === 'live') {
+          stopPick(); renderPanel();
+          toast(teacherName() + ' has just joined — ask your question on the call.', 6500);
+          return;
+        }
+        if (outcome === 'question' || outcome === 'answered') {
+          stopPick(); resetStudent(true);
+          toast('Your question is already with ' + teacherName() + '.', 5000);
+          return;
+        }
+        if (outcome === 'failed') {
+          renderPanel();
+          toast('Your question could not be sent just now — try again.', 6500);
+          return;
+        }
+        stopPick(); resetStudent(true);
+        toast('This consult has ended, so the question was not sent. Press 🙋 Consult to ask again.', 7000);
+        return;
+      }
+      usage('consultQuestion', cleanText(wsName, 80));
+      stopPick();
+      resetStudent(true);
+      toast('Sent. ' + teacherName() + ' will record you an answer — it comes back here.', 6500);
+      notifyTeacher(id).catch(function () {});
+    } catch (e) {
+      console.warn('consult: the question could not be sent', e);
+      if (S.pick) { S.pick.sending = false; renderPanel(); }
+      toast('Your question could not be sent: ' + ((e && e.message) || e), 7000);
+    }
+  }
+
+  /* ---------------- Saying the question ---------------- */
+  function voiceCanQ() {
+    return !!(global.navigator && global.navigator.mediaDevices && global.navigator.mediaDevices.getUserMedia &&
+      typeof global.MediaRecorder === 'function' && typeof global.transcribeAudio === 'function');
+  }
+  async function voiceStartQ() {
+    if (!S.pick || S.pick.voice) return;
+    var stream;
+    try { stream = await global.navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) { toast('The microphone is not allowed — you can type your question instead.'); return; }
+    if (!S.pick) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+    var mime = '';
+    ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].some(function (m) {
+      try { if (global.MediaRecorder.isTypeSupported && global.MediaRecorder.isTypeSupported(m)) { mime = m; return true; } } catch (e) {}
+      return false;
+    });
+    var rec;
+    try { rec = mime ? new global.MediaRecorder(stream, { mimeType: mime }) : new global.MediaRecorder(stream); }
+    catch (e) { stream.getTracks().forEach(function (t) { t.stop(); }); toast('This browser cannot record — type your question instead.'); return; }
+    var v = { rec: rec, stream: stream, chunks: [], mime: (rec.mimeType || mime || 'audio/webm'), cancelled: false, timer: null, busy: false };
+    S.pick.voice = v;
+    rec.ondataavailable = function (ev) { if (ev.data && ev.data.size) v.chunks.push(ev.data); };
+    rec.onstop = function () { voiceDoneQ(v); };
+    v.timer = setTimeout(function () { voiceStopQ(false); }, Q_VOICE_MAX_MS);
+    try { rec.start(); } catch (e) { voiceStopQ(true); return; }
+    renderPanel();
+  }
+  function voiceStopQ(cancel) {
+    var v = S.pick && S.pick.voice;
+    if (!v) return;
+    if (cancel) v.cancelled = true;
+    if (v.timer) { clearTimeout(v.timer); v.timer = null; }
+    try { if (v.rec && v.rec.state !== 'inactive') v.rec.stop(); else voiceDoneQ(v); } catch (e) { voiceDoneQ(v); }
+  }
+  function blobB64(blob) {
+    return new Promise(function (res, rej) {
+      var fr = new global.FileReader();
+      fr.onload = function () { var s = String(fr.result || ''); res(s.slice(s.indexOf(',') + 1)); };
+      fr.onerror = function () { rej(fr.error || new Error('could not read the recording')); };
+      fr.readAsDataURL(blob);
+    });
+  }
+  async function voiceDoneQ(v) {
+    if (v.done) return;
+    v.done = true;
+    try { v.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+    var pick = S.pick;
+    if (v.cancelled || !pick || pick.voice !== v) { if (pick && pick.voice === v) pick.voice = null; renderPanel(); return; }
+    var blob = new global.Blob(v.chunks, { type: v.mime });
+    if (!blob.size) { pick.voice = null; renderPanel(); toast('Did not catch any speech — tap 🎤 and try again.'); return; }
+    v.busy = true; renderPanel();
+    try {
+      var b64 = await blobB64(blob);
+      var hint = 'The speaker is a Singapore primary or lower-secondary student, in Singapore English, asking their teacher a ' +
+        'question about a worksheet. Keep units and scientific or mathematical terms exactly as they say them. Write down what ' +
+        'they said and nothing else — do not answer it.';
+      var said = await global.transcribeAudio(b64, v.mime, hint);
+      if (S.pick !== pick) return;
+      said = qClean(said);
+      if (said) pick.text = qClean((pick.text ? pick.text + ' ' : '') + said);
+      else toast('Did not catch any speech — tap 🎤 and try again.');
+    } catch (e) {
+      toast('Could not turn that into words: ' + ((e && e.message) || e), 6000);
+    } finally {
+      if (pick.voice === v) pick.voice = null;
+      renderPanel();
+    }
+  }
+
+  /* The pick and the form, drawn inside the student's panel. */
+  function renderPickPanel(root) {
+    var q = S.pick;
+    if (!q.form) {
+      root.appendChild(el('p', 'consultText', 'Tap the page your question is about — or drag a box round the part you need help with.'));
+      var r = el('div', 'consultRow');
+      r.appendChild(btn('Back', 'btnGhost', function () { stopPick(); renderPanel(); }));
+      root.appendChild(r);
+      return;
+    }
+    root.appendChild(el('p', 'consultNote', q.box ? '📍 Page ' + q.page + ' — the part in the pink box.' : '📍 The whole of page ' + q.page + '.'));
+    var ta = global.document.createElement('textarea');
+    ta.className = 'consultQText';
+    ta.rows = 4;
+    ta.maxLength = QUESTION_MAX;
+    ta.placeholder = 'What would you like to ask ' + teacherName() + '?';
+    ta.value = q.text || '';
+    ta.disabled = !!q.sending || !!(q.voice && q.voice.busy);
+    ta.addEventListener('input', function () { q.text = ta.value.slice(0, QUESTION_MAX); });
+    // Typing here must never reach the worksheet's one-letter shortcuts.
+    ta.addEventListener('keydown', function (e) { e.stopPropagation(); });
+    root.appendChild(ta);
+    var r2 = el('div', 'consultRow');
+    if (voiceCanQ()) {
+      var v = q.voice;
+      var label = v ? (v.busy ? 'Writing it down…' : '⏹ Done speaking') : '🎤 Say it';
+      var mb = btn(label, v && !v.busy ? 'btnPrimary consultQMic recording' : 'btnGhost consultQMic', function () {
+        if (S.pick && S.pick.voice) voiceStopQ(false); else voiceStartQ();
+      }, v ? 'Stop and write down what you said' : 'Say your question instead of typing it');
+      mb.disabled = !!(v && v.busy) || !!q.sending;
+      r2.appendChild(mb);
+    }
+    r2.appendChild(btn('Change the spot', 'btnGhost', rePick));
+    root.appendChild(r2);
+    var r3 = el('div', 'consultRow');
+    var send = btn(q.sending ? 'Sending…' : 'Send to ' + teacherName(), 'btnPrimary consultQSend', sendQuestion, 'Send your question');
+    send.disabled = !!q.sending || !!(q.voice);
+    r3.appendChild(send);
+    r3.appendChild(btn('Cancel', 'btnGhost', function () { stopPick(); renderPanel(); }));
+    root.appendChild(r3);
+  }
+
+  /* ===================================================================
+     STUDENT — the answer coming back (the reply watcher)
+
+     A question the teacher has answered arrives here as status `answered`
+     with `reply` (a Storage URL checked to be Firebase Storage's, a note).
+     A small card says so, NOT a modal; ▶ Watch plays it in a window of its
+     own. "Done" marks it seen, so it is shown once.
+     =================================================================== */
+  var R = { uid: '', unsub: null, items: [], hidden: {}, root: null, playing: null };
+
+  function replyWatchStart(u) {
+    replyWatchStop();
+    var d = db();
+    if (!u || !d) return;
+    R.uid = u.uid;
+    var uid = u.uid;
+    try {
+      R.unsub = d.collection(COLLECTION).where('studentUid', '==', uid).where('status', '==', 'answered')
+        .onSnapshot(function (qs) {
+          if (R.uid !== uid) return;
+          var list = [];
+          (qs.docs || []).forEach(function (doc) {
+            var x = doc.data() || {};
+            if (x.replySeen || !consultIdOk(doc.id)) return;
+            var CA = global.ConsultAnswer && global.ConsultAnswer.pure;
+            var reply = CA ? CA.cleanReply(x.reply) : null;
+            if (!reply) return;
+            var question = CA ? CA.cleanQuestion(x.question) : null;
+            list.push({ id: doc.id, reply: reply, question: question, ws: cleanText(x.worksheetName, 120), at: stampMs(x.answeredAt) });
+          });
+          list.sort(function (a, b) { return (b.at || 0) - (a.at || 0); });
+          R.items = list;
+          renderReplies();
+        }, function (err) { console.warn('consult: reply listener', err); });
+    } catch (e) { console.warn('consult: reply listener', e); }
+  }
+  function replyWatchStop() {
+    if (R.unsub) { try { R.unsub(); } catch (e) {} }
+    R.unsub = null; R.uid = ''; R.items = []; R.hidden = {};
+    closeReplyPlayer();
+    renderReplies();
+  }
+  function renderReplies() {
+    if (!global.document || !global.document.body) return;
+    var show = R.items.filter(function (x) { return !R.hidden[x.id]; });
+    if (!show.length) {
+      if (R.root && R.root.parentNode) R.root.parentNode.removeChild(R.root);
+      R.root = null;
+      return;
+    }
+    if (!R.root || !R.root.isConnected) {
+      R.root = el('div', 'consultReplies');
+      R.root.setAttribute('role', 'region');
+      R.root.setAttribute('aria-label', 'Answers from ' + teacherName());
+      global.document.body.appendChild(R.root);
+    }
+    while (R.root.firstChild) R.root.removeChild(R.root.firstChild);
+    show.slice(0, 3).forEach(function (x) {
+      var card = el('div', 'consultReply');
+      card.appendChild(el('div', 'consultReplyTitle', '🎬 ' + teacherName() + ' answered your question'));
+      if (x.question && x.question.text) card.appendChild(el('div', 'consultReplyQ', '“' + x.question.text + '”'));
+      var where = [x.ws, x.question && x.question.page ? 'page ' + x.question.page : ''].filter(Boolean).join(' · ');
+      if (where) card.appendChild(el('div', 'consultNote', where));
+      var row = el('div', 'consultRow');
+      row.appendChild(btn('▶ Watch', 'btnPrimary', function () { playReply(x); }));
+      if (x.question && x.question.ws && typeof global.openWorksheet === 'function') {
+        row.appendChild(btn('Open the worksheet', 'btnGhost', function () {
+          try { global.openWorksheet(x.question.ws); } catch (e) {}
+        }));
+      }
+      row.appendChild(btn('Done', 'btnGhost', function () { replyDone(x); }, 'I have watched it'));
+      row.appendChild(btn('Later', 'btnGhost', function () { R.hidden[x.id] = true; renderReplies(); }, 'Hide it for now'));
+      card.appendChild(row);
+      R.root.appendChild(card);
+    });
+  }
+  function closeReplyPlayer() {
+    var p = R.playing;
+    R.playing = null;
+    if (p && p.root) {
+      try { var m = p.root.querySelector('video,audio'); if (m) { m.pause(); m.removeAttribute('src'); } } catch (e) {}
+      if (p.root.parentNode) p.root.parentNode.removeChild(p.root);
+    }
+  }
+  function playReply(x) {
+    closeReplyPlayer();
+    var rep = x.reply;
+    var CA = global.ConsultAnswer && global.ConsultAnswer.pure;
+    if (!rep || !CA || !CA.replyUrlOk(rep.url)) { toast('That answer cannot be played.'); return; }
+    var root = el('div', 'consultReplyPlayer');
+    root.setAttribute('role', 'dialog');
+    root.setAttribute('aria-label', 'Answer from ' + teacherName());
+    var head = el('div', 'consultHead');
+    head.appendChild(el('span', 'consultIcon', '🎬'));
+    head.appendChild(el('div', 'consultTitle', teacherName() + '’s answer'));
+    head.appendChild(btn('✕', 'btnGhost consultMinBtn', closeReplyPlayer, 'Close'));
+    root.appendChild(head);
+    var isAudio = /^audio\//i.test(rep.mime || '');
+    var media = global.document.createElement(isAudio ? 'audio' : 'video');
+    media.className = 'consultReplyMedia';
+    media.controls = true;
+    media.setAttribute('playsinline', ''); media.playsInline = true;
+    media.preload = 'auto';
+    media.src = rep.url;
+    root.appendChild(media);
+    if (x.question && x.question.text) root.appendChild(el('p', 'consultReplyQ', 'You asked: “' + x.question.text + '”'));
+    if (rep.note) root.appendChild(el('p', 'consultText', rep.note));
+    root.addEventListener('keydown', function (e) { e.stopPropagation(); if (e.key === 'Escape') closeReplyPlayer(); });
+    global.document.body.appendChild(root);
+    R.playing = { id: x.id, root: root };
+    try { var pr = media.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (e) {}
+  }
+  async function replyDone(x) {
+    R.hidden[x.id] = true;
+    renderReplies();
+    if (R.playing && R.playing.id === x.id) closeReplyPlayer();
+    var d = db();
+    if (!d || !consultIdOk(x.id)) return;
+    try { await d.collection(COLLECTION).doc(x.id).update({ replySeen: now() }); } catch (e) { console.warn('consult: could not mark the answer seen', e); }
+    usage('consultReply', x.ws);
+  }
+
 
   /* ===================================================================
      TEACHER — the consult room
@@ -1598,8 +2196,26 @@
       toast(cleanText(data.studentName, NAME_MAX) + (data.status === 'cancelled' ? ' cancelled this consult.' : '’s consult has already ended.'), 7000);
       return false;
     }
+    // A consult the student turned into a QUESTION is answered from the
+    // recorder, never joined: negotiating here writes `live` and an offer
+    // straight over the question they left, and their page with it. The
+    // email's link, an old pop-up and Ans Key's card all land here, so this
+    // is the one place the two kinds part. A consult the teacher asked to
+    // wait (`later`) may still be joined live — "not now" became "now".
+    if (data.status === 'question' || data.status === 'answered') {
+      var api = answerApi();
+      if (api) { api.open(id); return false; }
+      toast(data.status === 'answered'
+        ? 'That question has already been answered.'
+        : (cleanText(data.studentName, NAME_MAX) || 'The student') + ' left a question instead. Reload Study Buddy to answer it.', 7000);
+      return false;
+    }
     T.id = id; T.ref = ref; T.data = data; T.view = cleanView(data.view);
     T.strokes = {}; T.order = []; T.ending = false; T.connectedOnce = false;
+    // The FIRST offer of a room may be made over `later` (the teacher pressed
+    // "Not now" and then changed their mind) or `live` (this teacher's own
+    // other screen); every later offer is only ever a reconnect.
+    T.firstOffer = true;
     buildRoom();
     renderRoom();
     await openLocalMedia();
@@ -1607,6 +2223,9 @@
     renderSelf();
     watchRoom();
     await negotiate();
+    // The offer may have found the consult turned into a question, or the
+    // teacher may have opened another one while it was being written.
+    if (gen !== T.gen || T.id !== id) return false;
     T.heartbeat = setInterval(function () {
       if (T.ref) T.ref.update({ tseen: now() }).catch(function () {});
     }, HEARTBEAT_MS);
@@ -1688,11 +2307,29 @@
       await pc.setLocalDescription(offer);
       if (T.pc !== pc) return;
       var buf = T.buf.slice(); T.buf = [];
-      await T.ref.update({
+      var allowed = T.firstOffer ? ['waiting', 'later', 'live'] : ['waiting', 'live'];
+      var outcome = await guardedUpdate(T.ref, allowed, {
         status: 'live', teacherUid: (user() && user().uid) || '', teacherName: teacherName(),
         offer: sdpOf(pc.localDescription || offer), rev: rev, tc: buf, answer: null, arev: null, sc: [],
         joinedAt: now(), tseen: now(), teacherLeft: false
       });
+      if (T.pc !== pc) return;
+      if (outcome === 'failed') {
+        // Nothing was written; the room stays, and End still works.
+        toast('Could not start the call just now — try joining again.', 7000);
+        renderRoomStatus();
+        return;
+      }
+      if (outcome !== 'ok') {
+        // The consult is not a call any more: the student left a question,
+        // cancelled, or another screen asked them to. Nothing was written
+        // over it; the room goes, and a question goes to the recorder.
+        var goneId = T.id, goneData = T.data;
+        roomEnded(roomGoneText(outcome, goneData));
+        if (outcome === 'question') { var api = answerApi(); if (api) api.open(goneId); }
+        return;
+      }
+      T.firstOffer = false;
       T.docReady = true;
       if (T.buf.length) {
         var late = T.buf.slice(); T.buf = [];
@@ -1766,6 +2403,20 @@
       if (!T.ending) roomEnded(data.endedBy === 'student'
         ? cleanText(data.studentName, NAME_MAX) + ' ended the consult.'
         : 'The consult has ended.');
+      return;
+    }
+    // The student left a question while this room was open (or it has
+    // already been answered from another screen): it is not a call any more.
+    // The question shows up in the pop-up's list, with 📝 Answer.
+    if (data.status === 'question' || data.status === 'answered') {
+      if (!T.ending) roomEnded(roomGoneText(data.status, data));
+      return;
+    }
+    // "Not now" pressed on another screen AFTER this room's own offer had
+    // landed. The first snapshot of a room opened from `later` still says
+    // `later` and is not that — this tab's offer has not been written yet.
+    if (data.status === 'later' && T.docReady && (Number(data.rev) || 0) >= T.rev) {
+      if (!T.ending) roomEnded(roomGoneText('later', data));
       return;
     }
     if (data.view) setTeacherView(cleanView(data.view));
@@ -2420,12 +3071,15 @@
   async function leaveRoom(end) {
     T.ending = true;
     var ref = T.ref;
+    // Both writes are guarded: End never closes a question the student left
+    // a moment ago (it stays to be answered), and leaving puts the consult
+    // back to `waiting` only when it is still this room's live call.
     if (ref && end) {
-      try { await ref.update({ status: 'ended', endedBy: 'teacher', endedAt: now(), offer: null, answer: null, tc: [], sc: [] }); }
-      catch (e) { toast('Could not end the consult cleanly: ' + ((e && e.message) || e), 6000); }
+      var outcome = await guardedUpdate(ref, ['waiting', 'live', 'later'], { status: 'ended', endedBy: 'teacher', endedAt: now(), offer: null, answer: null, tc: [], sc: [] });
+      if (outcome === 'failed') toast('Could not end the consult cleanly — it will time out by itself.', 6000);
       try { await ref.collection('frames').doc('latest').delete(); } catch (e) {}
     } else if (ref) {
-      try { await ref.update({ status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] }); } catch (e) {}
+      await guardedUpdate(ref, ['live'], { status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] });
     }
     teardownRoom();
   }
@@ -2462,49 +3116,114 @@
   /* The teacher's tab is going away mid-consult: it goes back to WAITING,
      not ended, so the pop-up comes back and a reload rejoins it. */
   function teacherPageHide() {
-    if (T.ref && !T.ending) {
-      try { T.ref.update({ status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] }); } catch (e) {}
+    // No transaction here — a page going away does not wait for one — so it
+    // goes by the last snapshot: only a call this room has LIVE is put back.
+    // A `later`, a `question` and an `answered` are never written over.
+    if (T.ref && !T.ending && T.data && T.data.status === 'live') {
+      try {
+        var pr = T.ref.update({ status: 'waiting', teacherLeft: true, offer: null, answer: null, tc: [], sc: [] });
+        if (pr && pr.catch) pr.catch(function () {});
+      } catch (e) {}
     }
   }
 
   /* ===================================================================
      TEACHER — the pop-up on any Study Buddy screen
      =================================================================== */
-  var W = { unsub: null, items: {}, dismissed: {}, root: null, tick: null, seenIds: {}, baseTitle: '' };
+  /* Two listeners, one list. A call still RINGING (`waiting`) and a
+     question a student LEFT (`question`) are both things the teacher should
+     see the moment they open Study Buddy, on any screen; they are two
+     equality queries rather than one `in`, so neither needs an index the
+     project does not have. Each card is keyed `id:kind`: the same consult
+     goes from a call to a question, and the question is a new thing to be
+     told about (a chime, a card), not the call's card relabelled.
+
+     - A call card: Join · ✋ Not now (the student is asked to leave a
+       question instead, `ConsultAnswer.askLater`) · Hide.
+     - A question card: 📝 Answer (the recorder, `ConsultAnswer.open`) · Hide.
+     - At most ALERT_SHOW_MAX cards, calls first; the rest are counted.
+     - Hide is this tab's alone and writes nothing: the question stays in
+       the list for the next screen and the next visit. */
+  var ALERT_SHOW_MAX = 4;
+  var W = { unsub: null, unsubQ: null, items: {}, dismissed: {}, root: null, tick: null, seenIds: {}, baseTitle: '' };
+
+  function answerApi() {
+    var CA = global.ConsultAnswer;
+    if (!CA || typeof CA.open !== 'function' || !admin() || practice()) return null;
+    return CA;
+  }
+  function questionFreshHere(data, t) {
+    var CA = global.ConsultAnswer && global.ConsultAnswer.pure;
+    if (CA && typeof CA.questionFresh === 'function') return CA.questionFresh(data, t);
+    return !!data && data.status === 'question';
+  }
+  function itemFresh(item, t) {
+    return item.kind === 'question' ? questionFreshHere(item.data, t) : consultFresh(item.data, t);
+  }
+  function itemAt(item) {
+    if (item.kind === 'question') return stampMs(item.data.question && item.data.question.at) || stampMs(item.data.at);
+    return stampMs(item.data.at);
+  }
 
   function startWatcher() {
     stopWatcher();
     var d = db();
     if (!d || !admin()) return;
-    W.unsub = d.collection(COLLECTION).where('status', '==', 'waiting').onSnapshot(function (qs) {
-      var next = {};
-      (qs.docs || []).forEach(function (doc) { next[doc.id] = doc.data() || {}; });
-      var fresh = Object.keys(next).filter(function (id) { return !W.seenIds[id] && consultFresh(next[id], now()); });
-      W.items = next;
-      fresh.forEach(function (id) { W.seenIds[id] = true; });
-      if (fresh.length) chime();
-      renderAlerts();
-    }, function (err) { console.warn('consult: the waiting list could not be read', err); });
+    var listen = function (status, kind) {
+      return d.collection(COLLECTION).where('status', '==', status).onSnapshot(function (qs) {
+        var t = now();
+        var next = {};
+        Object.keys(W.items).forEach(function (k) { if (W.items[k].kind !== kind) next[k] = W.items[k]; });
+        var fresh = [];
+        (qs.docs || []).forEach(function (doc) {
+          if (!consultIdOk(doc.id)) return;
+          var key = doc.id + ':' + kind;
+          var item = { key: key, id: doc.id, kind: kind, data: doc.data() || {} };
+          next[key] = item;
+          if (!W.seenIds[key] && itemFresh(item, t)) fresh.push(key);
+        });
+        W.items = next;
+        fresh.forEach(function (k) { W.seenIds[k] = true; });
+        if (fresh.length) chime();
+        renderAlerts();
+      }, function (err) { console.warn('consult: the ' + kind + ' list could not be read', err); });
+    };
+    W.unsub = listen('waiting', 'call');
+    W.unsubQ = listen('question', 'question');
     W.tick = setInterval(renderAlerts, 30000);
   }
   function stopWatcher() {
     if (W.unsub) { try { W.unsub(); } catch (e) {} }
+    if (W.unsubQ) { try { W.unsubQ(); } catch (e) {} }
     if (W.tick) clearInterval(W.tick);
-    W.unsub = null; W.tick = null; W.items = {};
+    W.unsub = null; W.unsubQ = null; W.tick = null; W.items = {};
     renderAlerts();
   }
 
-  function waitingList() {
+  // Every card there is to show, calls first (someone is waiting on the
+  // other end), then questions, each oldest first.
+  function alertList() {
     var t = now();
     return Object.keys(W.items)
-      .filter(function (id) { return !W.dismissed[id] && id !== T.id && consultFresh(W.items[id], t); })
-      .map(function (id) { return { id: id, data: W.items[id] }; })
-      .sort(function (a, b) { return stampMs(a.data.at) - stampMs(b.data.at); });
+      .map(function (k) { return W.items[k]; })
+      .filter(function (it) {
+        if (W.dismissed[it.key]) return false;
+        if (it.kind === 'call' && it.id === T.id) return false;
+        return itemFresh(it, t);
+      })
+      .sort(function (a, b) {
+        if (a.kind !== b.kind) return a.kind === 'call' ? -1 : 1;
+        return itemAt(a) - itemAt(b);
+      });
+  }
+  // The calls alone — what the harness and the console have always read.
+  function waitingList() {
+    return alertList().filter(function (it) { return it.kind === 'call'; });
   }
 
   function renderAlerts() {
     if (!global.document || !global.document.body) return;
-    var list = admin() ? waitingList() : [];
+    var list = admin() ? alertList() : [];
     updateTitle(list.length);
     if (!list.length) {
       if (W.root && W.root.parentNode) W.root.parentNode.removeChild(W.root);
@@ -2518,21 +3237,72 @@
       global.document.body.appendChild(W.root);
     }
     while (W.root.firstChild) W.root.removeChild(W.root.firstChild);
-    list.forEach(function (item) {
-      var card = el('div', 'consultAlert');
-      var top = el('div', 'consultAlertTop');
-      top.appendChild(el('span', 'consultIcon', '🙋'));
-      var words = el('div', 'consultAlertWords');
-      words.appendChild(el('b', '', (cleanText(item.data.studentName, NAME_MAX) || 'A student') + (item.data.teacherLeft ? ' is waiting for you to come back' : ' is asking for help')));
-      words.appendChild(el('span', 'consultAlertWhere', [consultSummary(item.data), consultAgo(now() - stampMs(item.data.at))].filter(Boolean).join(' · ')));
-      top.appendChild(words);
-      card.appendChild(top);
-      var row = el('div', 'consultRow');
-      row.appendChild(btn('Join', 'btnPrimary', function () { openRoom(item.id); renderAlerts(); }, 'Join this consult now'));
-      row.appendChild(btn('Later', 'btnGhost', function () { W.dismissed[item.id] = true; renderAlerts(); }, 'Hide this pop-up — the email still has the link'));
-      card.appendChild(row);
-      W.root.appendChild(card);
+    list.slice(0, ALERT_SHOW_MAX).forEach(function (item) {
+      W.root.appendChild(item.kind === 'question' ? questionCard(item) : callCard(item));
     });
+    if (list.length > ALERT_SHOW_MAX) {
+      var more = list.length - ALERT_SHOW_MAX;
+      W.root.appendChild(el('div', 'consultAlertMore', '+ ' + more + ' more waiting — hide one to see the next'));
+    }
+  }
+
+  function hideCard(item) { W.dismissed[item.key] = true; renderAlerts(); }
+
+  function callCard(item) {
+    var card = el('div', 'consultAlert');
+    var top = el('div', 'consultAlertTop');
+    top.appendChild(el('span', 'consultIcon', '🙋'));
+    var words = el('div', 'consultAlertWords');
+    words.appendChild(el('b', '', (cleanText(item.data.studentName, NAME_MAX) || 'A student') + (item.data.teacherLeft ? ' is waiting for you to come back' : ' is asking for help')));
+    words.appendChild(el('span', 'consultAlertWhere', [consultSummary(item.data), consultAgo(now() - stampMs(item.data.at))].filter(Boolean).join(' · ')));
+    top.appendChild(words);
+    card.appendChild(top);
+    var row = el('div', 'consultRow');
+    row.appendChild(btn('Join', 'btnPrimary', function () { openRoom(item.id); renderAlerts(); }, 'Join this consult now'));
+    var api = answerApi();
+    if (api && typeof api.askLater === 'function') {
+      var later = btn('✋ Not now', 'btnGhost consultNotNow', async function () {
+        later.disabled = true;
+        var ok = false;
+        try { ok = await api.askLater(item.id); } catch (e) { ok = false; }
+        if (ok) { W.dismissed[item.key] = true; renderAlerts(); }
+        else later.disabled = false;
+      }, 'Ask them to show you the question instead — you answer it later with a recording');
+      row.appendChild(later);
+    }
+    row.appendChild(btn('Hide', 'btnGhost', function () { hideCard(item); }, 'Hide this pop-up — the email still has the link'));
+    card.appendChild(row);
+    return card;
+  }
+
+  function questionCard(item) {
+    var CA = global.ConsultAnswer && global.ConsultAnswer.pure;
+    var w = CA && typeof CA.questionWords === 'function'
+      ? CA.questionWords(item.data)
+      : { title: (cleanText(item.data.studentName, NAME_MAX) || 'A student') + ' left a question', where: consultSummary(item.data), text: '' };
+    var ago = CA && typeof CA.questionAgo === 'function' ? CA.questionAgo(now() - itemAt(item)) : consultAgo(now() - itemAt(item));
+    var card = el('div', 'consultAlert consultAlertQ');
+    var top = el('div', 'consultAlertTop');
+    top.appendChild(el('span', 'consultIcon', '📝'));
+    var words = el('div', 'consultAlertWords');
+    words.appendChild(el('b', '', w.title));
+    words.appendChild(el('span', 'consultAlertWhere', [w.where, ago].filter(Boolean).join(' · ')));
+    // What the student wrote, painted as text and cut short on the card;
+    // the recorder shows all of it.
+    if (w.text) {
+      var short = w.text.length > 140 ? w.text.slice(0, 139).trim() + '…' : w.text;
+      words.appendChild(el('span', 'consultAlertQText', '“' + short + '”'));
+    }
+    top.appendChild(words);
+    card.appendChild(top);
+    var row = el('div', 'consultRow');
+    var api = answerApi();
+    if (api) {
+      row.appendChild(btn('📝 Answer', 'btnPrimary', function () { api.open(item.id); }, 'Write on their page and record your answer'));
+    }
+    row.appendChild(btn('Hide', 'btnGhost', function () { hideCard(item); }, 'Hide this for now — it stays in your list'));
+    card.appendChild(row);
+    return card;
   }
 
   function updateTitle(n) {
@@ -2588,6 +3358,10 @@
       if (T.id) teardownRoom();
       stopWatcher();
       W.dismissed = {}; W.seenIds = {};
+      // Answers waiting for the last account, and a recorder open for it,
+      // are never the next person's either.
+      replyWatchStop();
+      try { if (global.ConsultAnswer && typeof global.ConsultAnswer.stop === 'function') global.ConsultAnswer.stop(); } catch (e) {}
     }
     lastUid = uid;
     syncButton();
@@ -2598,9 +3372,14 @@
     if (admin() && !practice()) {
       startWatcher();
       if (pendingJoin) { var id = pendingJoin; pendingJoin = ''; openRoom(id); }
-    } else if (pendingJoin) {
-      pendingJoin = '';
-      toast('That consult link is for the teacher.', 6000);
+    } else {
+      // A student (or the teacher practising as one): the answers to the
+      // questions they left come back here, whichever device they asked on.
+      if (!admin() && R.uid !== u.uid) replyWatchStart(u);
+      if (pendingJoin) {
+        pendingJoin = '';
+        toast('That consult link is for the teacher.', 6000);
+      }
     }
   }
 
@@ -2634,7 +3413,9 @@
     NAV_ZOOM_MIN: NAV_ZOOM_MIN, NAV_ZOOM_MAX: NAV_ZOOM_MAX, NAV_PAN_MAX: NAV_PAN_MAX, NAV_FRESH_MS: NAV_FRESH_MS,
     NAV_STEP: NAV_STEP, NAV_DOC_MS: NAV_DOC_MS,
     cleanNav: cleanNav, navFresh: navFresh, zoomPercent: zoomPercent, stepPage: stepPage,
-    navMerge: navMerge, pinchSpan: pinchSpan, clampPanelPos: clampPanelPos
+    navMerge: navMerge, pinchSpan: pinchSpan, clampPanelPos: clampPanelPos,
+    QUESTION_MAX: QUESTION_MAX, LATER_NUDGE_MS: LATER_NUDGE_MS, ALERT_SHOW_MAX: ALERT_SHOW_MAX,
+    qBoxFrom: qBoxFrom, qClean: qClean, roomGoneText: roomGoneText
   };
 
   global.TutorConsult = {
@@ -2653,12 +3434,17 @@
           connection: S.pc ? S.pc.connectionState : '', mic: !!S.mic, asking: S.asking },
         teacher: { id: T.id, rev: T.rev, strokes: Object.keys(T.strokes).length, connection: T.pc ? T.pc.connectionState : '',
           channel: T.channel ? T.channel.readyState : '', view: T.view, mode: T.mode },
-        waiting: waitingList().map(function (w) { return w.id; })
+        waiting: waitingList().map(function (w) { return w.id; }),
+        questions: alertList().filter(function (w) { return w.kind === 'question'; }).map(function (w) { return w.id; }),
+        picking: S.pick ? { page: S.pick.page, box: S.pick.box, form: S.pick.form, sending: S.pick.sending } : null,
+        replies: R.items.map(function (x) { return x.id; })
       };
     },
     _internals: { S: S, T: T, W: W, renderStudentInk: renderStudentInk, renderAlerts: renderAlerts, drawMirror: drawMirror,
       onOwn: onOwn, onRoomDoc: onRoomDoc, notifyTeacher: notifyTeacher, currentView: currentView, takeParam: takeParam,
-      pendingJoin: function () { return pendingJoin; } }
+      pendingJoin: function () { return pendingJoin; },
+      R: R, guardedUpdate: guardedUpdate, startPick: startPick, stopPick: stopPick, sendQuestion: sendQuestion,
+      renderReplies: renderReplies, replyWatchStart: replyWatchStart, alertList: alertList, answerApi: answerApi }
   };
 
   takeParam();

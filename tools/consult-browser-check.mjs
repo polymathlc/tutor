@@ -14,7 +14,12 @@
        the student;
      • a stroke the teacher draws lands on the STUDENT'S page, in the
        consult layer, and never in `annotations`;
-     • ↶ Undo takes it off again, and End ends it on both screens.
+     • ↶ Undo takes it off again, and End ends it on both screens;
+     • ✋ Not now on a ringing call asks the student for a question; they
+       drag a box on their page and type it; it goes up as `question` with
+       a picture, the email endpoint gets the id and nothing else, and the
+       teacher's 📝 card opens the recorder, which writes, records, uploads
+       and sends; the answer comes back to the student's screen to watch.
 
    No account, student data, paid call or production service is contacted.
 
@@ -66,7 +71,7 @@ const address = 'http://127.0.0.1:' + server.address().port + '/';
 
 /* ---------------- The shared Firestore, as a Map ---------------- */
 const store = new Map();
-const listeners = new Map();      // lid -> { page, kind, path, field, value }
+const listeners = new Map();      // lid -> { page, kind, path, filters: [[field, value], …] }
 const clone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
 function applyValue(old, v) {
   if (v && typeof v === 'object' && v.__op === 'union') {
@@ -87,7 +92,7 @@ function childrenOf(coll) {
 function snapshotFor(l) {
   if (l.kind === 'doc') return { exists: store.has(l.path), id: l.path.split('/').pop(), data: clone(store.get(l.path)) };
   let docs = childrenOf(l.path);
-  if (l.field) docs = docs.filter(d => d.data && d.data[l.field] === l.value);
+  (l.filters || []).forEach(([f, v]) => { docs = docs.filter(d => d.data && d.data[f] === v); });
   return { docs };
 }
 function touched(p, l) {
@@ -119,7 +124,7 @@ async function fsCall(page, op) {
   }
   if (kind === 'delete') { store.delete(p); writes.push(['delete', p]); deliver(p); return true; }
   if (kind === 'listen') {
-    const l = { page, kind: op.lkind, path: p, field: op.field, value: op.value };
+    const l = { page, kind: op.lkind, path: p, filters: op.filters || [] };
     listeners.set(op.lid, l);
     const snap = snapshotFor(l);
     setImmediate(() => page.evaluate(([id, s]) => window.__fsDeliver && window.__fsDeliver(id, s), [op.lid, snap]).catch(() => {}));
@@ -149,14 +154,27 @@ function installFake(prefix) {
     delete: () => window.__fs({ kind: 'delete', path: p }),
     onSnapshot: (fn) => { const lid = prefix + (++seq); pending[lid] = fn; window.__fs({ kind: 'listen', lid, lkind: 'doc', path: p }); return () => { delete pending[lid]; window.__fs({ kind: 'unlisten', lid }); }; }
   });
-  const collRef = (p, field, value) => ({
+  // Equality filters only, as many as are chained — what consult.js uses.
+  const collRef = (p, filters = []) => ({
     path: p,
     doc: id => docRef(p + '/' + (id || rand())),
-    where: (f, op, v) => collRef(p, f, v),
-    get: async () => { const s = await window.__fs({ kind: 'list', path: p }); return { docs: s.docs.filter(d => !field || d.data[field] === value).map(d => ({ id: d.id, data: () => d.data })) }; },
-    onSnapshot: (fn) => { const lid = prefix + (++seq); pending[lid] = fn; window.__fs({ kind: 'listen', lid, lkind: 'coll', path: p, field, value }); return () => { delete pending[lid]; window.__fs({ kind: 'unlisten', lid }); }; }
+    where: (f, op, v) => collRef(p, filters.concat([[f, v]])),
+    get: async () => { const s = await window.__fs({ kind: 'list', path: p }); return { docs: s.docs.filter(d => filters.every(([f, v]) => d.data[f] === v)).map(d => ({ id: d.id, data: () => d.data })) }; },
+    onSnapshot: (fn) => { const lid = prefix + (++seq); pending[lid] = fn; window.__fs({ kind: 'listen', lid, lkind: 'coll', path: p, filters }); return () => { delete pending[lid]; window.__fs({ kind: 'unlisten', lid }); }; }
   });
-  window.__fakeDb = { collection: name => collRef(name) };
+  // A transaction that re-reads and then writes: one process holds the Map,
+  // so reading then writing in order is what a transaction would see.
+  const runTransaction = async run => {
+    const ups = [];
+    const out = await run({
+      get: r => r.get(),
+      update: (r, data) => { ups.push(() => r.update(data)); },
+      set: (r, data) => { ups.push(() => r.set(data)); }
+    });
+    for (const u of ups) await u();
+    return out;
+  };
+  window.__fakeDb = { collection: name => collRef(name), runTransaction };
   window.firebase = window.firebase || {};
   window.firebase.firestore = window.firebase.firestore || {};
   window.firebase.firestore.FieldValue = {
@@ -493,6 +511,148 @@ await linkTab.page.evaluate(() => {
 });
 const linkNotice = await until(() => linkTab.page.evaluate(() => window.__notices.join(' | ')), 4000);
 ok('…and joining an ended consult says so instead of opening an empty room', /already ended/.test(linkNotice || ''), linkNotice);
+
+console.log('\n✋ Not now — the student leaves a question instead');
+await student.page.click('#consultBtn');
+await student.page.click('#consultPanel button.btnPrimary');
+const ring2 = await until(() => [...store.entries()].find(([p, d]) => /^tutorConsults\/[^/]+$/.test(p) && p !== consultPath && d.status === 'waiting'));
+ok('a second consult rings', !!ring2);
+const qPath = ring2 ? ring2[0] : '';
+const qId = qPath.split('/')[1] || '';
+const callButtons = await until(() => teacher.page.evaluate(() => {
+  const bs = [...document.querySelectorAll('#consultAlerts .consultAlert button')].map(b => b.textContent.trim());
+  return bs.length ? bs : null;
+}), 6000);
+ok('the call card is Join · ✋ Not now · Hide', JSON.stringify(callButtons) === JSON.stringify(['Join', '✋ Not now', 'Hide']), JSON.stringify(callButtons));
+await teacher.page.evaluate(() => [...document.querySelectorAll('#consultAlerts .consultAlert button')].find(b => /Not now/.test(b.textContent)).click());
+ok('✋ Not now turns the call into `later`', !!(await until(() => store.get(qPath) && store.get(qPath).status === 'later', 5000)));
+ok('…and its card goes', await until(() => teacher.page.evaluate(() => !document.querySelector('#consultAlerts .consultAlert')), 4000));
+const picking = await until(() => student.page.evaluate(() =>
+  document.body.classList.contains('consultPicking') && /Tap the page/.test(document.getElementById('consultPanel').textContent)), 5000);
+ok('the student is asked to show where on the page', !!picking);
+// Back to a laptop's width: at 900px Study Buddy's own side panel covers
+// most of the page, and a question is asked on the page, not on that.
+await student.page.setViewportSize({ width: 1200, height: 900 });
+await sleep(300);
+// The drag goes where the page really is on screen: the worksheet's own
+// bars sit over part of it, so the box is placed in the part a finger can reach.
+const wr = await student.page.evaluate(() => {
+  const r = document.querySelector('.pageWrap').getBoundingClientRect();
+  const inWrap = (x, y) => { const e = document.elementFromPoint(x, y); return !!(e && e.closest('.pageWrap')); };
+  let top = -1, bottom = -1;
+  const x = r.x + r.width * 0.3;
+  for (let y = Math.max(0, r.y); y < Math.min(innerHeight, r.bottom); y += 4) {
+    if (inWrap(x, y)) { if (top < 0) top = y; bottom = y; } else if (top >= 0) break;
+  }
+  return { x: r.x, y: r.y, w: r.width, h: r.height, top, bottom };
+});
+const annBeforeQ = await student.page.evaluate(() => annotations.length);
+const y0 = wr.top + 20, y1 = Math.min(wr.bottom - 20, y0 + wr.h * 0.2);
+const dragBox = [0.1, (y0 - wr.y) / wr.h, 0.5, (y1 - wr.y) / wr.h];
+await student.page.mouse.move(wr.x + wr.w * 0.1, y0);
+await student.page.mouse.down();
+for (let i = 1; i <= 8; i++) await student.page.mouse.move(wr.x + wr.w * (0.1 + i * 0.05), y0 + (y1 - y0) * i / 8);
+await student.page.mouse.up();
+const form = await until(() => student.page.evaluate(() => {
+  const st = TutorConsult.state().picking;
+  return st && st.form && document.querySelector('#consultPanel textarea.consultQText') ? st : null;
+}), 3000);
+ok('a drag draws a box and opens the question form', !!form && Array.isArray(form.box), JSON.stringify(form));
+ok('…the box is where it was dragged', !!form && form.box && form.box.every((v, i) => Math.abs(v - dragBox[i]) < 0.02),
+  JSON.stringify(form && form.box) + ' vs ' + JSON.stringify(dragBox));
+ok('…drawn inside the page, and nothing written in annotations', await student.page.evaluate(n =>
+  !!document.querySelector('.pageWrap .consultQBox') && annotations.length === n, annBeforeQ));
+await student.page.fill('#consultPanel textarea.consultQText', 'Why is 1 unit 4? <b>help</b>');
+const callsBefore = endpointCalls.length;
+await student.page.click('#consultPanel button.consultQSend');
+const qDoc = await until(() => store.get(qPath) && store.get(qPath).status === 'question' ? store.get(qPath) : null, 6000);
+ok('Send turns the consult into a `question`', !!qDoc);
+ok('…with the text, the page and the box', !!qDoc && qDoc.question && qDoc.question.text === 'Why is 1 unit 4? <b>help</b>' &&
+  qDoc.question.page === 1 && Array.isArray(qDoc.question.box) && qDoc.question.ws === 'ws-fixture', JSON.stringify(qDoc && qDoc.question));
+const frame = store.get(qPath + '/frames/question');
+ok('…and a picture of the page, box drawn on it, for the teacher', !!frame && /^data:image\/jpeg;base64,/.test(frame.img || ''));
+await until(() => endpointCalls.length > callsBefore, 5000);
+const qCall = endpointCalls[endpointCalls.length - 1];
+ok('the email endpoint is told, with the id and NOTHING else', endpointCalls.length === callsBefore + 1 &&
+  JSON.stringify(Object.keys(qCall.body)) === '["consultId"]' && qCall.body.consultId === qId, JSON.stringify(endpointCalls.slice(callsBefore).map(c => c.body)));
+ok('the pick comes down and the button is Consult again', await until(() => student.page.evaluate(() =>
+  !document.body.classList.contains('consultPicking') && !document.querySelector('.consultQBox') &&
+  /^🙋 Consult$/.test(document.getElementById('consultBtn').textContent.trim())), 4000));
+
+console.log('\n📝 The teacher answers it with a recording');
+await teacher.page.evaluate(() => {
+  window.__uploads = [];
+  storage = {
+    ref: path => ({
+      put: (blob, meta) => {
+        const task = {
+          snapshot: { ref: { getDownloadURL: async () => 'https://firebasestorage.googleapis.com/v0/b/fixture/o/' + encodeURIComponent(path) + '?alt=media' } },
+          on: (ev, progress, fail, done) => {
+            window.__uploads.push({ path, size: blob.size, type: meta && meta.contentType });
+            setTimeout(() => { progress({ bytesTransferred: blob.size, totalBytes: blob.size }); done(); }, 20);
+          }
+        };
+        return task;
+      },
+      delete: async () => {}
+    })
+  };
+});
+const qCard = await until(() => teacher.page.evaluate(() => {
+  const a = document.querySelector('#consultAlerts .consultAlertQ');
+  return a ? a.textContent : '';
+}), 6000);
+ok('a 📝 card names the student and quotes the question', /Ada Fixture left a question/.test(qCard || '') && /Why is 1 unit 4\? <b>help<\/b>/.test(qCard || ''), qCard);
+ok('…as text, never markup', await teacher.page.evaluate(() => !document.querySelector('#consultAlerts b b, #consultAlerts .consultAlertQText b')));
+await teacher.page.evaluate(() => [...document.querySelectorAll('#consultAlerts .consultAlertQ button')].find(b => /Answer/.test(b.textContent)).click());
+const win = await until(() => teacher.page.evaluate(() => {
+  const w = document.querySelector('.caBack');
+  return w ? w.querySelector('.caQText').textContent : '';
+}), 6000);
+ok('📝 Answer opens the recorder with their question', /Why is 1 unit 4/.test(win || ''), win);
+const stage = await teacher.page.evaluate(() => { const r = document.querySelector('.caBack canvas.caStage').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+await teacher.page.mouse.move(stage.x + stage.w * 0.3, stage.y + stage.h * 0.3);
+await teacher.page.mouse.down();
+for (let i = 1; i <= 8; i++) await teacher.page.mouse.move(stage.x + stage.w * (0.3 + i * 0.03), stage.y + stage.h * 0.35);
+await teacher.page.mouse.up();
+ok('the pen writes in the recorder', await teacher.page.evaluate(() => ConsultAnswer._internals.state().strokes.length === 1));
+await teacher.page.click('.caBack button.caRec');
+await until(() => teacher.page.evaluate(() => /Stop/.test(document.querySelector('.caBack button.caRec').textContent)), 5000);
+await sleep(1600);
+await teacher.page.click('.caBack button.caRec');
+const review = await until(() => teacher.page.evaluate(() => {
+  const r = document.querySelector('.caBack .caReview');
+  return r && !r.hidden;
+}), 8000);
+ok('⏹ Stop gives a recording to watch back', !!review);
+await teacher.page.click('.caBack button.caSend');
+const answered = await until(() => store.get(qPath) && store.get(qPath).status === 'answered' ? store.get(qPath) : null, 10000);
+ok('Send uploads it and marks the question answered', !!answered,
+  JSON.stringify(await teacher.page.evaluate(() => document.querySelector('.caBack .caStatus') && document.querySelector('.caBack .caStatus').textContent)));
+const ups = await teacher.page.evaluate(() => window.__uploads);
+ok('…one file, in the guarded lesson folder', ups.length === 1 && /^pdf-annotator\/lesson-consult/.test(ups[0].path) && ups[0].size > 0, JSON.stringify(ups));
+ok('…and the reply is a Firebase Storage link', !!answered && answered.reply && /^https:\/\/firebasestorage\.googleapis\.com\//.test(answered.reply.url));
+ok('the recorder closes', await until(() => teacher.page.evaluate(() => !document.querySelector('.caBack')), 4000));
+ok('…and the 📝 card goes', await until(() => teacher.page.evaluate(() => !document.querySelector('#consultAlerts .consultAlertQ')), 4000));
+
+console.log('\n🎬 The answer comes back to the student');
+const reply = await until(() => student.page.evaluate(() => {
+  const c = document.querySelector('.consultReplies .consultReply');
+  return c ? c.textContent : '';
+}), 6000);
+ok('a card says the teacher answered, with their question', /answered your question/.test(reply || '') && /Why is 1 unit 4/.test(reply || ''), reply);
+await student.page.evaluate(() => [...document.querySelectorAll('.consultReplies .consultReply button')].find(b => /Watch/.test(b.textContent)).click());
+const src = await until(() => student.page.evaluate(() => {
+  const v = document.querySelector('.consultReplyPlayer video.consultReplyMedia');
+  return v ? v.getAttribute('src') : '';
+}), 4000);
+ok('▶ Watch plays the recording', !!answered && src === answered.reply.url, String(src));
+await student.page.keyboard.press('Escape');
+await student.page.evaluate(() => { const p = document.querySelector('.consultReplyPlayer .consultMinBtn'); if (p) p.click(); });
+await student.page.evaluate(() => [...document.querySelectorAll('.consultReplies .consultReply button')].find(b => /^Done$/.test(b.textContent.trim())).click());
+ok('Done marks it watched', !!(await until(() => store.get(qPath) && store.get(qPath).replySeen, 5000)));
+ok('…and the card goes', await until(() => student.page.evaluate(() => !document.querySelector('.consultReplies .consultReply')), 4000));
+ok('nothing the consult did is in the student\'s annotations', (await student.page.evaluate(() => annotations.length)) === annBeforeQ);
 
 console.log('\n🧯 Nothing threw');
 ok('no uncaught error in the student\'s tab', student.errors.length === 0, student.errors.join('\n      '));

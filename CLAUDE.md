@@ -54,6 +54,41 @@ opens `?consult=<id>` here, which opens the teacher's room.
   pointer, undo, end, clear and the email link — nothing that reads the source can say whether a
   call connects or where a stroke lands.
 
+## 📝 CONSULT QUESTIONS — left instead of a call, answered with a recording (v1.65.0)
+
+`consult-answer.js` / `consult-answer.css` (`window.ConsultAnswer` {pure, open, askLater, close,
+stop, isOpen}) — **BYTE FOR BYTE THE SAME FILE AS `polymathlc/anskey`'s**; `tools/consult-tests.mjs`
+compares the two whenever both are checked out side by side, so a fix copies straight across. It
+loads BEFORE `consult.js`. Statuses on `tutorConsults/{id}`: `waiting` → `later` (✋ Not now) →
+`question` (left, with `question: {text, page, ws, box, at}` and `frames/question`) → `answered`
+(`reply: {url, path, mime, ms, note, at}`, `replySeen`).
+
+- **EVERY STATUS WRITE THAT COULD UNDO ANOTHER IS `guardedUpdate`** (a transaction that re-reads
+  and writes only over an allowed status): the teacher's offer (the FIRST may run from
+  `waiting|later|live`, a re-offer only `waiting|live`, `T.firstOffer`), End (`waiting|live|later`
+  — never a question), leaving (`live` only), the student's question (`waiting|later` — never over
+  a live call) and the supervisor's "teacher gone" (`live`). `teacherPageHide` cannot wait for a
+  transaction, so it writes only when the last snapshot said `live`. The harness pins each one.
+- **A QUESTION IS NEVER JOINED.** `openRoom` hands `question|answered` to `ConsultAnswer.open`;
+  `onRoomDoc` ends the room on `question|answered`, and on `later` only once this room's own offer
+  has landed (`docReady && rev >= T.rev`) — the first snapshot of a room opened from `later` still
+  says `later`.
+- **THE POP-UP IS TWO EQUALITY LISTENERS** (`waiting`, `question`), cards keyed `id:kind`, calls
+  first, at most `ALERT_SHOW_MAX` (4). Call: Join · ✋ Not now · Hide. Question: 📝 Answer · Hide.
+  Hide writes nothing.
+- **THE PICK NEVER WRITES ON THE PAGE**: capture-phase pointer and touch listeners swallow the
+  gesture before the overlay sees it; the box is `.consultQBox` (`pointer-events: none`, never
+  printed). The question is text, `QUESTION_MAX` 500, painted with textContent everywhere.
+- **THE EMAIL IS STILL `{ consultId }`.** The server decides by the document: a `question` is
+  mailed once as `<consultId>_q` (`buildQuestionMail`), exempt from `MIN_GAP_MS` only when the last
+  email was this consult's own call; `DAILY_MAX` still counts it.
+- **THE ANSWERS GO TO THE STUDENT'S ACCOUNT, NOT THE TAB** (`replyWatchStart` on `studentUid ==
+  uid` and `status == answered`, from `authChanged`); `replyWatchStop` and `ConsultAnswer.stop` on
+  an account change. A reply link is Firebase Storage or nothing (`replyUrlOk`); the file goes in
+  `pdf-annotator/lesson-consult-*` first, `tutor-worksheets/` only on a refusal by the rules.
+- `node tools/consult-browser-check.mjs` drives ✋ Not now → the box → the question → 📝 Answer →
+  record → send → ▶ Watch → Done in two real tabs, with a fake Storage.
+
 ## 🎬 VIDEO SOLUTIONS — the teacher records, the class watches (v1.55.0)
 
 The whole block between `🎬 VIDEO SOLUTIONS — the teacher records, the class watches  (v1.55.0)`

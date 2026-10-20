@@ -13,6 +13,8 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const SRC = fs.readFileSync(new URL('../consult.js', import.meta.url), 'utf8');
 const CSS = fs.readFileSync(new URL('../consult.css', import.meta.url), 'utf8');
+const CA_SRC = fs.readFileSync(new URL('../consult-answer.js', import.meta.url), 'utf8');
+const CA_CSS = fs.readFileSync(new URL('../consult-answer.css', import.meta.url), 'utf8');
 const HTML = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const server = require('../functions/consult-service.js');
 
@@ -271,8 +273,10 @@ test('the page goes out as a canvas mirror, not a screen share', () => {
 });
 
 test('index.html wires the button, the files, the account hook and the usage row', () => {
-  assert.match(HTML, /<link rel="stylesheet" href="consult\.css\?v=1\.63\.0">/);
-  assert.match(HTML, /<script src="consult\.js\?v=1\.63\.0"><\/script>/);
+  assert.match(HTML, /<link rel="stylesheet" href="consult\.css\?v=1\.65\.0">/);
+  assert.match(HTML, /<link rel="stylesheet" href="consult-answer\.css\?v=1\.65\.0">/);
+  assert.match(HTML, /<script src="consult-answer\.js\?v=1\.65\.0"><\/script>\s*<script src="consult\.js\?v=1\.65\.0"><\/script>/,
+    'the recorder loads first, so consult.js finds window.ConsultAnswer');
   assert.match(HTML, /id="consultBtn"[^>]*hidden/, 'hidden until consult.js decides who may see it');
   assert.match(HTML, /var APP_VERSION = 'v1\.(6[3-9]|[7-9]\d|\d{3})\.\d+';/);
   assert.match(HTML, /consult:\s*\{ label: 'Asked for a consult', count: 'consults' \}/);
@@ -289,9 +293,11 @@ test('index.html wires the button, the files, the account hook and the usage row
 test('the watcher and the room are the teacher\'s alone, refused in the handler', () => {
   const open = SRC.slice(SRC.indexOf('async function openRoom'), SRC.indexOf('async function openRoom') + 900);
   assert.match(open, /if \(!admin\(\)\)/, 'openRoom asks isAdmin before anything');
-  const watch = SRC.slice(SRC.indexOf('function startWatcher'), SRC.indexOf('function startWatcher') + 600);
+  const watch = SRC.slice(SRC.indexOf('function startWatcher'), SRC.indexOf('function stopWatcher'));
   assert.match(watch, /admin\(\)/);
-  assert.match(SRC, /where\('status', '==', 'waiting'\)/);
+  assert.match(watch, /listen\('waiting', 'call'\)/, 'one equality listener for the calls');
+  assert.match(watch, /listen\('question', 'question'\)/, 'and one for the questions left');
+  assert.match(watch, /where\('status', '==', status\)/);
 });
 
 test('a heartbeat, a pagehide and an account change all let go', () => {
@@ -415,4 +421,191 @@ test('the student obeys a nav only through their own app, once each', () => {
   // Never a new way to scroll a child's page: the app's own zoomAt / fitWidth.
   assert.match(SRC, /zoomAt/);
   assert.match(SRC, /fitWidth/);
+});
+
+/* ---------------- v1.65.0: a question left, and the recorded answer ---------------- */
+
+function loadCA() {
+  const sandbox = { console, Math, Date, Number, String, Array, Object, JSON };
+  sandbox.globalThis = sandbox;
+  vm.createContext(sandbox);
+  vm.runInContext(CA_SRC, sandbox, { filename: 'consult-answer.js' });
+  return sandbox.ConsultAnswer;
+}
+const CA = loadCA();
+
+test('consult-answer.js loads with no DOM and the two files agree on the collection and the cap', () => {
+  assert.equal(typeof CA.pure, 'object');
+  assert.equal(CA.open, undefined, 'no window to open without a document');
+  assert.equal(CA.pure.COLLECTION, P.COLLECTION);
+  assert.equal(CA.pure.QUESTION_MAX, P.QUESTION_MAX);
+  assert.equal(server.QUESTION_MAX, P.QUESTION_MAX, 'the server bounds the question the same');
+});
+
+test('consult-answer.js is byte for byte the Ans Key copy, when both are checked out', (t) => {
+  const twinJs = new URL('../../anskey/consult-answer.js', import.meta.url);
+  const twinCss = new URL('../../anskey/consult-answer.css', import.meta.url);
+  if (!fs.existsSync(twinJs)) { t.skip('polymathlc/anskey is not checked out beside this repository'); return; }
+  assert.equal(fs.readFileSync(twinJs, 'utf8'), CA_SRC, 'consult-answer.js differs from Ans Key\'s copy');
+  assert.equal(fs.readFileSync(twinCss, 'utf8'), CA_CSS, 'consult-answer.css differs from Ans Key\'s copy');
+});
+
+test('the recorder keeps the consult\'s bans: no address, no annotations, no screen share, no markup', () => {
+  // The header comment names the bans; the code is what must keep them.
+  const CODE = CA_SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const addresses = CODE.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || [];
+  assert.deepEqual(addresses, []);
+  assert.ok(!/mailto:|tutorCentreAdmin/.test(CODE));
+  assert.ok(!/annotations\s*(\.\s*(push|splice|unshift)|=[^=])/.test(CODE), 'never writes annotations');
+  assert.ok(!/pushUndo|setDirty|performSave/.test(CODE));
+  assert.ok(!/getDisplayMedia\s*\(/.test(CODE), 'the video is a canvas, never the screen');
+  assert.ok(!/\.innerHTML\s*=|insertAdjacentHTML/.test(CODE), 'every word is textContent');
+  // Every door is the teacher's, asked in the handler.
+  for (const fn of ['async function askLater', 'async function open', 'async function sendReply']) {
+    const at = CA_SRC.indexOf(fn);
+    assert.ok(at > 0, fn);
+    assert.match(CA_SRC.slice(at, at + 200), /teacherHere\(\)/, fn + ' asks teacherHere first');
+  }
+  assert.match(CA_SRC, /runTransaction/, 'Not now and Send re-read the consult');
+});
+
+test('a reply link is Firebase Storage or nothing, and a reply path is a lesson folder', () => {
+  const p = CA.pure;
+  assert.equal(p.replyUrlOk('https://firebasestorage.googleapis.com/v0/b/x/o/a.mp4?alt=media'), true);
+  for (const bad of ['javascript:alert(1)', 'https://evil.example/a.mp4', 'http://firebasestorage.googleapis.com/x', '', null, 5])
+    assert.equal(p.replyUrlOk(bad), false, String(bad));
+  assert.equal(p.cleanReply({ url: 'https://evil.example/a.mp4', mime: 'video/mp4' }), null);
+});
+
+test('a box is two corners in order, as fractions of the page; a tap is the whole page', () => {
+  assert.equal(P.qBoxFrom(10, 10, 12, 13, 400, 600), null, 'a tap');
+  assert.deepEqual(here(P.qBoxFrom(300, 450, 100, 150, 400, 600)), [0.25, 0.25, 0.75, 0.75], 'dragged up and left');
+  assert.deepEqual(here(P.qBoxFrom(-50, 0, 500, 300, 400, 600)), [0, 0, 1, 0.5], 'clamped to the page');
+  assert.equal(P.qBoxFrom(0, 0, 100, 100, 0, 600), null, 'a page with no size');
+  assert.equal(P.qBoxFrom(0, 0, 400, 2, 400, 6000), null, 'a sliver is not a box');
+  // What the student sends is what the teacher's side accepts.
+  const box = P.qBoxFrom(40, 60, 200, 300, 400, 600);
+  assert.deepEqual(here(CA.pure.cleanQBox(box)), here(box));
+});
+
+test('a question is text, bounded and folded', () => {
+  assert.equal(P.qClean('  why   is\r\n\r\n\r\n\r\nthis  '), 'why is\n\nthis');
+  assert.equal(P.qClean(null), '');
+  assert.equal(P.qClean('x'.repeat(2000)).length, P.QUESTION_MAX);
+});
+
+test('what the teacher is told when a room is no longer a call', () => {
+  const d = { studentName: 'Ada', endedBy: 'student' };
+  assert.match(P.roomGoneText('question', d), /^Ada left a question/);
+  assert.match(P.roomGoneText('later', d), /asked to leave a question/);
+  assert.match(P.roomGoneText('ended', d), /^Ada ended/);
+  assert.match(P.roomGoneText('ended', {}), /^The consult has ended/);
+  assert.match(P.roomGoneText('cancelled', null), /^The student cancelled/);
+  assert.match(P.roomGoneText('nonsense', d), /no longer there/);
+  for (const k of ['question', 'answered', 'later', 'cancelled', 'ended', 'live', 'failed', 'gone'])
+    assert.ok(P.roomGoneText(k, d).length > 10, k);
+});
+
+function fakeDb(status) {
+  const doc = { status };
+  const writes = [];
+  const ref = { async update(p) { writes.push(['plain', p]); Object.assign(doc, p); } };
+  const db = {
+    async runTransaction(run) {
+      return run({
+        get: async () => ({ exists: doc.status != null, data: () => ({ ...doc }) }),
+        update: (r, p) => { writes.push(['tx', p]); Object.assign(doc, p); }
+      });
+    }
+  };
+  return { doc, writes, ref, db };
+}
+
+test('guardedUpdate writes only over an allowed status, and never throws', async () => {
+  const f = fakeDb('waiting');
+  const c = load({ db: f.db });
+  const g = c.TutorConsult._internals.guardedUpdate;
+  assert.equal(await g(f.ref, ['waiting', 'later'], { status: 'question' }), 'ok');
+  assert.equal(f.doc.status, 'question');
+  // A teacher's offer landing a moment later finds the question and writes nothing.
+  assert.equal(await g(f.ref, ['waiting', 'later', 'live'], { status: 'live', offer: 'x' }), 'question');
+  assert.equal(f.doc.status, 'question');
+  assert.equal(f.doc.offer, undefined);
+  assert.equal(f.writes.length, 1);
+  const gone = fakeDb(null);
+  assert.equal(await load({ db: gone.db }).TutorConsult._internals.guardedUpdate(gone.ref, ['waiting'], { status: 'ended' }), 'gone');
+  const broken = { async runTransaction() { throw new Error('offline'); } };
+  assert.equal(await load({ db: broken }).TutorConsult._internals.guardedUpdate(f.ref, ['question'], {}), 'failed');
+  assert.equal(await g(null, ['waiting'], {}), 'gone');
+});
+
+test('every write that could undo another is guarded', () => {
+  const offer = SRC.slice(SRC.indexOf('async function negotiateOnce'), SRC.indexOf('function bindTeacherChannel'));
+  assert.match(offer, /guardedUpdate\(T\.ref, allowed,/, 'the offer');
+  assert.match(offer, /T\.firstOffer \? \['waiting', 'later', 'live'\] : \['waiting', 'live'\]/, 'only the first offer may be made over later');
+  assert.ok(!/T\.ref\.update\(\{\s*status: 'live'/.test(SRC), 'no plain write of live');
+  const leave = SRC.slice(SRC.indexOf('async function leaveRoom'), SRC.indexOf('function teardownRoom'));
+  assert.match(leave, /guardedUpdate\(ref, \['waiting', 'live', 'later'\]/, 'End never closes a question');
+  assert.match(leave, /guardedUpdate\(ref, \['live'\]/, 'leaving puts back only a live call');
+  const hide = SRC.slice(SRC.indexOf('function teacherPageHide'), SRC.indexOf('function teacherPageHide') + 700);
+  assert.match(hide, /T\.data\.status === 'live'/);
+  assert.match(hide, /\.catch\(/);
+  const send = SRC.slice(SRC.indexOf('async function sendQuestion'), SRC.indexOf('function voiceCanQ'));
+  assert.match(send, /guardedUpdate\(ref, \['waiting', 'later'\]/, 'a question never cuts off a live call');
+  const sup = SRC.slice(SRC.indexOf('function supervise'), SRC.indexOf('function pushSnapshot'));
+  assert.match(sup, /guardedUpdate\(S\.ref, \['live'\]/);
+});
+
+test('a room ends on a question or an answer, and on later only after its own offer landed', () => {
+  const room = SRC.slice(SRC.indexOf('function onRoomDoc'), SRC.indexOf('function setTeacherView'));
+  assert.match(room, /data\.status === 'question' \|\| data\.status === 'answered'/);
+  assert.match(room, /data\.status === 'later' && T\.docReady && \(Number\(data\.rev\) \|\| 0\) >= T\.rev/);
+  const open = SRC.slice(SRC.indexOf('async function openRoom'), SRC.indexOf('async function openLocalMedia'));
+  assert.match(open, /answerApi\(\)/, 'a question link opens the recorder, never a call');
+  assert.match(open, /T\.firstOffer = true/);
+  assert.match(open, /await negotiate\(\);\s*\/\/[^\n]*\n[^\n]*\n\s*if \(gen !== T\.gen \|\| T\.id !== id\) return false;/);
+});
+
+test('the pop-ups: Join, Not now and Hide for a call; Answer and Hide for a question; at most four', () => {
+  assert.equal(P.ALERT_SHOW_MAX, 4);
+  const call = SRC.slice(SRC.indexOf('function callCard'), SRC.indexOf('function questionCard'));
+  assert.match(call, /'Join'/);
+  assert.match(call, /'✋ Not now'/);
+  assert.match(call, /api\.askLater\(item\.id\)/);
+  assert.match(call, /'Hide'/);
+  assert.ok(!/'Later'/.test(call), 'the old Later button is Hide now');
+  const q = SRC.slice(SRC.indexOf('function questionCard'), SRC.indexOf('function updateTitle'));
+  assert.match(q, /'📝 Answer'/);
+  assert.match(q, /api\.open\(item\.id\)/);
+  assert.match(SRC, /var key = doc\.id \+ ':' \+ kind;/, 'cards are keyed id:kind');
+  assert.match(CSS, /\.consultAlertQ/);
+});
+
+test('the pick never writes on the page, and the box never prints', () => {
+  const pick = SRC.slice(SRC.indexOf('function bindPick'), SRC.indexOf('function clearQBox'));
+  for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel']) assert.match(pick, new RegExp("'" + ev + "', \\w+, true"), ev + ' in the capture phase');
+  assert.match(CSS, /\.consultQBox\s*\{[^}]*pointer-events:\s*none/);
+  assert.match(CSS, /@media print\s*\{[^}]*\.consultQBox/);
+  assert.match(CSS, /body\.consultPicking \.pageWrap\s*\{\s*cursor: crosshair/);
+  assert.match(CSS, /\.consultReplies\s*\{/);
+  assert.match(CSS, /\.consultReplyPlayer\s*\{/);
+});
+
+test('the answers come back to the student, and go with the account', () => {
+  const auth = SRC.slice(SRC.indexOf('function authChanged'), SRC.indexOf('function wire'));
+  assert.match(auth, /replyWatchStop\(\)/);
+  assert.match(auth, /ConsultAnswer\.stop\(\)/);
+  assert.match(auth, /replyWatchStart\(u\)/);
+  const watch = SRC.slice(SRC.indexOf('function replyWatchStart'), SRC.indexOf('function replyWatchStop'));
+  assert.match(watch, /where\('studentUid', '==', uid\)\.where\('status', '==', 'answered'\)/, 'only this student\'s own answers');
+  assert.match(watch, /cleanReply\(x\.reply\)/, 'a reply comes in through the one door');
+  assert.match(HTML, /consultQuestion:\s*\{ label:/);
+  assert.match(HTML, /consultReply:\s*\{ label:/);
+  assert.match(HTML, /consultAnswer:\s*\{ label:/);
+});
+
+test('the student\'s panel says "they", never "he"', () => {
+  const strings = SRC.match(/'[^'\n]*'/g) || [];
+  const gendered = strings.filter(t => /\b(he|He|him|his|His)\b/.test(t));
+  assert.deepEqual(gendered, []);
 });

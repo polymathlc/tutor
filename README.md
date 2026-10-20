@@ -17,6 +17,35 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.65.0 — 📝 Consult: leave a question, get a recorded answer back
+
+When Mr Chung is not on Study Buddy, or is there but cannot take a call, a student can
+leave the question instead and get a video answer back.
+
+- **The student shows where and asks.** In the 🙋 panel, **✍️ Leave a question** (it moves
+  to the front after a minute and a half of waiting) asks them to tap the page their
+  question is about, or drag a box round the part they need help with. Then they type
+  the question, or press **🎤 Say it** and speak; it is written down for them. **Send**
+  puts it up with a picture of their page, the box drawn on it. Nothing is written on
+  the worksheet itself.
+- **✋ Not now.** On a call card, beside **Join**, the teacher can press **✋ Not now**.
+  The call stops ringing and the student is asked to show the question instead.
+  The old **Later** button is now **Hide**. It only hides the card on that screen.
+- **Mr Chung is told.** A 📝 card, *"Ada left a question"*, with what they asked,
+  appears in **Study Buddy and in Ans Key**, and stays there until it is answered. One
+  more email goes out with the question in it and an **Answer** link. A consult sends
+  two emails at most, one for the call and one for the question.
+- **📝 Answer.** This opens a recorder with the student's page and their question.
+  He writes on it with three pens and turns the camera on if he likes. **⏺ Record**
+  makes one video of the page, the writing as it is drawn, his voice and his camera
+  in the corner. He watches it back, adds a note if he wants, and presses **📨 Send**.
+- **The answer comes back.** The student gets a small card in Study Buddy, *"Mr Chung
+  answered your question"*, on any device they sign in on. **▶ Watch** plays it,
+  **Open the worksheet** takes them to the paper, and **Done** clears the card.
+- **Nothing is overwritten.** Every change to a consult's status re-reads it first, so a
+  question is never lost under a call that opened at the same moment, and End never
+  closes a question that was left a second earlier.
+
 ## v1.64.0 — 🙋 Consult: Mr Chung moves the page, and it works on a tablet or phone
 
 Mr Chung no longer has to ask a student to scroll or zoom. From the consult room he
