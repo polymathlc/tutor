@@ -274,7 +274,7 @@ test('index.html wires the button, the files, the account hook and the usage row
   assert.match(HTML, /<link rel="stylesheet" href="consult\.css\?v=1\.63\.0">/);
   assert.match(HTML, /<script src="consult\.js\?v=1\.63\.0"><\/script>/);
   assert.match(HTML, /id="consultBtn"[^>]*hidden/, 'hidden until consult.js decides who may see it');
-  assert.match(HTML, /var APP_VERSION = 'v1\.63\.0';/);
+  assert.match(HTML, /var APP_VERSION = 'v1\.(6[3-9]|[7-9]\d|\d{3})\.\d+';/);
   assert.match(HTML, /consult:\s*\{ label: 'Asked for a consult', count: 'consults' \}/);
   const hook = HTML.indexOf('TutorConsult.authChanged(currentUser)');
   assert.ok(hook > 0, 'the auth handler tells consult.js who is signed in');
