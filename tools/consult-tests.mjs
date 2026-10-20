@@ -211,8 +211,8 @@ test('the data channel accepts five shapes and nothing else', () => {
 
 test('a view is cleaned, compared and matched to a stroke', () => {
   const v = P.cleanView({ ws: 'w', page: 2.7, n: 5, aspect: 99, title: ' A\nB ' });
-  assert.deepEqual(here(v), { ws: 'w', page: 2, n: 5, aspect: 1.4142, title: 'A B' });
-  assert.deepEqual(here(P.cleanView(null)), { ws: '', page: 0, n: 0, aspect: 1.4142, title: '' });
+  assert.deepEqual(here(v), { ws: 'w', page: 2, n: 5, aspect: 1.4142, title: 'A B', zoom: 0, box: null });
+  assert.deepEqual(here(P.cleanView(null)), { ws: '', page: 0, n: 0, aspect: 1.4142, title: '', zoom: 0, box: null });
   assert.equal(P.sameView(v, { ...v }), true);
   assert.equal(P.sameView(v, { ...v, page: 3 }), false);
   assert.equal(P.sameView(null, v), false);
@@ -300,4 +300,119 @@ test('a heartbeat, a pagehide and an account change all let go', () => {
   assert.match(auth, /resetStudent\(true\)/);
   assert.match(auth, /teardownRoom\(\)/);
   assert.match(auth, /stopWatcher\(\)/);
+});
+
+/* ---------------- v1.64.0: the teacher's hand on the student's page ---------------- */
+
+test('a nav is cleaned and clamped once, and a no-op is refused', () => {
+  const id = 'nav_abcdef12';
+  const z = here(P.cleanNav({ id, op: 'zoom', ws: 'w', at: 5, f: 9, page: 2, x: 1.4, y: -3 }));
+  assert.deepEqual(z, { t: 'nav', id, op: 'zoom', ws: 'w', at: 5, f: P.NAV_ZOOM_MAX, page: 2, x: 1, y: 0 });
+  assert.equal(P.cleanNav({ id, op: 'zoom', f: 0.01 }).f, P.NAV_ZOOM_MIN);
+  assert.equal(P.cleanNav({ id, op: 'zoom', f: 1 }), null, 'a zoom by 1 does nothing and is not sent');
+  assert.equal(P.cleanNav({ id, op: 'zoom', f: 'x' }), null);
+  assert.equal(here(P.cleanNav({ id, op: 'fit' })).op, 'fit');
+  assert.equal(P.cleanNav({ id, op: 'page', step: 1 }).step, 1);
+  assert.equal(P.cleanNav({ id, op: 'page', step: -1 }).step, -1);
+  assert.equal(P.cleanNav({ id, op: 'page', step: 3 }), null, 'one page at a time');
+  assert.equal(P.cleanNav({ id, op: 'center', page: 0, x: 0.5, y: 0.5 }), null);
+  assert.equal(P.cleanNav({ id, op: 'center', page: 3, x: 0.5, y: 0.25 }).y, 0.25);
+  assert.equal(P.cleanNav({ id, op: 'scroll-to-hell' }), null);
+  assert.equal(P.cleanNav({ id: 'x', op: 'fit' }), null, 'an id the dedupe cannot trust');
+  assert.equal(P.cleanNav(null), null);
+});
+
+test('a pan keeps its SIGN — leftward and upward pans are not thrown away', () => {
+  const id = 'nav_abcdef12';
+  const left = P.cleanNav({ id, op: 'pan', dx: -0.2, dy: 0 });
+  assert.ok(left, 'a leftward pan survives');
+  assert.equal(left.dx, -0.2);
+  const up = P.cleanNav({ id, op: 'pan', dx: 0, dy: -0.35 });
+  assert.equal(up.dy, -0.35);
+  assert.equal(P.cleanNav({ id, op: 'pan', dx: -9, dy: 9 }).dx, -P.NAV_PAN_MAX, 'clamped to one page');
+  assert.equal(P.cleanNav({ id, op: 'pan', dx: 0.0001, dy: -0.0001 }), null, 'a tremor is not a pan');
+  assert.equal(P.parseMessage(JSON.stringify({ t: 'nav', id, op: 'pan', dx: -0.1, dy: 0.1 })).dx, -0.1);
+});
+
+test('only a FRESH nav on the document moves a page', () => {
+  assert.equal(P.navFresh({ at: 1000 }, 1000 + 5000), true);
+  assert.equal(P.navFresh({ at: 1000 }, 1000 + P.NAV_FRESH_MS + 1), false);
+  assert.equal(P.navFresh({ at: 0 }, 5), false);
+  assert.equal(P.navFresh(null, 5), false);
+});
+
+test('continuous navs fold into one write when the channel is down', () => {
+  const a = { t: 'nav', id: 'nav_aaaaaa', op: 'pan', ws: 'w', at: 1, dx: 0.1, dy: -0.2 };
+  const b = { t: 'nav', id: 'nav_bbbbbb', op: 'pan', ws: 'w', at: 2, dx: -0.05, dy: -0.1 };
+  const m = here(P.navMerge(a, b));
+  assert.equal(m.id, 'nav_bbbbbb');
+  assert.equal(m.at, 2);
+  assert.equal(m.dx, 0.05);
+  assert.equal(m.dy, -0.3);
+  const far = P.navMerge({ ...a, dx: 0.9 }, { ...b, dx: 0.9 });
+  assert.equal(far.dx, P.NAV_PAN_MAX, 'a long drag never folds past one page');
+  const z1 = { t: 'nav', id: 'nav_zzzzz1', op: 'zoom', ws: 'w', at: 1, f: 1.5, page: 1, x: 0.1, y: 0.1 };
+  const z2 = { t: 'nav', id: 'nav_zzzzz2', op: 'zoom', ws: 'w', at: 2, f: 1.2, page: 2, x: 0.6, y: 0.7 };
+  const zm = here(P.navMerge(z1, z2));
+  assert.equal(zm.f, 1.8);
+  assert.equal(zm.page, 2, 'the latest point is where the fingers are now');
+  assert.equal(zm.x, 0.6);
+  assert.equal(P.navMerge({ ...z1, f: 2 }, { ...z2, f: 2 }).f, P.NAV_ZOOM_MAX);
+  assert.equal(P.navMerge(a, z1), null, 'a pan and a zoom do not fold');
+  assert.equal(P.navMerge(a, { ...b, ws: 'other' }), null, 'two worksheets do not fold');
+  assert.equal(P.navMerge({ ...a, op: 'fit' }, { ...b, op: 'fit' }), null, 'a discrete nav is never folded');
+  assert.equal(P.navMerge(null, b), null);
+});
+
+test('two fingers: the span and the point between them', () => {
+  const s = here(P.pinchSpan({ x: 0, y: 0 }, { x: 3, y: 4 }));
+  assert.deepEqual(s, { d: 5, x: 1.5, y: 2 });
+  assert.equal(P.pinchSpan(null, { x: 1, y: 1 }), null);
+});
+
+test('stepping pages walks only the pages the student has', () => {
+  assert.equal(P.stepPage([1, 2, 4], 2, 1), 4, 'a hidden key page is stepped over');
+  assert.equal(P.stepPage([1, 2, 4], 4, 1), null, 'the last page says so');
+  assert.equal(P.stepPage([1, 2, 4], 1, -1), null);
+  assert.equal(P.stepPage([2, 4], 3, -1), 2, 'from a hidden page, the nearest one that way');
+  assert.equal(P.stepPage([], 1, 1), null);
+  assert.equal(P.zoomPercent(1.25), '125%');
+  assert.equal(P.zoomPercent(0), '');
+});
+
+test('the student panel is dragged and always pulled back onto the screen', () => {
+  assert.deepEqual(here(P.clampPanelPos({ x: 50, y: 60 }, 300, 200, 800, 600, 8)), { x: 50, y: 60 });
+  assert.deepEqual(here(P.clampPanelPos({ x: 900, y: 900 }, 300, 200, 800, 600, 8)), { x: 492, y: 392 });
+  assert.deepEqual(here(P.clampPanelPos({ x: -50, y: -9 }, 300, 200, 800, 600, 8)), { x: 8, y: 8 });
+  // A tablet turned on its side: a panel taller than the screen still has its head on it.
+  assert.deepEqual(here(P.clampPanelPos({ x: 10, y: 400 }, 300, 900, 800, 600, 8)), { x: 10, y: 8 });
+  assert.equal(P.clampPanelPos({ x: NaN, y: 1 }, 1, 1, 10, 10), null);
+  assert.equal(P.clampPanelPos(null, 1, 1, 10, 10), null);
+});
+
+test('the room has the zoom, fit, page and move controls, and they work by touch', () => {
+  for (const s of ["'cGroup cNav'", "'cViewBox'", "roomToolBtn('✋'", "sendNav('fit'", "sendNav('page', { step: -1 })", "sendNav('page', { step: 1 })"])
+    assert.ok(SRC.includes(s), s);
+  // Touch: a second finger is a pinch, and the stroke it interrupted is dropped rather than left as a dot.
+  assert.match(SRC, /function startPinch/);
+  assert.match(SRC, /abandonStroke/);
+  // Every listener the room adds comes down with it.
+  assert.match(SRC, /orientationchange/);
+  assert.match(SRC, /removeEventListener\('orientationchange'/);
+  // The stage keeps the browser's own pinch and scroll off it.
+  assert.match(CSS, /\.cInk \{[^}]*touch-action: none/);
+  assert.match(CSS, /\.cInk\[data-mode="move"\]/);
+  assert.match(CSS, /\.cViewBox \{[^}]*pointer-events: none/);
+  assert.match(CSS, /@media \(pointer: coarse\)/);
+  assert.match(CSS, /100dvh/);
+  assert.match(CSS, /safe-area-inset-bottom/);
+  assert.match(CSS, /orientation: landscape/);
+});
+
+test('the student obeys a nav only through their own app, once each', () => {
+  assert.match(SRC, /function applyNav/);
+  assert.match(SRC, /seenNav/);
+  // Never a new way to scroll a child's page: the app's own zoomAt / fitWidth.
+  assert.match(SRC, /zoomAt/);
+  assert.match(SRC, /fitWidth/);
 });

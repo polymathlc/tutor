@@ -352,6 +352,78 @@ svg.consultInk path {
   color: var(--ink-faint);
 }
 
+/* ---------------- Moving the panel, and the teacher's hand on the page (v1.64.0) ---------------- */
+/* The head is the handle. `touch-action: none` on the HEAD only, so a drag
+   there moves the card rather than scrolling the worksheet under it, while
+   the rest of the card still scrolls with a finger. */
+.consultHead.consultDrag { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.consultHead.consultDrag:active { cursor: grabbing; }
+.consultPanel.consultMoved { animation: none; }
+/* "Mr Chung zoomed in" — a page that moved by itself must never be a
+   mystery, so the line is a little louder than an ordinary note. */
+.consultNav {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+.consultNav[hidden] { display: none; }
+
+/* ✋ move: the stage is something to take hold of, not to write on. */
+.cInk[data-mode="move"] { cursor: grab; }
+.cInk[data-mode="move"]:active { cursor: grabbing; }
+/* The zoom the student is at, between − and +. Tabular figures, so the
+   buttons either side do not shuffle as 100% becomes 125%. */
+.cNav .cZoom {
+  min-width: 48px;
+  text-align: center;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+.cNavBtn:disabled { opacity: 0.45; }
+/* The part of the page the student can see right now. Drawn OVER the
+   mirror and under nothing the teacher aims at — `pointer-events: none` is
+   load-bearing, the ink layer under it is what takes the pen. */
+.cViewBox {
+  position: absolute;
+  z-index: 3;
+  border: 2px dashed rgba(26, 115, 232, 0.85);
+  border-radius: 4px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.12);
+  pointer-events: none;
+  transition: left 0.15s ease-out, top 0.15s ease-out, width 0.15s ease-out, height 0.15s ease-out;
+}
+.cViewBox[hidden] { display: none; }
+
+/* The browser chrome on a phone grows and shrinks as the page scrolls, so
+   `100vh` is taller than the screen there; `dvh` is what is really shown.
+   The `vh` lines stay ahead of them for a browser that knows no `dvh`. */
+@supports (height: 100dvh) {
+  .consultPanel { max-height: calc(100dvh - 36px); }
+  .consultAlerts { max-height: calc(100dvh - 32px); }
+  .consultRoom { height: 100dvh; }
+}
+/* The notch and the home bar. */
+.consultRoom {
+  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+}
+.consultPanel {
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  right: calc(18px + env(safe-area-inset-right, 0px));
+}
+
+/* A finger is not a mouse: every control in the room and the panel is a
+   target a fingertip can hit first time. */
+@media (pointer: coarse) {
+  .cRoomBar .btn, .consultPanel .btn, .consultAlert .btn { min-height: 40px; min-width: 40px; }
+  .cWidth { width: 40px; height: 40px; }
+  .cSwatch { width: 32px; height: 32px; }
+  .cNav .cZoom { min-width: 52px; }
+}
+
 /* ---------------- Phones ---------------- */
 @media (max-width: 640px) {
   .consultPanel {
@@ -364,11 +436,31 @@ svg.consultInk path {
   .cGroup { flex: 0 0 auto; }
   .cSelf { width: 110px; right: 10px; bottom: 10px; }
   .consultAlerts { right: 10px; left: 10px; top: 10px; width: auto; }
+  .consultPanel.consultMoved { right: auto; bottom: auto; width: min(340px, calc(100vw - 20px)); }
+  .cRoomWho { flex-basis: 100%; }
+  .cStage { box-shadow: 0 3px 14px rgba(0,0,0,0.35); }
+  .cRoomMain { padding: 6px; }
+}
+
+/* A phone or a small tablet on its side: the tool bar would eat half the
+   height, so it becomes ONE row that scrolls sideways and the page gets
+   the rest. */
+@media (max-height: 500px) and (orientation: landscape) {
+  .cRoomBar { padding: 4px 10px; gap: 6px; flex-wrap: nowrap; overflow-x: auto; }
+  .cRoomWho { flex: 0 0 auto; max-width: 30vw; }
+  .cRoomWhere { display: none; }
+  .cRoomTools { flex-wrap: nowrap; }
+  .cGroup { flex: 0 0 auto; }
+  .cRoomMain { padding: 4px; }
+  .cSelf { width: 96px; right: 8px; bottom: 8px; }
+  .consultPanel { max-height: calc(100vh - 16px); bottom: 8px; }
+  .consultPanel .consultCam { aspect-ratio: 16 / 9; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   #consultBtn.consultOn::after,
   .consultPanel, .consultAlert, .consultLaser { animation: none; }
+  .cViewBox { transition: none; }
 }
 
 @media print {

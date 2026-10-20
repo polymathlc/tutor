@@ -225,7 +225,11 @@ await student.page.evaluate(() => {
   svg.classList.add('overlay');
   wrap.appendChild(canvas); wrap.appendChild(svg);
   container.appendChild(wrap);
-  const p = { num: 1, baseW: W, baseH: H, wrap, canvas, svg, renderTask: null };
+  // A stand-in pdf.js page, so a zoom or a fit that re-rasterises has a page
+  // to measure: the fixture's canvas is already drawn and is simply kept.
+  const fakePdfPage = { getViewport: o => ({ width: W * (o && o.scale || 1), height: H * (o && o.scale || 1) }),
+    render: () => ({ promise: Promise.resolve(), cancel() {} }) };
+  const p = { num: 1, baseW: W, baseH: H, wrap, canvas, svg, renderTask: null, page: fakePdfPage };
   pages.push(p);
   attachOverlayHandlers(p);
   annotations = [];
@@ -370,6 +374,66 @@ await teacher.page.mouse.up();
 ok('the pointer shows on the student\'s page as a dot', !!laser);
 ok('…and writes nothing', [...store.keys()].filter(p => p.startsWith(consultPath + '/ink/')).length === 1);
 await teacher.page.click('#consultRoom .cMode[data-mode="pen"]');
+
+console.log('\n🔍 The teacher moves the student\'s page');
+const scaleBefore = await student.page.evaluate(() => scale);
+await teacher.page.click('#consultRoom button[title="Zoom their page in"]');
+const zoomed = await until(() => student.page.evaluate(s => scale > s + 0.01 ? scale : 0, scaleBefore), 5000);
+ok('+ zooms the STUDENT\'s page in', !!zoomed, 'before ' + scaleBefore + ' after ' + zoomed);
+const navNoteText = await student.page.evaluate(() => {
+  const n = document.querySelector('#consultPanel .consultNav');
+  return n && !n.hidden ? n.textContent : '';
+});
+ok('…and the student is told who moved it', /moved your page/.test(navNoteText), navNoteText);
+const zoomLabel = await until(() => teacher.page.evaluate(() => {
+  const z = document.querySelector('#consultRoom .cZoom');
+  return z && /\d+%/.test(z.textContent) ? z.textContent : '';
+}), 5000);
+ok('the teacher\'s toolbar reads the student\'s zoom back', !!zoomLabel, String(zoomLabel));
+await teacher.page.click('#consultRoom button[title="Zoom their page out"]');
+const back = await until(() => student.page.evaluate(z => scale < z - 0.01 ? scale : 0, zoomed), 5000);
+ok('− zooms it back out', !!back, String(back));
+const annNav = await student.page.evaluate(() => annotations.length);
+ok('…and moving the page wrote nothing on it', annNav === annBefore);
+await teacher.page.click('#consultRoom .cMode[data-mode="move"]');
+const inkBeforeMove = [...store.keys()].filter(p => p.startsWith(consultPath + '/ink/')).length;
+await teacher.page.mouse.move(box.x + box.w * 0.5, box.y + box.h * 0.5);
+await teacher.page.mouse.down();
+for (let i = 1; i <= 6; i++) await teacher.page.mouse.move(box.x + box.w * 0.5, box.y + box.h * (0.5 - i * 0.03));
+await teacher.page.mouse.up();
+await sleep(600);
+ok('✋ Move drags the page and draws nothing', [...store.keys()].filter(p => p.startsWith(consultPath + '/ink/')).length === inkBeforeMove);
+await teacher.page.click('#consultRoom .cMode[data-mode="pen"]');
+await teacher.page.click('#consultRoom button[title="Fit their page to the width of their screen"]');
+await sleep(400);
+ok('↔ Fit is obeyed without an error', student.errors.length === 0, student.errors.join(' | '));
+
+console.log('\n📱 On a phone the panel can be moved off the question');
+await student.page.setViewportSize({ width: 390, height: 700 });
+await sleep(300);
+const fits = await student.page.evaluate(() => {
+  const r = document.getElementById('consultPanel').getBoundingClientRect();
+  return { l: r.left, t: r.top, r: r.right, b: r.bottom };
+});
+ok('the panel stays inside a phone screen', fits.l >= 0 && fits.r <= 390 && fits.t >= 0 && fits.b <= 700, JSON.stringify(fits));
+const head = await student.page.evaluate(() => {
+  const h = document.querySelector('#consultPanel .consultHead');
+  const r = h.getBoundingClientRect();
+  return { x: r.x + 20, y: r.y + r.height / 2 };
+});
+await student.page.mouse.move(head.x, head.y);
+await student.page.mouse.down();
+for (let i = 1; i <= 8; i++) await student.page.mouse.move(head.x, head.y - i * 30);
+await student.page.mouse.up();
+const moved = await student.page.evaluate(() => {
+  const p = document.getElementById('consultPanel');
+  const r = p.getBoundingClientRect();
+  return { moved: p.classList.contains('consultMoved'), t: r.top, b: r.bottom };
+});
+ok('dragging its heading moves it', moved.moved && moved.t < fits.t, JSON.stringify(moved));
+ok('…and never off the screen', moved.t >= 0, JSON.stringify(moved));
+await student.page.setViewportSize({ width: 900, height: 700 });
+await sleep(200);
 
 console.log('\n↶ Undo and End');
 await teacher.page.click('#consultRoom button[title="Take back your last stroke"]');

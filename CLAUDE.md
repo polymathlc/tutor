@@ -40,6 +40,14 @@ opens `?consult=<id>` here, which opens the teacher's room.
 - **`negotiate` IS GUARDED** (`T.negotiating`, `T.docReady`): the first room snapshot still reads
   `waiting`, and renegotiating on it is a second offer racing the first.
 - **THE STUDENT'S PANEL IS NEVER A MODAL** — the page under it is the work the consult is about.
+- **THE TEACHER MOVES THE STUDENT'S PAGE, NEVER WRITES ON IT TO DO SO** (v1.64.0): `sendNav` →
+  `{t:'nav', op: zoom|fit|page|center|pan}` over the channel, the doc as fallback (`writeNavDoc`;
+  continuous ops merged by `navMerge` every `NAV_DOC_MS`). `cleanNav` is the ONE door a nav comes in
+  by (zoom 0.5–2, pan ±1 signed, fresh `NAV_FRESH_MS`), `applyNav` the one place it is obeyed and
+  `seenNav` drops a repeat. The student's panel says who moved it (`navNote`, redrawn on rebuild).
+- **A PINCH IS NEVER A STROKE** (`bindStage`: a second finger abandons the stroke in progress);
+  ✋ Move drags/taps without writing; the student's panel is draggable by its heading and clamped
+  on screen (`clampPanelPos`, `bindPanelDrag`).
 - Run **`node --test tools/consult-tests.mjs`**, **`node --test functions/test/consult-service.test.js`**
   and **`node tools/consult-browser-check.mjs`** after touching any of it. The browser one drives
   two real Chromium tabs with a fake camera through the ask, the pop-up, the call, a stroke, the
