@@ -2,6 +2,50 @@
 
 Guidance for Claude when working in this repo.
 
+## 🙋 CONSULT — the student asks, the teacher joins, writes on their page and talks on video (v1.63.0)
+
+`consult.js` / `consult.css` (one IIFE exposing `window.TutorConsult`, hooked from the auth handler
+by `TutorConsult.authChanged(currentUser)`), `#consultBtn` beside `#printBtn`, the `consult` row of
+`USAGE_EVENTS`, `functions/consult-service.js` with the `studyBuddyConsult` export in
+`functions/index.js`, and the pop-up half in `polymathlc/anskey` (`consult-alert.js`).
+
+A student presses 🙋 Consult; a `tutorConsults/{id}` document goes up with `status: 'waiting'`; the
+server queues ONE email; Ans Key, if open on the admin's account, pops a card with Join; the link
+opens `?consult=<id>` here, which opens the teacher's room.
+
+- **THE EMAIL ADDRESS IS THE SERVER'S AND NOWHERE ELSE.** `CONSULT_EMAIL = ADMIN_EMAIL` in
+  `consult-service.js`; the browser sends `{ consultId }` and nothing more (`validateBody` refuses
+  any other key). `tools/consult-tests.mjs` fails if an address appears anywhere in `consult.js`.
+  A client that could name a recipient is a mail relay for anyone signed in.
+- **THE MAIL GOES THROUGH THE "Trigger Email from Firestore" EXTENSION**, so no SMTP secret is in
+  this repository or in the function: the server writes `tutorCentreAdmin/consultMail/messages`,
+  which is server-only under the shared rules, and the extension sends it. Until the extension is
+  installed the mail document simply waits; the pop-up and the room still work.
+- **THE QUEUE IS ONE TRANSACTION** (`createConsultRepository.queue`): the consult must exist, be the
+  caller's, be `waiting` and be fresh (`FRESH_MS`); the mail document's id is the consult's id, so a
+  retried press is `already` and never a second email; `MIN_GAP_MS` and `DAILY_MAX` bound one
+  student. ID token with revocation, `isSupportedStudent`, App Check and CORS, the rules every
+  endpoint here carries.
+- **THE TEACHER'S INK IS NEVER `annotations`.** It is `svg.consultInk` inside the page's own
+  `.pageWrap`, with `pointer-events: none`, so it never saves, never prints and the marking never
+  reads it — the rule the tutor's finger and working already carry. It is persisted in
+  `tutorConsults/{id}/ink` so a student who reloads still sees it; `cleanStroke` is the ONE door a
+  stroke comes in by, from the data channel and the collection alike. The harness fails if
+  `consult.js` writes `annotations`.
+- **THE PAGE TRAVELS AS A CANVAS MIRROR, NEVER A SCREEN SHARE.** `captureStream` on a canvas drawn
+  from the page's own raster and ink, so nothing else on the student's screen is ever sent and no
+  permission prompt asks a child to share their screen. No `getDisplayMedia(` call, pinned.
+- **WHEN WEBRTC CANNOT CONNECT, A SNAPSHOT STANDS IN** (`frames/latest`, every few seconds): a
+  school network that blocks the call still gets the page and the writing, without video.
+- **`negotiate` IS GUARDED** (`T.negotiating`, `T.docReady`): the first room snapshot still reads
+  `waiting`, and renegotiating on it is a second offer racing the first.
+- **THE STUDENT'S PANEL IS NEVER A MODAL** — the page under it is the work the consult is about.
+- Run **`node --test tools/consult-tests.mjs`**, **`node --test functions/test/consult-service.test.js`**
+  and **`node tools/consult-browser-check.mjs`** after touching any of it. The browser one drives
+  two real Chromium tabs with a fake camera through the ask, the pop-up, the call, a stroke, the
+  pointer, undo, end, clear and the email link — nothing that reads the source can say whether a
+  call connects or where a stroke lands.
+
 ## 🎬 VIDEO SOLUTIONS — the teacher records, the class watches (v1.55.0)
 
 The whole block between `🎬 VIDEO SOLUTIONS — the teacher records, the class watches  (v1.55.0)`
@@ -4628,6 +4672,13 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **🙋 the consult** (`consult.js`, `consult.css`, `#consultBtn`,
+  `functions/consult-service.js`, the `studyBuddyConsult` export, or Ans Key's `consult-alert.js`),
+  run `node --test tools/consult-tests.mjs`, `node --test functions/test/consult-service.test.js`
+  **and** `node tools/consult-browser-check.mjs`. Let the browser name the recipient and the
+  endpoint is a mail relay; drop the transaction's `already` and a retried press emails twice; put
+  the ink into `annotations` and the marking reads the teacher's writing as the student's work;
+  swap the canvas mirror for a screen share and a child is asked to share everything on screen.
 - After touching **🎬 the video solutions** (anything between `🎬 VIDEO SOLUTIONS — the teacher
   records, the class watches  (v1.55.0)` and `End video solutions`, the `videos` field in
   `pushWorksheet`, the `lessonDeleteFiles` line in `deleteWorksheet`, `lessonShelfMark` in

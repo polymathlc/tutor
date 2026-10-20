@@ -23,6 +23,7 @@ const { createCentreService } = require('./centre-admin-service');
 const { createCentreRepository } = require('./centre-admin-repository');
 const { createSampleRepository, createSampleService, BUCKET } = require('./sample-materials-service');
 const { createSampleQuestionService } = require('./sample-questions');
+const { createConsultService, createConsultRepository } = require('./consult-service');
 
 initializeApp();
 const openaiKey = defineSecret('OPENAI_API_KEY');
@@ -77,6 +78,18 @@ exports.studyBuddyCentre = onRequest({
   region: 'us-central1', timeoutSeconds: 60,
   maxInstances: 3, concurrency: 10, memory: '256MiB', invoker: 'public'
 }, centreService.handler);
+
+// 🙋 Consult: queues ONE email to the teacher for a consult the caller owns.
+// No secret: delivery is the Trigger Email extension's, reading a server-only
+// collection, and the recipient is a constant in consult-service.js.
+const consultService = createConsultService({
+  auth: getAuth(), appCheck: getAppCheck(), repository: createConsultRepository(getFirestore()),
+  report: code => logger.warn(code)
+});
+exports.studyBuddyConsult = onRequest({
+  region: 'us-central1', timeoutSeconds: 30,
+  maxInstances: 3, concurrency: 20, memory: '256MiB', invoker: 'public'
+}, consultService.handler);
 
 // Public trials have their own short-lived sessions and finite budget. The
 // existing signed-in worksheet services retain their authentication policies.

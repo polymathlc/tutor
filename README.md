@@ -17,6 +17,44 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.63.0 — 🙋 Consult: ask Mr Chung to join you on the page
+
+A student stuck on a worksheet presses **🙋 Consult** in the worksheet bar. Mr Chung
+is emailed a link, and if he already has Ans Key open a pop-up appears there with a
+**Join** button. Joining opens a consult room in this app where he sees the student's
+page live, talks to them on video, and writes on their page to guide them.
+
+- **The student's side.** A small panel in the corner says help is on its way and
+  then shows Mr Chung's video once he joins. It is never a modal: the page under it
+  stays writable, and it minimises to a corner tile so the student can keep working.
+- **The teacher's room.** The student's page fills the screen with a tool bar along
+  the top: pen, highlighter, a laser pointer that writes nothing, colours, widths,
+  undo, clear, mic and camera switches, and End.
+- **The writing is the teacher's, never the student's.** It is drawn over the page
+  in a layer of its own, so it never saves into their work, never prints and is never
+  read by the marking. When the consult ends it stays on the page to work from until
+  the student clears it.
+- **The email goes to one address only.** The server decides it and the browser can
+  name nothing but the consult it is asking about. A student can ask at most once a
+  minute and twelve times a day.
+- **When the call cannot connect** (a strict school network), the page is still sent
+  as a picture every few seconds and the writing still arrives, so the consult works
+  without video.
+
+**One setting is needed for the email.** Install the Firebase **Trigger Email from
+Firestore** extension on `mathgen--app`, with the collection
+`tutorCentreAdmin/consultMail/messages` and an SMTP connection such as
+`smtps://chungzhikai@gmail.com:<app-password>@smtp.gmail.com:465` (a Gmail app
+password, never the account password). Until then the pop-up in Ans Key and the
+link in the room still work; only the email waits. The new `studyBuddyConsult`
+function deploys on merge with the rest of `study-buddy-live`.
+
+No Firestore rules change is needed: `tutorConsults` sits under the shared project's
+existing signed-in catch-all, like the other tutor collections, while the mail queue
+and the rate limits sit under `tutorCentreAdmin`, which only the server can touch.
+
+---
+
 ## v1.62.0 — Marking ahead, so ✅ Mark my work is ready sooner
 
 When a student scrolls on to the next page and **stops** to read it, the page

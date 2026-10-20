@@ -27,7 +27,7 @@ jobs:
         run: node --test functions/test/*.test.js
   adventure-browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,3 +61,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/sample-browser-check.mjs
+      - name: Check the consult call, the teacher's ink and the pop-up
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/consult-browser-check.mjs

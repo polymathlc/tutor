@@ -1,0 +1,376 @@
+/* =====================================================================
+   🙋 CONSULT — a student asks for help, the teacher joins, writes on
+   their page and talks to them on video (v1.63.0)
+
+   Three surfaces, all built by consult.js and styled only here:
+
+   ① the STUDENT's panel (#consultPanel) — a floating card in the
+     bottom-right corner, never a modal: the page under it is the work
+     the consult is about, so it must stay writable while it is open;
+   ② the TEACHER's room (#consultRoom) — full screen, a tool bar along
+     the top and the student's live page in the middle, fitted by
+     `fitStage` so it keeps the shape of the page it mirrors;
+   ③ the teacher's pop-ups (#consultAlerts) — one card per student
+     waiting, top-right, above everything but a modal.
+
+   The TEACHER'S INK on the student's page is `svg.consultInk` inside
+   the page's own `.pageWrap`. It is NEVER in `annotations`, so it never
+   saves, never prints and the marking never reads it — and
+   `pointer-events: none` is load-bearing: it sits over a page a child
+   writes on with a stylus, the rule `#liveSubs` and the tutor's finger
+   already carry.
+   ===================================================================== */
+
+/* ---------------- The button in the worksheet bar ---------------- */
+#consultBtn.consultOn {
+  background: var(--accent);
+  border-color: var(--accent-strong);
+}
+#consultBtn.consultOn::after {
+  content: '';
+  display: inline-block;
+  width: 7px; height: 7px; margin-left: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  vertical-align: middle;
+  animation: consultPulse 1.6s ease-in-out infinite;
+}
+@keyframes consultPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+
+/* ---------------- ① The student's panel ---------------- */
+.consultPanel {
+  position: fixed;
+  right: 18px; bottom: 18px;
+  z-index: 1200;
+  width: min(340px, calc(100vw - 32px));
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-modal);
+  padding: 16px 18px 14px;
+  display: flex; flex-direction: column; gap: 10px;
+  font-family: var(--font);
+  color: var(--ink);
+  animation: consultIn 0.22s ease-out both;
+}
+@keyframes consultIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.consultHead {
+  display: flex; align-items: center; gap: 10px;
+}
+.consultIcon {
+  flex: 0 0 auto;
+  width: 34px; height: 34px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  font-size: 1.05rem;
+}
+.consultTitle {
+  flex: 1 1 auto;
+  font-weight: 700;
+  font-size: 0.98rem;
+  line-height: 1.3;
+}
+.consultMinBtn { flex: 0 0 auto; min-width: 34px; }
+.consultText {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.consultNote {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--ink-faint);
+}
+.consultRow {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+.consultEnd { color: var(--danger); }
+
+/* The teacher's face, in the student's panel. */
+.consultCam {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: #222;
+}
+.consultCamVideo {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  background: #222;
+}
+.consultCamNone {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 12px;
+  text-align: center;
+  color: #EEE;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.consultSound {
+  position: absolute;
+  left: 50%; bottom: 10px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* Minimised: the video shrinks to a corner tile and the words go, so the
+   page under it is free — the student is meant to be WORKING on it. */
+.consultPanel.consultMin {
+  width: 190px;
+  padding: 8px;
+  gap: 6px;
+}
+.consultPanel.consultMin .consultTitle { font-size: 0.8rem; }
+.consultPanel.consultMin .consultIcon { width: 26px; height: 26px; font-size: 0.85rem; }
+.consultPanel.consultMin .consultNote,
+.consultPanel.consultMin .consultText { display: none; }
+.consultPanel.consultMin .consultRow { justify-content: space-between; }
+
+/* The teacher's writing on the student's own page. Above the ink, under
+   nothing interactive, and never a target. */
+svg.consultInk {
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 3;
+}
+svg.consultInk path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.consultLaser {
+  animation: consultLaserIn 0.12s ease-out both;
+}
+@keyframes consultLaserIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ---------------- ② The teacher's room ---------------- */
+.consultRoom {
+  position: fixed; inset: 0;
+  z-index: 1400;
+  display: flex; flex-direction: column;
+  background: #2A2A28;
+  color: var(--ink);
+  font-family: var(--font);
+}
+.cRoomBar {
+  flex: 0 0 auto;
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 10px 16px;
+  padding: 10px 16px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  box-shadow: var(--shadow-card);
+}
+.cRoomWho {
+  display: flex; flex-direction: column;
+  min-width: 0;
+  flex: 1 1 200px;
+}
+.cRoomName {
+  font-size: 1rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cRoomWhere {
+  font-size: 0.78rem;
+  color: var(--ink-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cRoomStatus {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  white-space: nowrap;
+}
+.cRoomStatus.live { background: var(--v-ok-bg); color: var(--v-ok); }
+.cRoomTools {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 8px 12px;
+}
+.cGroup {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-soft);
+}
+.cGroup .btn { box-shadow: none; }
+.cMode.on { background: var(--accent); border-color: var(--accent-strong); }
+.cMic.off, .cCam.off { color: var(--danger); text-decoration: line-through; }
+.cSwatch {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  border: 2px solid #FFF;
+  box-shadow: 0 0 0 1px var(--line);
+  cursor: pointer;
+  padding: 0;
+}
+.cSwatch.on { box-shadow: 0 0 0 2px var(--ink); }
+.cWidth {
+  width: 30px; height: 30px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.cWidth.on { background: var(--accent); border-color: var(--accent-strong); }
+.cWidthDot {
+  display: block;
+  border-radius: 50%;
+  background: var(--ink);
+  min-width: 3px; min-height: 3px;
+}
+.cEnd { background: #FDEDED; border-color: #F5C2C2; color: var(--v-no); }
+.cEnd:hover:not(:disabled) { background: #FAD9D9; }
+
+.cRoomMain {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 12px;
+  overflow: hidden;
+}
+.cStage {
+  position: relative;
+  background: #FFF;
+  border-radius: 6px;
+  box-shadow: 0 6px 30px rgba(0,0,0,0.35);
+  overflow: hidden;
+  /* `sizeStage` sets the width and height from `fitStage`; these are the
+     fallback before the first measure. */
+  width: min(90vw, 70vh);
+  height: min(127vw, 99vh);
+}
+.cRemote, .cSnap {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: fill;
+  background: #FFF;
+  pointer-events: none;
+}
+.cInk {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+  z-index: 2;
+}
+.cInk[data-mode="laser"] { cursor: pointer; }
+.cInk path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.cStageNote {
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 80%;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.92);
+  box-shadow: var(--shadow-btn);
+  text-align: center;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  pointer-events: none;
+  z-index: 3;
+}
+.cStageNote:empty { display: none; }
+.cSound {
+  position: absolute;
+  left: 50%; bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 4;
+}
+.cSelf {
+  position: absolute;
+  right: 18px; bottom: 18px;
+  width: 180px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: #111;
+  border: 2px solid #FFF;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.4);
+  transform: scaleX(-1);
+  z-index: 5;
+}
+
+/* ---------------- ③ The teacher's pop-ups ---------------- */
+.consultAlerts {
+  position: fixed;
+  top: 16px; right: 16px;
+  z-index: 1300;
+  display: flex; flex-direction: column; gap: 10px;
+  width: min(340px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+.consultAlert {
+  background: var(--bg);
+  border: 1px solid var(--accent-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-modal);
+  padding: 14px 16px 12px;
+  display: flex; flex-direction: column; gap: 10px;
+  font-family: var(--font);
+  animation: consultIn 0.22s ease-out both;
+}
+.consultAlertTop {
+  display: flex; align-items: flex-start; gap: 10px;
+}
+.consultAlertWords {
+  display: flex; flex-direction: column; gap: 2px;
+  min-width: 0;
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+.consultAlertWhere {
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+}
+
+/* ---------------- Phones ---------------- */
+@media (max-width: 640px) {
+  .consultPanel {
+    right: 10px; left: 10px; bottom: 10px;
+    width: auto;
+  }
+  .consultPanel.consultMin { left: auto; width: 170px; }
+  .cRoomBar { padding: 8px 10px; gap: 8px; }
+  .cRoomTools { gap: 6px; overflow-x: auto; flex-wrap: nowrap; width: 100%; }
+  .cGroup { flex: 0 0 auto; }
+  .cSelf { width: 110px; right: 10px; bottom: 10px; }
+  .consultAlerts { right: 10px; left: 10px; top: 10px; width: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #consultBtn.consultOn::after,
+  .consultPanel, .consultAlert, .consultLaser { animation: none; }
+}
+
+@media print {
+  .consultPanel, .consultRoom, .consultAlerts, svg.consultInk { display: none !important; }
+}
