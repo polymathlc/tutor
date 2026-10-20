@@ -885,6 +885,13 @@
       closePc(); S.handledRev = null;
       if (!S.pick) { S.minimized = false; startPick(); return; }
     }
+    // The teacher joined after all (a "Not now" they changed their mind
+    // about, or the email's link): the call is back on, so the picker that
+    // was waiting for a tap on the page stands down — left up, it would
+    // swallow every tap the student makes on the page they are being shown.
+    // A question already on its way is left to finish; the room closes on
+    // the `question` it writes.
+    if (S.status === 'live' && S.pick && !S.pick.sending) stopPick();
     if (S.status === 'waiting' && was === 'live') {
       // The teacher's tab went away. Their writing stays; the call does not.
       closePc();
@@ -1474,7 +1481,7 @@
     if (S.pick) { renderPickPanel(root); return; }
 
     if (S.status === 'later') {
-      root.appendChild(el('p', 'consultText', teacherName() + ' is here but cannot take a call just now. Show him the part of the page you need help with and ask your question — he will record you an answer.'));
+      root.appendChild(el('p', 'consultText', teacherName() + ' is here but cannot take a call just now. Show the part of the page you need help with and ask your question — you will get a recorded answer back.'));
       var rl = el('div', 'consultRow');
       rl.appendChild(btn('✍️ Leave a question', 'btnPrimary', startPick, 'Show where on the page and ask'));
       rl.appendChild(btn('Cancel', 'btnGhost', function () { endStudent('cancelled'); }, 'Cancel the consult'));
@@ -1491,7 +1498,7 @@
       if (note) root.appendChild(el('p', 'consultNote', note));
       if (!S.mic) root.appendChild(el('p', 'consultNote', '🎤 Your microphone is off, so ' + teacherName() + ' will not hear you. He can still see your page and talk to you.'));
       var waitedMs = S.data && stampMs(S.data.at) ? now() - stampMs(S.data.at) : 0;
-      if (waitedMs >= LATER_NUDGE_MS) root.appendChild(el('p', 'consultNote', teacherName() + ' may not be on Study Buddy right now. You can leave your question and he will record you an answer.'));
+      if (waitedMs >= LATER_NUDGE_MS) root.appendChild(el('p', 'consultNote', teacherName() + ' may not be on Study Buddy right now. You can leave your question and get a recorded answer back.'));
       var r2 = el('div', 'consultRow');
       r2.appendChild(btn('✍️ Leave a question instead', waitedMs >= LATER_NUDGE_MS ? 'btnPrimary' : 'btnGhost', startPick, 'Show where on the page and ask — ' + teacherName() + ' answers with a video'));
       r2.appendChild(btn('Cancel', 'btnGhost', function () { endStudent('cancelled'); }, 'Cancel the consult'));
@@ -1651,12 +1658,6 @@
     for (var i = 0; i < list.length; i++) if (list[i] && list[i].wrap === wrap) return list[i];
     return null;
   }
-  function pageByNum(n) {
-    var list = Array.isArray(global.pages) ? global.pages : [];
-    for (var i = 0; i < list.length; i++) if (list[i] && list[i].num === n) return list[i];
-    return null;
-  }
-
   function startPick() {
     if (!S.id || !(S.status === 'waiting' || S.status === 'later')) return;
     if (!onWorksheet()) { toast('Open the worksheet your question is about first.'); return; }
@@ -1823,10 +1824,19 @@
     try {
       var img = questionImage(p, q.box);
       if (img) await ref.collection('frames').doc('question').set({ img: img, at: now() });
-      var question = { text: text, page: p.num, ws: global.currentDocId || '', box: q.box || null, at: now() };
-      await ref.update({ status: 'question', question: question, seen: now(), offer: null, answer: null, tc: [], sc: [] });
+      // The consult is re-pointed at the worksheet the question is on: the
+      // student may have moved to another paper since they first asked, and
+      // the teacher's card, the email and the answer all name THIS one.
+      var wsId = cleanText(global.currentDocId || '', 80);
+      var wsName = cleanText(global.docName || '', TITLE_MAX) || cleanText(S.data && S.data.worksheetName, TITLE_MAX);
+      var question = { text: text, page: p.num, ws: wsId, box: q.box || null, at: now() };
+      await ref.update({
+        status: 'question', question: question, seen: now(),
+        worksheetId: wsId, worksheetName: wsName,
+        offer: null, answer: null, tc: [], sc: []
+      });
       if (gen !== S.gen) return;
-      usage('consultQuestion', cleanText(S.data && S.data.worksheetName, 80));
+      usage('consultQuestion', cleanText(wsName, 80));
       stopPick();
       resetStudent(true);
       toast('Sent. ' + teacherName() + ' will record you an answer — it comes back here.', 6500);
@@ -2100,6 +2110,20 @@
     var data = snap.data() || {};
     if (data.status === 'ended' || data.status === 'cancelled') {
       toast(cleanText(data.studentName, NAME_MAX) + (data.status === 'cancelled' ? ' cancelled this consult.' : '’s consult has already ended.'), 7000);
+      return false;
+    }
+    // A consult the student turned into a QUESTION is answered from the
+    // recorder, never joined: negotiating here writes `live` and an offer
+    // straight over the question they left, and their page with it. The
+    // email's link, an old pop-up and Ans Key's card all land here, so this
+    // is the one place the two kinds part. A consult the teacher asked to
+    // wait (`later`) may still be joined live — "not now" became "now".
+    if (data.status === 'question' || data.status === 'answered') {
+      var api = answerApi();
+      if (api) { api.open(id); return false; }
+      toast(data.status === 'answered'
+        ? 'That question has already been answered.'
+        : (cleanText(data.studentName, NAME_MAX) || 'The student') + ' left a question instead. Reload Study Buddy to answer it.', 7000);
       return false;
     }
     T.id = id; T.ref = ref; T.data = data; T.view = cleanView(data.view);

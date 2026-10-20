@@ -209,12 +209,48 @@
     var who = cleanText(d && d.studentName, NAME_MAX) || 'A student';
     var q = cleanQuestion(d && d.question);
     var bits = [];
-    var ws = (q && q.ws) || cleanText(d && d.worksheetName, TITLE_MAX);
+    // q.ws is the worksheet's ID (what "Open the worksheet" opens); the
+    // NAME is on the consult itself, which sendQuestion re-points at the
+    // worksheet the question was asked on.
+    var ws = cleanText(d && d.worksheetName, TITLE_MAX);
     if (ws) bits.push(ws);
     if (q && q.page) bits.push('page ' + q.page + (q.box ? ' (a part of it)' : ''));
     var subj = [cleanText(d && d.level, 12), subjectWord(d && d.subject)].filter(Boolean).join(' ');
     if (subj) bits.push(subj);
     return { who: who, title: who + ' left a question', where: bits.join(' · '), text: q ? q.text : '' };
+  }
+  // How long ago a question was left, in words. A question waits for up
+  // to QUESTION_FRESH_MS (two weeks), so this has to go past hours: "35
+  // hours ago" is a number nobody reads as "yesterday". A stamp a little
+  // in the future (another device's clock) is "just now", never "-3 min".
+  function questionAgo(ms) {
+    var v = Number(ms);
+    if (!isFinite(v) || v < 60000) return 'just now';
+    var min = Math.floor(v / 60000);
+    if (min < 60) return min === 1 ? '1 min ago' : min + ' min ago';
+    var hr = Math.floor(min / 60);
+    if (hr < 24) return hr === 1 ? '1 hour ago' : hr + ' hours ago';
+    var day = Math.floor(hr / 24);
+    if (day < 2) return 'yesterday';
+    return day + ' days ago';
+  }
+  // What "✋ Not now" says, by what the transaction found. "That call has
+  // already ended" was said for every status but `waiting`, which was
+  // wrong four times out of five: a call another screen has just opened,
+  // a student already asked, a question already left and a question
+  // already answered are four different things to be told, and only one
+  // of them means the student has gone.
+  function laterSaid(outcome) {
+    switch (outcome) {
+      case 'ok': return 'Asked them to show you the question — it will come to you here to answer.';
+      case 'live': return 'That call is already open on another screen — join it there, or end it first.';
+      case 'later': return 'They have already been asked to show you the question.';
+      case 'question': return 'They have already left their question — it is in your list to answer.';
+      case 'answered': return 'That question has already been answered.';
+      case 'offline': return 'Not connected yet — try again in a moment.';
+      case 'failed': return 'Could not reach them just now — try again.';
+      default: return 'That call has already ended.';
+    }
   }
   // A stroke the pens drew: a colour off the list, a width in canvas
   // thousandths, and points in 0..1. The only shape the renderer reads.
@@ -240,7 +276,8 @@
     cleanQBox: cleanQBox, cleanQuestion: cleanQuestion, replyUrlOk: replyUrlOk, replyPathOk: replyPathOk,
     cleanReply: cleanReply, extFor: extFor, storagePath: storagePath, pickMime: pickMime, fit: fit,
     stageSize: stageSize, pipRect: pipRect, fmtClock: fmtClock, questionFresh: questionFresh,
-    questionWords: questionWords, cleanPenStroke: cleanPenStroke
+    questionWords: questionWords, questionAgo: questionAgo, cleanPenStroke: cleanPenStroke,
+    laterSaid: laterSaid
   };
 
   if (!global.document) { global.ConsultAnswer = { pure: pure }; return; }
@@ -287,26 +324,39 @@
      "Not now — ask for a question": the teacher is here but cannot take
      the call. The student's panel sees `later` and asks for the page.
      =================================================================== */
+  // One press at a time per consult: a double-tap on "Not now" must not
+  // run two transactions, the second of which would then toast "they have
+  // already been asked" over the first one's success.
+  var laterBusy = {};
+
   async function askLater(id) {
     if (!teacherHere()) { toast('Only the teacher can do that.'); return false; }
+    if (!consultIdOk(id)) return false;
+    if (laterBusy[id]) return false;
     var r = ref(id), d = db();
-    if (!r || !d) return false;
+    if (!r || !d || typeof d.runTransaction !== 'function') { toast(laterSaid('offline'), 4500); return false; }
+    laterBusy[id] = true;
+    var outcome = 'failed';
     try {
-      var ok = await d.runTransaction(async function (tx) {
+      outcome = await d.runTransaction(async function (tx) {
         var snap = await tx.get(r);
-        if (!snap.exists) return false;
+        if (!snap.exists) return 'gone';
         var x = snap.data() || {};
-        if (x.status !== 'waiting') return false;
+        // Only a call that is still RINGING can be turned into a question.
+        // A call already open (`live`) belongs to whoever opened it, and
+        // writing `later` over it would cut that call off mid-sentence.
+        if (x.status !== 'waiting') return typeof x.status === 'string' ? x.status : 'gone';
         tx.update(r, { status: 'later', laterAt: serverStamp(), offer: null, answer: null, tc: [], sc: [] });
-        return true;
+        return 'ok';
       });
-      if (ok) toast('Asked them to show you the question — you will get it here to answer.', 4500);
-      else toast('That call has already ended.', 4000);
-      return !!ok;
     } catch (e) {
-      toast('Could not reach them just now — try again.', 4500);
-      return false;
+      console.warn('consult: "not now" could not be written', e);
+      outcome = 'failed';
+    } finally {
+      delete laterBusy[id];
     }
+    toast(laterSaid(outcome), outcome === 'ok' ? 5000 : 4500);
+    return outcome === 'ok';
   }
 
   /* ===================================================================
@@ -330,7 +380,22 @@
   async function open(id) {
     if (!teacherHere()) { toast('Only the teacher can answer a question.'); return false; }
     if (!consultIdOk(id)) { toast('That question link is not valid.'); return false; }
-    if (A) close();
+    // The same question pressed again (its card, the email's link, Ans Key's
+    // pop-up) is the window already open: bring it forward rather than
+    // closing it and opening it again, which would throw away whatever is
+    // half recorded in it.
+    if (A && A.id === id) {
+      try { if (A.root && typeof A.root.focus === 'function') A.root.focus(); } catch (e) {}
+      return true;
+    }
+    // Another question is open. Closing it may be DECLINED — there is a
+    // recording in it nobody has sent — and then this one must not open over
+    // it: the old window would be orphaned on the page with its camera still
+    // running and nothing left holding it.
+    if (A) {
+      close();
+      if (A) return false;
+    }
     var r = ref(id);
     if (!r) { toast('Not connected yet — try again in a moment.'); return false; }
     var s = blank();
@@ -377,6 +442,10 @@
     var root = el('div', 'caBack');
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-label', words.title);
+    // Focusable, so Escape reaches the window the moment it opens and the
+    // same question pressed again can bring it forward — a plain div cannot
+    // take focus, and then neither of those does anything.
+    root.tabIndex = -1;
     var card = el('div', 'caCard');
     root.appendChild(card);
 
@@ -484,7 +553,7 @@
     syncPens(s);
     paint(s);
     loop(s);
-    try { card.focus && card.focus(); } catch (e) {}
+    try { if (typeof root.focus === 'function') root.focus(); } catch (e) {}
   }
 
   function syncPens(s) {
@@ -822,7 +891,9 @@
       s.sent = true;
       try { if (typeof global.usageNote === 'function') global.usageNote('consultAnswer', cleanText(s.data && s.data.worksheetName, 80)); } catch (e) {}
       toast('📨 Sent — ' + (cleanText(s.data && s.data.studentName, NAME_MAX) || 'the student') + ' will see it in Study Buddy.', 5000);
-      close();
+      // Only THIS window: the teacher may have closed it while the answer was
+      // uploading and opened the next question, which must stay open.
+      if (A === s) close();
     } catch (e) {
       s.busy = false;
       if (s.els.send) s.els.send.disabled = false;
@@ -832,10 +903,17 @@
   }
 
   /* ---- Closing ---- */
-  function close() {
+  // `force` is the way out that asks nothing: an account change or the page
+  // going away, where a question nobody can answer would only be in the way.
+  // Every other close asks first when there is work in the window that has
+  // not gone anywhere — a recording still RUNNING as much as one finished and
+  // not sent, because stopping a recording half way through is losing it.
+  // A send already on its way is never asked about: it finishes by itself.
+  function closeWin(force) {
     var s = A;
-    if (!s) return;
-    if (s.blob && !s.sent && !s.busy && global.confirm && !global.confirm('Close without sending this recording?')) return;
+    if (!s) return true;
+    var unsent = !s.sent && !s.busy && (!!s.blob || !!(s.rec && s.rec.state && s.rec.state !== 'inactive'));
+    if (!force && unsent && global.confirm && !global.confirm('Close without sending this recording?')) return false;
     A = null;
     if (s.rec) { try { s.rec.onstop = null; s.rec.ondataavailable = null; if (s.rec.state !== 'inactive') s.rec.stop(); } catch (e) {} s.rec = null; }
     recRelease(s);
@@ -843,12 +921,12 @@
     if (s.raf && global.cancelAnimationFrame) { try { global.cancelAnimationFrame(s.raf); } catch (e) {} }
     if (s.blobUrl) { try { global.URL.revokeObjectURL(s.blobUrl); } catch (e) {} }
     if (s.root && s.root.parentNode) s.root.parentNode.removeChild(s.root);
+    return true;
   }
+  // The window's own ✕, Escape and the send: ask first when it would lose work.
+  function close() { return closeWin(false); }
   // Everything down, no questions asked: an account change or the page going.
-  function stop() {
-    if (A && A.blob) A.sent = true;  // no confirm on the way out
-    close();
-  }
+  function stop() { return closeWin(true); }
 
   try {
     global.addEventListener('pagehide', function () { stop(); });
@@ -860,7 +938,8 @@
     askLater: askLater,
     close: close,
     stop: stop,
-    isOpen: function () { return !!A; },
+    // With an id: is THAT question the one open. Without: is any.
+    isOpen: function (id) { return !!A && (id == null || A.id === id); },
     _internals: { state: function () { return A; }, paint: paint, teacherHere: teacherHere }
   };
 })(typeof window !== 'undefined' ? window : globalThis);
