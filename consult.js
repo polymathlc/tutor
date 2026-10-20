@@ -558,6 +558,7 @@
   function statusWords(status, endedBy) {
     if (status === 'waiting') return 'Waiting for ' + teacherName() + '…';
     if (status === 'live') return teacherName() + ' is with you';
+    if (status === 'later') return teacherName() + ' cannot take the call just now';
     if (status === 'cancelled') return 'You cancelled the consult.';
     if (status === 'ended') return endedBy === 'teacher' ? teacherName() + ' ended the consult.' : 'The consult has ended.';
     return '';
@@ -683,7 +684,8 @@
     heartbeat: null, supervisor: null, lastSnap: 0, liveSince: 0, connectedAt: 0,
     notify: null, panel: null, minimized: false, asking: false, busy: false, gen: 0,
     view: null, soundBlocked: false,
-    seenNav: {}, seenNavOrder: [], navNoteAt: 0, navNoteText: '', navNoteTimer: null
+    seenNav: {}, seenNavOrder: [], navNoteAt: 0, navNoteText: '', navNoteTimer: null,
+    pick: null, pickBound: false
   };
 
   function studentAvailable() {
@@ -696,7 +698,7 @@
     if (!b) return;
     var u = user();
     b.hidden = !u || admin();
-    var on = !!S.id && (S.status === 'waiting' || S.status === 'live');
+    var on = !!S.id && (S.status === 'waiting' || S.status === 'live' || S.status === 'later');
     b.classList.toggle('consultOn', on);
     b.textContent = on ? (S.status === 'live' ? '🙋 With ' + teacherName() : '🙋 Waiting…') : '🙋 Consult';
     b.title = on ? 'Your consult with ' + teacherName() : 'Ask ' + teacherName() + ' to join you on this worksheet';
@@ -705,7 +707,7 @@
   function onButton() {
     if (!user()) { toast('Sign in to ask ' + teacherName() + ' for help.'); return; }
     if (admin()) { toast('This is the button students press to call you.'); return; }
-    if (S.id && (S.status === 'waiting' || S.status === 'live')) { S.minimized = false; renderPanel(); return; }
+    if (S.id && (S.status === 'waiting' || S.status === 'live' || S.status === 'later')) { S.minimized = false; renderPanel(); return; }
     if (!onWorksheet()) { toast('Open a worksheet first, so ' + teacherName() + ' can see it.'); return; }
     S.asking = true;
     S.minimized = false;
@@ -822,7 +824,7 @@
   function startHeartbeat() {
     stopHeartbeat();
     S.heartbeat = setInterval(function () {
-      if (!S.ref || !(S.status === 'waiting' || S.status === 'live')) return;
+      if (!S.ref || !(S.status === 'waiting' || S.status === 'live' || S.status === 'later')) return;
       S.ref.update({ seen: now() }).catch(function () {});
     }, HEARTBEAT_MS);
     S.supervisor = setInterval(supervise, 1000);
@@ -865,8 +867,23 @@
     var was = S.status;
     S.status = data.status || '';
     if (S.status === 'cancelled' || S.status === 'ended') {
+      stopPick();
       finishStudent(S.status, data.endedBy || '');
       return;
+    }
+    // A question left (here or in another tab) or answered is no longer a
+    // call: the reply watcher carries it from here. sendQuestion finishes its
+    // own exit, so a snapshot that lands mid-send is left to it.
+    if (S.status === 'question' || S.status === 'answered') {
+      if (S.pick && S.pick.sending) return;
+      stopPick(); resetStudent(true);
+      return;
+    }
+    // The teacher pressed "Not now": the call stops ringing and the student
+    // is asked for the question instead.
+    if (S.status === 'later' && was !== 'later') {
+      closePc(); S.handledRev = null;
+      if (!S.pick) { S.minimized = false; startPick(); return; }
     }
     if (S.status === 'waiting' && was === 'live') {
       // The teacher's tab went away. Their writing stays; the call does not.
@@ -1454,6 +1471,17 @@
       return;
     }
 
+    if (S.pick) { renderPickPanel(root); return; }
+
+    if (S.status === 'later') {
+      root.appendChild(el('p', 'consultText', teacherName() + ' is here but cannot take a call just now. Show him the part of the page you need help with and ask your question — he will record you an answer.'));
+      var rl = el('div', 'consultRow');
+      rl.appendChild(btn('✍️ Leave a question', 'btnPrimary', startPick, 'Show where on the page and ask'));
+      rl.appendChild(btn('Cancel', 'btnGhost', function () { endStudent('cancelled'); }, 'Cancel the consult'));
+      root.appendChild(rl);
+      return;
+    }
+
     if (S.status === 'waiting') {
       var waitedFor = S.data && stampMs(S.data.at) ? consultAgo(now() - stampMs(S.data.at)) : '';
       root.appendChild(el('p', 'consultText', S.data && S.data.teacherLeft
@@ -1462,7 +1490,10 @@
       var note = S.notify && S.notify.pending ? 'Sending ' + teacherName() + ' an email…' : notifyWords(S.notify);
       if (note) root.appendChild(el('p', 'consultNote', note));
       if (!S.mic) root.appendChild(el('p', 'consultNote', '🎤 Your microphone is off, so ' + teacherName() + ' will not hear you. He can still see your page and talk to you.'));
+      var waitedMs = S.data && stampMs(S.data.at) ? now() - stampMs(S.data.at) : 0;
+      if (waitedMs >= LATER_NUDGE_MS) root.appendChild(el('p', 'consultNote', teacherName() + ' may not be on Study Buddy right now. You can leave your question and he will record you an answer.'));
       var r2 = el('div', 'consultRow');
+      r2.appendChild(btn('✍️ Leave a question instead', waitedMs >= LATER_NUDGE_MS ? 'btnPrimary' : 'btnGhost', startPick, 'Show where on the page and ask — ' + teacherName() + ' answers with a video'));
       r2.appendChild(btn('Cancel', 'btnGhost', function () { endStudent('cancelled'); }, 'Cancel the consult'));
       root.appendChild(r2);
       return;
@@ -1546,6 +1577,7 @@
 
   function resetStudent(silent) {
     S.gen++;
+    stopPick();
     if (S.unsub) { try { S.unsub(); } catch (e) {} }
     if (S.inkUnsub) { try { S.inkUnsub(); } catch (e) {} }
     S.unsub = null; S.inkUnsub = null;
@@ -1563,10 +1595,482 @@
      the teacher should still be shown. Best effort — a write in `pagehide`
      may never land, and the heartbeat's silence covers that case. */
   function studentPageHide() {
-    if (S.ref && (S.status === 'waiting' || S.status === 'live')) {
+    if (S.ref && (S.status === 'waiting' || S.status === 'live' || S.status === 'later')) {
       try { S.ref.update({ status: 'ended', endedBy: 'student', endedAt: now(), offer: null, answer: null, tc: [], sc: [] }); } catch (e) {}
     }
   }
+
+  /* ===================================================================
+     STUDENT — leaving a question instead (v1.65.0)
+
+     The teacher is not there, or is there and cannot take the call. The
+     student shows WHERE on the page (a tap is the whole page, a drag is a
+     box round the part), types or SAYS the question, and it goes up as
+     status `question` with a picture of the page — their own ink on it and
+     the box drawn in magenta — at `frames/question`. The teacher answers it
+     later from Study Buddy or Ans Key (consult-answer.js) and the video
+     comes back to the student (the reply watcher, R, below).
+
+     - THE PICK NEVER WRITES ON THE PAGE. It is a capture-phase listener on
+       the window that swallows the pointer before the overlay sees it, and
+       the box is a div with `pointer-events: none` inside the page's own
+       wrap. Nothing goes into `annotations`; nothing is saved or marked.
+     - THE PANEL IS STILL NOT A MODAL. The page under it is exactly what the
+       student is pointing at.
+     - THE QUESTION IS TEXT AND IT IS CAPPED (`QUESTION_MAX`, 500), painted
+       with textContent wherever it is shown.
+     - THE EMAIL IS STILL `{ consultId }` AND NOTHING ELSE. The server reads
+       the question off the document.
+     =================================================================== */
+  var QUESTION_MAX = 500;
+  var Q_TAP_PX = 8;               // a press that moved less than this is a tap: the whole page
+  var Q_SNAP_LONG = 1100;         // the picture of the page the teacher writes on
+  var Q_VOICE_MAX_MS = 60000;     // one spoken question, not a lesson
+  var LATER_NUDGE_MS = 90 * 1000; // after this long waiting, the panel offers the question first
+  var Q_BOX_COLOR = '#D81B60';
+
+  /* Pure: a box from two points in a rect, as fractions 0..1, or null for a
+     tap. Exported for the harness. */
+  function qBoxFrom(x0, y0, x1, y1, w, h) {
+    w = Number(w) || 0; h = Number(h) || 0;
+    if (!(w > 0 && h > 0)) return null;
+    if (Math.abs(x1 - x0) < Q_TAP_PX && Math.abs(y1 - y0) < Q_TAP_PX) return null;
+    var c = function (v) { return Math.max(0, Math.min(1, v)); };
+    var r = function (v) { return Math.round(v * 10000) / 10000; };
+    var a = [c(Math.min(x0, x1) / w), c(Math.min(y0, y1) / h), c(Math.max(x0, x1) / w), c(Math.max(y0, y1) / h)].map(r);
+    if (a[2] - a[0] < 0.01 || a[3] - a[1] < 0.01) return null;
+    return a;
+  }
+  function qClean(text) {
+    return String(text == null ? '' : text).replace(/\r\n?/g, '\n').replace(/[^\S\n]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n').trim().slice(0, QUESTION_MAX);
+  }
+
+  function pageOfWrap(wrap) {
+    var list = Array.isArray(global.pages) ? global.pages : [];
+    for (var i = 0; i < list.length; i++) if (list[i] && list[i].wrap === wrap) return list[i];
+    return null;
+  }
+  function pageByNum(n) {
+    var list = Array.isArray(global.pages) ? global.pages : [];
+    for (var i = 0; i < list.length; i++) if (list[i] && list[i].num === n) return list[i];
+    return null;
+  }
+
+  function startPick() {
+    if (!S.id || !(S.status === 'waiting' || S.status === 'later')) return;
+    if (!onWorksheet()) { toast('Open the worksheet your question is about first.'); return; }
+    S.pick = { page: 0, box: null, form: false, drag: null, text: (S.pick && S.pick.text) || '', voice: null, sending: false };
+    S.minimized = false;
+    bindPick();
+    try { global.document.body.classList.add('consultPicking'); } catch (e) {}
+    clearQBox();
+    renderPanel();
+  }
+  function stopPick() {
+    if (S.pick && S.pick.voice) voiceStopQ(true);
+    S.pick = null;
+    try { global.document.body.classList.remove('consultPicking'); } catch (e) {}
+    clearQBox();
+  }
+  function rePick() {
+    if (!S.pick) return;
+    S.pick.form = false; S.pick.page = 0; S.pick.box = null;
+    try { global.document.body.classList.add('consultPicking'); } catch (e) {}
+    clearQBox();
+    renderPanel();
+  }
+
+  function pickTarget(e) {
+    if (!S.pick || S.pick.form) return null;
+    var t = e && e.target;
+    if (!t || !t.closest) return null;
+    if (t.closest('#consultPanel')) return null;
+    var wrap = t.closest('.pageWrap');
+    if (!wrap) return null;
+    return wrap;
+  }
+  function pickDown(e) {
+    var wrap = pickTarget(e);
+    if (!wrap) return;
+    if (e.button > 0) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    var r = wrap.getBoundingClientRect();
+    S.pick.drag = { wrap: wrap, r: r, x0: e.clientX - r.left, y0: e.clientY - r.top, x1: e.clientX - r.left, y1: e.clientY - r.top, id: e.pointerId };
+    try { if (wrap.setPointerCapture) wrap.setPointerCapture(e.pointerId); } catch (er) {}
+    drawQBox(wrap, null, S.pick.drag);
+  }
+  function pickMove(e) {
+    var d = S.pick && S.pick.drag;
+    if (!d) { if (pickTarget(e)) { e.preventDefault(); e.stopImmediatePropagation(); } return; }
+    e.preventDefault(); e.stopImmediatePropagation();
+    d.x1 = e.clientX - d.r.left; d.y1 = e.clientY - d.r.top;
+    drawQBox(d.wrap, null, d);
+  }
+  function pickUp(e) {
+    var d = S.pick && S.pick.drag;
+    if (!d) { if (pickTarget(e)) { e.preventDefault(); e.stopImmediatePropagation(); } return; }
+    e.preventDefault(); e.stopImmediatePropagation();
+    S.pick.drag = null;
+    if (e.type === 'pointercancel') { clearQBox(); return; }
+    d.x1 = e.clientX - d.r.left; d.y1 = e.clientY - d.r.top;
+    var p = pageOfWrap(d.wrap);
+    if (!p) { clearQBox(); return; }
+    var box = qBoxFrom(d.x0, d.y0, d.x1, d.y1, d.r.width, d.r.height);
+    S.pick.page = p.num; S.pick.box = box; S.pick.form = true;
+    try { global.document.body.classList.remove('consultPicking'); } catch (er) {}
+    drawQBox(d.wrap, box, null);
+    renderPanel();
+    setTimeout(function () {
+      var ta = S.panel && S.panel.querySelector('textarea.consultQText');
+      if (ta) { try { ta.focus(); } catch (er) {} }
+    }, 0);
+  }
+  // A touch screen's own touch events reach the navigation and the undo
+  // gestures even when the pointer event was swallowed; they are swallowed too.
+  function pickTouch(e) {
+    if (!S.pick || S.pick.form) return;
+    var t = e.target;
+    if (!t || !t.closest || t.closest('#consultPanel') || !t.closest('.pageWrap')) return;
+    if (e.cancelable) e.preventDefault();
+    e.stopImmediatePropagation();
+  }
+  function bindPick() {
+    if (S.pickBound) return;
+    S.pickBound = true;
+    global.addEventListener('pointerdown', pickDown, true);
+    global.addEventListener('pointermove', pickMove, true);
+    global.addEventListener('pointerup', pickUp, true);
+    global.addEventListener('pointercancel', pickUp, true);
+    global.addEventListener('touchstart', pickTouch, { capture: true, passive: false });
+    global.addEventListener('touchmove', pickTouch, { capture: true, passive: false });
+  }
+
+  function clearQBox() {
+    try {
+      var old = global.document.querySelectorAll('.consultQBox');
+      for (var i = 0; i < old.length; i++) if (old[i].parentNode) old[i].parentNode.removeChild(old[i]);
+    } catch (e) {}
+  }
+  function drawQBox(wrap, box, drag) {
+    clearQBox();
+    if (!wrap) return;
+    var n = el('div', 'consultQBox');
+    n.setAttribute('aria-hidden', 'true');
+    var l, t, w, h;
+    if (drag) {
+      var x0 = Math.min(drag.x0, drag.x1), y0 = Math.min(drag.y0, drag.y1);
+      l = x0 / drag.r.width; t = y0 / drag.r.height;
+      w = Math.abs(drag.x1 - drag.x0) / drag.r.width; h = Math.abs(drag.y1 - drag.y0) / drag.r.height;
+    } else if (box) {
+      l = box[0]; t = box[1]; w = box[2] - box[0]; h = box[3] - box[1];
+    } else {
+      n.classList.add('consultQBoxPage');
+      l = 0; t = 0; w = 1; h = 1;
+    }
+    n.style.left = (l * 100) + '%'; n.style.top = (t * 100) + '%';
+    n.style.width = (w * 100) + '%'; n.style.height = (h * 100) + '%';
+    wrap.appendChild(n);
+  }
+
+  /* The picture the teacher answers on: the page as the student sees it,
+     their own ink on it, and the box in magenta. */
+  function questionImage(p, box) {
+    if (!p || !global.document) return '';
+    try { if (typeof global.syncActiveTextEditValue === 'function') global.syncActiveTextEditValue(); } catch (e) {}
+    try { if (!(p.canvas && p.canvas.width) && typeof global.ensurePageRaster === 'function') global.ensurePageRaster(p); } catch (e) {}
+    var size = mirrorSize(p.baseW, p.baseH, Q_SNAP_LONG);
+    var c = global.document.createElement('canvas');
+    c.width = size.w; c.height = size.h;
+    var ctx = c.getContext('2d');
+    if (!ctx) return '';
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, c.width, c.height);
+    try { if (p.canvas && p.canvas.width && p.canvas.height) ctx.drawImage(p.canvas, 0, 0, c.width, c.height); } catch (e) {}
+    try {
+      if (typeof global.drawAnnsOnCtx === 'function' && p.baseW && p.baseH) {
+        global.drawAnnsOnCtx(ctx, c.width / p.baseW, c.height / p.baseH, global.annotations || [], p.num);
+      }
+    } catch (e) {}
+    if (box) {
+      var x0 = box[0] * c.width, y0 = box[1] * c.height, x1 = box[2] * c.width, y1 = box[3] * c.height;
+      ctx.fillStyle = 'rgba(26,26,26,0.08)';
+      ctx.fillRect(0, 0, c.width, y0);
+      ctx.fillRect(0, y1, c.width, c.height - y1);
+      ctx.fillRect(0, y0, x0, y1 - y0);
+      ctx.fillRect(x1, y0, c.width - x1, y1 - y0);
+      ctx.strokeStyle = Q_BOX_COLOR;
+      ctx.lineWidth = Math.max(4, c.width / 220);
+      ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    }
+    var url = '';
+    try {
+      url = c.toDataURL('image/jpeg', 0.82);
+      if (url.length > SNAP_MAX_CHARS) url = c.toDataURL('image/jpeg', 0.55);
+      if (url.length > SNAP_MAX_CHARS) url = c.toDataURL('image/jpeg', 0.35);
+    } catch (e) { url = ''; }
+    return url.length > SNAP_MAX_CHARS ? '' : url;
+  }
+
+  async function sendQuestion() {
+    var q = S.pick;
+    if (!q || q.sending || !S.ref) return;
+    var text = qClean(q.text);
+    if (!text) { toast('Type or say your question first.'); return; }
+    var p = pageByNum(q.page);
+    if (!p) { toast('Show where on the page first.'); rePick(); return; }
+    q.sending = true; renderPanel();
+    var ref = S.ref, id = S.id, gen = S.gen;
+    try {
+      var img = questionImage(p, q.box);
+      if (img) await ref.collection('frames').doc('question').set({ img: img, at: now() });
+      var question = { text: text, page: p.num, ws: global.currentDocId || '', box: q.box || null, at: now() };
+      await ref.update({ status: 'question', question: question, seen: now(), offer: null, answer: null, tc: [], sc: [] });
+      if (gen !== S.gen) return;
+      usage('consultQuestion', cleanText(S.data && S.data.worksheetName, 80));
+      stopPick();
+      resetStudent(true);
+      toast('Sent. ' + teacherName() + ' will record you an answer — it comes back here.', 6500);
+      notifyTeacher(id).catch(function () {});
+    } catch (e) {
+      console.warn('consult: the question could not be sent', e);
+      if (S.pick) { S.pick.sending = false; renderPanel(); }
+      toast('Your question could not be sent: ' + ((e && e.message) || e), 7000);
+    }
+  }
+
+  /* ---------------- Saying the question ---------------- */
+  function voiceCanQ() {
+    return !!(global.navigator && global.navigator.mediaDevices && global.navigator.mediaDevices.getUserMedia &&
+      typeof global.MediaRecorder === 'function' && typeof global.transcribeAudio === 'function');
+  }
+  async function voiceStartQ() {
+    if (!S.pick || S.pick.voice) return;
+    var stream;
+    try { stream = await global.navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) { toast('The microphone is not allowed — you can type your question instead.'); return; }
+    if (!S.pick) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+    var mime = '';
+    ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'].some(function (m) {
+      try { if (global.MediaRecorder.isTypeSupported && global.MediaRecorder.isTypeSupported(m)) { mime = m; return true; } } catch (e) {}
+      return false;
+    });
+    var rec;
+    try { rec = mime ? new global.MediaRecorder(stream, { mimeType: mime }) : new global.MediaRecorder(stream); }
+    catch (e) { stream.getTracks().forEach(function (t) { t.stop(); }); toast('This browser cannot record — type your question instead.'); return; }
+    var v = { rec: rec, stream: stream, chunks: [], mime: (rec.mimeType || mime || 'audio/webm'), cancelled: false, timer: null, busy: false };
+    S.pick.voice = v;
+    rec.ondataavailable = function (ev) { if (ev.data && ev.data.size) v.chunks.push(ev.data); };
+    rec.onstop = function () { voiceDoneQ(v); };
+    v.timer = setTimeout(function () { voiceStopQ(false); }, Q_VOICE_MAX_MS);
+    try { rec.start(); } catch (e) { voiceStopQ(true); return; }
+    renderPanel();
+  }
+  function voiceStopQ(cancel) {
+    var v = S.pick && S.pick.voice;
+    if (!v) return;
+    if (cancel) v.cancelled = true;
+    if (v.timer) { clearTimeout(v.timer); v.timer = null; }
+    try { if (v.rec && v.rec.state !== 'inactive') v.rec.stop(); else voiceDoneQ(v); } catch (e) { voiceDoneQ(v); }
+  }
+  function blobB64(blob) {
+    return new Promise(function (res, rej) {
+      var fr = new global.FileReader();
+      fr.onload = function () { var s = String(fr.result || ''); res(s.slice(s.indexOf(',') + 1)); };
+      fr.onerror = function () { rej(fr.error || new Error('could not read the recording')); };
+      fr.readAsDataURL(blob);
+    });
+  }
+  async function voiceDoneQ(v) {
+    if (v.done) return;
+    v.done = true;
+    try { v.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+    var pick = S.pick;
+    if (v.cancelled || !pick || pick.voice !== v) { if (pick && pick.voice === v) pick.voice = null; renderPanel(); return; }
+    var blob = new global.Blob(v.chunks, { type: v.mime });
+    if (!blob.size) { pick.voice = null; renderPanel(); toast('Did not catch any speech — tap 🎤 and try again.'); return; }
+    v.busy = true; renderPanel();
+    try {
+      var b64 = await blobB64(blob);
+      var hint = 'The speaker is a Singapore primary or lower-secondary student, in Singapore English, asking their teacher a ' +
+        'question about a worksheet. Keep units and scientific or mathematical terms exactly as they say them. Write down what ' +
+        'they said and nothing else — do not answer it.';
+      var said = await global.transcribeAudio(b64, v.mime, hint);
+      if (S.pick !== pick) return;
+      said = qClean(said);
+      if (said) pick.text = qClean((pick.text ? pick.text + ' ' : '') + said);
+      else toast('Did not catch any speech — tap 🎤 and try again.');
+    } catch (e) {
+      toast('Could not turn that into words: ' + ((e && e.message) || e), 6000);
+    } finally {
+      if (pick.voice === v) pick.voice = null;
+      renderPanel();
+    }
+  }
+
+  /* The pick and the form, drawn inside the student's panel. */
+  function renderPickPanel(root) {
+    var q = S.pick;
+    if (!q.form) {
+      root.appendChild(el('p', 'consultText', 'Tap the page your question is about — or drag a box round the part you need help with.'));
+      var r = el('div', 'consultRow');
+      r.appendChild(btn('Back', 'btnGhost', function () { stopPick(); renderPanel(); }));
+      root.appendChild(r);
+      return;
+    }
+    root.appendChild(el('p', 'consultNote', q.box ? '📍 Page ' + q.page + ' — the part in the pink box.' : '📍 The whole of page ' + q.page + '.'));
+    var ta = global.document.createElement('textarea');
+    ta.className = 'consultQText';
+    ta.rows = 4;
+    ta.maxLength = QUESTION_MAX;
+    ta.placeholder = 'What would you like to ask ' + teacherName() + '?';
+    ta.value = q.text || '';
+    ta.disabled = !!q.sending || !!(q.voice && q.voice.busy);
+    ta.addEventListener('input', function () { q.text = ta.value.slice(0, QUESTION_MAX); });
+    // Typing here must never reach the worksheet's one-letter shortcuts.
+    ta.addEventListener('keydown', function (e) { e.stopPropagation(); });
+    root.appendChild(ta);
+    var r2 = el('div', 'consultRow');
+    if (voiceCanQ()) {
+      var v = q.voice;
+      var label = v ? (v.busy ? 'Writing it down…' : '⏹ Done speaking') : '🎤 Say it';
+      var mb = btn(label, v && !v.busy ? 'btnPrimary consultQMic recording' : 'btnGhost consultQMic', function () {
+        if (S.pick && S.pick.voice) voiceStopQ(false); else voiceStartQ();
+      }, v ? 'Stop and write down what you said' : 'Say your question instead of typing it');
+      mb.disabled = !!(v && v.busy) || !!q.sending;
+      r2.appendChild(mb);
+    }
+    r2.appendChild(btn('Change the spot', 'btnGhost', rePick));
+    root.appendChild(r2);
+    var r3 = el('div', 'consultRow');
+    var send = btn(q.sending ? 'Sending…' : 'Send to ' + teacherName(), 'btnPrimary consultQSend', sendQuestion, 'Send your question');
+    send.disabled = !!q.sending || !!(q.voice);
+    r3.appendChild(send);
+    r3.appendChild(btn('Cancel', 'btnGhost', function () { stopPick(); renderPanel(); }));
+    root.appendChild(r3);
+  }
+
+  /* ===================================================================
+     STUDENT — the answer coming back (the reply watcher)
+
+     A question the teacher has answered arrives here as status `answered`
+     with `reply` (a Storage URL checked to be Firebase Storage's, a note).
+     A small card says so, NOT a modal; ▶ Watch plays it in a window of its
+     own. "Done" marks it seen, so it is shown once.
+     =================================================================== */
+  var R = { uid: '', unsub: null, items: [], hidden: {}, root: null, playing: null };
+
+  function replyWatchStart(u) {
+    replyWatchStop();
+    var d = db();
+    if (!u || !d) return;
+    R.uid = u.uid;
+    var uid = u.uid;
+    try {
+      R.unsub = d.collection(COLLECTION).where('studentUid', '==', uid).where('status', '==', 'answered')
+        .onSnapshot(function (qs) {
+          if (R.uid !== uid) return;
+          var list = [];
+          (qs.docs || []).forEach(function (doc) {
+            var x = doc.data() || {};
+            if (x.replySeen || !consultIdOk(doc.id)) return;
+            var CA = global.ConsultAnswer && global.ConsultAnswer.pure;
+            var reply = CA ? CA.cleanReply(x.reply) : null;
+            if (!reply) return;
+            var question = CA ? CA.cleanQuestion(x.question) : null;
+            list.push({ id: doc.id, reply: reply, question: question, ws: cleanText(x.worksheetName, 120), at: stampMs(x.answeredAt) });
+          });
+          list.sort(function (a, b) { return (b.at || 0) - (a.at || 0); });
+          R.items = list;
+          renderReplies();
+        }, function (err) { console.warn('consult: reply listener', err); });
+    } catch (e) { console.warn('consult: reply listener', e); }
+  }
+  function replyWatchStop() {
+    if (R.unsub) { try { R.unsub(); } catch (e) {} }
+    R.unsub = null; R.uid = ''; R.items = []; R.hidden = {};
+    closeReplyPlayer();
+    renderReplies();
+  }
+  function renderReplies() {
+    if (!global.document || !global.document.body) return;
+    var show = R.items.filter(function (x) { return !R.hidden[x.id]; });
+    if (!show.length) {
+      if (R.root && R.root.parentNode) R.root.parentNode.removeChild(R.root);
+      R.root = null;
+      return;
+    }
+    if (!R.root || !R.root.isConnected) {
+      R.root = el('div', 'consultReplies');
+      R.root.setAttribute('role', 'region');
+      R.root.setAttribute('aria-label', 'Answers from ' + teacherName());
+      global.document.body.appendChild(R.root);
+    }
+    while (R.root.firstChild) R.root.removeChild(R.root.firstChild);
+    show.slice(0, 3).forEach(function (x) {
+      var card = el('div', 'consultReply');
+      card.appendChild(el('div', 'consultReplyTitle', '🎬 ' + teacherName() + ' answered your question'));
+      if (x.question && x.question.text) card.appendChild(el('div', 'consultReplyQ', '“' + x.question.text + '”'));
+      var where = [x.ws, x.question && x.question.page ? 'page ' + x.question.page : ''].filter(Boolean).join(' · ');
+      if (where) card.appendChild(el('div', 'consultNote', where));
+      var row = el('div', 'consultRow');
+      row.appendChild(btn('▶ Watch', 'btnPrimary', function () { playReply(x); }));
+      if (x.question && x.question.ws && typeof global.openWorksheet === 'function') {
+        row.appendChild(btn('Open the worksheet', 'btnGhost', function () {
+          try { global.openWorksheet(x.question.ws); } catch (e) {}
+        }));
+      }
+      row.appendChild(btn('Done', 'btnGhost', function () { replyDone(x); }, 'I have watched it'));
+      row.appendChild(btn('Later', 'btnGhost', function () { R.hidden[x.id] = true; renderReplies(); }, 'Hide it for now'));
+      card.appendChild(row);
+      R.root.appendChild(card);
+    });
+  }
+  function closeReplyPlayer() {
+    var p = R.playing;
+    R.playing = null;
+    if (p && p.root) {
+      try { var m = p.root.querySelector('video,audio'); if (m) { m.pause(); m.removeAttribute('src'); } } catch (e) {}
+      if (p.root.parentNode) p.root.parentNode.removeChild(p.root);
+    }
+  }
+  function playReply(x) {
+    closeReplyPlayer();
+    var rep = x.reply;
+    var CA = global.ConsultAnswer && global.ConsultAnswer.pure;
+    if (!rep || !CA || !CA.replyUrlOk(rep.url)) { toast('That answer cannot be played.'); return; }
+    var root = el('div', 'consultReplyPlayer');
+    root.setAttribute('role', 'dialog');
+    root.setAttribute('aria-label', 'Answer from ' + teacherName());
+    var head = el('div', 'consultHead');
+    head.appendChild(el('span', 'consultIcon', '🎬'));
+    head.appendChild(el('div', 'consultTitle', teacherName() + '’s answer'));
+    head.appendChild(btn('✕', 'btnGhost consultMinBtn', closeReplyPlayer, 'Close'));
+    root.appendChild(head);
+    var isAudio = /^audio\//i.test(rep.mime || '');
+    var media = global.document.createElement(isAudio ? 'audio' : 'video');
+    media.className = 'consultReplyMedia';
+    media.controls = true;
+    media.setAttribute('playsinline', ''); media.playsInline = true;
+    media.preload = 'auto';
+    media.src = rep.url;
+    root.appendChild(media);
+    if (x.question && x.question.text) root.appendChild(el('p', 'consultReplyQ', 'You asked: “' + x.question.text + '”'));
+    if (rep.note) root.appendChild(el('p', 'consultText', rep.note));
+    root.addEventListener('keydown', function (e) { e.stopPropagation(); if (e.key === 'Escape') closeReplyPlayer(); });
+    global.document.body.appendChild(root);
+    R.playing = { id: x.id, root: root };
+    try { var pr = media.play(); if (pr && pr.catch) pr.catch(function () {}); } catch (e) {}
+  }
+  async function replyDone(x) {
+    R.hidden[x.id] = true;
+    renderReplies();
+    if (R.playing && R.playing.id === x.id) closeReplyPlayer();
+    var d = db();
+    if (!d || !consultIdOk(x.id)) return;
+    try { await d.collection(COLLECTION).doc(x.id).update({ replySeen: now() }); } catch (e) { console.warn('consult: could not mark the answer seen', e); }
+    usage('consultReply', x.ws);
+  }
+
 
   /* ===================================================================
      TEACHER — the consult room
