@@ -274,8 +274,8 @@ test('the page goes out as a canvas mirror, not a screen share', () => {
 
 test('index.html wires the button, the files, the account hook and the usage row', () => {
   assert.match(HTML, /<link rel="stylesheet" href="consult\.css\?v=1\.65\.0">/);
-  assert.match(HTML, /<link rel="stylesheet" href="consult-answer\.css\?v=1\.65\.0">/);
-  assert.match(HTML, /<script src="consult-answer\.js\?v=1\.65\.0"><\/script>\s*<script src="consult\.js\?v=1\.65\.0"><\/script>/,
+  assert.match(HTML, /<link rel="stylesheet" href="consult-answer\.css\?v=1\.68\.0">/);
+  assert.match(HTML, /<script src="consult-answer\.js\?v=1\.68\.0"><\/script>\s*<script src="consult\.js\?v=1\.65\.0"><\/script>/,
     'the recorder loads first, so consult.js finds window.ConsultAnswer');
   assert.match(HTML, /id="consultBtn"[^>]*hidden/, 'hidden until consult.js decides who may see it');
   assert.match(HTML, /var APP_VERSION = 'v1\.(6[3-9]|[7-9]\d|\d{3})\.\d+';/);
@@ -683,12 +683,22 @@ test('when, in words a reader acts on', () => {
   assert.equal(W('junk', NOW), '');
 });
 
-test('the archive reads, never deletes, and its one write is the student\'s own "seen"', () => {
+test('the archive overwrites nothing; its writes are the student\'s own "seen" and the teacher\'s 🗑 Delete', () => {
   const at = CA_SRC.indexOf('/* ---- The player ---- */');
   const end = CA_SRC.indexOf('/* ---- Closing ---- */');
   assert.ok(at > 0 && end > at);
   const ARCH = CA_SRC.slice(at, end);
-  assert.ok(!/\.delete\(|\.set\(|runTransaction/.test(ARCH), 'nothing in the archive deletes or overwrites a consult');
+  assert.ok(!/\.set\(|runTransaction/.test(ARCH), 'nothing in the archive overwrites a consult');
+  // Every delete lives in deleteConsult, which is the teacher's and asks first.
+  const d0 = ARCH.indexOf('async function deleteConsult');
+  const d1 = ARCH.indexOf('function openLog');
+  assert.ok(d0 > 0 && d1 > d0);
+  const DEL = ARCH.slice(d0, d1);
+  assert.equal((ARCH.match(/\.delete\(\)/g) || []).length, (DEL.match(/\.delete\(\)/g) || []).length, 'only deleteConsult deletes');
+  assert.match(DEL.slice(0, 120), /teacherHere\(\)/, 'deleting is the teacher\'s, refused in the handler');
+  assert.ok(DEL.indexOf('await x.delete()') < DEL.indexOf('plan.subs'), 'the document goes first, so a refusal takes nothing else');
+  assert.match(DEL, /plan\.files/, 'the video goes by a checked path only');
+  assert.deepEqual(J(CA.pure.deletePlan('abcdefghijkl12345678', { reply: { path: 'users/x/secret.mp4' } }).files), []);
   const updates = ARCH.match(/\.update\(/g) || [];
   assert.equal(updates.length, 1, 'one write: markSeen');
   assert.match(ARCH, /x\.update\(\{ replySeen: Date\.now\(\) \}\)/);

@@ -72,8 +72,14 @@ the `📚 All consults` button (`.consultAlertAll`) in `consult.js`.
 - **`logState` IS THE ONE PLACE A CONSULT'S STATE IS DECIDED**, from the document alone: a
   `waiting` that is not still ringing (`callRinging`, the pop-up's freshness rule) is a missed
   call, an `ended` with `joinedAt` was talked through, an `answered` with `replySeen` is watched.
-- **IT READS AND NEVER DELETES.** The ONE write is `markSeen`: the student's own
+- **IT OVERWRITES NOTHING.** The student's one write is `markSeen`: their own
   `replySeen`, on their own consult, the first time. The harness counts the writes.
+- **🗑 DELETE IS THE TEACHER'S, ASKED TWICE ON THE ROW (v1.68.0 / Ans Key v1.154.0).**
+  `deleteConsult` is the only place the archive deletes: `teacherHere` first, the document
+  FIRST (a refusal takes nothing else), then its `ink` and `frames` sub-collections, then the
+  reply video by a `replyPathOk` path only (`deletePlan`). 🗑 Delete only sets `s.asking`; the
+  row shows `deleteAsk(row)` with Cancel and 🗑 Yes, delete. An open call is deletable and says
+  it ends for the student; `consult.js` already handles a consult that vanishes.
 - **THE LOG IS THE TEACHER'S, refused in `openLog` itself** (`teacherHere`); the library
   queries `studentUid == uid` only. A reply is played only through `cleanReply`, so a link that
   is not Firebase Storage never reaches a `<video src>`. Every word is `textContent`.
