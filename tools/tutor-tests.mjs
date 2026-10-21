@@ -5614,6 +5614,17 @@ section('The bookshelf');
   eq('with motion switched off a card is never turned at all', S.shelfWheelPose(0.7, false), { rot: 0, z: 0, scale: 1, op: 1 });
   ok('junk is the middle pose', S.shelfWheelPose('x').rot === 0 && S.shelfWheelPose(undefined).scale === 1);
   ok('the row is the scroller and snaps to a paper', /\.shelfRow \{[^}]*scroll-snap-type: x mandatory/.test(html) && /\.shelfItem \{[^}]*scroll-snap-align: center/.test(html));
+  /* 📱 v1.65.1: a bookcase posed card by card was a GPU layer per paper, and
+     an iPhone killed the tab ("Can't open this page") on the first scroll. */
+  ok('a shelf card is never a standing GPU layer (no will-change, no preserve-3d)',
+     !/\.shelfItem \{[^}]*(will-change|preserve-3d)/.test(html));
+  ok('only cards near the visible part of a shelf are turned; the rest stand flat',
+     /if \(Math\.abs\(d\) > SHELF_WHEEL_LIVE\) \{ shelfWheelFlat\(cards\[i\]\); continue; \}/.test(html));
+  ok('a shelf scrolled off the screen stands every card flat',
+     /if \(row\._shelfSeen === false\) \{[\s\S]{0,120}shelfWheelFlat\(cards\[i\]\)/.test(html) &&
+     /new IntersectionObserver\(/.test(html));
+  ok('one resize listener for the whole bookcase, not one per shelf per repaint',
+     /if \(!_shelfResizeBound && typeof window/.test(html) && !/window\.addEventListener\('resize', kick\)/.test(html));
   ok('the wheel is posed off the scroll, one paint a frame', /row\.addEventListener\('scroll', kick, \{ passive: true \}\)/.test(html) && /requestAnimationFrame\(run\)/.test(html));
   ok('the home screen is built from shelfSections over EVERY paper the student has',
      /var entries = shelfEntries\(worksheets, assignmentsForMe\(\)\);[\s\S]{0,1400}var sections = shelfSections\(entries, \{[\s\S]{0,700}\}\);[\s\S]{0,2400}box\.appendChild\(shelfNode\(sec\)\);/.test(html));
