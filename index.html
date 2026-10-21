@@ -502,9 +502,13 @@
     perspective: 900px; perspective-origin: 50% 40%;
   }
   .shelfRow::-webkit-scrollbar { display: none; }
+  /* NO `will-change`, NO `preserve-3d` (v1.65.1). Either one makes EVERY
+     card on EVERY shelf its own GPU layer, posed or not, on screen or not —
+     120 papers on an iPhone is ~700 MB of layer bitmaps at 3× and the tab is
+     killed the moment a scroll asks for them ("Can't open this page"). Only
+     the few cards `shelfWheelApply` actually turns are layers now. */
   .shelfItem {
     flex: 0 0 300px; width: 300px; scroll-snap-align: center;
-    transform-style: preserve-3d; will-change: transform;
     transition: transform .18s ease-out, opacity .18s ease-out;
   }
   .shelfItem .wsCard { height: 100%; }
@@ -3043,7 +3047,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.65.0';
+var APP_VERSION = 'v1.65.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -20117,22 +20121,73 @@ function shelfWheelCss(pose) {
   return 'perspective(900px) translateZ(' + pose.z.toFixed(1) + 'px) rotateY(' + pose.rot.toFixed(2) + 'deg) scale(' + pose.scale.toFixed(3) + ')';
 }
 /* Poses every card on a shelf from where the shelf is scrolled to. Called
-   on scroll (coalesced to one paint a frame), on resize and once on paint. */
+   on scroll (coalesced to one paint a frame), on resize and once on paint.
+
+   ONLY THE CARDS THAT CAN BE SEEN ARE TURNED (v1.65.1). A 3D pose is a GPU
+   layer, and a layer is a full bitmap at the screen's pixel ratio: a
+   bookcase of 120 papers posed all at once was ~700 MB on a 3× iPhone, and
+   iOS kills a tab long before that — the "Can't open this page" a student
+   saw the moment they scrolled the home screen. So a card further along the
+   shelf than `SHELF_WHEEL_LIVE` row-widths is stood FLAT (no transform, no
+   layer); it is off the side of the shelf, so nobody sees it straighten, and
+   it is posed again as it scrolls in. A shelf scrolled off the top or bottom
+   of the screen is stood flat entirely (`shelfWheelSeen`). */
+var SHELF_WHEEL_LIVE = 1.4;
+function shelfWheelFlat(card) {
+  if (!card.style.transform && !card.style.opacity) return;
+  card.style.transform = '';
+  card.style.opacity = '';
+  card.style.zIndex = '';
+}
 function shelfWheelApply(row) {
   if (!row || !row.getBoundingClientRect) return;
+  var cards = row.querySelectorAll('.shelfItem');
+  var i;
+  if (row._shelfSeen === false) {
+    for (i = 0; i < cards.length; i++) shelfWheelFlat(cards[i]);
+    return;
+  }
   var box = row.getBoundingClientRect();
   var mid = box.left + box.width / 2;
   var span = Math.max(1, box.width);
   var motion = liveOrbMotionOk();
-  var cards = row.querySelectorAll('.shelfItem');
-  for (var i = 0; i < cards.length; i++) {
+  for (i = 0; i < cards.length; i++) {
     var r = cards[i].getBoundingClientRect();
     var d = (r.left + r.width / 2 - mid) / span;
+    if (Math.abs(d) > SHELF_WHEEL_LIVE) { shelfWheelFlat(cards[i]); continue; }
     var pose = shelfWheelPose(d, motion);
     cards[i].style.transform = shelfWheelCss(pose);
     cards[i].style.opacity = String(pose.op);
     cards[i].style.zIndex = String(100 - Math.round(Math.abs(d) * 50));
   }
+}
+/* Whether a shelf is on (or nearly on) the screen. One observer for the
+   whole bookcase; a browser without one simply poses every shelf, as before. */
+var _shelfSeenObserver = null;
+function shelfWheelSeen(row) {
+  if (typeof IntersectionObserver !== 'function') return;
+  if (!_shelfSeenObserver) {
+    _shelfSeenObserver = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        // A bookcase repainted away is let go of, not watched for ever.
+        if (!e.target.isConnected) { _shelfSeenObserver.unobserve(e.target); return; }
+        e.target._shelfSeen = e.isIntersecting;
+        shelfWheelApply(e.target);
+      });
+    }, { rootMargin: '200px 0px' });
+  }
+  row._shelfSeen = false;
+  _shelfSeenObserver.observe(row);
+}
+/* ONE resize listener for every shelf there is, read off the document at
+   the time. A listener per row was added on every repaint of the home screen
+   and never taken off, so each one kept a whole detached bookcase — covers
+   and all — alive for the rest of the session. */
+var _shelfResizeBound = false;
+function shelfWheelResize() {
+  if (typeof document === 'undefined') return;
+  var rows = document.querySelectorAll('.shelfRow');
+  for (var i = 0; i < rows.length; i++) shelfWheelApply(rows[i]);
 }
 function shelfWheelWatch(row) {
   var pending = false;
@@ -20143,7 +20198,13 @@ function shelfWheelWatch(row) {
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run); else run();
   };
   row.addEventListener('scroll', kick, { passive: true });
-  if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', kick);
+  if (!_shelfResizeBound && typeof window !== 'undefined' && window.addEventListener) {
+    _shelfResizeBound = true;
+    window.addEventListener('resize', function () {
+      if (typeof requestAnimationFrame === 'function') requestAnimationFrame(shelfWheelResize); else shelfWheelResize();
+    });
+  }
+  shelfWheelSeen(row);
   kick();
 }
 /* Scroll a shelf by one card, the ‹ › buttons on a mouse. */
