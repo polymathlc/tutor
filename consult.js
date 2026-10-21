@@ -727,7 +727,7 @@
   var S = {
     id: '', ref: null, unsub: null, inkUnsub: null, data: null, status: '', endedBy: '',
     pc: null, handledRev: null, rev: 0, buf: [], docReady: false, seenTc: {},
-    mic: null, micOn: true, channel: null, remote: null,
+    mic: null, micOn: true, micBusy: false, channel: null, remote: null,
     mirror: null, mirrorTimer: null, lastDraw: 0, lastSig: '',
     strokes: {}, live: {}, laser: null, laserTimer: null,
     heartbeat: null, supervisor: null, lastSnap: 0, liveSince: 0, connectedAt: 0,
@@ -824,6 +824,7 @@
       // still see the page and write on it.
       await openMic();
       if (gen !== S.gen) { stopMic(); return; }
+      watchMicEnd();
       var ref = d.collection(COLLECTION).doc();
       var view = currentView();
       var ls = studentLevelSubject();
@@ -833,7 +834,7 @@
         studentUid: u.uid, studentName: studentName(),
         worksheetId: global.currentDocId || '', worksheetName: cleanText(global.docName || '', TITLE_MAX),
         level: ls.level, subject: ls.subject,
-        view: view, mic: !!S.mic,
+        view: view, mic: !!micTrack(), micOn: true,
         at: t, seen: t, createdAt: serverStamp(),
         rev: 0, offer: null, answer: null, arev: null, tc: [], sc: []
       };
@@ -910,8 +911,77 @@
   function toggleMic() {
     S.micOn = !S.micOn;
     if (S.mic) S.mic.getAudioTracks().forEach(function (t) { t.enabled = S.micOn; });
+    tellMic();
     renderPanel();
   }
+
+  /* TWO-WAY SOUND (v1.67.0). A call where the teacher talks and cannot hear
+     the student is a lecture, so the student's microphone is part of the
+     call, not an extra: opened at the press, opened AGAIN when the teacher
+     joins if it was refused or has gone (an iPad ends a capture when the tab
+     is put away), and attachable mid-call with one tap. The audio
+     transceiver is answered `sendrecv` whether or not a microphone is there,
+     which is what lets a microphone turned on later go out with
+     `replaceTrack` and no renegotiation. Video stays optional: what the
+     student sends as video is the page, never their camera. */
+  function micTrack() {
+    var t = S.mic && S.mic.getAudioTracks ? S.mic.getAudioTracks()[0] : null;
+    return t && t.readyState !== 'ended' ? t : null;
+  }
+  function watchMicEnd() {
+    var t = micTrack();
+    if (!t || t._consultWatched) return;
+    t._consultWatched = true;
+    try {
+      t.addEventListener('ended', function () {
+        if (S.mic && S.mic.getAudioTracks()[0] === t) { S.mic = null; tellMic(); renderPanel(); }
+        if (S.status === 'live') reopenMic();
+      });
+    } catch (e) {}
+  }
+  function attachMic() {
+    var pc = S.pc, t = micTrack();
+    if (!pc || !pc.getTransceivers) return false;
+    var done = false;
+    pc.getTransceivers().forEach(function (tr) {
+      var kind = tr.receiver && tr.receiver.track ? tr.receiver.track.kind : '';
+      if (kind !== 'audio' || !tr.sender) return;
+      try { tr.sender.replaceTrack(t || null); done = !!t; } catch (e) {}
+    });
+    if (t) t.enabled = S.micOn;
+    return done;
+  }
+  function tellMic() {
+    if (!S.ref || !(S.status === 'waiting' || S.status === 'live')) return;
+    S.ref.update({ mic: !!micTrack(), micOn: !!S.micOn }).catch(function () {});
+  }
+  async function reopenMic() {
+    if (S.micBusy || micTrack()) return !!micTrack();
+    S.micBusy = true;
+    var gen = S.gen;
+    try {
+      var keepOn = S.micOn;
+      await openMic();
+      if (gen !== S.gen) { stopMic(); return false; }
+      S.micOn = keepOn !== false;
+      watchMicEnd();
+      attachMic();
+      tellMic();
+      return !!micTrack();
+    } finally {
+      S.micBusy = false;
+      renderPanel();
+    }
+  }
+  async function turnOnMic() {
+    var ok = await reopenMic();
+    if (!ok) toast('Your microphone could not be turned on. Allow the microphone for this site in your browser settings, then tap again.', 8000);
+    else { S.micOn = true; attachMic(); tellMic(); renderPanel(); }
+  }
+  function micOnVisible() {
+    if (global.document && global.document.visibilityState === 'visible' && S.status === 'live' && !micTrack()) reopenMic();
+  }
+  if (global.document && global.document.addEventListener) global.document.addEventListener('visibilitychange', micOnVisible);
 
   function startHeartbeat() {
     stopHeartbeat();
@@ -1010,6 +1080,13 @@
     var Peer = RTC();
     var rev = Number(data.rev);
     S.handledRev = rev;
+    // The teacher is here: a microphone refused at the press, or one the
+    // device has since ended, is asked for again now — the moment hearing
+    // the student starts to matter.
+    if (!micTrack()) {
+      await reopenMic();
+      if (S.handledRev !== rev) return;
+    }
     closePc();
     S.rev = rev; S.seenTc = {}; S.buf = []; S.docReady = false; S.liveSince = now(); S.connectedAt = 0;
     if (!Peer) return;
@@ -1046,20 +1123,23 @@
     try {
       await pc.setRemoteDescription(data.offer);
       var mirrorTrack = ensureMirror();
-      var micTrack = S.mic ? S.mic.getAudioTracks()[0] : null;
+      var mic = micTrack();
+      if (mic) mic.enabled = S.micOn;
       (pc.getTransceivers ? pc.getTransceivers() : []).forEach(function (tr) {
         var kind = tr.receiver && tr.receiver.track ? tr.receiver.track.kind : '';
-        var track = kind === 'video' ? mirrorTrack : kind === 'audio' ? micTrack : null;
+        var track = kind === 'video' ? mirrorTrack : kind === 'audio' ? mic : null;
         try {
-          if (track) { tr.sender.replaceTrack(track); tr.direction = 'sendrecv'; }
-          else tr.direction = 'recvonly';
+          if (track) tr.sender.replaceTrack(track);
+          // Audio is ALWAYS answered sendrecv, so a microphone turned on
+          // later goes out by replaceTrack without a second offer.
+          tr.direction = (track || kind === 'audio') ? 'sendrecv' : 'recvonly';
         } catch (e) {}
       });
       var ans = await pc.createAnswer();
       await pc.setLocalDescription(ans);
       if (S.pc !== pc) return;
       var buf = S.buf.slice(); S.buf = [];
-      await S.ref.update({ answer: sdpOf(pc.localDescription || ans), arev: rev, sc: buf, seen: now(), mic: !!micTrack });
+      await S.ref.update({ answer: sdpOf(pc.localDescription || ans), arev: rev, sc: buf, seen: now(), mic: !!mic, micOn: !!S.micOn });
       S.docReady = true;
       if (S.buf.length) {
         var late = S.buf.slice(); S.buf = [];
@@ -1595,7 +1675,12 @@
         : 'Keep working — ' + teacherName() + ' will appear here as soon as they join.' + (waitedFor ? ' (asked ' + waitedFor + ')' : '')));
       var note = S.notify && S.notify.pending ? 'Sending ' + teacherName() + ' an email…' : notifyWords(S.notify);
       if (note) root.appendChild(el('p', 'consultNote', note));
-      if (!S.mic) root.appendChild(el('p', 'consultNote', '🎤 Your microphone is off, so ' + teacherName() + ' will not hear you, but can still see your page and talk to you.'));
+      if (!micTrack()) {
+        root.appendChild(el('p', 'consultNote', '🎤 Your microphone is off, so ' + teacherName() + ' will not hear you. Turn it on so you can talk to each other.'));
+        var rm = el('div', 'consultRow');
+        rm.appendChild(btn(S.micBusy ? '🎤 Turning on…' : '🎤 Turn on my microphone', 'btnPrimary consultMicOn', turnOnMic, 'Let ' + teacherName() + ' hear you'));
+        root.appendChild(rm);
+      }
       var waitedMs = S.data && stampMs(S.data.at) ? now() - stampMs(S.data.at) : 0;
       if (waitedMs >= LATER_NUDGE_MS) root.appendChild(el('p', 'consultNote', teacherName() + ' may not be on Study Buddy right now. You can leave your question and get a recorded answer back.'));
       var r2 = el('div', 'consultRow');
@@ -1635,7 +1720,11 @@
           : 'Connecting…'));
       }
       var r3 = el('div', 'consultRow');
-      if (S.mic) r3.appendChild(btn(S.micOn ? '🎤 Mute me' : '🎤 Unmute me', 'btnGhost', toggleMic, S.micOn ? 'Mute your microphone' : 'Unmute your microphone'));
+      if (micTrack()) r3.appendChild(btn(S.micOn ? '🎤 Mute me' : '🎤 Unmute me', 'btnGhost consultMute', toggleMic, S.micOn ? 'Mute your microphone' : 'Unmute your microphone'));
+      else {
+        root.appendChild(el('p', 'consultNote', '🎤 ' + teacherName() + ' cannot hear you — your microphone is off.'));
+        r3.appendChild(btn(S.micBusy ? '🎤 Turning on…' : '🎤 Turn on my microphone', 'btnPrimary consultMicOn', turnOnMic, 'Let ' + teacherName() + ' hear you'));
+      }
       r3.appendChild(btn('End', 'btnGhost consultEnd', function () { endStudent('ended'); }, 'End the consult'));
       root.appendChild(r3);
       if (S.remote && v.srcObject !== S.remote) playRemote();
@@ -2484,6 +2573,7 @@
     // would race the first.
     if (data.status === 'waiting' && T.pc && T.docReady && !T.negotiating && !T.ending) negotiate();
     renderRoomHead();
+    renderRoomStatus();
   }
 
   /* The view is STORED even when it is the "same" page: `sameView` ignores
@@ -2682,13 +2772,22 @@
     vb.style.height = Math.max(0, (box[3] - box[1]) * 100) + '%';
   }
 
+  /* Whether the teacher can hear the student, said in the bar: a silent
+     student and a muted one are different things to do something about. */
+  function studentMicWords(d) {
+    var who = cleanText(d && d.studentName, NAME_MAX) || 'The student';
+    if (!d || !d.mic) return '🔇 ' + who + '’s microphone is off';
+    if (d.micOn === false) return '🔇 ' + who + ' is muted';
+    return '🎤 ' + who + ' can be heard';
+  }
+
   function renderRoomStatus() {
     if (!T.root) return;
     var s = T.root.querySelector('.cRoomStatus');
     var state = T.pc ? T.pc.connectionState : '';
     var text = '';
     if (!T.pc) text = 'Video is not available in this browser — the page will come as pictures.';
-    else if (state === 'connected') text = '● Live';
+    else if (state === 'connected') text = '● Live · ' + studentMicWords(T.data);
     else if (state === 'failed') text = 'Video could not connect — showing pictures of the page instead.';
     else if (T.data && T.data.answer && Number(T.data.arev) === T.rev) text = 'Connecting…';
     else text = 'Calling ' + (cleanText(T.data && T.data.studentName, NAME_MAX) || 'the student') + '…';
@@ -3491,7 +3590,7 @@
     state: function () {
       return {
         student: { id: S.id, status: S.status, rev: S.rev, strokes: Object.keys(S.strokes).length, live: Object.keys(S.live).length,
-          connection: S.pc ? S.pc.connectionState : '', mic: !!S.mic, asking: S.asking },
+          connection: S.pc ? S.pc.connectionState : '', mic: !!micTrack(), micOn: !!S.micOn, asking: S.asking },
         teacher: { id: T.id, rev: T.rev, strokes: Object.keys(T.strokes).length, connection: T.pc ? T.pc.connectionState : '',
           channel: T.channel ? T.channel.readyState : '', view: T.view, mode: T.mode },
         waiting: waitingList().map(function (w) { return w.id; }),

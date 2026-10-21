@@ -259,6 +259,21 @@ await student.page.evaluate(() => {
   wsMeta.level = 'P5'; wsMeta.subject = 'science';
   showView('ws');
   window.visiblePage = () => pages[0];
+  (function () {
+    const Real = window.RTCPeerConnection;
+    window.__pcs = [];
+    window.RTCPeerConnection = function (cfg) { const pc = new Real(cfg); window.__pcs.push(pc); return pc; };
+    window.RTCPeerConnection.prototype = Real.prototype;
+  })();
+  // The microphone is REFUSED at the press (a child who tapped Block, or a
+  // prompt dismissed), and allowed afterwards: the call must ask again.
+  const realGum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+  window.__gumCalls = 0; window.__streams = [];
+  navigator.mediaDevices.getUserMedia = async c => {
+    window.__gumCalls++;
+    if (window.__gumCalls === 1) throw new DOMException('refused', 'NotAllowedError');
+    const st = await realGum(c); window.__streams.push(st); return st;
+  };
   TutorConsult.authChanged(currentUser);
 });
 
@@ -296,6 +311,8 @@ const waitingPanel = await until(() => student.page.evaluate(() => {
   return p && /emailed/.test(p.textContent) ? p.textContent : '';
 }), 5000);
 ok('the student is told the teacher was emailed', !!waitingPanel, waitingPanel);
+ok('a refused microphone is written as off', doc.mic === false, String(doc.mic));
+ok('…and the waiting panel offers to turn it on', /Turn on my microphone/.test(waitingPanel || ''), waitingPanel);
 ok('the button says it is waiting', /Waiting/.test(await student.page.textContent('#consultBtn')));
 
 console.log('\n🔔 The teacher\'s tab pops up');
@@ -308,6 +325,14 @@ await teacher.page.evaluate(() => {
   currentUser = { uid: 'teacher-fixture', email: 'chungzhikai@gmail.com', displayName: 'Teacher',
     getIdToken: async () => 'fixture-admin-token' };
   TutorConsult.authChanged(currentUser);
+});
+await teacher.page.evaluate(() => {
+  (function () {
+    const Real = window.RTCPeerConnection;
+    window.__pcs = [];
+    window.RTCPeerConnection = function (cfg) { const pc = new Real(cfg); window.__pcs.push(pc); return pc; };
+    window.RTCPeerConnection.prototype = Real.prototype;
+  })();
 });
 const teacherBtn = await teacher.page.evaluate(() => document.getElementById('consultBtn').hidden);
 ok('the teacher is not offered the student\'s button', teacherBtn === true);
@@ -350,6 +375,48 @@ ok('…and names the student', /Ada Fixture/.test(await teacher.page.textContent
 ok('the student\'s button says who they are with', /With Mr Chung/.test(await student.page.textContent('#consultBtn')));
 const channel = await until(() => teacher.page.evaluate(() => TutorConsult.state().teacher.channel === 'open'), 8000);
 ok('the ink channel opens', !!channel);
+
+console.log('\n🎤 Two-way sound');
+async function audioIn(pg) {
+  return pg.evaluate(async () => {
+    let total = 0;
+    for (const pc of window.__pcs || []) {
+      if (pc.connectionState !== 'connected') continue;
+      const st = await pc.getStats();
+      st.forEach(r => { if (r.type === 'inbound-rtp' && r.kind === 'audio') total += r.bytesReceived || 0; });
+    }
+    return total;
+  });
+}
+async function audioGrows(pg, ms) {
+  const a = await audioIn(pg);
+  return until(async () => { const b = await audioIn(pg); return b > a + 200 ? b - a : 0; }, ms || 8000);
+}
+ok('the microphone refused at the press is asked for again when the teacher joins',
+  await student.page.evaluate(() => window.__gumCalls >= 2 && TutorConsult.state().student.mic === true),
+  JSON.stringify(await student.page.evaluate(() => ({ calls: window.__gumCalls, s: TutorConsult.state().student }))));
+ok('the TEACHER hears the student (audio arriving)', !!(await audioGrows(teacher.page)));
+ok('the STUDENT hears the teacher (audio arriving)', !!(await audioGrows(student.page)));
+ok('the room says the student can be heard', !!(await until(() => teacher.page.evaluate(() =>
+  /can be heard/.test(document.querySelector('#consultRoom .cRoomStatus').textContent)), 5000)),
+  await teacher.page.textContent('#consultRoom .cRoomStatus'));
+await student.page.click('#consultPanel button.consultMute');
+ok('the student muting is shown to the teacher', !!(await until(() => teacher.page.evaluate(() =>
+  /is muted/.test(document.querySelector('#consultRoom .cRoomStatus').textContent)), 5000)));
+await student.page.click('#consultPanel button.consultMute');
+ok('…and unmuting too', !!(await until(() => teacher.page.evaluate(() =>
+  /can be heard/.test(document.querySelector('#consultRoom .cRoomStatus').textContent)), 5000)));
+// The device ends the capture mid-call (an iPad put away, a headset pulled
+// out): the microphone comes back by itself, with no second offer.
+const revBefore = store.get(consultPath).rev;
+await student.page.evaluate(() => {
+  const st = window.__streams[window.__streams.length - 1];
+  const t = st.getAudioTracks()[0]; t.stop(); t.dispatchEvent(new Event('ended'));
+});
+ok('a microphone the device ended is opened again', !!(await until(() => student.page.evaluate(() =>
+  window.__gumCalls >= 3 && TutorConsult.state().student.mic === true), 6000)));
+ok('…and the teacher hears the student again, without a second offer',
+  !!(await audioGrows(teacher.page)) && store.get(consultPath).rev === revBefore);
 
 console.log('\n✏️ The teacher writes on the student\'s page');
 const annBefore = await student.page.evaluate(() => annotations.length);

@@ -48,6 +48,12 @@ opens `?consult=<id>` here, which opens the teacher's room.
 - **A PINCH IS NEVER A STROKE** (`bindStage`: a second finger abandons the stroke in progress);
   ✋ Move drags/taps without writing; the student's panel is draggable by its heading and clamped
   on screen (`clampPanelPos`, `bindPanelDrag`).
+- **THE CALL IS TWO-WAY SOUND** (v1.67.0): the student's audio transceiver is always `sendrecv`,
+  so `attachMic` can `replaceTrack` a microphone in mid-call with no renegotiation. `micTrack()` is
+  the one test of a live microphone; `reopenMic` re-asks when the teacher's offer lands with none,
+  on `ended` (`watchMicEnd`) and on `visibilitychange`. `mic` / `micOn` ride on the doc
+  (`tellMic`) and `studentMicWords` tells the teacher whether the student can be heard. Video stays
+  the page mirror only — never the student's camera.
 - Run **`node --test tools/consult-tests.mjs`**, **`node --test functions/test/consult-service.test.js`**
   and **`node tools/consult-browser-check.mjs`** after touching any of it. The browser one drives
   two real Chromium tabs with a fake camera through the ask, the pop-up, the call, a stroke, the
