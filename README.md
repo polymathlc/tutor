@@ -17,6 +17,27 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.66.0 — 🎬 My answers, and 🙋 every consult kept for Mr Chung
+
+Nothing a consult leaves behind disappears any more.
+
+- **A student's 🎬 My answers.** A button in the header opens every video answer Mr Chung
+  has recorded for them, newest first, with the question they asked, the page, his note and
+  when he sent it. ▶ Watch plays it again as often as they like; **Open the worksheet** takes
+  them back to the paper. Questions still waiting for an answer are listed above. Pressing
+  Done on the pop-up card no longer loses the video: it stays on this shelf. The button says
+  how many answers are new.
+- **Mr Chung's 🙋 Consults.** A button in the header (and **📚 All consults** under the
+  pop-ups) opens every call and question students have sent: calls ringing now, calls talked
+  through, calls missed, questions waiting, and every question answered with the video he
+  sent. **To do / Answered / Calls / All** filter it, and the search box finds a name, a
+  worksheet or words from the question. From a row he can **Join** a call still ringing,
+  **📝 Answer** a question, or **▶ Watch** and **📝 Answer again** one already answered.
+  A pop-up he pressed Hide on is still here, and the button's count includes it.
+- The same 🙋 Consults list is in Ans Key's header, so it can be opened from either app.
+- It only reads the consults. The one thing it writes is a student marking their own new
+  answer as watched.
+
 ## v1.65.0 — 📝 Consult: leave a question, get a recorded answer back
 
 When Mr Chung is not on Study Buddy, or is there but cannot take a call, a student can

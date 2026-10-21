@@ -751,6 +751,49 @@
     b.classList.toggle('consultOn', on);
     b.textContent = on ? (S.status === 'live' ? '🙋 With ' + teacherName() : '🙋 Waiting…') : '🙋 Consult';
     b.title = on ? 'Your consult with ' + teacherName() : 'Ask ' + teacherName() + ' to join you on this worksheet';
+    syncLogButton();
+  }
+
+  /* 📚 THE ARCHIVE'S BUTTON (v1.66.0), in the header. The teacher's reads
+     "🙋 Consults" and opens every call and question ever made; a student's
+     reads "🎬 My answers" and opens every video answer they have been sent.
+     Both windows are ConsultAnswer's, shared with Ans Key. The count is what
+     is waiting NOW (the pop-up's own list, the unseen answers), so the
+     button says whether opening it is worth it. */
+  function logButtonFor() {
+    var u = user();
+    if (!u) return '';
+    if (admin()) return practice() ? '' : 'teacher';
+    return 'student';
+  }
+  function syncLogButton() {
+    var b = $('consultLogBtn');
+    if (!b) return;
+    var who = logButtonFor();
+    var CA = global.ConsultAnswer;
+    b.hidden = !who || !CA || (who === 'teacher' ? typeof CA.openLog !== 'function' : typeof CA.openLibrary !== 'function');
+    if (b.hidden) return;
+    // The teacher's count includes the cards they HID: hiding a card is "not
+    // now", and the button is where it is found again.
+    var n = who === 'teacher' ? waitingCount() : (R && R.items ? R.items.length : 0);
+    if (who === 'teacher') {
+      b.textContent = '🙋 Consults' + (n ? ' · ' + n : '');
+      b.title = n ? n + ' waiting — every call and question students have sent you' : 'Every call and question students have sent you, and the videos you answered with';
+    } else {
+      b.textContent = '🎬 My answers' + (n ? ' · ' + n + ' new' : '');
+      b.title = 'Every video answer ' + teacherName() + ' has sent you';
+    }
+    b.classList.toggle('consultOn', n > 0);
+  }
+  function onLogButton() {
+    var who = logButtonFor();
+    var CA = global.ConsultAnswer;
+    if (!who || !CA) return;
+    if (who === 'teacher') {
+      if (typeof CA.openLog === 'function') CA.openLog({ join: function (id) { openRoom(id); renderAlerts(); } });
+    } else if (typeof CA.openLibrary === 'function') {
+      CA.openLibrary();
+    }
   }
 
   function onButton() {
@@ -2087,6 +2130,7 @@
   }
   function renderReplies() {
     if (!global.document || !global.document.body) return;
+    syncLogButton();
     var show = R.items.filter(function (x) { return !R.hidden[x.id]; });
     if (!show.length) {
       if (R.root && R.root.parentNode) R.root.parentNode.removeChild(R.root);
@@ -2114,7 +2158,7 @@
         }));
       }
       row.appendChild(btn('Done', 'btnGhost', function () { replyDone(x); }, 'I have watched it'));
-      row.appendChild(btn('Later', 'btnGhost', function () { R.hidden[x.id] = true; renderReplies(); }, 'Hide it for now'));
+      row.appendChild(btn('Later', 'btnGhost', function () { R.hidden[x.id] = true; renderReplies(); }, 'Hide it for now — it stays in 🎬 My answers'));
       card.appendChild(row);
       R.root.appendChild(card);
     });
@@ -3216,6 +3260,14 @@
         return itemAt(a) - itemAt(b);
       });
   }
+  function waitingCount() {
+    if (!W || !W.items) return 0;
+    var t = now();
+    return Object.keys(W.items || {}).filter(function (k) {
+      var it = W.items[k];
+      return it && !(it.kind === 'call' && it.id === T.id) && itemFresh(it, t);
+    }).length;
+  }
   // The calls alone — what the harness and the console have always read.
   function waitingList() {
     return alertList().filter(function (it) { return it.kind === 'call'; });
@@ -3225,6 +3277,7 @@
     if (!global.document || !global.document.body) return;
     var list = admin() ? alertList() : [];
     updateTitle(list.length);
+    syncLogButton();
     if (!list.length) {
       if (W.root && W.root.parentNode) W.root.parentNode.removeChild(W.root);
       W.root = null;
@@ -3243,6 +3296,11 @@
     if (list.length > ALERT_SHOW_MAX) {
       var more = list.length - ALERT_SHOW_MAX;
       W.root.appendChild(el('div', 'consultAlertMore', '+ ' + more + ' more waiting — hide one to see the next'));
+    }
+    // A hidden card is never lost: every call and question is in the list.
+    if (global.ConsultAnswer && typeof global.ConsultAnswer.openLog === 'function') {
+      var all = btn('📚 All consults', 'btnGhost consultAlertAll', onLogButton, 'Every call and question, including the ones you hid');
+      W.root.appendChild(all);
     }
   }
 
@@ -3386,6 +3444,8 @@
   function wire() {
     var b = $('consultBtn');
     if (b && !b._consultWired) { b._consultWired = true; b.addEventListener('click', onButton); }
+    var lb = $('consultLogBtn');
+    if (lb && !lb._consultWired) { lb._consultWired = true; lb.addEventListener('click', onLogButton); }
     if (!wire.done) {
       wire.done = true;
       global.addEventListener('pagehide', function () { studentPageHide(); teacherPageHide(); });
