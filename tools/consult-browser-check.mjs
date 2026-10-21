@@ -159,6 +159,10 @@ function installFake(prefix) {
     path: p,
     doc: id => docRef(p + '/' + (id || rand())),
     where: (f, op, v) => collRef(p, filters.concat([[f, v]])),
+    // The archive asks for the newest first and a ceiling; the rows are sorted
+    // again by logSort, so the fake can hand them back as they are.
+    orderBy: () => collRef(p, filters),
+    limit: () => collRef(p, filters),
     get: async () => { const s = await window.__fs({ kind: 'list', path: p }); return { docs: s.docs.filter(d => filters.every(([f, v]) => d.data[f] === v)).map(d => ({ id: d.id, data: () => d.data })) }; },
     onSnapshot: (fn) => { const lid = prefix + (++seq); pending[lid] = fn; window.__fs({ kind: 'listen', lid, lkind: 'coll', path: p, filters }); return () => { delete pending[lid]; window.__fs({ kind: 'unlisten', lid }); }; }
   });
@@ -653,6 +657,49 @@ await student.page.evaluate(() => [...document.querySelectorAll('.consultReplies
 ok('Done marks it watched', !!(await until(() => store.get(qPath) && store.get(qPath).replySeen, 5000)));
 ok('…and the card goes', await until(() => student.page.evaluate(() => !document.querySelector('.consultReplies .consultReply')), 4000));
 ok('nothing the consult did is in the student\'s annotations', (await student.page.evaluate(() => annotations.length)) === annBeforeQ);
+
+console.log('\n📚 Where it is all kept');
+// The student's library: every answer the teacher sent, kept after Done.
+const libBtn = await until(() => student.page.evaluate(() => { const b = document.getElementById('consultLogBtn'); return b && !b.hidden ? b.textContent : ''; }), 4000);
+ok('the student has a 🎬 My answers button', /My answers/.test(libBtn || ''), libBtn);
+await student.page.click('#consultLogBtn');
+const libText = await until(() => student.page.evaluate(() => {
+  const w = document.querySelector('.caLogBack.caLib');
+  return w && !/Loading/.test(w.textContent) ? w.textContent : '';
+}), 5000);
+ok('…which keeps the answer after Done, with their question', /Answers \(1\)/.test(libText || '') && /Why is 1 unit 4/.test(libText || ''), libText);
+await student.page.evaluate(() => [...document.querySelectorAll('.caLogBack.caLib button')].find(b => /Watch/.test(b.textContent)).click());
+const libSrc = await until(() => student.page.evaluate(() => { const v = document.querySelector('.caPlayBack video.caPlayMedia'); return v ? v.getAttribute('src') : ''; }), 4000);
+ok('…and ▶ Watch plays it again', !!answered && libSrc === answered.reply.url, String(libSrc));
+await student.page.keyboard.press('Escape');
+ok('Escape closes the player first', await until(() => student.page.evaluate(() => !document.querySelector('.caPlayBack') && !!document.querySelector('.caLogBack.caLib')), 3000));
+await student.page.keyboard.press('Escape');
+ok('…and then the library', await until(() => student.page.evaluate(() => !document.querySelector('.caLogBack')), 3000));
+ok('a student is never shown the teacher\'s log', await student.page.evaluate(() => ConsultAnswer.openLog() === false && !document.querySelector('.caLogTeacher')));
+
+// The teacher's log: every call and question, and the videos sent.
+const logBtn = await until(() => teacher.page.evaluate(() => { const b = document.getElementById('consultLogBtn'); return b && !b.hidden ? b.textContent : ''; }), 4000);
+ok('the teacher has a 🙋 Consults button', /Consults/.test(logBtn || ''), logBtn);
+await teacher.page.click('#consultLogBtn');
+const logAll = async () => {
+  await teacher.page.evaluate(() => [...document.querySelectorAll('.caLogTeacher .caChip')].find(b => /^All/.test(b.textContent)).click());
+  return until(() => teacher.page.evaluate(() => {
+    const w = document.querySelector('.caLogTeacher .caLogList');
+    return w && !/Loading/.test(w.textContent) ? w.textContent : '';
+  }), 5000);
+};
+const logText = await logAll();
+ok('the log lists the answered question with the video sent', /Answered · watched/.test(logText || '') && /Why is 1 unit 4/.test(logText || ''), logText);
+ok('…and the call that was talked through', /Talked/.test(logText || ''), logText);
+const logBtns = await teacher.page.evaluate(() => [...document.querySelectorAll('.caLogTeacher .caState-watched button')].map(b => b.textContent.trim()));
+ok('…with ▶ Watch and 📝 Answer again on it', logBtns.includes('▶ Watch') && logBtns.includes('📝 Answer again'), JSON.stringify(logBtns));
+await teacher.page.fill('.caLogTeacher .caSearch', 'zzzz nothing');
+ok('a search that matches nothing says so', await until(() => teacher.page.evaluate(() => /Nothing matches/.test(document.querySelector('.caLogTeacher .caLogList').textContent)), 3000));
+await teacher.page.fill('.caLogTeacher .caSearch', 'unit ada');
+ok('…and every word of a search must match', await until(() => teacher.page.evaluate(() => document.querySelectorAll('.caLogTeacher .caLogRow').length === 1), 3000));
+await teacher.page.keyboard.press('Escape');
+ok('Escape closes the log', await until(() => teacher.page.evaluate(() => !document.querySelector('.caLogBack')), 3000));
+ok('…and nothing the archive did is in the student\'s annotations', (await student.page.evaluate(() => annotations.length)) === annBeforeQ);
 
 console.log('\n🧯 Nothing threw');
 ok('no uncaught error in the student\'s tab', student.errors.length === 0, student.errors.join('\n      '));

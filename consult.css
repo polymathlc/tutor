@@ -521,6 +521,12 @@ body.consultPicking .pageWrap { outline: 2px dashed rgba(216, 27, 96, 0.55); out
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
+.consultAlertAll.btn {
+  align-self: flex-end;
+  border-radius: 999px;
+  box-shadow: var(--shadow-modal);
+  pointer-events: auto;
+}
 .consultAlertMore {
   align-self: flex-end;
   padding: 6px 12px;
@@ -611,4 +617,11 @@ audio.consultReplyMedia { background: transparent; }
   .consultPanel, .consultRoom, .consultAlerts, svg.consultInk,
   .consultQBox, .consultReplies, .consultReplyPlayer { display: none !important; }
   body.consultPicking .pageWrap { outline: none !important; }
+}
+
+/* 📚 The archive's header button (v1.66.0): a count lights it up. */
+#consultLogBtn.consultOn {
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 700;
 }

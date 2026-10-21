@@ -54,6 +54,30 @@ opens `?consult=<id>` here, which opens the teacher's room.
   pointer, undo, end, clear and the email link — nothing that reads the source can say whether a
   call connects or where a stroke lands.
 
+## 📚 THE CONSULT ARCHIVE — 🎬 My answers and 🙋 Consults (v1.66.0)
+
+In `consult-answer.js` (shared byte for byte with Ans Key), between `/* ---- The player ---- */`
+and `/* ---- Closing ---- */`: `openLog` / `closeLog` (the teacher's list), `openLibrary` /
+`closeLibrary` / `markSeen` (the student's shelf), `play` / `closePlayer`, and the pure
+`logState` / `logRow` / `LOG_FILTERS` / `logFilter` / `logCounts` / `logSort` / `libraryRows` /
+`whenText`. `#consultLogBtn` in the header; `logButtonFor` / `syncLogButton` / `onLogButton` and
+the `📚 All consults` button (`.consultAlertAll`) in `consult.js`.
+
+- **`logState` IS THE ONE PLACE A CONSULT'S STATE IS DECIDED**, from the document alone: a
+  `waiting` that is not still ringing (`callRinging`, the pop-up's freshness rule) is a missed
+  call, an `ended` with `joinedAt` was talked through, an `answered` with `replySeen` is watched.
+- **IT READS AND NEVER DELETES.** The ONE write is `markSeen`: the student's own
+  `replySeen`, on their own consult, the first time. The harness counts the writes.
+- **THE LOG IS THE TEACHER'S, refused in `openLog` itself** (`teacherHere`); the library
+  queries `studentUid == uid` only. A reply is played only through `cleanReply`, so a link that
+  is not Firebase Storage never reaches a `<video src>`. Every word is `textContent`.
+- **Join and 📝 Answer close the list first**, because the room and the recorder open over the
+  page. Closing the player gives focus back to the list, or the next Escape reaches the page.
+- `ConsultAnswer.stop()` (an account change) takes both windows down through `archiveStop`.
+- The log is `orderBy('at','desc').limit(LOG_MAX)`; the fake Firestore in the browser check
+  ignores both, which is fine because `logSort` orders the rows again.
+- Run the consult checks below after touching any of it.
+
 ## 📝 CONSULT QUESTIONS — left instead of a call, answered with a recording (v1.65.0)
 
 `consult-answer.js` / `consult-answer.css` (`window.ConsultAnswer` {pure, open, askLater, close,

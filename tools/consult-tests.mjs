@@ -609,3 +609,101 @@ test('the student\'s panel says "they", never "he"', () => {
   const gendered = strings.filter(t => /\b(he|He|him|his|His)\b/.test(t));
   assert.deepEqual(gendered, []);
 });
+
+/* ---------------- v1.66.0: where it is all kept ---------------- */
+
+const J = v => JSON.parse(JSON.stringify(v));
+const NOW = new Date(2026, 9, 21, 15, 0).getTime();
+const REPLY = { url: 'https://firebasestorage.googleapis.com/v0/b/x/o/a.webm?alt=media', mime: 'video/webm', ms: 4000, note: 'Look at the units', at: NOW - 3600000 };
+const base = (over) => Object.assign({ studentUid: 'u1', studentName: 'Ada', worksheetName: 'Heat', level: 'P5', subject: 'science', at: NOW - 7200000 }, over);
+
+test('every consult has ONE state, read off its own document', () => {
+  const L = CA.pure.logState;
+  assert.equal(L(base({ status: 'waiting', at: NOW - 1000, seen: NOW - 1000 }), NOW), 'ringing');
+  assert.equal(L(base({ status: 'waiting', at: NOW - 1000, seen: NOW - 10 * 60000 }), NOW), 'missed', 'a call whose tab stopped beating rang out');
+  assert.equal(L(base({ status: 'waiting', at: NOW - 3600000, seen: NOW }), NOW), 'missed', 'a call left half an hour is not ringing');
+  assert.equal(L(base({ status: 'ended', joinedAt: NOW - 100 }), NOW), 'talked');
+  assert.equal(L(base({ status: 'ended' }), NOW), 'missed', 'ended with nobody joining is a missed call');
+  assert.equal(L(base({ status: 'answered' }), NOW), 'answered');
+  assert.equal(L(base({ status: 'answered', replySeen: NOW }), NOW), 'watched');
+  for (const s of ['live', 'later', 'question', 'cancelled']) assert.equal(L(base({ status: s }), NOW), s);
+  assert.equal(L(base({ status: 'nonsense' }), NOW), 'other');
+});
+
+test('a log row carries the words through the one door, and the reply only when it will play', () => {
+  const r = CA.pure.logRow('abcdefghijkl12345678', base({ status: 'answered', studentName: 'Ada\u0000 <b>x</b>', reply: REPLY, question: { text: 'Why  is 1 unit 4?', page: 2, at: NOW - 7000000 } }), NOW);
+  assert.equal(r.who, 'Ada <b>x</b>', 'control characters folded; markup is kept as text, painted with textContent');
+  assert.equal(r.text, 'Why is 1 unit 4?');
+  assert.equal(r.page, 2);
+  assert.equal(r.reply.url, REPLY.url);
+  assert.equal(CA.pure.logRow('bad id', base({ status: 'answered' }), NOW), null);
+  const evil = CA.pure.logRow('abcdefghijkl12345678', base({ status: 'answered', reply: { url: 'javascript:alert(1)' } }), NOW);
+  assert.equal(evil.reply, null, 'a link that is not Firebase Storage is never played');
+  assert.equal(CA.pure.logRow('abcdefghijkl12345678', base({ status: 'question', reply: REPLY }), NOW).reply, null, 'a stale reply on a question is not shown as an answer');
+});
+
+test('the teacher\'s list: what waits on them first, then newest; filters and every-word search', () => {
+  const P2 = CA.pure;
+  const docs = [
+    ['aaaaaaaaaaaa00000001', base({ status: 'answered', reply: REPLY, at: NOW - 100, question: { text: 'fractions please', page: 1 } })],
+    ['aaaaaaaaaaaa00000002', base({ status: 'question', at: NOW - 5000000, studentName: 'Ben', question: { text: 'what is a unit', page: 3 } })],
+    ['aaaaaaaaaaaa00000003', base({ status: 'ended', joinedAt: 1, at: NOW - 50 })],
+    ['aaaaaaaaaaaa00000004', base({ status: 'later', at: NOW - 9000000 })]
+  ];
+  const rows = P2.logSort(docs.map(([id, d]) => P2.logRow(id, d, NOW)));
+  assert.deepEqual(J(rows.map(r => r.state)), ['question', 'later', 'talked', 'answered']);
+  assert.deepEqual(J(P2.logCounts(rows)), { todo: 2, answered: 1, calls: 2, all: 4 });
+  assert.deepEqual(J(P2.logFilter(rows, 'answered', '').map(r => r.id)), ['aaaaaaaaaaaa00000001']);
+  assert.deepEqual(J(P2.logFilter(rows, 'all', 'ben unit').map(r => r.id)), ['aaaaaaaaaaaa00000002']);
+  assert.deepEqual(J(P2.logFilter(rows, 'all', 'ben fractions')), [], 'every word must match, so a second word narrows');
+  assert.equal(P2.logFilter(rows, 'all', 'HEAT').length, 4, 'case does not matter');
+});
+
+test('the student\'s shelf keeps every playable answer, newest first, and the questions still waiting', () => {
+  const lib = CA.pure.libraryRows([
+    { id: 'bbbbbbbbbbbb00000001', data: base({ status: 'answered', reply: Object.assign({}, REPLY, { at: NOW - 50000 }), replySeen: NOW }) },
+    { id: 'bbbbbbbbbbbb00000002', data: base({ status: 'answered', reply: Object.assign({}, REPLY, { at: 0 }), answeredAt: NOW - 1000 }) },
+    { id: 'bbbbbbbbbbbb00000003', data: base({ status: 'question' }) },
+    { id: 'bbbbbbbbbbbb00000004', data: base({ status: 'ended' }) },
+    { id: 'bbbbbbbbbbbb00000005', data: base({ status: 'answered', reply: { url: 'http://evil' } }) }
+  ], NOW);
+  assert.deepEqual(J(lib.answers.map(r => [r.id, r.fresh])), [['bbbbbbbbbbbb00000002', true], ['bbbbbbbbbbbb00000001', false]],
+    'a watched answer stays on the shelf; a link that will not play is left off');
+  assert.deepEqual(J(lib.waiting.map(r => r.id)), ['bbbbbbbbbbbb00000003']);
+});
+
+test('when, in words a reader acts on', () => {
+  const W = CA.pure.whenText;
+  assert.equal(W(new Date(2026, 9, 21, 9, 5).getTime(), NOW), 'Today 9:05 am');
+  assert.equal(W(new Date(2026, 9, 20, 13, 30).getTime(), NOW), 'Yesterday 1:30 pm');
+  assert.match(W(new Date(2026, 9, 17, 12, 0).getTime(), NOW), /^Sat 12:00 pm$|^Saturday 12:00 pm$/);
+  assert.equal(W(new Date(2026, 2, 3, 8, 0).getTime(), NOW), '3 Mar');
+  assert.equal(W(new Date(2025, 8, 3, 8, 0).getTime(), NOW), '3 Sep 2025', 'a year that is not this one says so');
+  assert.equal(W(0, NOW), '');
+  assert.equal(W('junk', NOW), '');
+});
+
+test('the archive reads, never deletes, and its one write is the student\'s own "seen"', () => {
+  const at = CA_SRC.indexOf('/* ---- The player ---- */');
+  const end = CA_SRC.indexOf('/* ---- Closing ---- */');
+  assert.ok(at > 0 && end > at);
+  const ARCH = CA_SRC.slice(at, end);
+  assert.ok(!/\.delete\(|\.set\(|runTransaction/.test(ARCH), 'nothing in the archive deletes or overwrites a consult');
+  const updates = ARCH.match(/\.update\(/g) || [];
+  assert.equal(updates.length, 1, 'one write: markSeen');
+  assert.match(ARCH, /x\.update\(\{ replySeen: Date\.now\(\) \}\)/);
+  assert.match(ARCH.slice(ARCH.indexOf('function markSeen')), /u\.uid !== s\.uid/, 'only on the student\'s own consult');
+  assert.match(ARCH.slice(ARCH.indexOf('function openLog'), ARCH.indexOf('function openLog') + 120), /teacherHere\(\)/, 'the log is the teacher\'s, refused in the handler');
+  assert.match(ARCH, /where\('studentUid', '==', s\.uid\)/, 'the library reads only the student\'s own consults');
+  assert.ok(!/\.innerHTML\s*=|insertAdjacentHTML/.test(ARCH));
+  assert.match(CA_SRC.slice(CA_SRC.indexOf('function stop(')), /archiveStop\(\)/, 'an account change takes the archive down too');
+});
+
+test('the header button is one per account, wired to the right window', () => {
+  assert.match(HTML, /<button class="btn" id="consultLogBtn" type="button" hidden/);
+  const fn = SRC.slice(SRC.indexOf('function logButtonFor'), SRC.indexOf('function onButton'));
+  assert.match(fn, /admin\(\)\) return practice\(\) \? '' : 'teacher'/, 'the teacher practising as a student sees neither');
+  assert.match(fn, /CA\.openLog\(/);
+  assert.match(fn, /CA\.openLibrary\(\)/);
+  assert.match(SRC, /consultAlertAll/, 'the pop-up stack names where the hidden ones went');
+});
