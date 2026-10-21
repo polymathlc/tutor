@@ -17,6 +17,16 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.68.0 — 🗑 Delete a consult from 🙋 Consults
+
+- **Every entry in Mr Chung's 🙋 Consults list has a 🗑 Delete button.** It asks first, on
+  the row itself (Cancel beside 🗑 Yes, delete), so one stray tap never removes anything.
+- **It is removed from the cloud for good:** the consult, the writing on it, the page
+  pictures and the video answer. It leaves the student's 🎬 My answers too.
+- The same button is in Ans Key (v1.154.0); the two apps share the file.
+
+---
+
 ## v1.67.0 — 🎤 Consult calls are two-way
 
 When Mr Chung joins a consult live, the student's microphone joins the call too, so the two can
