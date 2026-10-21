@@ -17,6 +17,21 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.67.0 — 🎤 Consult calls are two-way
+
+When Mr Chung joins a consult live, the student's microphone joins the call too, so the two can
+talk. The student's camera is never sent; the page mirror is the only video.
+
+- The microphone is asked for again when the teacher joins if it was refused or lost at the press,
+  and reopened by itself if the device ends it (an iPad backgrounding the tab).
+- The audio line is always open both ways, so a microphone turned on mid-call joins with no second
+  offer.
+- The student's panel says when their microphone is off and offers **🎤 Turn on my microphone**.
+- The teacher's room says whether the student **can be heard**, **is muted** or has their
+  **microphone off**.
+
+---
+
 ## v1.66.0 — 🎬 My answers, and 🙋 every consult kept for Mr Chung
 
 Nothing a consult leaves behind disappears any more.
