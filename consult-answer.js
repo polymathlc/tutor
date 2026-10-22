@@ -2,7 +2,7 @@
    📝 CONSULT ANSWER — the teacher answers a question a student LEFT,
    with a recorded video, in Study Buddy, Ans Key, the Science portal and
    the Maths portal alike (v1.65.0 Study Buddy, v1.151.0 Ans Key; the two
-   portals since v1.444.0 Science and v1.106.0 Maths).
+   portals since v1.445.0 Science and v1.106.0 Maths).
 
    THIS FILE IS BYTE FOR BYTE THE SAME IN polymathlc/tutor,
    polymathlc/anskey, polymathlc/cer AND polymathlc/math. Each
@@ -360,8 +360,8 @@
     return 'other';
   }
   function logLabel(state) { return LOG_LABELS[state] || 'Consult'; }
-  /* 🌐 WHICH APP A CONSULT WAS ASKED IN (v1.69.0 Study Buddy, v1.155.0 Ans
-     Key, v1.444.0 Science, v1.106.0 Maths). The four apps write the same
+  /* 🌐 WHICH APP A CONSULT WAS ASKED IN (v1.69.0 Study Buddy, v1.156.0 Ans
+     Key, v1.445.0 Science, v1.106.0 Maths). The four apps write the same
      `tutorConsults` collection, so the teacher's log and the student's
      shelf say where each one came from. `app` rides on the DOCUMENT and is
      never part of the request body (the server reads `{ consultId }` and
@@ -472,6 +472,62 @@
     return d.getFullYear() === n.getFullYear() ? date : date + ' ' + d.getFullYear();
   }
 
+  /* ✍️ ASKING FROM THE ARCHIVE WINDOW (v1.69.0 Study Buddy, v1.156.0 Ans Key,
+     v1.445.0 Science, v1.106.0 Maths). Study Buddy asks with its own 🙋
+     Consult button, on the page the student is working on. Ans Key and the
+     two portals have no such page, so the student's window there carries a
+     box instead: type the question, add a photo of the work if there is one,
+     send. It becomes the SAME kind of consult Study Buddy leaves — status
+     `question`, the picture at `frames/question` — so the teacher answers it
+     with 📝 Answer from any of the four apps and the email is the same email.
+     `askDoc` is the one place that document is shaped. */
+  var ASK_APPS = ['anskey', 'cer', 'math'];
+  var ASK_IMG_LONG = 1400;
+  var ASK_IMG_MAX = 700000;   // a Firestore document dies at a megabyte
+  var ASK_SUBJECTS = ['math', 'science', 'both'];
+  var ENDPOINT = 'https://us-central1-mathgen--app.cloudfunctions.net/studyBuddyConsult';
+  function askAppOk(app) { return typeof app === 'string' && ASK_APPS.indexOf(app) >= 0; }
+  function askDoc(o) {
+    o = o || {};
+    if (!o.uid || typeof o.uid !== 'string' || !askAppOk(o.app)) return null;
+    var text = cleanLong(o.text, QUESTION_MAX);
+    if (!text) return null;
+    var t = typeof o.now === 'number' && isFinite(o.now) ? o.now : Date.now();
+    var subject = ASK_SUBJECTS.indexOf(o.subject) >= 0 ? o.subject : '';
+    var title = cleanText(o.title, TITLE_MAX);
+    return {
+      v: 1, status: 'question', app: o.app,
+      studentUid: o.uid, studentName: cleanText(o.name, NAME_MAX) || 'A student',
+      worksheetId: '', worksheetName: title, level: cleanText(o.level, 12), subject: subject,
+      question: { text: text, page: 0, ws: title, box: null, at: t },
+      photo: !!o.photo,
+      at: t, seen: t, createdAt: o.stamp != null ? o.stamp : t,
+      rev: 0, offer: null, answer: null, arev: null, tc: [], sc: []
+    };
+  }
+  // What the student is told after Send, from the server's answer. The
+  // question is saved before the email is asked for, so every one of these
+  // still means the teacher will see it under 🙋 Consults.
+  function askSaid(code, who) {
+    who = who || 'Mr Chung';
+    switch (code) {
+      case 'queued': case 'already': return '📨 Sent — ' + who + ' has been emailed and will answer with a video here.';
+      case 'too_soon': return '📨 Saved — ' + who + ' was emailed a moment ago, so this one waits under 🙋 Consults for him.';
+      case 'daily_limit': return '📨 Saved — today’s emails are used up, but ' + who + ' will still see it under 🙋 Consults.';
+      default: return '📨 Saved — the email did not go out just now, but ' + who + ' will still see it under 🙋 Consults.';
+    }
+  }
+  // The longest side and the JPEG steps a photo is shrunk through until it
+  // fits in a Firestore document. Pure, so the harness can check the sizes.
+  function askImgSize(w, h, long) {
+    long = long || ASK_IMG_LONG;
+    w = Number(w) || 0; h = Number(h) || 0;
+    if (!(w > 0 && h > 0)) return null;
+    var k = Math.min(1, long / Math.max(w, h));
+    return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)) };
+  }
+  var ASK_JPEG_STEPS = [0.82, 0.66, 0.5, 0.36];
+
   var pure = {
     COLLECTION: COLLECTION, QUESTION_MAX: QUESTION_MAX, NOTE_MAX: NOTE_MAX, QUESTION_FRESH_MS: QUESTION_FRESH_MS,
     REC_MAX_MS: REC_MAX_MS, STAGE_LONG: STAGE_LONG, DIRS: DIRS, URL_PREFIX: URL_PREFIX, PENS: PENS, MIMES: MIMES,
@@ -485,7 +541,9 @@
     callRinging: callRinging, logState: logState, logLabel: logLabel, logRow: logRow, logFilter: logFilter,
     logCounts: logCounts, logSort: logSort, libraryRows: libraryRows, whenText: whenText, consultLink: consultLink,
     DELETE_SUBS: DELETE_SUBS, deletePlan: deletePlan, deleteAsk: deleteAsk,
-    APP_WORDS: APP_WORDS, appKey: appKey, appWord: appWord
+    APP_WORDS: APP_WORDS, appKey: appKey, appWord: appWord,
+    ASK_APPS: ASK_APPS, ASK_IMG_LONG: ASK_IMG_LONG, ASK_IMG_MAX: ASK_IMG_MAX, ASK_JPEG_STEPS: ASK_JPEG_STEPS, ENDPOINT: ENDPOINT,
+    askAppOk: askAppOk, askDoc: askDoc, askSaid: askSaid, askImgSize: askImgSize
   };
 
   if (!global.document) { global.ConsultAnswer = { pure: pure }; return; }
@@ -495,7 +553,7 @@
      pure half with none of it present.
 
      🌐 A HOST ON THE MODULAR SDK SAYS SO THROUGH `window.ConsultEnv`
-     (v1.69.0 Study Buddy, v1.155.0 Ans Key, v1.444.0 Science, v1.106.0
+     (v1.69.0 Study Buddy, v1.156.0 Ans Key, v1.445.0 Science, v1.106.0
      Maths). Study Buddy and Ans Key run the compat SDK and hand this file
      `currentUser` / `db` / `storage` / `firebase` as plain globals, which
      is what every accessor below reads when there is no ConsultEnv — so
@@ -897,7 +955,7 @@
     } else {
       ctx.fillStyle = '#6B6B66';
       ctx.font = Math.round(H / 24) + 'px sans-serif';
-      ctx.fillText('No picture of the page came with this question.', Math.round(W * 0.05), Math.round(H * 0.1));
+      ctx.fillText('No picture came with this question — write your working here.', Math.round(W * 0.05), Math.round(H * 0.1));
     }
     var k = W / 1000;
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -1492,16 +1550,21 @@
   }
 
   /* ---- The student's library ---- */
-  function openLibrary() {
+  function openLibrary(opts) {
+    var o = opts || {};
     var u = user();
     if (!u || !u.uid) { toast('Sign in to see the answers you have been sent.'); return false; }
     if (B) { try { B.win.root.focus(); } catch (e) {} return true; }
     var d = db();
     if (!d) { toast('Not connected yet — try again in a moment.'); return false; }
-    var s = { uid: u.uid, win: null, unsub: null, docs: [], loaded: false, failed: false, list: null };
+    var s = { uid: u.uid, win: null, unsub: null, docs: [], loaded: false, failed: false, list: null, ask: null };
     B = s;
-    s.win = archiveWin('caLib', '🎬 My answers from ' + teacherName(), closeLibrary);
-    s.win.who.appendChild(el('div', 'caWhere', 'Every video ' + teacherName() + ' has recorded for a question you left, kept here.'));
+    var app = askApp(o);
+    s.win = archiveWin('caLib', (app ? '🙋 Ask ' : '🎬 My answers from ') + teacherName(), closeLibrary);
+    s.win.who.appendChild(el('div', 'caWhere', app
+      ? 'Leave ' + teacherName() + ' a question. He answers with a video, kept here with every answer he has sent you.'
+      : 'Every video ' + teacherName() + ' has recorded for a question you left, kept here.'));
+    if (app) s.ask = buildAsk(s, app, o);
     s.list = el('div', 'caLogList');
     s.win.card.appendChild(s.list);
     renderLibrary(s);
@@ -1612,6 +1675,167 @@
   // Everything down, no questions asked: an account change or the page going.
   function stop() { archiveStop(); return closeWin(true); }
 
+  /* ---- ✍️ Asking (Ans Key and the two portals) ---- */
+  // Which app this window asks for: the host's word when it has a ConsultEnv
+  // (the portals), the caller's otherwise (Ans Key). Study Buddy passes none,
+  // so its window has no box — it asks with its own 🙋 Consult button.
+  function askApp(o) {
+    var E = hostEnv();
+    var a = E ? E.app : (o && o.ask);
+    try { return askAppOk(a) ? a : ''; } catch (e) { return ''; }
+  }
+  function envText(k) {
+    var f = envFn(k);
+    if (!f) return '';
+    try { return f() || ''; } catch (e) { return ''; }
+  }
+  function studentNameOf(u) {
+    var n = cleanText(envText('studentName'), NAME_MAX);
+    if (n) return n;
+    try { n = cleanText(u.displayName || String(u.email || '').split('@')[0], NAME_MAX); } catch (e) { n = ''; }
+    return n || 'A student';
+  }
+  function buildAsk(s, app, o) {
+    var box = el('div', 'caAsk');
+    var ta = global.document.createElement('textarea');
+    ta.className = 'caAskText';
+    ta.maxLength = QUESTION_MAX;
+    ta.rows = 3;
+    ta.placeholder = 'What are you stuck on? Say which question and what you tried.';
+    ta.setAttribute('aria-label', 'Your question');
+    box.appendChild(ta);
+    var row = el('div', 'caAskRow');
+    var file = global.document.createElement('input');
+    file.type = 'file'; file.accept = 'image/*'; file.hidden = true;
+    var pick = btn('📷 Add a photo', 'btnGhost', function () { try { file.click(); } catch (e) {} },
+      'A photo or screenshot of the question and your working');
+    var thumb = el('span', 'caAskThumb');
+    var send = btn('📨 Send to ' + teacherName(), 'btnPrimary', function () { sendAsk(s); });
+    row.appendChild(pick); row.appendChild(file); row.appendChild(thumb); row.appendChild(send);
+    box.appendChild(row);
+    var said = el('div', 'caAskSaid');
+    said.setAttribute('aria-live', 'polite');
+    box.appendChild(said);
+    s.win.card.appendChild(box);
+    var a = { app: app, ta: ta, file: file, thumb: thumb, send: send, said: said, img: '', busy: false,
+      subject: cleanText(o && o.subject, 12) || envText('subject'), title: cleanText(o && o.title, TITLE_MAX) || cleanText(envText('title'), TITLE_MAX) };
+    file.addEventListener('change', function () {
+      var f = file.files && file.files[0];
+      file.value = '';
+      if (!f) return;
+      a.said.textContent = 'Getting the photo ready…';
+      photoData(f).then(function (url) {
+        if (B !== s) return;
+        a.img = url || '';
+        while (thumb.firstChild) thumb.removeChild(thumb.firstChild);
+        if (a.img) {
+          var im = global.document.createElement('img');
+          im.src = a.img; im.alt = 'Your photo';
+          thumb.appendChild(im);
+          thumb.appendChild(btn('✕', 'caAskDrop', function () { a.img = ''; while (thumb.firstChild) thumb.removeChild(thumb.firstChild); }, 'Take the photo off'));
+          a.said.textContent = '';
+        } else {
+          a.said.textContent = 'That photo could not be read — try another, or send the question on its own.';
+        }
+      });
+    });
+    return a;
+  }
+  // A photo, shrunk until it fits in one Firestore document, as a JPEG data
+  // URL. Empty when it cannot be read or will not fit.
+  function photoData(f) {
+    return new Promise(function (resolve) {
+      if (!f || !/^image\//.test(f.type || '')) { resolve(''); return; }
+      var url = '';
+      try { url = global.URL.createObjectURL(f); } catch (e) { resolve(''); return; }
+      var im = new global.Image();
+      im.onload = function () {
+        var out = '';
+        try {
+          var size = askImgSize(im.naturalWidth, im.naturalHeight);
+          if (size) {
+            var c = global.document.createElement('canvas');
+            c.width = size.w; c.height = size.h;
+            var ctx = c.getContext('2d');
+            ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, c.width, c.height);
+            ctx.drawImage(im, 0, 0, c.width, c.height);
+            for (var i = 0; i < ASK_JPEG_STEPS.length; i++) {
+              out = c.toDataURL('image/jpeg', ASK_JPEG_STEPS[i]);
+              if (out.length <= ASK_IMG_MAX) break;
+            }
+          }
+        } catch (e) { out = ''; }
+        try { global.URL.revokeObjectURL(url); } catch (e) {}
+        resolve(out && out.length <= ASK_IMG_MAX && out.indexOf('data:image/') === 0 ? out : '');
+      };
+      im.onerror = function () { try { global.URL.revokeObjectURL(url); } catch (e) {} resolve(''); };
+      im.src = url;
+    });
+  }
+  async function sendAsk(s) {
+    var a = s && s.ask;
+    if (!a || a.busy || B !== s) return;
+    var u = user(), d = db();
+    if (!u || !u.uid || u.uid !== s.uid) { toast('Sign in again to ask.'); return; }
+    if (teacherHere()) { toast('This is where students ask you — your own list is under 🙋 Consults.'); return; }
+    if (!d) { toast('Not connected yet — try again in a moment.'); return; }
+    var doc = askDoc({ uid: u.uid, name: studentNameOf(u), app: a.app, text: a.ta.value, subject: a.subject,
+      title: a.title, photo: !!a.img, now: Date.now(), stamp: serverStamp() });
+    if (!doc) { a.said.textContent = 'Type your question first.'; try { a.ta.focus(); } catch (e) {} return; }
+    a.busy = true; a.send.disabled = true;
+    a.said.textContent = 'Sending…';
+    var id = '';
+    try {
+      var r = d.collection(COLLECTION).doc();
+      id = r.id;
+      // The picture first: the teacher's 📝 Answer reads it the moment the
+      // question appears, so it must already be there.
+      if (a.img) {
+        try { await r.collection('frames').doc('question').set({ img: a.img, at: Date.now() }); }
+        catch (e) { console.warn('consult: the photo did not save', e); doc.photo = false; }
+      }
+      await r.set(doc);
+    } catch (e) {
+      console.warn('consult: could not leave the question', e);
+      a.busy = false; a.send.disabled = false;
+      a.said.textContent = 'Could not send that just now: ' + cleanText(String(e && e.message || e), 160);
+      return;
+    }
+    usage('consult', cleanText(a.title || a.app, 80));
+    a.ta.value = ''; a.img = '';
+    while (a.thumb.firstChild) a.thumb.removeChild(a.thumb.firstChild);
+    var result = await notifyTeacher(u, id);
+    if (B !== s) { toast(askSaid(result.code, teacherName()), 6000); return; }
+    a.said.textContent = askSaid(result.code, teacherName());
+    a.busy = false; a.send.disabled = false;
+  }
+  // The email, asked of the server with `{ consultId }` and nothing more —
+  // the server reads everything else off the document it already trusts.
+  async function notifyTeacher(u, id) {
+    if (!consultIdOk(id)) return { code: 'invalid' };
+    var getAc = envFn('appCheckToken') || (typeof global.liveAppCheckToken === 'function' ? global.liveAppCheckToken : null);
+    if (!getAc || typeof global.fetch !== 'function') return { code: 'app_check' };
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timer = setTimeout(function () { if (controller) controller.abort(); }, 15000);
+    try {
+      var tokens = await Promise.all([u.getIdToken(), getAc()]);
+      if (!tokens[1]) return { code: 'app_check' };
+      var res = await global.fetch(ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokens[0], 'X-Firebase-AppCheck': tokens[1] },
+        body: JSON.stringify({ consultId: id }),
+        signal: controller ? controller.signal : undefined
+      });
+      var body = null;
+      try { body = await res.json(); } catch (e) { body = null; }
+      if (res.ok) return { code: (body && body.status) || 'queued' };
+      return { code: (body && body.error && body.error.code) || ('http_' + res.status) };
+    } catch (e) {
+      return { code: 'network' };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   try {
     global.addEventListener('pagehide', function () { stop(); });
   } catch (e) {}

@@ -274,8 +274,8 @@ test('the page goes out as a canvas mirror, not a screen share', () => {
 
 test('index.html wires the button, the files, the account hook and the usage row', () => {
   assert.match(HTML, /<link rel="stylesheet" href="consult\.css\?v=1\.65\.0">/);
-  assert.match(HTML, /<link rel="stylesheet" href="consult-answer\.css\?v=1\.68\.0">/);
-  assert.match(HTML, /<script src="consult-answer\.js\?v=1\.68\.0"><\/script>\s*<script src="consult\.js\?v=1\.65\.0"><\/script>/,
+  assert.match(HTML, /<link rel="stylesheet" href="consult-answer\.css\?v=1\.69\.0">/);
+  assert.match(HTML, /<script src="consult-answer\.js\?v=1\.69\.0"><\/script>\s*<script src="consult\.js\?v=1\.65\.0"><\/script>/,
     'the recorder loads first, so consult.js finds window.ConsultAnswer');
   assert.match(HTML, /id="consultBtn"[^>]*hidden/, 'hidden until consult.js decides who may see it');
   assert.match(HTML, /var APP_VERSION = 'v1\.(6[3-9]|[7-9]\d|\d{3})\.\d+';/);
@@ -442,12 +442,71 @@ test('consult-answer.js loads with no DOM and the two files agree on the collect
   assert.equal(server.QUESTION_MAX, P.QUESTION_MAX, 'the server bounds the question the same');
 });
 
-test('consult-answer.js is byte for byte the Ans Key copy, when both are checked out', (t) => {
-  const twinJs = new URL('../../anskey/consult-answer.js', import.meta.url);
-  const twinCss = new URL('../../anskey/consult-answer.css', import.meta.url);
-  if (!fs.existsSync(twinJs)) { t.skip('polymathlc/anskey is not checked out beside this repository'); return; }
-  assert.equal(fs.readFileSync(twinJs, 'utf8'), CA_SRC, 'consult-answer.js differs from Ans Key\'s copy');
-  assert.equal(fs.readFileSync(twinCss, 'utf8'), CA_CSS, 'consult-answer.css differs from Ans Key\'s copy');
+for (const [repo, word] of [['anskey', 'Ans Key'], ['cer', 'the Science portal'], ['math', 'the Maths portal']]) {
+  test('consult-answer.js is byte for byte ' + word + '\'s copy, when both are checked out', (t) => {
+    const twinJs = new URL('../../' + repo + '/consult-answer.js', import.meta.url);
+    const twinCss = new URL('../../' + repo + '/consult-answer.css', import.meta.url);
+    if (!fs.existsSync(twinJs)) { t.skip('polymathlc/' + repo + ' is not checked out beside this repository'); return; }
+    assert.equal(fs.readFileSync(twinJs, 'utf8'), CA_SRC, 'consult-answer.js differs from ' + word + '\'s copy');
+    assert.equal(fs.readFileSync(twinCss, 'utf8'), CA_CSS, 'consult-answer.css differs from ' + word + '\'s copy');
+  });
+}
+
+test('✍️ a question asked from the window is the same question Study Buddy leaves', () => {
+  const A = CA.pure;
+  assert.deepEqual(J(A.ASK_APPS), ['anskey', 'cer', 'math'], 'Study Buddy asks with its own button, never from the window');
+  assert.equal(A.ENDPOINT, SRC.match(/var ENDPOINT = '([^']+)'/)[1], 'one email door');
+  assert.equal(A.askDoc({ uid: 'u1', app: 'tutor', text: 'hi' }), null, 'only the three apps without a page ask here');
+  assert.equal(A.askDoc({ uid: 'u1', app: 'cer', text: '   ' }), null, 'an empty question is not sent');
+  assert.equal(A.askDoc({ app: 'cer', text: 'hi' }), null, 'nobody signed in, nothing sent');
+  const d = A.askDoc({ uid: 'u1', app: 'math', name: ' Ann  Lee ', text: 'Q3 — why is it 12?', subject: 'math', now: 1000, stamp: 'S' });
+  assert.equal(d.status, 'question');
+  assert.equal(d.app, 'math');
+  assert.equal(d.studentUid, 'u1');
+  assert.equal(d.studentName, 'Ann Lee');
+  assert.equal(d.subject, 'math');
+  assert.equal(d.createdAt, 'S');
+  assert.deepEqual(J(d.question), { text: 'Q3 — why is it 12?', page: 0, ws: '', box: null, at: 1000 });
+  // The archive reads it back as a question that has been left.
+  const row = A.logRow('abcdefghijklmnop', d, 1000 + 60000);
+  assert.equal(row.state, 'question');
+  assert.equal(row.appWord, 'the Maths portal');
+  assert.equal(A.cleanQuestion(d.question).text, 'Q3 — why is it 12?');
+  // The server would mail it: a question, with text, fresh by question.at.
+  assert.equal(server.appWord(d.app), 'the Maths portal');
+  const mail = server.buildQuestionMail(d, 'abcdefghijklmnop', 1000);
+  assert.match(mail.message.text, /left you a question in the Maths portal/);
+  assert.deepEqual(J(mail.to), [server.CONSULT_EMAIL]);
+  // A subject the archive does not know is left out, never invented.
+  assert.equal(A.askDoc({ uid: 'u1', app: 'cer', text: 'x', subject: 'history' }).subject, '');
+  assert.equal(A.askDoc({ uid: 'u1', app: 'cer', text: 'x'.repeat(900) }).question.text.length, A.QUESTION_MAX);
+});
+
+test('✍️ the photo is shrunk to fit one document, and every answer from the server still says it was saved', () => {
+  const A = CA.pure;
+  assert.deepEqual(J(A.askImgSize(4000, 3000)), { w: 1400, h: 1050 });
+  assert.deepEqual(J(A.askImgSize(800, 600)), { w: 800, h: 600 }, 'never enlarged');
+  assert.equal(A.askImgSize(0, 10), null);
+  assert.ok(A.ASK_IMG_MAX < 1000000, 'below the Firestore document limit');
+  for (const code of ['queued', 'already', 'too_soon', 'daily_limit', 'network', 'app_check', 'http_500']) {
+    assert.match(A.askSaid(code, 'Mr Chung'), /Mr Chung/, code);
+  }
+  assert.match(A.askSaid('queued'), /emailed/);
+  assert.match(A.askSaid('network'), /will still see it/);
+});
+
+test('✍️ asking writes the picture first and the question once, and asks the server with the id alone', () => {
+  const at = CA_SRC.indexOf('async function sendAsk');
+  const body = CA_SRC.slice(at, CA_SRC.indexOf('async function notifyTeacher'));
+  assert.ok(body.indexOf("collection('frames').doc('question').set") < body.indexOf('await r.set(doc)'), 'the photo is there before the question appears');
+  assert.match(body, /teacherHere\(\)/, 'the teacher does not ask himself');
+  assert.equal((body.match(/\.set\(/g) || []).length, 2, 'two writes: the photo and the question');
+  const nt = CA_SRC.slice(CA_SRC.indexOf('async function notifyTeacher'), CA_SRC.indexOf("global.addEventListener('pagehide'"));
+  assert.match(nt, /JSON\.stringify\(\{ consultId: id \}\)/, 'the body is the id and nothing more');
+  assert.match(CA_SRC, /function openLibrary\(opts\)/);
+  assert.match(CA_SRC, /var app = askApp\(o\);/);
+  // The asking lives outside the archive, which still overwrites nothing.
+  assert.ok(CA_SRC.indexOf('async function sendAsk') > CA_SRC.indexOf('/* ---- Closing ---- */'));
 });
 
 test('the recorder keeps the consult\'s bans: no address, no annotations, no screen share, no markup', () => {
