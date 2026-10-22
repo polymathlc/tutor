@@ -1,12 +1,23 @@
 /* =====================================================================
    📝 CONSULT ANSWER — the teacher answers a question a student LEFT,
-   with a recorded video, in Study Buddy and in Ans Key alike (v1.65.0
-   Study Buddy, v1.151.0 Ans Key).
+   with a recorded video, in Study Buddy, Ans Key, the Science portal and
+   the Maths portal alike (v1.65.0 Study Buddy, v1.151.0 Ans Key; the two
+   portals since v1.444.0 Science and v1.106.0 Maths).
 
-   THIS FILE IS BYTE FOR BYTE THE SAME IN polymathlc/tutor AND
-   polymathlc/anskey. Each repository's test compares the two copies
-   whenever both are checked out side by side; a fix in either copies
-   straight across rather than being re-derived.
+   THIS FILE IS BYTE FOR BYTE THE SAME IN polymathlc/tutor,
+   polymathlc/anskey, polymathlc/cer AND polymathlc/math. Each
+   repository's test compares its copy with every sibling checked out
+   beside it; a fix in any of them copies straight across rather than
+   being re-derived.
+
+   🌐 Study Buddy and Ans Key run the COMPAT Firebase SDK and this file
+   reads their globals (`db`, `storage`, `currentUser`, `isAdmin`,
+   `toast`). The two portals run the MODULAR SDK, so they set
+   `window.ConsultEnv` first and this file reads EVERYTHING through it —
+   who is signed in, whether they are the teacher, the database (wrapped
+   into the compat shape by consult-bridge.js), the toast. With a
+   ConsultEnv the page's own globals are never consulted: a portal's
+   `isAdmin` or `openWorksheet` means something else there.
 
    How a question gets here:
 
@@ -349,6 +360,21 @@
     return 'other';
   }
   function logLabel(state) { return LOG_LABELS[state] || 'Consult'; }
+  /* 🌐 WHICH APP A CONSULT WAS ASKED IN (v1.69.0 Study Buddy, v1.155.0 Ans
+     Key, v1.444.0 Science, v1.106.0 Maths). The four apps write the same
+     `tutorConsults` collection, so the teacher's log and the student's
+     shelf say where each one came from. `app` rides on the DOCUMENT and is
+     never part of the request body (the server reads `{ consultId }` and
+     nothing else). A consult with NO `app` is Study Buddy's: until v1.69.0
+     it was the only app that could start one, and its own consults still
+     carry none. A word this build does not know names nothing rather than
+     guessing — the row simply does not say where it was asked. */
+  var APP_WORDS = { tutor: 'Study Buddy', anskey: 'Ans Key', cer: 'the Science portal', math: 'the Maths portal' };
+  function appKey(app) {
+    if (app == null) return 'tutor';
+    return typeof app === 'string' && Object.prototype.hasOwnProperty.call(APP_WORDS, app) ? app : '';
+  }
+  function appWord(app) { var k = appKey(app); return k ? APP_WORDS[k] : ''; }
   function logRow(id, d, t) {
     if (!consultIdOk(id) || !d || typeof d !== 'object') return null;
     var q = cleanQuestion(d.question);
@@ -362,6 +388,7 @@
       ws: cleanText(d.worksheetName, TITLE_MAX),
       wsId: (q && consultIdOk(q.ws) ? q.ws : '') || (consultIdOk(d.worksheetId) ? d.worksheetId : ''),
       subj: [cleanText(d.level, 12), subjectWord(d.subject)].filter(Boolean).join(' '),
+      app: appKey(d.app), appWord: appWord(d.app),
       page: q ? q.page : 0,
       text: q ? q.text : '',
       asked: !!q,
@@ -380,7 +407,7 @@
   }
   function logHit(row, words) {
     if (!words.length) return true;
-    var hay = [row.who, row.ws, row.text, row.subj, row.label, row.reply && row.reply.note].join(' ').toLowerCase();
+    var hay = [row.who, row.ws, row.text, row.subj, row.label, row.appWord, row.reply && row.reply.note].join(' ').toLowerCase();
     return words.every(function (w) { return hay.indexOf(w) >= 0; });
   }
   // `f` narrows by state and EVERY word searched for has to appear, so a
@@ -457,7 +484,8 @@
     CALL_FRESH_MS: CALL_FRESH_MS, CALL_SEEN_MS: CALL_SEEN_MS, LOG_MAX: LOG_MAX, LOG_FILTERS: LOG_FILTERS,
     callRinging: callRinging, logState: logState, logLabel: logLabel, logRow: logRow, logFilter: logFilter,
     logCounts: logCounts, logSort: logSort, libraryRows: libraryRows, whenText: whenText, consultLink: consultLink,
-    DELETE_SUBS: DELETE_SUBS, deletePlan: deletePlan, deleteAsk: deleteAsk
+    DELETE_SUBS: DELETE_SUBS, deletePlan: deletePlan, deleteAsk: deleteAsk,
+    APP_WORDS: APP_WORDS, appKey: appKey, appWord: appWord
   };
 
   if (!global.document) { global.ConsultAnswer = { pure: pure }; return; }
@@ -465,9 +493,54 @@
   /* ===================================================================
      The app around this file — read lazily, so the harness can load the
      pure half with none of it present.
+
+     🌐 A HOST ON THE MODULAR SDK SAYS SO THROUGH `window.ConsultEnv`
+     (v1.69.0 Study Buddy, v1.155.0 Ans Key, v1.444.0 Science, v1.106.0
+     Maths). Study Buddy and Ans Key run the compat SDK and hand this file
+     `currentUser` / `db` / `storage` / `firebase` as plain globals, which
+     is what every accessor below reads when there is no ConsultEnv — so
+     those two apps are byte for byte what they were. The Science portal
+     and the Maths portal run the MODULAR SDK, so they set ConsultEnv
+     instead: `user`, `isTeacher`, `db`, `storage`, `serverStamp`, `toast`,
+     `teacherName`, `openWorksheet`, `usageNote`, every one optional, and
+     `db` / `storage` are ConsultBridge's compat-shaped wrappers over the
+     modular functions (consult-bridge.js).
+
+     WHO IS THE TEACHER IS DECIDED BY THE HOST AND NOBODY ELSE. With a
+     ConsultEnv present `teacherHere()` is `isTeacher() === true` and
+     nothing more — it does NOT fall back to an `isAdmin` it happens to
+     find, because a portal's own `isAdmin` means "any admin of that
+     portal", which is a wider set of people than the one teacher who
+     answers consults. A host that forgets `isTeacher`, or one that throws,
+     is a host with no teacher in it: the safe way round, because every
+     teacher handler here refuses on it.
+
+     `openWorksheet` and `usageNote` are the same rule from the other side:
+     with a ConsultEnv present ONLY the host's own versions are used. A
+     global of that name in a portal is that portal's own function, about
+     that portal's own worksheets, and handing it a Study Buddy worksheet id
+     opens the wrong thing or nothing at all.
      =================================================================== */
-  function user() { return global.currentUser || null; }
+  function hostEnv() {
+    try { var E = global.ConsultEnv; return E && typeof E === 'object' ? E : null; } catch (e) { return null; }
+  }
+  function envFn(k) {
+    var E = hostEnv();
+    var f;
+    try { f = E ? E[k] : undefined; } catch (e) { f = undefined; }
+    return typeof f === 'function' ? f : null;
+  }
+  function user() {
+    var f = envFn('user');
+    if (f) { try { return f() || null; } catch (e) { return null; } }
+    return global.currentUser || null;
+  }
   function teacherHere() {
+    if (hostEnv()) {
+      var f = envFn('isTeacher');
+      if (!f) return false;
+      try { return f() === true; } catch (e) { return false; }
+    }
     var u = user();
     try {
       if (!u || typeof global.isAdmin !== 'function' || !global.isAdmin(u)) return false;
@@ -477,15 +550,45 @@
     } catch (e) { return false; }
   }
   function teacherName() {
+    var f = envFn('teacherName');
+    if (f) { try { var n = cleanText(f(), NAME_MAX); if (n) return n; } catch (e) {} }
     try { if (typeof global.setterName === 'function') return global.setterName() || 'Mr Chung'; } catch (e) {}
     return 'Mr Chung';
   }
-  function db() { return global.db || null; }
-  function store() { return global.storage || null; }
+  function db() {
+    var f = envFn('db');
+    if (f) { try { return f() || null; } catch (e) { return null; } }
+    return global.db || null;
+  }
+  function store() {
+    var f = envFn('storage');
+    if (f) { try { return f() || null; } catch (e) { return null; } }
+    return global.storage || null;
+  }
   function fv() { try { return global.firebase && global.firebase.firestore && global.firebase.firestore.FieldValue || null; } catch (e) { return null; } }
-  function serverStamp() { var F = fv(); return F && F.serverTimestamp ? F.serverTimestamp() : Date.now(); }
+  function serverStamp() {
+    var f = envFn('serverStamp');
+    if (f) { try { var s = f(); if (s != null) return s; } catch (e) {} return Date.now(); }
+    var F = fv(); return F && F.serverTimestamp ? F.serverTimestamp() : Date.now();
+  }
   function ref(id) { var d = db(); return d && consultIdOk(id) ? d.collection(COLLECTION).doc(id) : null; }
-  function toast(msg, ms) { try { if (typeof global.toast === 'function') global.toast(msg, ms || 5000); } catch (e) {} }
+  function toast(msg, ms) {
+    var f = envFn('toast');
+    if (f) { try { f(msg, ms || 5000); } catch (e) {} return; }
+    try { if (typeof global.toast === 'function') global.toast(msg, ms || 5000); } catch (e) {}
+  }
+  /* A usage line, and opening a worksheet: the host's own when it has a
+     ConsultEnv, the page's globals when it does not — never a portal's
+     global of the same name (see above). */
+  function usage(key, detail) {
+    var f = hostEnv() ? envFn('usageNote') : (typeof global.usageNote === 'function' ? global.usageNote : null);
+    if (!f) return;
+    try { f(key, detail); } catch (e) {}
+  }
+  function worksheetOpener() {
+    if (hostEnv()) return envFn('openWorksheet');
+    return typeof global.openWorksheet === 'function' ? global.openWorksheet : null;
+  }
   function el(tag, cls, text) {
     var n = global.document.createElement(tag);
     if (cls) n.className = cls;
@@ -1069,8 +1172,8 @@
       }
       if (prevPath && prevPath !== up.path) { try { await store().ref(prevPath).delete(); } catch (e) {} }
       s.sent = true;
-      try { if (typeof global.usageNote === 'function') global.usageNote('consultAnswer', cleanText(s.data && s.data.worksheetName, 80)); } catch (e) {}
-      toast('📨 Sent — ' + (cleanText(s.data && s.data.studentName, NAME_MAX) || 'the student') + ' will see it in Study Buddy.', 5000);
+      usage('consultAnswer', cleanText(s.data && s.data.worksheetName, 80));
+      toast('📨 Sent — ' + (cleanText(s.data && s.data.studentName, NAME_MAX) || 'the student') + ' will see it under 🙋 Consults, in whichever app they open.', 5000);
       // Only THIS window: the teacher may have closed it while the answer was
       // uploading and opened the next question, which must stay open.
       if (A === s) close();
@@ -1348,7 +1451,7 @@
     top.appendChild(el('span', 'caPill caPill-' + r.state, r.label));
     top.appendChild(el('span', 'caLogWhen', whenText(r.at)));
     row.appendChild(top);
-    var where = [r.ws, r.page ? 'page ' + r.page : '', r.subj].filter(Boolean).join(' · ');
+    var where = [r.ws, r.page ? 'page ' + r.page : '', r.subj, r.appWord ? 'in ' + r.appWord : ''].filter(Boolean).join(' · ');
     if (where) row.appendChild(el('div', 'caLogWhere', where));
     if (r.text) row.appendChild(el('div', 'caLogQ', '“' + r.text + '”'));
     else if (r.asked) row.appendChild(el('div', 'caLogQ caMuted', 'They marked part of the page and did not type anything.'));
@@ -1425,7 +1528,7 @@
     if (!s.loaded) { list.appendChild(el('p', 'caEmpty', 'Loading…')); return; }
     var lib = libraryRows(s.docs, Date.now());
     if (!lib.answers.length && !lib.waiting.length) {
-      list.appendChild(el('p', 'caEmpty', 'No answers yet. When you leave ' + teacherName() + ' a question with 🙋 Consult, the video answer will be kept here.'));
+      list.appendChild(el('p', 'caEmpty', 'No answers yet. When you leave ' + teacherName() + ' a question under 🙋 Consult, the video answer will be kept here — in Study Buddy, Ans Key, the Science portal and the Maths portal alike.'));
       return;
     }
     if (lib.waiting.length) {
@@ -1441,21 +1544,22 @@
     r.mine = true;
     var row = el('div', 'caLogRow' + (r.fresh ? ' caFresh' : ''));
     var top = el('div', 'caLogTop');
-    top.appendChild(el('span', 'caLogWho', r.ws || 'Your worksheet'));
+    top.appendChild(el('span', 'caLogWho', r.ws || (r.wsId ? 'Your worksheet' : 'Your question')));
     if (r.fresh) top.appendChild(el('span', 'caPill caPill-answered', 'New'));
     else if (!r.reply) top.appendChild(el('span', 'caPill caPill-question', r.state === 'later' ? 'Leave your question' : 'Sent'));
     top.appendChild(el('span', 'caLogWhen', whenText(r.reply ? (r.answeredAt || r.at) : r.at)));
     row.appendChild(top);
-    var where = [r.page ? 'page ' + r.page : '', r.subj].filter(Boolean).join(' · ');
+    var where = [r.page ? 'page ' + r.page : '', r.subj, r.appWord ? 'asked in ' + r.appWord : ''].filter(Boolean).join(' · ');
     if (where) row.appendChild(el('div', 'caLogWhere', where));
     if (r.text) row.appendChild(el('div', 'caLogQ', 'You asked: “' + r.text + '”'));
     if (r.reply && r.reply.note) row.appendChild(el('div', 'caLogNote', r.reply.note));
     var acts = el('div', 'caLogActs');
     if (r.reply) acts.appendChild(btn('▶ Watch', 'btnPrimary', function () { play(r, function () { markSeen(s, r); }); }));
-    if (r.wsId && typeof global.openWorksheet === 'function') {
+    var openWs = r.wsId ? worksheetOpener() : null;
+    if (openWs) {
       acts.appendChild(btn('Open the worksheet', 'btnGhost', function () {
         closeLibrary();
-        try { global.openWorksheet(r.wsId); } catch (e) {}
+        try { openWs(r.wsId); } catch (e) {}
       }));
     }
     if (acts.firstChild) row.appendChild(acts);

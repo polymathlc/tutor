@@ -5,9 +5,10 @@ const assert = require('node:assert/strict');
 const {
   CONSULT_EMAIL, MAIL_COLLECTION, LIMIT_COLLECTION, MIN_GAP_MS, DAILY_MAX, FRESH_MS,
   validateBody, stampMs, cleanText, escapeHtml, dayKey, consultLink, buildConsultMail, buildQuestionMail, QUESTION_MAX,
-  createConsultRepository, createConsultService
+  createConsultRepository, createConsultService,
+  consultOrigin, consultStudent, appWord, APP_WORDS, COM_SG_ORIGINS
 } = require('../consult-service');
-const { ADMIN_EMAIL } = require('../centre-auth');
+const { ADMIN_EMAIL, PROTECTED_EMAILS } = require('../centre-auth');
 const { APP_ID } = require('../live-service');
 
 const time = Date.UTC(2026, 9, 20, 2, 30); // 10:30 in Singapore
@@ -187,9 +188,14 @@ test('sign-in, revocation, a student identity and App Check come before the queu
   const forged = service(); forged.deps.auth.verifyIdToken = async () => { throw new Error('bad'); };
   assert.equal((await forged.request()).statusCode, 401);
 
-  const custom = service(); custom.user.firebase.sign_in_provider = 'password';
+  // A bare custom token is not a centre practice account (no claims), so it is refused.
+  const custom = service(); custom.user.firebase.sign_in_provider = 'custom';
   assert.equal((await custom.request()).statusCode, 403);
   assert.ok(!custom.calls.some(c => c[0] === 'queue'));
+  // v1.69.0: the Science and Maths portals sign students in with a password as well as Google.
+  const password = service(); password.user.firebase.sign_in_provider = 'password';
+  assert.equal((await password.request()).statusCode, 200);
+  assert.ok(password.calls.some(c => c[0] === 'queue'));
 
   const noApp = service();
   assert.equal((await noApp.request(undefined, { headers: { 'x-firebase-appcheck': '' } })).statusCode, 403);
@@ -296,4 +302,150 @@ test('a question with no call email waits out the gap; an empty or stale one is 
   s2.records.set('tutorConsults/' + ID, questionDoc({ studentUid: 'someone-else' }));
   await assert.rejects(s2.repository.queue('kid', ID, time), err => err.code === 'not_found');
   assert.ok(![...s2.records.keys()].some(k => k.startsWith(MAIL_COLLECTION)));
+});
+
+/* ---------------- v1.69.0: the Science and Maths portals ask through the same door ---------------- */
+
+const STAFF_EMAIL = PROTECTED_EMAILS.find(email => email !== ADMIN_EMAIL);
+
+test('a password account is a student; the teacher, staff, admins and guests are not, whatever they sign in with', async () => {
+  // Every one of these is refused BEFORE App Check is asked and before anything is queued,
+  // so a refused account never costs the teacher an email and never learns whether the device is verified.
+  const refusals = [
+    ['an anonymous guest', u => { u.firebase.sign_in_provider = 'anonymous'; }],
+    ['a phone number', u => { u.firebase.sign_in_provider = 'phone'; }],
+    ['the teacher on a password', u => { u.firebase.sign_in_provider = 'password'; u.email = ADMIN_EMAIL; }],
+    ['the teacher in capitals', u => { u.firebase.sign_in_provider = 'password'; u.email = ADMIN_EMAIL.toUpperCase(); }],
+    ['the teacher on Google', u => { u.email = ADMIN_EMAIL; }],
+    ['a member of staff', u => { u.firebase.sign_in_provider = 'password'; u.email = STAFF_EMAIL; }],
+    ['the teacher behind a linked provider', u => { u.firebase.sign_in_provider = 'password'; u.providerData = [{ email: ADMIN_EMAIL }]; }],
+    ['an admin claim', u => { u.firebase.sign_in_provider = 'password'; u.admin = true; }],
+    ['a teacher role', u => { u.firebase.sign_in_provider = 'password'; u.role = 'teacher'; }],
+    ['a disabled account', u => { u.firebase.sign_in_provider = 'password'; u.disabled = true; }],
+    ['an account with no uid', u => { u.firebase.sign_in_provider = 'password'; u.uid = ''; }]
+  ];
+  assert.ok(STAFF_EMAIL, 'a member of staff is on the protected list');
+  for (const [label, change] of refusals) {
+    const h = service();
+    change(h.user);
+    const res = await h.request();
+    assert.equal(res.statusCode, 403, label);
+    assert.equal(res.body.error.code, 'student_required', label);
+    assert.ok(!h.calls.some(c => c[0] === 'queue'), label + ' queues nothing');
+    assert.ok(!h.calls.some(c => c[0] === 'appCheck'), label + ' is refused before App Check is asked');
+  }
+});
+
+test('consultStudent is the one rule, and it reads protected identities first', () => {
+  const user = extra => ({ uid: 'kid', email: 'kid@example.com', firebase: {}, ...extra });
+  assert.equal(consultStudent(user({ firebase: { sign_in_provider: 'google.com' } }), time), true);
+  assert.equal(consultStudent(user({ firebase: { sign_in_provider: 'password' } }), time), true);
+  assert.equal(consultStudent(user({ firebase: { sign_in_provider: 'anonymous' } }), time), false);
+  assert.equal(consultStudent(user({ firebase: { sign_in_provider: 'custom' } }), time), false, 'a custom token with no centre claims');
+  assert.equal(consultStudent(user({ email: ADMIN_EMAIL, firebase: { sign_in_provider: 'password' } }), time), false);
+  assert.equal(consultStudent(user({ email: ADMIN_EMAIL, firebase: { sign_in_provider: 'google.com' } }), time), false);
+  assert.equal(consultStudent(user({}), time), false, 'no provider at all');
+  assert.equal(consultStudent(user({ firebase: undefined }), time), false, 'no firebase block at all');
+  assert.equal(consultStudent(null, time), false);
+  assert.equal(consultStudent(undefined, time), false);
+});
+
+test('the Science portal\'s own address is allowed, exactly, and nothing that merely resembles it', async () => {
+  assert.ok(Object.isFrozen(COM_SG_ORIGINS), 'the list cannot be widened at run time');
+  for (const origin of COM_SG_ORIGINS) {
+    const h = service();
+    const res = await h.request(undefined, { headers: { origin } });
+    assert.equal(res.statusCode, 200, origin);
+    assert.equal(res.headers['Access-Control-Allow-Origin'], origin, origin + ' is echoed back');
+    assert.ok(consultOrigin(origin), origin);
+  }
+  for (const origin of [
+    'https://polymathlc.com.sg.evil.example',
+    'http://polymathlc.com.sg',
+    'https://evil.polymathlc.com.sg',
+    'https://polymathlc.com.sg/',
+    'https://polymathlc.com',
+    'https://polymathlc.com.sg:8443',
+    ' https://polymathlc.com.sg',
+    'null'
+  ]) {
+    const h = service();
+    const res = await h.request(undefined, { headers: { origin } });
+    assert.equal(res.statusCode, 403, origin);
+    assert.equal(res.body.error.code, 'origin_not_allowed', origin);
+    assert.equal(res.headers['Access-Control-Allow-Origin'], undefined, origin + ' is not echoed');
+    assert.ok(!h.calls.some(c => c[0] === 'verify'), origin + ' is refused before a token is read');
+    assert.ok(!consultOrigin(origin), origin);
+  }
+  assert.ok(consultOrigin('https://polymathlc.github.io'), 'the GitHub Pages apps still ask');
+  assert.ok(!consultOrigin(undefined));
+  assert.ok(!consultOrigin(42));
+  assert.ok(!consultOrigin(''));
+});
+
+test('the app is a word on the document; anything unknown reads as Study Buddy', () => {
+  assert.ok(Object.isFrozen(APP_WORDS));
+  assert.deepEqual(Object.keys(APP_WORDS).sort(), ['anskey', 'cer', 'math', 'tutor']);
+  for (const key of Object.keys(APP_WORDS)) assert.equal(appWord(key), APP_WORDS[key], key);
+  assert.equal(appWord('cer'), 'the Science portal');
+  assert.equal(appWord('math'), 'the Maths portal');
+  assert.equal(appWord('anskey'), 'Ans Key');
+  for (const odd of [undefined, null, 42, '', 'Cer', 'MATH', 'constructor', '__proto__', 'toString', 'hasOwnProperty', {}, [], ['cer']]) {
+    assert.equal(appWord(odd), 'Study Buddy', JSON.stringify(odd) + ' is not an app');
+  }
+});
+
+test('the email names the app the student asked from, and the subject never changes', () => {
+  const sci = buildConsultMail(consultDoc({ app: 'cer' }), ID, time);
+  assert.ok(sci.message.text.startsWith('Ada <b>Lovelace</b> pressed Consult in the Science portal'), sci.message.text);
+  assert.ok(sci.message.html.includes('pressed <b>Consult</b> in the Science portal'));
+  assert.ok(sci.message.text.includes(consultLink(ID)), 'the Join link is still the tutor room');
+  assert.deepEqual(sci.to, [CONSULT_EMAIL]);
+
+  const mathQ = buildQuestionMail(questionDoc({ app: 'math' }), ID, time);
+  assert.ok(mathQ.message.text.includes('left you a question in the Maths portal.'), mathQ.message.text);
+  assert.ok(!mathQ.message.text.includes('could not reach you on a call'), 'a portal question was never a call');
+  assert.ok(mathQ.message.html.includes('left you a question in the Maths portal.'));
+  assert.ok(mathQ.message.text.includes(consultLink(ID)), 'the answer link is the same room');
+
+  const keyQ = buildQuestionMail(questionDoc({ app: 'anskey' }), ID, time);
+  assert.ok(keyQ.message.text.includes('left you a question in Ans Key.'), keyQ.message.text);
+
+  const tutorQ = buildQuestionMail(questionDoc(), ID, time);
+  assert.ok(tutorQ.message.text.startsWith('Ada <b>Lovelace</b> could not reach you on a call, so they left a question in Study Buddy.'),
+    tutorQ.message.text);
+
+  const forged = buildQuestionMail(questionDoc({ app: '<script>alert(1)</script>' }), ID, time);
+  assert.ok(!forged.message.html.includes('<script>'), 'a forged app is never markup');
+  assert.ok(forged.message.text.includes('in Study Buddy'), 'and it reads as Study Buddy');
+  const forgedCall = buildConsultMail(consultDoc({ app: '<img src=x onerror=alert(1)>' }), ID, time);
+  assert.ok(!forgedCall.message.html.includes('<img'), 'not on a call either');
+
+  for (const app of [undefined, 'tutor', 'anskey', 'cer', 'math']) {
+    assert.equal(buildConsultMail(consultDoc({ app }), ID, time).message.subject,
+      buildConsultMail(consultDoc(), ID, time).message.subject, 'call subject for ' + app);
+    assert.equal(buildQuestionMail(questionDoc({ app }), ID, time).message.subject,
+      buildQuestionMail(questionDoc(), ID, time).message.subject, 'question subject for ' + app);
+  }
+});
+
+test('a question left in the Science portal is queued like any other, as <id>_q, to the same recipient', async () => {
+  const s = store();
+  s.records.set('tutorConsults/' + ID, questionDoc({ app: 'cer' }));
+  assert.deepEqual(await s.repository.queue('kid', ID, time), { status: 'queued' });
+  const q = s.records.get(MAIL_COLLECTION + '/' + ID + '_q');
+  assert.ok(q, 'the question mail has its own id');
+  assert.equal(q.kind, 'question');
+  assert.deepEqual(q.to, [CONSULT_EMAIL]);
+  assert.ok(q.message.text.includes('the Science portal'), q.message.text);
+  assert.ok(!s.records.has(MAIL_COLLECTION + '/' + ID), 'no call email was ever written for it');
+  assert.equal(s.records.get(LIMIT_COLLECTION + '/kid').count, 1);
+  assert.deepEqual(await s.repository.queue('kid', ID, time + 1000), { status: 'already' }, 'a retried send is not a second email');
+});
+
+test('the app never travels in the request; the browser still sends the consult id and nothing else', async () => {
+  assert.throws(() => validateBody({ consultId: ID, app: 'cer' }), err => err.status === 400);
+  const h = service();
+  assert.equal((await h.request({ consultId: ID, app: 'math' })).statusCode, 400);
+  assert.ok(!h.calls.some(c => c[0] === 'queue'));
 });
