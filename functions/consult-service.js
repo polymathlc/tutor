@@ -46,10 +46,36 @@
      the Firebase console), so this function deploys with nothing to set and
      the repository never holds a password. Until the extension is installed
      the document simply waits in the queue; the pop-ups still work.
+   - THE SCIENCE AND MATHS PORTALS ASK THROUGH THIS SAME DOOR (v1.69.0). The
+     🙋 Consults button is in four apps now — Study Buddy, Ans Key, the
+     Science portal (`polymathlc/cer`, mirrored to polymathlc.com.sg) and the
+     Maths portal (`polymathlc/math`) — all over the one `tutorConsults`
+     collection, so a question left in one is answered from any of them. Three
+     things had to widen for that, and each one is widened for THIS endpoint
+     alone, never for the live tutor's or the centre's:
+       · THE ORIGIN. `consultOrigin` is `allowedOrigin` plus the two
+         polymathlc.com.sg origins, compared WHOLE — a lookalike such as
+         `https://polymathlc.com.sg.example` is still refused, and so is the
+         same name over plain http. `allowedOrigin` itself is left exactly as
+         it was: every other service here reads it.
+       · THE ACCOUNT. The two portals also sign students in with a password,
+         so `consultStudent` accepts a `password` sign-in beside the Google
+         and centre-practice ones `isSupportedStudent` already takes — and it
+         asks `protectedIdentity` FIRST, so the teacher, a protected staff
+         account and anybody carrying an admin claim are never "a student
+         asking for help", whatever they signed in with. An anonymous guest
+         of the Maths portal is never a student here at all: a guest has no
+         name for the email and no way back to the answer.
+       · THE APP IS A WORD ON THE DOCUMENT, NEVER IN THE REQUEST. The consult
+         may carry `app` (`tutor`, `anskey`, `cer` or `math`); `appWord`
+         turns it into "in the Science portal" through a fixed table, so the
+         email says where the student asked. Anything else — a missing field,
+         an unknown name, a key off the prototype — reads as Study Buddy, and
+         the request body is still `{ consultId }` and nothing more.
    ===================================================================== */
 
 const { APP_ID, allowedOrigin } = require('./live-service');
-const { ADMIN_EMAIL, CentreError, isSupportedStudent } = require('./centre-auth');
+const { ADMIN_EMAIL, CentreError, isSupportedStudent, protectedIdentity } = require('./centre-auth');
 
 const CONSULT_EMAIL = ADMIN_EMAIL;
 const CONSULT_COLLECTION = 'tutorConsults';
@@ -67,7 +93,45 @@ const TITLE_MAX = 120;
 const QUESTION_MAX = 500;
 const TIME_ZONE = 'Asia/Singapore';
 
+/* The Science portal is served from GitHub Pages AND mirrored to the centre's
+   own domain, so a student can be on either when they press 🙋. These two
+   are the mirror's, and they are compared whole. */
+const COM_SG_ORIGINS = Object.freeze(['https://polymathlc.com.sg', 'https://www.polymathlc.com.sg']);
+
+/* Where a student asked, as the email says it. A fixed table, so the document
+   can only ever choose between these words — never put its own in. */
+const APP_WORDS = Object.freeze({
+  tutor: 'Study Buddy',
+  anskey: 'Ans Key',
+  cer: 'the Science portal',
+  math: 'the Maths portal'
+});
+const DEFAULT_APP_WORD = APP_WORDS.tutor;
+
 const plain = value => !!value && typeof value === 'object' && !Array.isArray(value);
+
+/* Every origin the consult endpoint answers. `allowedOrigin` is shared with
+   the other services and stays as it is; the mirror is added here only. */
+function consultOrigin(origin) {
+  return allowedOrigin(origin) || (typeof origin === 'string' && COM_SG_ORIGINS.includes(origin));
+}
+
+/* Who may ask for a consult. A Google account or a centre practice login (the
+   Study Buddy rule), or — for the two portals — a password account. The
+   protected check goes first and wins: the teacher and the staff never ask
+   for help through this door, however they signed in. Anonymous, phone and
+   anything else are refused. */
+function consultStudent(user, nowMs = Date.now()) {
+  if (!user || !user.uid || protectedIdentity(user)) return false;
+  if (isSupportedStudent(user, nowMs)) return true;
+  return !!user.firebase && user.firebase.sign_in_provider === 'password';
+}
+
+/* The app a consult came from, as a word. Own keys only, so `constructor`,
+   `__proto__` and friends read as the default rather than as a function. */
+function appWord(app) {
+  return typeof app === 'string' && Object.prototype.hasOwnProperty.call(APP_WORDS, app) ? APP_WORDS[app] : DEFAULT_APP_WORD;
+}
 
 class ConsultError extends CentreError {}
 
@@ -127,6 +191,7 @@ function consultAgeMs(data) {
    leaves the server: the recipient, the link, the escaping. */
 function buildConsultMail(data, consultId, time) {
   const name = cleanText(data && data.studentName, NAME_MAX) || 'A student';
+  const word = appWord(data && data.app);
   const sheet = cleanText(data && data.worksheetName, TITLE_MAX);
   const level = cleanText(data && data.level, 12);
   const subject = subjectWord(cleanText(data && data.subject, 20));
@@ -136,24 +201,26 @@ function buildConsultMail(data, consultId, time) {
   const where = [[level, subject].filter(Boolean).join(' '), sheet, page ? 'page ' + page : ''].filter(Boolean).join(' · ');
   const subjectLine = '🙋 ' + name + ' is asking for help' + (sheet ? ' — ' + sheet : '');
   const text = [
-    name + ' pressed Consult in Study Buddy and is waiting for you.',
+    name + ' pressed Consult in ' + word + ' and is waiting for you.',
     where ? 'Worksheet: ' + where : null,
     'Asked: ' + when + ' (Singapore time)',
     '',
     'Join them (opens their page, your camera and a pen): ' + link,
     '',
     'If Study Buddy or Ans Key is already open, a pop-up there has a Join button too.',
+    'It is also under 🙋 Consults in the Science and Maths portals.',
     'The link stops working once the student ends the consult or leaves the page.'
   ].filter(line => line !== null).join('\n');
   const html = '<div style="font-family:Century Gothic,Segoe UI,Arial,sans-serif;color:#1A1A1A;line-height:1.5;max-width:520px">'
-    + '<p style="font-size:17px;margin:0 0 12px"><b>' + escapeHtml(name) + '</b> pressed <b>Consult</b> in Study Buddy and is waiting for you.</p>'
+    + '<p style="font-size:17px;margin:0 0 12px"><b>' + escapeHtml(name) + '</b> pressed <b>Consult</b> in ' + escapeHtml(word) + ' and is waiting for you.</p>'
     + (where ? '<p style="margin:0 0 6px;color:#55554F">' + escapeHtml(where) + '</p>' : '')
     + '<p style="margin:0 0 18px;color:#8A8A84;font-size:13px">' + escapeHtml(when) + ' (Singapore time)</p>'
     + '<p style="margin:0 0 18px"><a href="' + escapeHtml(link) + '" style="display:inline-block;background:#FFE0B2;border:1px solid #FFCC80;'
     + 'border-radius:11px;padding:12px 22px;color:#1A1A1A;text-decoration:none;font-weight:700">Join ' + escapeHtml(name) + '</a></p>'
     + '<p style="margin:0 0 6px;color:#55554F;font-size:13px">You will see their page live, can write on it and talk to them on video.</p>'
     + '<p style="margin:0;color:#8A8A84;font-size:12px">If Study Buddy or <a href="' + escapeHtml(ANSKEY_URL) + '">Ans Key</a> is already open, '
-    + 'a pop-up there has a Join button too. The link stops working once the consult ends.</p>'
+    + 'a pop-up there has a Join button too. It is also under 🙋 Consults in the Science and Maths portals. '
+    + 'The link stops working once the consult ends.</p>'
     + '</div>';
   return { to: [CONSULT_EMAIL], message: { subject: subjectLine, text, html } };
 }
@@ -162,6 +229,11 @@ function buildConsultMail(data, consultId, time) {
    constant recipient, every word off the document and escaped. Pure. */
 function buildQuestionMail(data, consultId, time) {
   const name = cleanText(data && data.studentName, NAME_MAX) || 'A student';
+  const word = appWord(data && data.app);
+  // In Study Buddy a question is what a student leaves when the call went
+  // unanswered; in the portals it is the only way to ask, so it is not said
+  // that they tried to call first.
+  const afterCall = word === DEFAULT_APP_WORD;
   const sheet = cleanText(data && data.worksheetName, TITLE_MAX);
   const level = cleanText(data && data.level, 12);
   const subject = subjectWord(cleanText(data && data.subject, 20));
@@ -175,17 +247,17 @@ function buildQuestionMail(data, consultId, time) {
     .filter(Boolean).join(' · ');
   const subjectLine = '📝 ' + name + ' left you a question' + (sheet ? ' — ' + sheet : '');
   const text = [
-    name + ' could not reach you on a call, so they left a question in Study Buddy.',
+    afterCall ? name + ' could not reach you on a call, so they left a question in Study Buddy.' : name + ' left you a question in ' + word + '.',
     where ? 'Worksheet: ' + where : null,
     question ? 'Their question: "' + question + '"' : null,
     'Left: ' + when + ' (Singapore time)',
     '',
     'Answer it (their page, your pen, your camera and voice — recorded and sent back to them): ' + link,
     '',
-    'It is also waiting under 📝 in Study Buddy and Ans Key until you answer it.'
+    'It also waits in the pop-ups and under 🙋 Consults in Study Buddy, Ans Key and the Science and Maths portals until you answer it.'
   ].filter(line => line !== null).join('\n');
   const html = '<div style="font-family:Century Gothic,Segoe UI,Arial,sans-serif;color:#1A1A1A;line-height:1.5;max-width:520px">'
-    + '<p style="font-size:17px;margin:0 0 12px"><b>' + escapeHtml(name) + '</b> left you a question in Study Buddy.</p>'
+    + '<p style="font-size:17px;margin:0 0 12px"><b>' + escapeHtml(name) + '</b> left you a question in ' + escapeHtml(word) + '.</p>'
     + (where ? '<p style="margin:0 0 6px;color:#55554F">' + escapeHtml(where) + '</p>' : '')
     + (question ? '<blockquote style="margin:0 0 12px;padding:10px 14px;border-left:4px solid #D81B60;background:#FDF2F7;border-radius:6px">'
       + escapeHtml(question) + '</blockquote>' : '')
@@ -193,7 +265,8 @@ function buildQuestionMail(data, consultId, time) {
     + '<p style="margin:0 0 18px"><a href="' + escapeHtml(link) + '" style="display:inline-block;background:#FFE0B2;border:1px solid #FFCC80;'
     + 'border-radius:11px;padding:12px 22px;color:#1A1A1A;text-decoration:none;font-weight:700">Answer ' + escapeHtml(name) + '</a></p>'
     + '<p style="margin:0 0 6px;color:#55554F;font-size:13px">You write on their page and record your voice and camera; the video goes back to them.</p>'
-    + '<p style="margin:0;color:#8A8A84;font-size:12px">It also waits under 📝 in Study Buddy and <a href="' + escapeHtml(ANSKEY_URL) + '">Ans Key</a> until you answer it.</p>'
+    + '<p style="margin:0;color:#8A8A84;font-size:12px">It also waits in the pop-ups and under 🙋 Consults in Study Buddy, <a href="' + escapeHtml(ANSKEY_URL) + '">Ans Key</a> '
+    + 'and the Science and Maths portals until you answer it.</p>'
     + '</div>';
   return { to: [CONSULT_EMAIL], message: { subject: subjectLine, text, html } };
 }
@@ -255,17 +328,17 @@ function createConsultService({ auth, appCheck, repository, now = Date.now, repo
     let user;
     try { user = await auth.verifyIdToken(match[1], true); }
     catch { throw new ConsultError(401, 'sign_in_required', 'Sign in again to ask for a consult.'); }
-    if (!isSupportedStudent(user, now())) throw new ConsultError(403, 'student_required', 'Sign in with your Study Buddy account to ask for a consult.');
+    if (!consultStudent(user, now())) throw new ConsultError(403, 'student_required', 'Sign in with your student account to ask for a consult.');
     try {
       const token = req.get('x-firebase-appcheck');
       if (!token || (await appCheck.verifyToken(token)).appId !== APP_ID) throw new Error('wrong app');
-    } catch { throw new ConsultError(403, 'app_check_required', 'Refresh Study Buddy to verify this device.'); }
+    } catch { throw new ConsultError(403, 'app_check_required', 'Refresh the page to verify this device.'); }
     return user;
   }
   async function handler(req, res) {
     res.set('Cache-Control', 'no-store'); res.set('Vary', 'Origin');
     const origin = req.get('origin');
-    if (!allowedOrigin(origin)) return res.status(403).json({ error: { code: 'origin_not_allowed', message: 'Ask for a consult from Study Buddy.' } });
+    if (!consultOrigin(origin)) return res.status(403).json({ error: { code: 'origin_not_allowed', message: 'Ask for a consult from a Polymath app.' } });
     res.set('Access-Control-Allow-Origin', origin);
     res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Firebase-AppCheck');
@@ -290,5 +363,6 @@ function createConsultService({ auth, appCheck, repository, now = Date.now, repo
 module.exports = {
   CONSULT_EMAIL, CONSULT_COLLECTION, MAIL_COLLECTION, LIMIT_COLLECTION, JOIN_BASE, MAX_REQUEST_BYTES,
   FRESH_MS, MIN_GAP_MS, DAILY_MAX, ConsultError, validateBody, stampMs, cleanText, escapeHtml, dayKey,
-  consultLink, buildConsultMail, buildQuestionMail, QUESTION_MAX, createConsultRepository, createConsultService
+  consultLink, buildConsultMail, buildQuestionMail, QUESTION_MAX, createConsultRepository, createConsultService,
+  consultOrigin, consultStudent, appWord, APP_WORDS, COM_SG_ORIGINS
 };

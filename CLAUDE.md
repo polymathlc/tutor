@@ -60,6 +60,26 @@ opens `?consult=<id>` here, which opens the teacher's room.
   pointer, undo, end, clear and the email link — nothing that reads the source can say whether a
   call connects or where a stroke lands.
 
+## 🌐 CONSULTS IN ALL FOUR APPS — Study Buddy, Ans Key, the Science portal, the Maths portal (v1.69.0)
+
+`consult-answer.js` / `.css` are byte for byte the same in polymathlc/tutor, anskey, cer and math (each
+repo's test compares its copy with every sibling checked out beside it). One `tutorConsults` collection,
+so every request, question and video answer shows under 🙋 Consults in whichever app is open.
+
+- **✍️ ASKING FROM THE WINDOW** (`askDoc` / `buildAsk` / `sendAsk` / `notifyTeacher`, after
+  `/* ---- Closing ---- */` so the archive still overwrites nothing). Ans Key and the portals have no
+  worksheet page to call from, so the student's window there has a box: type, optionally a photo
+  (shrunk by `askImgSize` / `ASK_JPEG_STEPS` under `ASK_IMG_MAX`), send. It is the same `question`
+  consult Study Buddy leaves — `frames/question` FIRST, then the document with `app` — and the email
+  is asked for with `{ consultId }` alone. Study Buddy's own window has no box (`ASK_APPS` excludes
+  `tutor`): it asks with 🙋 Consult on the page.
+- **`window.ConsultEnv`** is how the modular-SDK portals hand the file who is signed in, who is the
+  teacher (`isTeacher`, nobody else's `isAdmin`), the compat-shaped `db`/`storage` (consult-bridge.js
+  in cer and math), the toast and the App Check token. With no ConsultEnv the file reads Study
+  Buddy's and Ans Key's globals exactly as before.
+- **The server** (`consultOrigin`, `consultStudent`, `appWord`) accepts the polymathlc.com.sg mirror
+  and password students for this endpoint alone; the email says which app the student asked in.
+
 ## 📚 THE CONSULT ARCHIVE — 🎬 My answers and 🙋 Consults (v1.66.0)
 
 In `consult-answer.js` (shared byte for byte with Ans Key), between `/* ---- The player ---- */`
