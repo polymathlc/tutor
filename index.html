@@ -11,15 +11,20 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<!-- The browser tab and the home-screen icon. There was neither before,
-     so a worksheet pinned to an iPad home screen wore a screenshot of
-     itself. -->
-<link rel="icon" href="https://dl.dropboxusercontent.com/scl/fi/h40yjlyg8ldefwfaa3dib/polymath-logo-sticker.png?rlkey=o1ra4taqy79gt9t8u096v82zj">
-<link rel="apple-touch-icon" href="https://dl.dropboxusercontent.com/scl/fi/h40yjlyg8ldefwfaa3dib/polymath-logo-sticker.png?rlkey=o1ra4taqy79gt9t8u096v82zj">
+<!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
+     work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
+     The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
+     logo, so an iPad home screen gets a real icon even on a school network that blocks Dropbox. Without
+     an apple-touch-icon a worksheet pinned to an iPad home screen wears a screenshot of itself. -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/app-icons/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/app-icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Study Buddy">
-<meta name="theme-color" content="#FFE0B2">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>[data-pwa-install][data-pwa-hidden]{display:none!important}</style>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <style>
   /* The design tokens are the family's — the same palette, radii, shadows and
@@ -123,6 +128,34 @@
   .appsOpt.here b::after { content: ' · you are here'; font-weight: 500; font-size: 0.72rem; color: var(--ink-faint, #8a8680); }
   .appsFoot { font-size: 0.72rem; color: var(--ink-faint, #8a8680); padding: 8px 10px 4px; line-height: 1.4; }
   @media (max-width: 640px) { .appsPanel { position: fixed; left: 12px; right: 12px; top: 64px; min-width: 0; } }
+  /* 📲 Install app — an ordinary header button (pwa-install.js shows it; see 📲 in CLAUDE.md).
+     From 721px up the header is ONE row that does not wrap and nothing in it scrolls, and a
+     student's row on an iPad was already full: one more button pushed 🧭 Apps and Sign out off the
+     right edge, or folded 🧭 Apps onto two lines. Three things make the room, all only while the
+     📲 is showing (so the installed app's header is exactly as it was):
+       • the brand gives way FIRST — its subtitle already ends in "…" — rather than 🧭 Apps folding;
+       • up to 1100px, and in the teacher's longer row (👥 People is the teacher's alone), the
+         button is the 📲 alone; its name stays in aria-label and the title. The words come back
+         where they fit: wide screens, and the phone header, which wraps instead;
+       • the row's buttons take a little less side padding (12px up to 1100px, and 13px in the
+         teacher's row above it) — measured, that is what keeps every width that fitted before
+         fitting now, and 🧭 Apps on one line wherever it was on one line before.
+     A 360px phone takes the 📲 alone too, or the words add a third row of header above the page. */
+  .pwaInstallBtn { white-space: nowrap; }
+  @media (min-width: 721px) {
+    header:has(#installAppBtn:not([data-pwa-hidden])) .brand { flex-shrink: 40; }
+    header:has(#peopleBtn:not(.hidden)) .pwaInstallBtn .pwaInstallWord { display: none; }
+  }
+  @media (min-width: 721px) and (max-width: 1100px), (max-width: 374px) {
+    .pwaInstallBtn .pwaInstallWord { display: none; }
+  }
+  @media (min-width: 721px) and (max-width: 1100px) {
+    header:has(#installAppBtn:not([data-pwa-hidden])) { padding-left: 12px; padding-right: 12px; gap: 8px; }
+    header:has(#installAppBtn:not([data-pwa-hidden])) .btn { padding-left: 12px; padding-right: 12px; }
+  }
+  @media (min-width: 1101px) {
+    header:has(#peopleBtn:not(.hidden)):has(#installAppBtn:not([data-pwa-hidden])) .btn { padding-left: 13px; padding-right: 13px; }
+  }
   @media (max-width: 720px) {
     #whoAmI, .brandSub { display: none; }
     header { padding: 10px 12px; gap: 8px; }
@@ -2123,6 +2156,12 @@
     <button class="btn hidden" id="peopleBtn" title="Everyone who has signed in, and whether they are enrolled">👥 People</button>
   <button class="btn hidden" id="notesBtn" title="The teaching notes every answer and every hint is grounded in">📚 Notes</button>
     <button class="btn hidden" id="engineBtn" title="Which AI engine answers">AI</button>
+    <!-- 📲 Install Study Buddy as an app. Everyone's (signed in or not, never admin-only); it ships
+         hidden and pwa-install.js shows it, except inside the installed app or another page's frame.
+         Because the header is on every screen, the kit's floating button never needs to appear here,
+         so nothing ever floats over the chat box, ➤ Send or ✅ Mark my work at the foot of a phone. -->
+    <button class="btn pwaInstallBtn" id="installAppBtn" type="button" data-pwa-install data-pwa-hidden aria-label="Install app"
+            title="Install Study Buddy as an app on this computer, phone or tablet — its own icon and window, no app store needed"><span aria-hidden="true">📲</span><span class="pwaInstallWord"> Install app</span></button>
     <!-- 🧭 Every Polymath app, one menu. The SAME table every app carries — see POLYMATH_APPS. -->
     <div class="appsMenu" id="appsMenu">
       <button class="btn" id="appsBtn" type="button" aria-haspopup="true" aria-expanded="false" title="Every Polymath app — you stay signed in">🧭 Apps</button>
@@ -3048,7 +3087,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.70.0';
+var APP_VERSION = 'v1.71.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -31020,5 +31059,8 @@ async function askGeminiDirect(prompt, { maxOutputTokens = 512, temperature = 0.
 <script src="consult.js?v=1.65.0"></script>
 <script src="adventure-ui.js?v=1.54.0"></script>
 <script src="adventure.js?v=1.54.0"></script>
+<!-- 📲 The Polymath install kit (v2.0.0): byte for byte the file every Polymath app carries. Its ?v= is
+     the KIT's version, not APP_VERSION, so a kit update reaches phones at once. Classic + defer, never a module. -->
+<script defer src="pwa-install.js?v=2.0.0" data-app-name="Polymath Study Buddy" data-app-key="tutor" data-app-icon="assets/app-icons/icon-192.png" data-accent="#5E35B1" data-sw="sw.js" data-floating="auto"></script>
 </body>
 </html>

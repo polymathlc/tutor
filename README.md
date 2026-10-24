@@ -17,6 +17,20 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.71.0 — 📲 Install Study Buddy as an app
+
+- **📲 Install app** in the header puts Study Buddy on a computer, phone or tablet with its own
+  icon and window, no app store needed. On Chrome and Edge it asks the browser to install; on an
+  iPhone or iPad it shows the steps (Share → Add to Home Screen).
+- Opened from its icon with no internet, it says *You're offline* instead of the browser's error
+  page, and tries again when the connection is back.
+- The button is hidden inside the installed app and when Study Buddy is shown inside another
+  Polymath page. Nothing floats over the chat box, ➤ Send or ✅ Mark my work on a phone.
+- The tab and home-screen icon is now Study Buddy's own, so it shows even on a school network
+  that blocks Dropbox.
+
+---
+
 ## v1.68.0 — 🗑 Delete a consult from 🙋 Consults
 
 - **Every entry in Mr Chung's 🙋 Consults list has a 🗑 Delete button.** It asks first, on
