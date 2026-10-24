@@ -17,6 +17,11 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.71.1 — the offline screen shows its picture
+
+- Opened with no connection, the installed app's "You're offline" screen now shows the Study Buddy icon
+  instead of a broken picture (the picture travels inside the page).
+
 ## v1.71.0 — 📲 Install Study Buddy as an app
 
 - **📲 Install app** in the header puts Study Buddy on a computer, phone or tablet with its own
