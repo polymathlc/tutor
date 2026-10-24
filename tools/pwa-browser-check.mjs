@@ -45,8 +45,14 @@ try {
 let pass = 0, fail = 0;
 const ok = (name, cond, note) => {
   if (cond) { pass++; console.log('  ✓ ' + name); }
-  else { fail++; console.log('  ✗ ' + name + (note ? '\n      ' + note : '')); }
+  else { fail++; console.log('  ✗ ' + name + (note ? '\n      ' + note : '')); annotate(name + (note ? ' — ' + note : '')); }
 };
+// On GitHub Actions a failure is also an annotation, so it can be read on
+// the check run without opening the raw log.
+function annotate(msg) {
+  if (!process.env.GITHUB_ACTIONS) return;
+  console.log('::error title=pwa-browser-check::' + String(msg).replace(/%/g, '%25').replace(/\r/g, '').replace(/\n/g, '%0A').slice(0, 900));
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function until(fn, ms = 15000, step = 150) {
   const end = Date.now() + ms;
@@ -251,6 +257,7 @@ try {
 } catch (e) {
   fail++;
   console.log('  ✗ the check itself threw: ' + (e && e.stack || e));
+  annotate('the check itself threw: ' + (e && e.stack || e));
 } finally {
   await browser.close();
   server.close();
