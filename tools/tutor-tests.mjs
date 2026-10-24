@@ -1303,7 +1303,7 @@ ok('…so mbRedo still fills only the enhance budget',
    the ration and `mistakes` itself. */
 const MARKRUN = between('async function runMarking() {', 'function markTally() {', 'the marking run');
 ok('every batch files what it just judged',
-   /var got = await fileMistakes\(\{ marked: true, quiet: true \}\);/.test(MARKRUN));
+   /var filedNow = await fileMistakes\(\{ marked: true, quiet: true \}\);/.test(MARKRUN));
 ok('…AWAITED, never fired and forgotten',
    /await fileMistakes\(\{ marked: true/.test(MARKRUN),
    'two passes in flight race over the book itself');
@@ -3055,10 +3055,11 @@ const askSrc = html.slice(html.indexOf('async function markBatchAsk('), html.ind
 ok('the marking\'s system prompt carries the syllabus list',
    /system: MARK_SYS \+ markBlankRule\(\) \+ aiGrounding\('mark'\) \+ keyRuleBlock\(\) \+ tutorMethodRule\(\) \+\s*markSyllabusBlock\(wsMeta\.subject, wsMeta\.level\)/.test(askSrc));
 ok('…and the run reads every fresh batch through that ONE call',
-   /var raw = await markBatchAsk\(imgs, pageNums, total, carry\);/.test(runSrc) && !/window\.askGemini\(/.test(runSrc));
+   /var got = await markBatchRows\(imgs, pageNums, total, carry, marking\.items,/.test(runSrc) && !/window\.askGemini\(/.test(runSrc) &&
+   /var raw = await markBatchAsk\(imgs, pageNums, total, carry\);/.test(html.slice(html.indexOf('async function markBatchRows('), html.indexOf('async function runMarking()'))));
 ok('…and the fold is told the subject and level, or nothing is filed',
-   /_markFoldRows\(rows, pageNums, marking\.items,\s*\{ subject: wsMeta\.subject, level: wsMeta\.level \}\)/.test(runSrc) &&
-   /rows = \(res && res\.questions\) \|\| \[\];/.test(runSrc));
+   /_markFoldRows\(part\.rows, part\.pageNums, marking\.items,\s*\{ subject: wsMeta\.subject, level: wsMeta\.level \}\)/.test(runSrc) &&
+   /parts = got\.parts;/.test(runSrc));
 ok('the reply shape asks for the objective id', /"lo":"the learning objective/.test(html));
 const saveSrc = html.slice(html.indexOf('async function performSave('), html.indexOf('function applyWorksheetBody('));
 ok('the summary rides every save beside the score', /score: scoreOf\(\),[\s\S]{0,300}diagnostic: diagSummary\(\),/.test(saveSrc));
@@ -7271,7 +7272,7 @@ ok('a thinking-level retry stands down once text has been handed over',
    /if \(emitted\) throw e;\s*\n\s*if \(thinkingLevel === AI_THINK_MIN/.test(html),
    'a retry after the first delta speaks a second answer over the top of the first');
 ok('NO ROUTE FALLS BACK once a route has emitted',
-   /let emitted = false;[\s\S]{0,400}onStream: function \(full\) \{ emitted = true; opts\.onStream\(full\); \}[\s\S]{0,900}if \(emitted\) throw e;/.test(html),
+   /let emitted = false;[\s\S]{0,1200}onStream: function \(full\) \{ emitted = true; opts\.onStream\(full\); \}[\s\S]{0,2400}if \(emitted\) throw e;/.test(html),
    'half of one engine’s explanation welded to the whole of another’s, read aloud to a child');
 ok('…and the stream is offered to every route, not just the first',
    /_aiRun\(engine, prompt, Object\.assign\(\{\}, routeOpts,/.test(html),
@@ -7599,6 +7600,7 @@ section('⏩ Marking ahead');
     aiAvailable: () => true, loadTeachingNotes: async () => [], keyEnsureReady: async () => true,
     ensurePageRaster: async () => {}, compositeJpeg: p => 'JPEG' + p.num,
     _parseAIJson: raw => JSON.parse(raw), _mkStr: (v) => String(v || ''),
+    _jsonEndIndex: s => { try { JSON.parse(s); return s.length; } catch (e) { return -1; } },
     _markFoldRows: (rows, nums, into) => rows.forEach(r => into.push({ question: r.question, page: nums[0] })),
     window: {}
   };
@@ -7696,6 +7698,69 @@ section('⏩ Marking ahead');
   try { await pm.premarkTick(); } catch (e) { threw = true; }
   ok('a read that FAILS stands down quietly and keeps nothing', !threw && pm._pm.state.busy === null);
 
+  /* ✂️ A CUT-OFF REPLY (v1.70.0). Three pages asked together come back
+     stopped mid-question; the repair would have passed that off as the
+     whole of three pages. */
+  pm.wsEpoch = 3;
+  pm.annotations.length = 0;
+  pm._parseAIJson = raw => { try { return JSON.parse(raw); } catch (e) { return JSON.parse(raw + ']}'); } };
+  const cutCalls = [];
+  pm.window.askGemini = async (prompt, cfg) => {
+    cutCalls.push({ prompt, cfg });
+    const nums = /^pages ([\d,]+)/.exec(prompt)[1];
+    if (nums.includes(',')) return '{"questions":[{"question":"Q1 of ' + nums + '","continuation":false}';
+    return JSON.stringify({ questions: [{ question: 'Q on ' + nums, continuation: false }] });
+  };
+  here = pm.pages[3];
+  ink(3, 'answer on page 3');
+  await pm.premarkTick();
+  eq('a cut-off reply over three pages is asked again ONE PAGE AT A TIME', cutCalls.length, 4);
+  ok('…each page under the carry the page before it ended on',
+     cutCalls[1].prompt === 'pages 1 carry=' && cutCalls[2].prompt === 'pages 2 carry=Q on 1' &&
+     cutCalls[3].prompt === 'pages 3 carry=Q on 2', cutCalls.map(c => c.prompt).join(' | '));
+  ok('…and with the budget that has room for the thinking as well as the reply',
+     cutCalls.every(c => c.cfg.maxOutputTokens === pm.MARK_MAX_OUT) && pm.MARK_MAX_OUT >= 16000);
+  ok('…kept as three one-page segments the run can walk',
+     pm._pm.state.segs.map(sg => sg.pageNums.join()).join('|') === '1|2|3');
+  const ctx3 = pm.premarkCtxSig();
+  eq('…and the chain the run walks reaches past all three', pm.premarkChain(pm.pages, ctx3).next, 3);
+  ok('the cut-off three-page reply itself is never kept',
+     !pm._pm.state.segs.some(sg => sg.rows.some(r => /^Q1 of/.test(r.question))));
+
+  /* A page that is cut off even on its own is shown by the run, never kept. */
+  pm.wsEpoch = 4;
+  const oneCalls = [];
+  pm.window.askGemini = async (prompt) => { oneCalls.push(prompt); return '{"questions":[{"question":"half","continuation":false}'; };
+  here = pm.pages[1];
+  await pm.premarkTick();
+  eq('a single page cut off is asked for once', oneCalls.length, 1);
+  eq('…and is not kept, so the next press of Mark reads it fresh', pm._pm.state.segs.length, 0);
+  const rr = pm.markReadRows('{"questions":[{"question":"a"}');
+  ok('markReadRows says a repaired reply was cut off', rr.complete === false && rr.rows.length === 1);
+  ok('…and a whole one was not', pm.markReadRows('{"questions":[]} ').complete === true);
+
+  /* ChatGPT marked down: no head start is bought on a backup engine. */
+  pm.wsEpoch = 5;
+  const downCalls = [];
+  pm.window.askGemini = async (prompt) => { downCalls.push(prompt); return '{"questions":[]}'; };
+  pm.window.aiLeadDown = () => true;
+  await pm.premarkTick();
+  eq('with the leading engine down, nothing is marked ahead', downCalls.length, 0);
+  pm.window.aiLeadDown = () => false;
+  await pm.premarkTick();
+  eq('…and it starts again once it is back', downCalls.length, 1);
+  ok('a worksheet buys at most a dozen head starts against the daily ChatGPT allowance', pm.PREMARK_MAX_CALLS <= 12);
+
+  /* ⏱ "One request at a time" is waited out, never a ten-minute mark-down. */
+  {
+    const routes = between('async function aiAskRoutes(', 'window.aiEngines = function', 'the failover loop');
+    ok('the server\'s one-call-at-a-time answer is waited out and asked again on the SAME engine',
+       /AI_BUSY_RE\.test\([\s\S]{0,40}\)\) \{\s*\n\s*busyRetried\[engine\] = true;[\s\S]{0,160}i--;\s*\n\s*continue;\s*\n\s*\}\s*\n\s*_aiRefused\(engine, opts, e\);/.test(routes),
+       'marking the lead engine down for ten minutes sends every marking run in those minutes to the backup');
+    ok('…once per engine, and never after text has been handed over',
+       /!emitted && !busyRetried\[engine\]/.test(routes));
+  }
+
   /* Against index.html itself. */
   const RUN = between('async function runMarking() {', 'function markTally() {', 'the marking run');
   ok('the run walks the kept chain from the first page, with the prompt\'s fingerprint',
@@ -7703,11 +7768,11 @@ section('⏩ Marking ahead');
   ok('…steps by the segment it used, so the chain and the run stay in step',
      /for \(var start = 0; start < total; start \+= step\)/.test(RUN) && /step = batch\.length;/.test(RUN));
   ok('…and takes no picture and makes no call for a kept segment',
-     /for \(var b = 0; !ahead && b < batch\.length; b\+\+\)/.test(RUN) && /if \(!ahead\) \{\n\s*var raw = await markBatchAsk/.test(RUN));
+     /for \(var b = 0; !ahead && b < batch\.length; b\+\+\)/.test(RUN) && /if \(!ahead\) \{\n\s*var got = await markBatchRows/.test(RUN));
   ok('…waits for a segment in flight rather than asking for it twice',
      /premarkCancel\(\);[\s\S]{0,40}try \{\n\s*if \(_premark\.busy\) \{ try \{ await _premark\.busy; \}/.test(RUN));
   ok('…and files a kept batch at the END, so the marks are not held back behind the book',
-     /if \(!ahead\) \{\n\s*try \{\n\s*var got = await fileMistakes/.test(RUN));
+     /if \(!ahead\) \{\n\s*try \{\n\s*var filedNow = await fileMistakes/.test(RUN));
   ok('the ONE marking call and the fingerprint are the same expression',
      (() => {
        const a = between('async function markBatchAsk(', 'function markSystemPrompt()', 'the batch call');

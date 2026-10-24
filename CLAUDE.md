@@ -3227,6 +3227,32 @@ are KEPT, not shown. ✅ Mark my work then folds a kept segment in with no pictu
 - **ONE AT A TIME, AND THE RUN WAITS FOR IT** (`_premark.busy`), rather than asking twice.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## ✂️ THE WHOLE PAPER, NOT ITS FIRST FEW QUESTIONS (v1.70.0)
+
+`MARK_MAX_OUT` / **`markReadRows`** / `markTailCopy` / **`markBatchRows`** (search `THE WHOLE PAPER`),
+`window.aiLeadDown`, and `AI_BUSY_RE` / `busyRetried` in `aiAskRoutes`.
+
+Students saw a paper of thirty questions marked as four. The marking reply was asked for in 8000
+tokens; on Gemini at `thinkingLevel: 'high'` the thinking counts inside that budget, so the JSON was
+cut off mid-question, `_parseAIJson` repaired it into a valid object, and nothing said so. Marking
+ahead then KEPT that cut-off answer and the run reused it on every press of Mark. The run was on
+Gemini far more often than it should have been, because the server's one-call-per-1.5 s answer
+("One request at a time") marked ChatGPT down for ten minutes, and marking ahead's 30 calls a
+worksheet ate the account's daily ChatGPT allowance (`DAILY_OPENAI_CAP` in polymathlc/math).
+
+- **THE BUDGET IS `MARK_MAX_OUT`** (20000), room for the reply AND the thinking. Both routes clamp it.
+- **A REPAIRED REPLY IS A CUT-OFF REPLY.** `markReadRows` returns `complete: false` for anything
+  `_parseAIJson` had to repair.
+- **A CUT-OFF BATCH IS ASKED AGAIN ONE PAGE AT A TIME** (`markBatchRows`), each page under the carry
+  the run would reach (`markTailCopy` folds onto a copy). It returns PARTS that the run folds one
+  after another, and marking ahead keeps each COMPLETE part as its own segment. A part that is still
+  cut off is shown by the run but never kept.
+- **"ONE REQUEST AT A TIME" IS WAITED OUT** (`AI_BUSY_WAIT_MS`) and asked again once on the same
+  engine. It is never a mark-down.
+- **MARKING AHEAD BUYS AT MOST `PREMARK_MAX_CALLS` = 12** a worksheet, and none while
+  `window.aiLeadDown()` says the leading engine is down.
+- Run **`node tools/tutor-tests.mjs`** after touching any of it.
+
 ## 📕 A QUESTION IS IN THE BOOK AS SOON AS IT IS MARKED (v1.44.0)
 
 **`fileMistakes(opts)`** and its `{ filed, wentPast }` answer, **`markRation`** beside it, and the
