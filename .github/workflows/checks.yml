@@ -65,3 +65,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/consult-browser-check.mjs
+      - name: Check the installable app, the service worker and offline
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/pwa-browser-check.mjs

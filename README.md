@@ -17,6 +17,24 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.71.0 — 📲 Install Study Buddy like an app
+
+- **Study Buddy can now be put on the Home Screen** of an iPhone, iPad or Android phone, and
+  installed on a computer from Chrome or Edge. It opens from its own icon, full screen, with no
+  browser bars.
+- **A 📲 Install button sits in the header** only where it can do something: on Android and in
+  Chrome it opens the browser's own install dialog; on an iPhone or iPad it shows the three steps
+  (Share → Add to Home Screen → Add). It is hidden once the app is installed and inside the Science
+  portal.
+- **The Home Screen icon is the Polymath logo, kept next to the app** (the same files Ans Key uses)
+  instead of on Dropbox, so a school network that blocks Dropbox no longer leaves a blank tile.
+- **Opened with no signal, it says "📶 You're offline"** with a Try again button, instead of the
+  browser's error page or advice about a blocked network.
+- **Updates still arrive straight away.** The app always asks the internet for the newest version
+  first and only uses its saved copy when there is no connection.
+
+---
+
 ## v1.68.0 — 🗑 Delete a consult from 🙋 Consults
 
 - **Every entry in Mr Chung's 🙋 Consults list has a 🗑 Delete button.** It asks first, on

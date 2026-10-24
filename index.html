@@ -11,11 +11,21 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<!-- The browser tab and the home-screen icon. There was neither before,
-     so a worksheet pinned to an iPad home screen wore a screenshot of
-     itself. -->
-<link rel="icon" href="https://dl.dropboxusercontent.com/scl/fi/h40yjlyg8ldefwfaa3dib/polymath-logo-sticker.png?rlkey=o1ra4taqy79gt9t8u096v82zj">
-<link rel="apple-touch-icon" href="https://dl.dropboxusercontent.com/scl/fi/h40yjlyg8ldefwfaa3dib/polymath-logo-sticker.png?rlkey=o1ra4taqy79gt9t8u096v82zj">
+<!-- 📲 INSTALLABLE (v1.71.0). The manifest and sw.js are what Android and
+     desktop Chrome need before they offer "Install app"; `display` in the
+     manifest also covers iOS 17.4+, and the apple-mobile-web-app tags below
+     cover older iPads. See install-app.js. -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="install-app.css?v=1.71.0">
+<!-- The browser tab and the home-screen icon. They sit next to this file
+     rather than on the brand's Dropbox link — the same logo files Ans Key
+     ships — because a device that cannot reach that host (a filtered
+     network, a content blocker) was left with a blank tile on the Home
+     Screen. Opaque and square on purpose: iOS fills transparency with black
+     and rounds the corners itself. -->
+<link rel="icon" type="image/png" sizes="192x192" href="logo-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="logo-512.png">
+<link rel="apple-touch-icon" sizes="192x192" href="logo-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Study Buddy">
@@ -2128,6 +2138,11 @@
       <button class="btn" id="appsBtn" type="button" aria-haspopup="true" aria-expanded="false" title="Every Polymath app — you stay signed in">🧭 Apps</button>
       <div class="appsPanel" id="appsPanel" role="menu" hidden></div>
     </div>
+    <!-- 📲 Shown only where the device can act on it — see install-app.js. -->
+    <div class="installMenu" id="installMenu">
+      <button class="btn" id="installBtn" type="button" hidden aria-haspopup="true" aria-expanded="false" title="Put Study Buddy on your Home Screen, like an app">📲 Install</button>
+      <div class="installPanel" id="installPanel" role="dialog" aria-label="Put Study Buddy on your Home Screen" hidden></div>
+    </div>
     <button class="btn btnPrimary" id="signInBtn">Sign in with Google</button>
     <button class="btn hidden" id="signOutBtn">Sign out</button>
   </header>
@@ -3048,7 +3063,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.70.0';
+var APP_VERSION = 'v1.71.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -24401,6 +24416,14 @@ function renderMissingLibs() {
   $('signInBtn').classList.add('hidden');
   $('signInBtn2').classList.add('hidden');
   card.classList.remove('hidden');
+  // Opened from the Home Screen with no signal, sw.js hands back the app
+  // itself but the CDNs cannot answer — that is "offline", not a blocked
+  // network, and telling a child to ask for gstatic.com to be allowed is
+  // the wrong advice. `navigator.onLine` is only trusted when it says
+  // false: wifi with no internet still reads true. So the blocked-network
+  // card goes up first and a HEAD of our own page settles it — sw.js
+  // never answers a HEAD, so only the real network can.
+  if (navigator.onLine === false) { renderOfflineCard(card); return; }
   card.innerHTML =
     '<h2>This page could not finish loading</h2>' +
     '<p class="sub" style="margin-top:8px">Part of the app (' + escHtml(MISSING_LIBS.join(' and ')) +
@@ -24409,6 +24432,18 @@ function renderMissingLibs() {
     '<p class="sub" style="margin-top:12px">Try again on mobile data or a home network, or ask for ' +
     '<b>cdnjs.cloudflare.com</b> and <b>gstatic.com</b> to be allowed.</p>' +
     '<div class="rowBtns"><button class="btn btnPrimary" onclick="location.reload()">Reload</button></div>';
+  if (/^https?:$/.test(location.protocol) && typeof fetch === 'function') {
+    fetch(location.pathname, { method: 'HEAD', cache: 'no-store' }).catch(function () {
+      if (!libsReady()) renderOfflineCard(card);
+    });
+  }
+}
+function renderOfflineCard(card) {
+  card.innerHTML =
+    '<h2>📶 You\u2019re offline</h2>' +
+    '<p class="sub" style="margin-top:8px">Study Buddy needs the internet to open your worksheets and ' +
+    'to talk to Chung GPT. Connect to wifi or mobile data, then try again.</p>' +
+    '<div class="rowBtns"><button class="btn btnPrimary" onclick="location.reload()">Try again</button></div>';
 }
 
 /* =====================================================================
@@ -31020,5 +31055,6 @@ async function askGeminiDirect(prompt, { maxOutputTokens = 512, temperature = 0.
 <script src="consult.js?v=1.65.0"></script>
 <script src="adventure-ui.js?v=1.54.0"></script>
 <script src="adventure.js?v=1.54.0"></script>
+<script src="install-app.js?v=1.71.0"></script>
 </body>
 </html>

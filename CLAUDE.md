@@ -2,6 +2,34 @@
 
 Guidance for Claude when working in this repo.
 
+## 📲 INSTALLABLE — the manifest, sw.js and the 📲 Install button (v1.71.0)
+
+`manifest.webmanifest`, `logo-192.png` / `logo-512.png` (byte-identical to Ans Key's), `sw.js`,
+`install-app.js` / `install-app.css` (one IIFE exposing `window.StudyBuddyInstall`), and
+`#installMenu` / `#installBtn` / `#installPanel` in the header.
+
+- **NETWORK FIRST, ALWAYS.** GitHub Pages ships `index.html` the moment a PR merges; a cache-first
+  worker would keep students on the old build. The cache is only the fallback with no network.
+- **`handles()` IS THE ONE DOOR.** Same origin, inside the worker's own folder (other Polymath apps
+  share the origin), GET, no `Range`. Firebase, the AI calls, gstatic and cdnjs are never
+  intercepted — never answer a sign-in or a marking call from a cache.
+- **Pages are kept under their address WITHOUT the query** (`?consult=`, `?ws=` are one-off) and
+  only `res.ok && type === 'basic'` is kept. `index.html` and the bare folder stand in for each
+  other offline; any other page never kept gets the inline offline page.
+- **`VERSION` in sw.js MUST equal `APP_VERSION`** and the `?v=` on install-app.js/.css; the cache is
+  `study-buddy-<version>` and activate drops the older ones. `tools/pwa-tests.mjs` pins it — bump
+  sw.js with every release or that test fails.
+- **The worker registers only on https** (`shouldRegister`), so every local harness on http/file
+  runs worker-free, as before.
+- **📲 shows only where the device can act** (`installCase`): `beforeinstallprompt` fired, or an
+  iPhone/iPad (iPadOS says Macintosh; touch points tell it apart). Hidden when standalone or
+  framed. The iOS steps are a panel under the header, never a modal, never shown unasked.
+- `renderMissingLibs` says **"You're offline"** when `navigator.onLine === false`, or when a `HEAD` of
+  the page fails (sw.js never answers a HEAD; onLine is true on wifi with no internet) — offline the
+  page comes from the cache but the CDNs cannot answer.
+- Run **`node --test tools/pwa-tests.mjs`** and **`node tools/pwa-browser-check.mjs`** (real
+  Chromium over a throwaway self-signed HTTPS server under `/tutor/`; needs `openssl`).
+
 ## 🙋 CONSULT — the student asks, the teacher joins, writes on their page and talks on video (v1.63.0)
 
 `consult.js` / `consult.css` (one IIFE exposing `window.TutorConsult`, hooked from the auth handler

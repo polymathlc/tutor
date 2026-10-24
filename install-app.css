@@ -1,0 +1,25 @@
+/* 📲 Study Buddy on the Home Screen (v1.71.0) — see install-app.js.
+   The panel sits under the header like the 🧭 Apps panel and is never a
+   modal: the worksheet under it stays usable. */
+.installMenu { position: relative; flex: none; }
+.installPanel {
+  position: absolute; right: 0; top: calc(100% + 8px); width: 300px;
+  background: #fff; border: 1px solid var(--line, #ECECEA); border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(20, 18, 16, 0.16); padding: 12px 14px; z-index: 80;
+  font-size: 0.86rem; line-height: 1.45; color: var(--ink, #1A1A1A);
+}
+.installHead { display: flex; align-items: flex-start; gap: 8px; }
+.installHead b { flex: 1; font-weight: 700; }
+.installClose {
+  flex: none; border: 0; background: transparent; font: inherit; font-size: 0.95rem;
+  color: var(--ink-faint, #8A8A84); cursor: pointer; padding: 2px 6px; border-radius: 8px;
+}
+.installClose:hover { background: var(--bg-soft, #F7F6F4); }
+.installSteps { margin: 10px 0 8px 20px; padding: 0; }
+.installSteps li { margin: 0 0 6px; }
+.installShare { display: inline-grid; place-items: center; vertical-align: -3px; color: #0A84FF; }
+.installFoot { font-size: 0.76rem; color: var(--ink-faint, #8A8A84); margin: 0; }
+@media (max-width: 640px) {
+  .installPanel { position: fixed; left: 12px; right: 12px; top: 64px; width: auto; }
+}
+@media print { .installMenu { display: none !important; } }

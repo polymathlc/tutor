@@ -1,0 +1,33 @@
+{
+  "id": "./",
+  "name": "Study Buddy — Polymath Learning Centre",
+  "short_name": "Study Buddy",
+  "description": "Upload your worksheet, write on it, get hints rather than answers, and keep a mistake book.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#FFFFFF",
+  "theme_color": "#FFE0B2",
+  "categories": ["education"],
+  "icons": [
+    {
+      "src": "logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
