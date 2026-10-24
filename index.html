@@ -24419,15 +24419,11 @@ function renderMissingLibs() {
   // Opened from the Home Screen with no signal, sw.js hands back the app
   // itself but the CDNs cannot answer — that is "offline", not a blocked
   // network, and telling a child to ask for gstatic.com to be allowed is
-  // the wrong advice.
-  if (navigator.onLine === false) {
-    card.innerHTML =
-      '<h2>📶 You\u2019re offline</h2>' +
-      '<p class="sub" style="margin-top:8px">Study Buddy needs the internet to open your worksheets and ' +
-      'to talk to Chung GPT. Connect to wifi or mobile data, then try again.</p>' +
-      '<div class="rowBtns"><button class="btn btnPrimary" onclick="location.reload()">Try again</button></div>';
-    return;
-  }
+  // the wrong advice. `navigator.onLine` is only trusted when it says
+  // false: wifi with no internet still reads true. So the blocked-network
+  // card goes up first and a HEAD of our own page settles it — sw.js
+  // never answers a HEAD, so only the real network can.
+  if (navigator.onLine === false) { renderOfflineCard(card); return; }
   card.innerHTML =
     '<h2>This page could not finish loading</h2>' +
     '<p class="sub" style="margin-top:8px">Part of the app (' + escHtml(MISSING_LIBS.join(' and ')) +
@@ -24436,6 +24432,18 @@ function renderMissingLibs() {
     '<p class="sub" style="margin-top:12px">Try again on mobile data or a home network, or ask for ' +
     '<b>cdnjs.cloudflare.com</b> and <b>gstatic.com</b> to be allowed.</p>' +
     '<div class="rowBtns"><button class="btn btnPrimary" onclick="location.reload()">Reload</button></div>';
+  if (/^https?:$/.test(location.protocol) && typeof fetch === 'function') {
+    fetch(location.pathname, { method: 'HEAD', cache: 'no-store' }).catch(function () {
+      if (!libsReady()) renderOfflineCard(card);
+    });
+  }
+}
+function renderOfflineCard(card) {
+  card.innerHTML =
+    '<h2>📶 You\u2019re offline</h2>' +
+    '<p class="sub" style="margin-top:8px">Study Buddy needs the internet to open your worksheets and ' +
+    'to talk to Chung GPT. Connect to wifi or mobile data, then try again.</p>' +
+    '<div class="rowBtns"><button class="btn btnPrimary" onclick="location.reload()">Try again</button></div>';
 }
 
 /* =====================================================================

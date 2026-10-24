@@ -168,6 +168,12 @@ try {
 
   /* ---------------- 3. Offline ---------------- */
   console.log('\nOffline');
+  // navigator.onLine is pinned to true: on wifi with no internet a real
+  // device says true too, and some Chromium builds keep it true under
+  // setOffline. The card must still find out — by the HEAD sw.js never answers.
+  await context.addInitScript(() => {
+    Object.defineProperty(Navigator.prototype, 'onLine', { configurable: true, get: () => true });
+  });
   await context.setOffline(true);
   await page.reload({ waitUntil: 'load' }).catch(() => {});
   const offlineTitle = await page.title();

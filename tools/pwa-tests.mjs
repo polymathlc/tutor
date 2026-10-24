@@ -368,6 +368,12 @@ test('install-app.js never touches the app’s data', () => {
 test('offline, the "could not finish loading" card says offline instead of blaming the network', () => {
   const i = HTML.indexOf('function renderMissingLibs()');
   const body = HTML.slice(i, HTML.indexOf('\n}\n', i));
-  assert.match(body, /navigator\.onLine === false/);
-  assert.ok(body.indexOf('You\\u2019re offline') < body.indexOf('could not finish loading'));
+  assert.match(body, /navigator\.onLine === false\) \{ renderOfflineCard\(card\); return; \}/);
+  // onLine is true on wifi with no internet, so a HEAD (never answered by
+  // sw.js) settles it on the real network.
+  assert.match(body, /fetch\(location\.pathname, \{ method: 'HEAD', cache: 'no-store' \}\)\.catch/);
+  assert.match(SW, /if \(request\.method !== 'GET'\) return false;/);
+  const j = HTML.indexOf('function renderOfflineCard(card)');
+  assert.ok(j > 0);
+  assert.ok(HTML.slice(j, j + 400).includes('You\\u2019re offline'));
 });

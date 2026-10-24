@@ -24,7 +24,8 @@ Guidance for Claude when working in this repo.
 - **📲 shows only where the device can act** (`installCase`): `beforeinstallprompt` fired, or an
   iPhone/iPad (iPadOS says Macintosh; touch points tell it apart). Hidden when standalone or
   framed. The iOS steps are a panel under the header, never a modal, never shown unasked.
-- `renderMissingLibs` says **"You're offline"** when `navigator.onLine === false` — offline the
+- `renderMissingLibs` says **"You're offline"** when `navigator.onLine === false`, or when a `HEAD` of
+  the page fails (sw.js never answers a HEAD; onLine is true on wifi with no internet) — offline the
   page comes from the cache but the CDNs cannot answer.
 - Run **`node --test tools/pwa-tests.mjs`** and **`node tools/pwa-browser-check.mjs`** (real
   Chromium over a throwaway self-signed HTTPS server under `/tutor/`; needs `openssl`).
