@@ -176,8 +176,12 @@ try {
     const c = document.getElementById('signedOutCard');
     return c && !c.classList.contains('hidden') && /offline/i.test(c.textContent) ? c.textContent : '';
   }), 8000);
+  const seen = card || await page.evaluate(() => {
+    const c = document.getElementById('signedOutCard');
+    return 'onLine=' + navigator.onLine + ' card=' + (c ? (c.className + ' | ' + c.textContent.trim().slice(0, 160)) : 'none');
+  }).catch(e => String(e));
   ok('…and says "You’re offline", not "ask for gstatic.com to be allowed"',
-     !!card && !/gstatic/.test(card), card || '(no card)');
+     !!card && !/gstatic/.test(card), seen);
 
   const sample = await context.newPage();
   await sample.goto(APP + 'sample.html?subject=math', { waitUntil: 'load' }).catch(() => {});
