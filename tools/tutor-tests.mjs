@@ -2650,6 +2650,25 @@ ok('the logo is in the top-left corner, with a fallback that needs no network',
 ok('…and it is the tab and home-screen icon too',
    /rel="icon"/.test(html) && /rel="apple-touch-icon"/.test(html));
 
+/* 📲 THE INSTALL CONTROL IS THE HEADER'S, FOR EVERYONE (v1.71.0). The header is on every screen,
+   so the kit's floating button never has to appear — and on a phone that button's corner is
+   where "Open control panel", ➤ Send and ✅ Mark my work live. Move the control into a view, or
+   behind an admin-only toggle, and the floating one comes back over them. */
+{
+  const headerHtml = (html.match(/<header>[\s\S]*?<\/header>/) || [''])[0];
+  const control = (headerHtml.match(/<button[^>]*id="installAppBtn"[^>]*>/) || [''])[0];
+  ok('📲 Install app is a button in the header', !!control && /\sdata-pwa-install[\s>]/.test(control),
+     'no #installAppBtn with data-pwa-install inside <header>');
+  ok('…that starts hidden, so the installed app never flashes it', /\sdata-pwa-hidden[\s>]/.test(control));
+  ok('…and is nobody\'s to hide: no `hidden` class or attribute for an auth or admin toggle',
+     !/class="[^"]*\bhidden\b/.test(control) && !/\shidden[\s>]/.test(control) &&
+     !/\$\('installAppBtn'\)/.test(html));
+  ok('…and the installer loads once, as a deferred classic script',
+     (html.match(/<script\b[^>]*src="pwa-install\.js/g) || []).length === 1 &&
+     /<script defer src="pwa-install\.js\?v=[^"]+"/.test(html) &&
+     !/<script[^>]*type="module"[^>]*src="pwa-install\.js/.test(html));
+}
+
 
 /* =====================================================================
    THE MARKS — what a question was worth, and what it earned

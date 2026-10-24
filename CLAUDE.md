@@ -2,6 +2,60 @@
 
 Guidance for Claude when working in this repo.
 
+## 📲 Installable app (Polymath install kit v2.0.0) — PC, Android, iPhone and iPad (v1.71.0)
+
+Study Buddy installs like an app: its own icon and window, no app store. It is a Progressive Web
+App, and every piece of it comes from the shared Polymath install kit.
+
+- **The files.** `manifest.webmanifest` (`id`/`start_url`/`scope` = `./`, so the same file works at
+  polymathlc.com.sg/tutor/ and polymathlc.github.io/tutor/; name *Polymath Study Buddy*, short name
+  *Study Buddy*); the icons in `assets/app-icons/` (192/512 `any`, 192/512 `maskable`, the 180 px
+  `apple-touch-icon`, the 32 px favicon); `sw.js`; `offline.html`; `pwa-install.js`; and the head
+  tags in `index.html` (manifest, `theme-color` = the manifest's, favicon, apple-touch-icon,
+  `apple-mobile-web-app-*`, and the inline `[data-pwa-install][data-pwa-hidden]` hiding rule). The
+  tab and home-screen icons are these local files, no longer the Dropbox logo (the header logo
+  still is, with its fallback — that is the 🧭 / logo rule, untouched).
+- **`pwa-install.js` IS THE KIT, BYTE FOR BYTE**, shared with every Polymath app (Maths, Ans Key,
+  Rewards, Chinese, English, the student dashboard; polymathlc/cer carries copies in `student/` and
+  `online/`). Change it in all of them together, from the kit — never fork it here. It is loaded
+  ONCE, as a classic deferred script (never `type="module"`), at the foot of `<body>`, with the app
+  described on the tag (`data-app-name`, `data-app-key="tutor"`, `data-app-icon`,
+  `data-accent="#5E35B1"`, `data-sw`, `data-floating="auto"`). Its `?v=` is the KIT's version,
+  not `APP_VERSION`.
+- **`sw.js` NEVER CACHES THE APP.** It answers same-origin GET navigations only, network first, and
+  shows `offline.html` when the network fails; scripts, Firebase, Storage, PDFs, videos, POSTs and
+  other origins get no `respondWith`, so releases still reach phones through `?v=` and nothing here
+  can pin a student to an old build. Its cache prefix is its own, `polymath-tutor-shell-`, because
+  every app on polymathlc.com.sg shares one origin's Cache Storage: it only ever creates and deletes
+  caches with that prefix (never the Science portal's `polymath-app-shell-`).
+- **Every control starts `data-pwa-hidden`;** the installer shows it, and hides it again inside the
+  installed app and inside another page's frame (Study Buddy inside the Science portal shows none).
+  Pressing one uses the browser's own prompt where there is one (Chrome / Edge on a computer, Chrome
+  on Android), sends other Android browsers to Chrome (Play Protect's warning), and otherwise shows
+  the steps for that exact browser (iPhone / iPad: Share → Add to Home Screen).
+- **THE CONTROL IS `#installAppBtn` IN THE HEADER, beside 🧭 Apps** — for everyone, signed in or not,
+  never inside an admin-only toggle (nothing in the app script touches it). The header is on every
+  screen, so the kit's floating button (bottom-right, `data-floating="auto"`) never needs to
+  appear. **That matters on a phone:** its corner is exactly where *Open control panel*, the chat
+  box and ➤ Send, and ✅ Mark my work sit — measured at 390×844 it would sit squarely on
+  *Open control panel*. So no CSS nudge for `.pwa-fab` is needed; if the header control ever moves
+  into a view, one is (a repo-local override in `index.html`, never an edit to `pwa-install.js`).
+  `tools/tutor-tests.mjs` pins the control in `<header>`, starting hidden, with no `hidden`
+  class/attribute and no `$('installAppBtn')` toggle.
+- **The header is one non-wrapping row from 721 px up, and a student's row on an iPad was already
+  full.** The `.pwaInstallBtn` rules (beside the 🧭 apps-menu CSS) make room only while the control
+  shows: the brand gives way first; 721–1100 px and the teacher's row show the 📲 alone (its name
+  stays in `aria-label` / `title`); and the row's buttons take 12 px side padding (13 px in the
+  teacher's row above 1100 px). Measured at every width from 360 to 1280, every header that fitted
+  before still fits and 🧭 Apps stays on one line wherever it did. The phone header wraps and shows
+  the words. Re-measure if a header button is added.
+- Run **`node --test tools/pwa-install-tests.mjs`** (manifest, icons, head tags, the worker's rules,
+  the offline page, the installer's pure core) and
+  **`PW=/path/to/playwright/index.mjs node tools/pwa-install-browser.mjs`** (Chrome finds the page
+  installable, the worker's scope, offline, the Chrome and iPhone steps, the installed app shows no
+  control, the floating button's ×, a frame shows none; `PWA_SCREENSHOTS=dir` saves pictures).
+  `.github/workflows/installable-app.yml` runs both.
+
 ## 🙋 CONSULT — the student asks, the teacher joins, writes on their page and talks on video (v1.63.0)
 
 `consult.js` / `consult.css` (one IIFE exposing `window.TutorConsult`, hooked from the auth handler
