@@ -3048,7 +3048,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.69.0';
+var APP_VERSION = 'v1.70.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -11931,9 +11931,112 @@ function markProgress(done, total, text) {
      for a second time, which is the same wait the run would have spent.
    ===================================================================== */
 var PREMARK_IDLE_MS = 1200;
-var PREMARK_MAX_CALLS = 30;
+/* 12, not 30 (v1.70.0). Every one of these is a ChatGPT call against the
+   account's DAILY allowance on the server (`DAILY_OPENAI_CAP` in
+   polymathlc/math/functions), the same allowance the hints, the chat and
+   the marking run itself spend. Thirty head starts a worksheet was enough
+   to use the day up by the second paper, and from then on the real run
+   was marked on the backup engine. */
+var PREMARK_MAX_CALLS = 12;
 var PREMARK_SEGS_MAX = 60;
 var _premark = { epoch: -1, segs: [], busy: null, calls: 0, timer: 0 };
+
+/* ✂️ THE WHOLE PAPER, NOT ITS FIRST FEW QUESTIONS (v1.70.0)
+
+   A marking reply is one JSON object holding EVERY question on the pages,
+   each with its working, its explanation and its feedback — three dense
+   pages of that is a long answer. It used to be asked for in 8000 tokens,
+   and on the engines that count their THINKING inside that budget (Gemini
+   at `thinkingLevel: 'high'`, which is where the run goes whenever
+   ChatGPT is busy or capped) the reply was cut off part-way through the
+   second question or the fifth. Nothing said so: Gemini hands back what it
+   had, `_parseAIJson` repairs the cut-off object into a valid one, and the
+   student saw a paper of thirty questions marked as four — with the
+   kept-ahead copy of that answer then reused on every press of Mark.
+
+   So three things, all here:
+   - THE BUDGET IS `MARK_MAX_OUT`, big enough for the reply AND the
+     thinking. It is a ceiling, not a spend: a page with four questions
+     still costs four questions' worth. Both routes clamp it to what they
+     take (Gemini's `GEMINI_MAX_OUTPUT`, the server's `OPENAI_MAX_OUTPUT`).
+   - A REPLY THAT HAD TO BE REPAIRED IS A REPLY THAT WAS CUT OFF, and
+     `markReadRows` says so (`complete: false`) rather than letting the
+     repair pass it off as the whole page.
+   - A CUT-OFF BATCH IS ASKED AGAIN ONE PAGE AT A TIME (`markBatchRows`),
+     each page carrying the question the page before it ended on, exactly
+     as the run chains its batches. One page is a third of the answer, so it
+     fits where three did not. A page that STILL comes back cut off is the
+     best that page will give — the run shows it, and marking ahead never
+     keeps it, so the next press of Mark reads it fresh. */
+var MARK_MAX_OUT = 20000;
+
+/* The rows of one marking reply, and whether that reply was WHOLE: a JSON
+   object that closes by itself. Anything `_parseAIJson` had to repair to
+   read is a reply that stopped mid-question. */
+function markReadRows(raw) {
+  var res = _parseAIJson(raw);
+  var rows = (res && Array.isArray(res.questions)) ? res.questions : null;
+  var complete = false;
+  try {
+    var s = String(raw || '').trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+    var at = s.search(/[\[{]/);
+    if (at > 0) s = s.slice(at);
+    var cut = _jsonEndIndex(s);
+    if (cut > 0) {
+      var whole = JSON.parse(s.slice(0, cut));
+      complete = !!(whole && Array.isArray(whole.questions));
+    }
+  } catch (e) { complete = false; }
+  return { rows: rows, complete: !!rows && complete };
+}
+
+/* The last question folded so far, as a COPY the next page can be folded
+   onto — a question that runs over the page break is finished on that copy,
+   never on the caller's own list. Its `_mkStr(…, 300)` is the carry, the
+   same string the run and the marking-ahead chain work out, so a page asked
+   on its own is asked under exactly the carry they will look for. */
+function markTailCopy(items) {
+  var last = items && items.length ? items[items.length - 1] : null;
+  return last ? [Object.assign({}, last, { options: (last.options || []).slice() })] : [];
+}
+
+/* ONE BATCH, MARKED WHOLE. Asks for the batch as it always did; a reply that
+   was cut off is asked again page by page. The answer is a list of PARTS in
+   paper order — `{ rows, pageNums, carry, complete }` — which the caller
+   folds one after another exactly as it would fold batches. `failed` is the
+   pages a page-by-page re-ask could not read at all. `stale()` is the
+   caller's own "has the worksheet or the run moved on" test. */
+async function markBatchRows(imgs, pageNums, total, carry, items, stale) {
+  var raw = await markBatchAsk(imgs, pageNums, total, carry);
+  if (stale && stale()) return null;
+  var got = markReadRows(raw);
+  if (got.complete || pageNums.length < 2) {
+    if (!got.complete) console.warn('✂️ The marking reply for page ' + pageNums.join(', ') + ' was cut off; the rest of that page could not be read');
+    return { parts: [{ rows: got.rows || [], pageNums: pageNums.slice(), carry: carry, complete: got.complete }], failed: [] };
+  }
+  console.warn('✂️ The marking reply for pages ' + pageNums.join(', ') + ' was cut off — asking again one page at a time');
+  var parts = [], failed = [], c = carry;
+  var seen = markTailCopy(items);
+  for (var i = 0; i < pageNums.length; i++) {
+    var one;
+    try {
+      one = markReadRows(await markBatchAsk([imgs[i]], [pageNums[i]], total, c));
+    } catch (e) {
+      console.warn('Marking page ' + pageNums[i] + ' on its own failed', e);
+      failed.push(pageNums[i]);
+      continue;
+    }
+    if (stale && stale()) return null;
+    var rows = one.rows || [];
+    parts.push({ rows: rows, pageNums: [pageNums[i]], carry: c, complete: one.complete });
+    if (!one.complete) console.warn('✂️ Page ' + pageNums[i] + ' was cut off even on its own');
+    var tail = markTailCopy(seen);
+    _markFoldRows(rows, [pageNums[i]], tail, { subject: wsMeta.subject, level: wsMeta.level });
+    seen = tail.slice(-1);
+    c = seen.length ? _mkStr(seen[0].question, 300) : '';
+  }
+  return { parts: parts, failed: failed };
+}
 
 /* THE ONE PLACE A BATCH OF PAGES IS MARKED. */
 async function markBatchAsk(imgs, pageNums, total, carry) {
@@ -11948,7 +12051,7 @@ async function markBatchAsk(imgs, pageNums, total, carry) {
     // question under the objective it tests — see THE DIAGNOSTIC.
     system: MARK_SYS + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
             markSyllabusBlock(wsMeta.subject, wsMeta.level),
-    maxOutputTokens: 8000, temperature: 0.2, json: true, thinkingLevel: 'high',
+    maxOutputTokens: MARK_MAX_OUT, temperature: 0.2, json: true, thinkingLevel: 'high',
     timeoutMs: 120000, routeTimeoutMs: 45000,
     images: imgs
   });
@@ -12026,7 +12129,7 @@ function premarkChain(work, ctx) {
     carry = last ? _mkStr(last.question, 300) : '';
     at += hit.seg.pageNums.length;
   }
-  return { next: at, carry: carry };
+  return { next: at, carry: carry, items: items };
 }
 
 function premarkKeep(seg) {
@@ -12058,6 +12161,11 @@ async function premarkTick() {
   premarkSync();
   if (_premark.calls >= PREMARK_MAX_CALLS) return;
   if (!aiAvailable(true)) return;
+  /* A head start is only worth taking on the engine the run will use. With
+     ChatGPT marked down (capped for the day, or refused a moment ago) every
+     call here would go to a backup and spend THAT allowance too, for a
+     segment the run then reads again anyway. */
+  if (typeof window.aiLeadDown === 'function' && window.aiLeadDown()) return;
   var here = visiblePage();
   if (!here || studentPages().indexOf(here) <= 0) return;
   var epoch = wsEpoch;
@@ -12091,12 +12199,21 @@ async function premarkTick() {
       inks.push(premarkInkSig(batch[b].num));
     }
     _premark.calls++;
-    var raw = await markBatchAsk(imgs, pageNums, work.length, chain.carry);
-    if (epoch !== wsEpoch) return;
-    var res = _parseAIJson(raw);
-    if (!res || !Array.isArray(res.questions)) return;
-    premarkKeep({ pageNums: pageNums, inks: inks, carry: chain.carry, ctx: ctx,
-                  rows: res.questions, at: Date.now() });
+    var got = await markBatchRows(imgs, pageNums, work.length, chain.carry, chain.items,
+                                  function () { return epoch !== wsEpoch; });
+    if (!got) return;
+    /* ✂️ ONLY A WHOLE REPLY IS KEPT. Each part is its own segment, in
+       paper order, and the first part that was cut off — or a page that
+       could not be read — ends the keeping: everything after it was
+       marked under a carry the run may not arrive at. */
+    for (var q = 0, expect = 0; q < got.parts.length; q++) {
+      var part = got.parts[q];
+      var from = pageNums.indexOf(part.pageNums[0]);
+      if (!part.complete || from !== expect) break;
+      expect = from + part.pageNums.length;
+      premarkKeep({ pageNums: part.pageNums.slice(), inks: inks.slice(from, from + part.pageNums.length),
+                    carry: part.carry, ctx: ctx, rows: part.rows, at: Date.now() });
+    }
     // They may have gone several pages on while that was read.
     if (end < hereIdx) premarkSoon();
   })().catch(function (e) {
@@ -12184,14 +12301,21 @@ async function runMarking() {
       }
       if (!ahead && !imgs.length) continue;
       try {
+        /* ✂️ A fresh batch comes back as PARTS — the batch itself, or, when
+           its reply was cut off, each page asked again on its own — and they
+           are folded one after another exactly as batches are. */
+        var parts = ahead ? [{ rows: rows, pageNums: pageNums }] : null;
         if (!ahead) {
-          var raw = await markBatchAsk(imgs, pageNums, total, carry);
-          if (run !== _markRun || epoch !== wsEpoch) return;
-          var res = _parseAIJson(raw);
-          rows = (res && res.questions) || [];
+          var got = await markBatchRows(imgs, pageNums, total, carry, marking.items,
+                                        function () { return run !== _markRun || epoch !== wsEpoch; });
+          if (!got || run !== _markRun || epoch !== wsEpoch) return;
+          parts = got.parts;
+          got.failed.forEach(function (n) { failed.push(n); });
         }
-        _markFoldRows(rows, pageNums, marking.items,
-                      { subject: wsMeta.subject, level: wsMeta.level });
+        parts.forEach(function (part) {
+          _markFoldRows(part.rows, part.pageNums, marking.items,
+                        { subject: wsMeta.subject, level: wsMeta.level });
+        });
       } catch (e) {
         // ONE unreadable batch never sinks the rest of the worksheet: those
         // pages are reported and the run carries on.
@@ -12220,8 +12344,8 @@ async function runMarking() {
          files every question anyway, a moment after they are on screen. */
       if (!ahead) {
         try {
-          var got = await fileMistakes({ marked: true, quiet: true });
-          mistFiled += got.filed;
+          var filedNow = await fileMistakes({ marked: true, quiet: true });
+          mistFiled += filedNow.filed;
         } catch (e) { console.warn('Mistakes could not be filed for this batch', e); }
         if (run !== _markRun || epoch !== wsEpoch) return;
       }
@@ -30619,6 +30743,9 @@ let _aiPreferred = "openai";
 let _aiLast = { engine: "", fellBack: false };
 
 function aiEngineIsDown(e) { return (_aiDown[e] || 0) > Date.now(); }
+/* Is the engine that leads the marking marked down right now? Marking ahead
+   asks before it spends a call (see MARKING AHEAD). */
+window.aiLeadDown = function aiLeadDown() { return aiEngineIsDown(_aiPreferred); };
 function _aiMarkDown(e, why) { _aiDown[e] = Date.now() + AI_DOWN_MS; _aiWhy[e] = why || ""; }
 function _aiMarkUp(e) { _aiDown[e] = 0; _aiWhy[e] = ""; }
 
@@ -30721,6 +30848,15 @@ async function aiAskRoutes(prompt, opts, order) {
      is nothing to protect, and that is where nearly every refusal happens
      anyway: a quota, a billing cap, a connection that never opened. */
   let emitted = false;
+  /* ⏱ "ONE REQUEST AT A TIME" IS A WAIT, NOT A REFUSAL (v1.70.0). The server
+     allows each account one ChatGPT call per `MIN_OPENAI_INTERVAL_MS` (1.5 s).
+     Two calls that land together — a hint and a page being marked ahead, two
+     marking batches — get that answer, and it used to mark ChatGPT DOWN for
+     ten minutes on this device, sending every marking run in those ten
+     minutes to the backup engine. It is waited out and asked again instead. */
+  const AI_BUSY_RE = /one request at a time/i;
+  const AI_BUSY_WAIT_MS = 1700;
+  const busyRetried = {};
   const routeOpts = typeof opts.onStream === "function"
     ? Object.assign({}, opts, { onStream: function (full) { emitted = true; opts.onStream(full); } })
     : opts;
@@ -30738,6 +30874,13 @@ async function aiAskRoutes(prompt, opts, order) {
       return out;
     } catch (e) {
       aiThrowIfAborted(opts.signal);
+      if (!emitted && !busyRetried[engine] && AI_BUSY_RE.test(String((e && e.message) || e || ""))) {
+        busyRetried[engine] = true;
+        await new Promise(function (r) { setTimeout(r, AI_BUSY_WAIT_MS); });
+        aiThrowIfAborted(opts.signal);
+        i--;
+        continue;
+      }
       _aiRefused(engine, opts, e);
       if (!first) first = e;
       console.warn("AI route " + engine + " refused:", e);
