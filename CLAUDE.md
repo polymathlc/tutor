@@ -7,6 +7,11 @@ Guidance for Claude when working in this repo.
 Study Buddy installs like an app: its own icon and window, no app store. It is a Progressive Web
 App, and every piece of it comes from the shared Polymath install kit.
 
+- **The offline page carries its icon inline (sw 2.0.1, v1.71.1).** `sw.js` answers page loads only, so an
+  icon file beside `offline.html` could never arrive with no connection (it showed as a broken picture).
+  The icon is a `data:` URI inside `offline.html`, `PRECACHE` is just the offline page, and `SW_VERSION`
+  went to 2.0.1 so installed copies re-cache it. The kit's browser harness checks the icon shows offline.
+
 - **The files.** `manifest.webmanifest` (`id`/`start_url`/`scope` = `./`, so the same file works at
   polymathlc.com.sg/tutor/ and polymathlc.github.io/tutor/; name *Polymath Study Buddy*, short name
   *Study Buddy*); the icons in `assets/app-icons/` (192/512 `any`, 192/512 `maskable`, the 180 px
