@@ -1310,7 +1310,8 @@ ok('…AWAITED, never fired and forgotten',
 ok('…and a batch that could not be filed never sinks the marking',
    /catch \(e\) \{ console\.warn\('Mistakes could not be filed for this batch', e\); \}/.test(MARKRUN));
 ok('…and the run re-checks it is still the run afterwards',
-   /Mistakes could not be filed for this batch[\s\S]{0,120}if \(run !== _markRun \|\| epoch !== wsEpoch\) return;/.test(MARKRUN),
+   /Mistakes could not be filed for this batch[\s\S]{0,120}if \((run !== _markRun \|\| epoch !== wsEpoch|stale\(\))\) return;/.test(MARKRUN) &&
+   /function stale\(\) \{ return run !== _markRun \|\| epoch !== wsEpoch; \}/.test(MARKRUN),
    'a paper closed mid-filing must not carry on marking it');
 ok('the LAST pass is the one that sees the whole paper',
    /var endGot = await fileMistakes\(\{ quiet: true \}\);/.test(MARKRUN),
@@ -2137,13 +2138,13 @@ ok('the note budgets are pots, not a slice',
    paper puts the paper's own answers into the score as questions they "got
    right", and into the mistake book with a picture of the key beside them. */
 const runMark = html.slice(html.indexOf('async function runMarking'),
-                           html.indexOf('async function runMarking') + 4200);
+                           html.indexOf('function markTally()'));
 ok('marking runs over the student\'s pages after answer-key readiness',
    /work = studentPages\(\)/.test(runMark) && runMark.indexOf('work = studentPages()') > runMark.indexOf('keyEnsureReady()'),
    runMark.replace(/\s+/g, ' ').slice(0, 260));
 ok('…and the picture and its page number are pushed together',
    /imgs\.push\([^)]*\);\s*pageNums\.push\(batch\[b\]\.num\)/.test(runMark.replace(/\s+/g, ' ')) ||
-   /pageNums\.push\(batch\[b\]\.num\)/.test(runMark),
+   /imgs\.push\([^)]*\); pageNums\.push\(seg\.batch\[b\]\.num\); \}\s*else lost\.push\(seg\.batch\[b\]\.num\);/.test(runMark),
    runMark.replace(/\s+/g, ' ').slice(0, 400));
 
 /* The key is remembered with the worksheet, or every reopen reads the
@@ -3074,11 +3075,11 @@ const askSrc = html.slice(html.indexOf('async function markBatchAsk('), html.ind
 ok('the marking\'s system prompt carries the syllabus list',
    /system: MARK_SYS \+ markBlankRule\(\) \+ aiGrounding\('mark'\) \+ keyRuleBlock\(\) \+ tutorMethodRule\(\) \+\s*markSyllabusBlock\(wsMeta\.subject, wsMeta\.level\)/.test(askSrc));
 ok('…and the run reads every fresh batch through that ONE call',
-   /var got = await markBatchRows\(imgs, pageNums, total, carry, marking\.items,/.test(runSrc) && !/window\.askGemini\(/.test(runSrc) &&
-   /var raw = await markBatchAsk\(imgs, pageNums, total, carry\);/.test(html.slice(html.indexOf('async function markBatchRows('), html.indexOf('async function runMarking()'))));
+   /var got = await markBatchRows\(imgs, pageNums, total, prev, stale\);/.test(runSrc) && !/window\.askGemini\(/.test(runSrc) &&
+   /var raw = await markBatchAsk\(imgs, pageNums, total, prev\);/.test(html.slice(html.indexOf('async function markBatchRows('), html.indexOf('async function runMarking()'))));
 ok('…and the fold is told the subject and level, or nothing is filed',
    /_markFoldRows\(part\.rows, part\.pageNums, marking\.items,\s*\{ subject: wsMeta\.subject, level: wsMeta\.level \}\)/.test(runSrc) &&
-   /parts = got\.parts;/.test(runSrc));
+   /got\.parts\.forEach\(function \(part\) \{/.test(runSrc));
 ok('the reply shape asks for the objective id', /"lo":"the learning objective/.test(html));
 const saveSrc = html.slice(html.indexOf('async function performSave('), html.indexOf('function applyWorksheetBody('));
 ok('the summary rides every save beside the score', /score: scoreOf\(\),[\s\S]{0,300}diagnostic: diagSummary\(\),/.test(saveSrc));
@@ -7223,7 +7224,7 @@ ok('the light model is GPT-6 Luna, and only the light task names it',
    /const AI_LIGHT_MODEL = "gpt-6-luna";/.test(html) &&
    /const AI_TASK_MODEL = \{ light: AI_LIGHT_MODEL \};/.test(html));
 ok('…a refused named model does not mark ChatGPT down for the hints and the marking',
-   /if \(engine === "openai" && opts\.task && AI_TASK_MODEL\[opts\.task\]\) _aiWhy\[engine\] = why;\s*\n\s*else _aiMarkDown\(engine, why\);/.test(html) &&
+   /if \(engine === "openai" && opts\.task && AI_TASK_MODEL\[opts\.task\]\) _aiWhy\[engine\] = why;\s*\n\s*else if \(aiTimedOut\(e\)\) _aiWhy\[engine\] = why;\s*\n\s*else _aiMarkDown\(engine, why\);/.test(html) &&
    /_aiRefused\(engine, opts, e\);/.test(html));
 ok('…and the panel names the light jobs and their model',
    /lightOrder: aiEngineOrder\("light"\)/.test(html) && /Reading a paper at upload and building a keyword check/.test(html));
@@ -7615,7 +7616,7 @@ section('⏩ Marking ahead');
     MARK_BATCH: 3, wsEpoch: 1, pages: [], annotations: [], wsMeta: { subject: 'science', level: 'P5', guidance: 'full' },
     marking: { items: [], runAt: null, running: false }, _markFiling: false,
     MARK_SYS: 'SYS', markBlankRule: () => '', aiGrounding: () => '[G]', keyRuleBlock: () => '', tutorMethodRule: () => '',
-    markSyllabusBlock: () => '', markPrompt: (nums, total, carry) => 'pages ' + nums.join(',') + ' carry=' + carry,
+    markSyllabusBlock: () => '', markPrompt: (nums, total, prevNum) => 'pages ' + nums.join(',') + ' prev=' + prevNum,
     aiAvailable: () => true, loadTeachingNotes: async () => [], keyEnsureReady: async () => true,
     ensurePageRaster: async () => {}, compositeJpeg: p => 'JPEG' + p.num,
     _parseAIJson: raw => JSON.parse(raw), _mkStr: (v) => String(v || ''),
@@ -7650,7 +7651,7 @@ section('⏩ Marking ahead');
   await pm.premarkTick();
   eq('the page they just left is marked when they stop on the next', calls.length, 1);
   ok('…ONE page, not a batch of three, when they read one page at a time',
-     /^pages 1 carry=$/.test(calls[0].prompt), calls[0].prompt);
+     /^pages 1 prev=0$/.test(calls[0].prompt) && calls[0].cfg.images.length === 1, calls[0].prompt);
   ok('…through the same system prompt the run sends, ceiling and grounding included',
      calls[0].cfg.system === 'SYS[G]' && calls[0].cfg.json === true && calls[0].cfg.thinkingLevel === 'high');
   eq('…and NOTHING reaches the marking the student can see', pm.marking.items.length, 0);
@@ -7660,19 +7661,20 @@ section('⏩ Marking ahead');
   await pm.premarkTick();
   eq('a page already marked ahead is not asked for twice', calls.length, 1);
 
-  /* Jump to page 5: pages 2–4 go as ONE segment, carrying page 1's question. */
+  /* Jump to page 5: pages 2–4 go as ONE segment, sent beside page 1. */
   here = pm.pages[4];
   ink(4, '12 cm');
   await pm.premarkTick();
   eq('pages passed in one jump go up together, as the run would batch them', calls.length, 2);
-  ok('…carrying the question the page before ended on', /^pages 2,3,4 carry=Q on pages 1 carry=$/.test(calls[1].prompt), calls[1].prompt);
+  ok('…sent beside the page before them, as the LAST picture', /^pages 2,3,4 prev=1$/.test(calls[1].prompt) &&
+     calls[1].cfg.images.length === 4 && calls[1].cfg.images[3].data === 'JPEG1', calls[1].prompt);
 
   /* The run's view: walk the chain from page one. */
   const ctx = pm.premarkCtxSig();
   const first = pm.premarkReuse(pm.pages, 0, '', ctx);
   ok('the run finds the kept segment at page one', first && first.batch.length === 1 && first.batch[0].num === 1);
-  const second = pm.premarkReuse(pm.pages, 1, 'Q on pages 1 carry=', ctx);
-  ok('…and the next one, under the carry it was marked with', second && second.batch.map(p => p.num).join() === '2,3,4');
+  const second = pm.premarkReuse(pm.pages, 1, pm.premarkCarry(pm.pages, 1), ctx);
+  ok('…and the next one, under the page it was sent beside', second && second.batch.map(p => p.num).join() === '2,3,4');
   ok('…but never under a DIFFERENT carry — that was a different paper',
      pm.premarkReuse(pm.pages, 1, 'something else', ctx) === null);
   ok('…nor under a different prompt — a help level, a key or a note changed since',
@@ -7734,9 +7736,10 @@ section('⏩ Marking ahead');
   ink(3, 'answer on page 3');
   await pm.premarkTick();
   eq('a cut-off reply over three pages is asked again ONE PAGE AT A TIME', cutCalls.length, 4);
-  ok('…each page under the carry the page before it ended on',
-     cutCalls[1].prompt === 'pages 1 carry=' && cutCalls[2].prompt === 'pages 2 carry=Q on 1' &&
-     cutCalls[3].prompt === 'pages 3 carry=Q on 2', cutCalls.map(c => c.prompt).join(' | '));
+  ok('…each page sent beside the page before it',
+     cutCalls[1].prompt === 'pages 1 prev=0' && cutCalls[2].prompt === 'pages 2 prev=1' &&
+     cutCalls[3].prompt === 'pages 3 prev=2' && cutCalls[3].cfg.images.map(i => i.data).join() === 'JPEG3,JPEG2',
+     cutCalls.map(c => c.prompt).join(' | '));
   ok('…and with the budget that has room for the thinking as well as the reply',
      cutCalls.every(c => c.cfg.maxOutputTokens === pm.MARK_MAX_OUT) && pm.MARK_MAX_OUT >= 16000);
   ok('…kept as three one-page segments the run can walk',
@@ -7774,24 +7777,25 @@ section('⏩ Marking ahead');
   {
     const routes = between('async function aiAskRoutes(', 'window.aiEngines = function', 'the failover loop');
     ok('the server\'s one-call-at-a-time answer is waited out and asked again on the SAME engine',
-       /AI_BUSY_RE\.test\([\s\S]{0,40}\)\) \{\s*\n\s*busyRetried\[engine\] = true;[\s\S]{0,160}i--;\s*\n\s*continue;\s*\n\s*\}\s*\n\s*_aiRefused\(engine, opts, e\);/.test(routes),
+       /AI_BUSY_RE\.test\([\s\S]{0,40}\)\) \{\s*\n\s*busyRetried\[engine\] = \(busyRetried\[engine\] \|\| 0\) \+ 1;[\s\S]{0,320}i--;\s*\n\s*continue;\s*\n\s*\}\s*\n\s*_aiRefused\(engine, opts, e\);/.test(routes),
        'marking the lead engine down for ten minutes sends every marking run in those minutes to the backup');
-    ok('…once per engine, and never after text has been handed over',
-       /!emitted && !busyRetried\[engine\]/.test(routes));
+    ok('…a few times per engine, as long as the server says, and never after text has been handed over',
+       /!emitted && \(busyRetried\[engine\] \|\| 0\) < AI_BUSY_TRIES/.test(routes) && /const AI_BUSY_TRIES = [2-5];/.test(routes) &&
+       /e\.details && e\.details\.retryAfterMs/.test(routes));
   }
 
   /* Against index.html itself. */
   const RUN = between('async function runMarking() {', 'function markTally() {', 'the marking run');
   ok('the run walks the kept chain from the first page, with the prompt\'s fingerprint',
-     /var aheadCtx = premarkCtxSig\(\)/.test(RUN) && /var ahead = premarkReuse\(work, start, carry, aheadCtx\);/.test(RUN));
+     /var aheadCtx = premarkCtxSig\(\)/.test(RUN) && /var ahead = premarkReuse\(work, start, premarkCarry\(work, start\), aheadCtx\);/.test(RUN));
   ok('…steps by the segment it used, so the chain and the run stay in step',
      /for \(var start = 0; start < total; start \+= step\)/.test(RUN) && /step = batch\.length;/.test(RUN));
   ok('…and takes no picture and makes no call for a kept segment',
-     /for \(var b = 0; !ahead && b < batch\.length; b\+\+\)/.test(RUN) && /if \(!ahead\) \{\n\s*var got = await markBatchRows/.test(RUN));
+     /if \(seg\.ahead\) return \{ parts: \[\{ rows: seg\.ahead\.seg\.rows, pageNums: seg\.ahead\.seg\.pageNums\.slice\(\) \}\], failed: \[\] \};/.test(RUN));
   ok('…waits for a segment in flight rather than asking for it twice',
      /premarkCancel\(\);[\s\S]{0,40}try \{\n\s*if \(_premark\.busy\) \{ try \{ await _premark\.busy; \}/.test(RUN));
   ok('…and files a kept batch at the END, so the marks are not held back behind the book',
-     /if \(!ahead\) \{\n\s*try \{\n\s*var filedNow = await fileMistakes/.test(RUN));
+     /if \(!seg\.ahead && got\.parts\.length\) \{\n\s*try \{\n\s*var filedNow = await fileMistakes/.test(RUN));
   ok('the ONE marking call and the fingerprint are the same expression',
      (() => {
        const a = between('async function markBatchAsk(', 'function markSystemPrompt()', 'the batch call');
@@ -7805,6 +7809,151 @@ section('⏩ Marking ahead');
   ok('…and it is started when the scrolling STOPS',
      /\$\('viewerArea'\)\.addEventListener\('scroll', function \(\) \{ premarkSoon\(\); \}, \{ passive: true \}\);/.test(html) &&
      /_premark\.timer = setTimeout\(premarkTick, PREMARK_IDLE_MS\);/.test(PM_SRC));
+}
+
+/* =====================================================================
+   ⚡ MARKED SIDE BY SIDE (v1.72.0) — every batch asked at once, stitched by
+   the page before, folded in paper order
+   ===================================================================== */
+section('⚡ Marked side by side');
+{
+  const SRC = between('/* =====================================================================\n   ⏩ MARKING AHEAD', 'function markTally() {', 'the marking block');
+  const calls = [];
+  let live = 0, peak = 0;
+  const pending = [];
+  const sb = {
+    console: { warn() {}, info() {} },
+    JSON, Math, Date, Promise, Array, String, Object, Number, parseInt,
+    setTimeout: (fn) => { fn(); return 1; }, clearTimeout: () => {},
+    document: { hidden: false },
+    wsEpoch: 1, pages: [], annotations: [], wsMeta: { subject: 'maths', level: 'P5', guidance: 'full' },
+    marking: { items: [], runAt: null, running: false }, _markFiling: false, _markRun: 0,
+    MARK_BATCH: 2, HINT_RUNGS: [1, 2, 3], guidanceDepth: () => 3, docName: 'paper',
+    MARK_SYS: 'SYS', markBlankRule: () => '', aiGrounding: () => '', keyRuleBlock: () => '', tutorMethodRule: () => '',
+    markSyllabusBlock: () => '',
+    markPrompt: (nums, total, prevNum) => 'pages ' + nums.join(',') + ' prev=' + prevNum,
+    aiAvailable: () => true, loadTeachingNotes: async () => [], keyEnsureReady: async () => true,
+    aiWithDeadline: fn => fn(), aiEngineName: () => 'ChatGPT',
+    ensurePageRaster: async () => {}, compositeJpeg: p => 'JPEG' + p.num,
+    _parseAIJson: raw => JSON.parse(raw), _mkStr: v => String(v || ''),
+    _jsonEndIndex: s => { try { JSON.parse(s); return s.length; } catch (e) { return -1; } },
+    _markFoldRows: (rows, nums, into) => rows.forEach((r, i) => {
+      if (i === 0 && r.continuation && into.length) { into[into.length - 1].question += ' + ' + r.question; return; }
+      into.push({ question: r.question, page: nums[(r.page || 1) - 1] });
+    }),
+    toast: () => {}, commitActiveTextEdit: () => {}, openBuddy: () => {}, renderMarking: () => {},
+    progress: [], markRation: () => {}, usageNote: () => {}, usageAdd: () => {},
+    markTally: () => ({ correct: 0, partial: 0, wrong: 0, blank: 0 }), markMarkTally: () => ({ has: false }),
+    fileMistakes: async () => ({ filed: 0, wentPast: 0 }), setDirty: () => {},
+    $: () => ({ classList: { remove() {} } }),
+    window: {}
+  };
+  sb.markProgress = (done, total, text) => sb.progress.push(text);
+  sb.window.askGemini = (prompt, cfg) => {
+    calls.push({ prompt, cfg });
+    live++; peak = Math.max(peak, live);
+    const nums = /^pages ([\d,]+)/.exec(prompt)[1].split(',');
+    return new Promise(res => pending.push({ nums, cfg, res: () => {
+      live--;
+      const qs = [];
+      if (nums[0] === '3') qs.push({ question: 'rest of Q2', continuation: true, page: 1 });
+      if (cfg.images.length > nums.length) qs.push({ question: 'from the page before', page: nums.length + 1 });
+      nums.forEach((n, i) => qs.push({ question: 'Q' + n, page: i + 1, continuation: false }));
+      res(JSON.stringify({ questions: qs }));
+    } }));
+  };
+  const ctx = vm.createContext(sb);
+  vm.runInContext(SRC, ctx, { filename: 'index.html' });
+  sb.pages = [1, 2, 3, 4, 5, 6, 7, 8].map(n => ({ num: n }));
+  sb.studentPages = () => sb.pages;
+  sb.visiblePage = () => sb.pages[0];
+  sb.annotations.push({ id: 'a', page: 1, type: 'text', text: 'x' });
+
+  const flush = () => new Promise(r => setImmediate(r));
+  const runP = sb.runMarking();
+  for (let i = 0; i < 10; i++) await flush();
+  eq('the batches are asked TOGETHER, not one after the other', calls.length, sb.MARK_PAR);
+  ok('…MARK_PAR is a small number', sb.MARK_PAR >= 2 && sb.MARK_PAR <= 4);
+  /* Answer them out of order: the LAST asked first. */
+  pending.slice().reverse().forEach(p => p.res());
+  pending.length = 0;
+  for (let i = 0; i < 10; i++) await flush();
+  while (pending.length) { pending.splice(0).forEach(p => p.res()); for (let i = 0; i < 10; i++) await flush(); }
+  await runP;
+  eq('every page is asked for, two at a time', calls.map(c => /^pages ([\d,]+)/.exec(c.prompt)[1]).join('|'), '1,2|3,4|5,6|7,8');
+  ok('…never more than MARK_PAR at once', peak <= sb.MARK_PAR, String(peak));
+  ok('…each batch after the first sent beside the page before it, as its LAST picture',
+     calls[0].prompt === 'pages 1,2 prev=0' && calls[0].cfg.images.length === 2 &&
+     calls[1].prompt === 'pages 3,4 prev=2' && calls[1].cfg.images.map(i => i.data).join() === 'JPEG3,JPEG4,JPEG2',
+     calls.map(c => c.prompt).join(' | '));
+  eq('…folded in PAPER order however the replies arrived, the context page\'s rows dropped and the stitch landing on its question',
+     sb.marking.items.map(i => i.question).join(','), 'Q1,Q2 + rest of Q2,Q3,Q4,Q5,Q6,Q7,Q8');
+  ok('…with the time a reasoning model needs for two pages, and an overall deadline above it',
+     calls.every(c => c.cfg.routeTimeoutMs === sb.MARK_ROUTE_MS && c.cfg.timeoutMs === sb.MARK_DEADLINE_MS) &&
+     sb.MARK_ROUTE_MS >= 90000 && sb.MARK_DEADLINE_MS > sb.MARK_ROUTE_MS);
+  eq('the run is finished and its marks are shown', sb.marking.running, false);
+
+  /* A batch that fails is reported, and the rest of the paper is still marked. */
+  calls.length = 0;
+  sb.window.askGemini = async (prompt) => {
+    calls.push({ prompt });
+    if (/^pages 3,4/.test(prompt)) throw new Error('down');
+    const nums = /^pages ([\d,]+)/.exec(prompt)[1].split(',');
+    return JSON.stringify({ questions: nums.map((n, i) => ({ question: 'Q' + n, page: i + 1 })) });
+  };
+  let said = '';
+  sb.toast = t => { said = t; };
+  sb.marking = { items: [], runAt: null, running: false };
+  await sb.runMarking();
+  eq('ONE unreadable batch never sinks the rest', sb.marking.items.map(i => i.question).join(','), 'Q1,Q2,Q5,Q6,Q7,Q8');
+  ok('…and its pages are named', /Pages 3, 4 could not be read/.test(said), said);
+
+  eq('markOwnRows drops a question printed only on the page before',
+     sb.markOwnRows([{ question: 'a', page: 3 }, { question: 'b', page: 1 }], 2, true).map(r => r.question).join(), 'b');
+  eq('…keeps a continuation whatever page it names',
+     sb.markOwnRows([{ question: 'c', page: 3, continuation: true }], 2, true).length, 1);
+  eq('…and drops nothing when no page before was sent',
+     sb.markOwnRows([{ question: 'a', page: 3 }], 2, false).length, 1);
+
+  /* The pool itself. */
+  let on = 0, top = 0;
+  const order = [];
+  const tasks = [5, 1, 3, 2].map((ms, i) => async () => {
+    on++; top = Math.max(top, on);
+    await new Promise(r => setTimeout(r, ms * 3));
+    on--; order.push(i);
+    return i;
+  });
+  const outs = await Promise.all(sb.markPool(tasks, 2));
+  eq('markPool answers in the order it was given', outs.join(), '0,1,2,3');
+  ok('…with no more than its limit running', top === 2, String(top));
+
+  const RUN = between('async function runMarking() {', 'function markTally() {', 'the marking run');
+  ok('the run reads through the pool and folds by awaiting each batch in turn',
+     /var reads = markPool\(readers, MARK_PAR\);/.test(RUN) && /var got = await reads\[k\];/.test(RUN));
+  const PROMPT = between('function markPrompt(pageNums, total, prevNum) {', '/* ---- The ceiling reaches the marking too', 'the marking prompt');
+  ok('the prompt names the page before as the LAST picture, for context only',
+     /The LAST attached picture \(picture ' \+ \(n \+ 1\) \+ '\) is page ' \+ prevNum/.test(PROMPT) &&
+     /Return NO entry for a question printed only on it/.test(PROMPT) && /"continuation": true/.test(PROMPT));
+}
+
+/* ⏱ The route loop: ChatGPT calls spaced, and a slow call is not a refusal. */
+section('⏱ Spaced ChatGPT calls and slow replies');
+{
+  ok('ChatGPT calls take a turn, spaced on this page, before they go to the server',
+     /const AI_OPENAI_GAP_MS = 1[5-9]\d\d;/.test(html) &&
+     /if \(engine === "openai"\) \{ await aiOpenAiTurn\(opts\.signal\); return askOpenAiServer\(prompt, opts\); \}/.test(html) &&
+     /_aiOpenAiNext = at \+ AI_OPENAI_GAP_MS;\n  if \(at > now\)/.test(html),
+     'the turn must be claimed BEFORE the wait, or three asked together all go at once');
+  const TURN = between('let _aiOpenAiNext = 0;', 'async function _aiRun(', 'the ChatGPT turn');
+  const tb = { Date: { now: () => tb.t }, t: 1000, waits: [], Math,
+    setTimeout: (fn, ms) => { tb.waits.push(ms); fn(); }, aiThrowIfAborted: () => {}, Promise };
+  vm.runInContext('var _aiOpenAiNext = 0; const AI_OPENAI_GAP_MS = 1600;\n' + TURN.replace(/^let _aiOpenAiNext = 0;/, '') +
+                  '\nthis.turn = aiOpenAiTurn;', vm.createContext(tb));
+  await Promise.all([tb.turn(), tb.turn(), tb.turn()]);
+  eq('…three asked together go out 1.6 s apart', tb.waits.join(), '1600,3200');
+  ok('a call that ran out of TIME is recorded, never a ten-minute mark-down',
+     /function aiTimedOut\(e\) \{/.test(html) && /e\.name === "TimeoutError" \|\| \/deadline-exceeded\/i\.test\(code\)/.test(html));
 }
 
 console.log('\n' + (failures

@@ -3312,6 +3312,36 @@ worksheet ate the account's daily ChatGPT allowance (`DAILY_OPENAI_CAP` in polym
   `window.aiLeadDown()` says the leading engine is down.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
+## ⚡ MARKED SIDE BY SIDE — the paper takes as long as its slowest batch (v1.72.0)
+
+`MARK_PAR` / `MARK_ROUTE_MS` / `MARK_DEADLINE_MS` / `markPrevOf` / **`markPrevPicture`** / **`markOwnRows`** /
+**`markPool`** / `premarkCarry` / `premarkCarryKey` (search `MARKED SIDE BY SIDE`), the `plan` / `readers` /
+`reads` walk in `runMarking`, `aiOpenAiTurn` / `AI_OPENAI_GAP_MS`, `aiTimedOut` in `_aiRefused`, and
+`AI_BUSY_TRIES` in `aiAskRoutes`.
+
+Marking was slow and dropped pages. Batches ran strictly one after another because each was told the TEXT of
+the last question the batch before returned (`carry`). Each engine had 45 s, a reply at high reasoning often
+needs longer, and a timeout marked ChatGPT down for ten minutes, so one slow batch sent the rest of the paper
+(and every run for ten minutes) to Gemini under the same 45 s.
+
+- **THE STITCH IS THE PAGE BEFORE, NOT THE REPLY BEFORE.** Each batch is sent the page in front of it as its
+  LAST picture (so its own pages stay pictures 1..n), and `markPrompt(pageNums, total, prevNum)` says it is
+  context only. A question that started there comes back as the `continuation` entry, as before.
+  `markOwnRows` drops any other row the model returns from that page.
+- **EVERY BATCH IS ASKED AT ONCE, `MARK_PAR` (3) at a time** (`markPool`), and `MARK_BATCH` is 2. The fold
+  stays in PAPER ORDER (`await reads[k]`), so a continuation always lands on the question it finishes, and
+  per-batch filing waits behind the batches still being read.
+- **A KEPT SEGMENT'S `carry` IS NOW `premarkCarryKey(prevPage, itsInk)`**, the page it was sent beside. The
+  chain needs no folding (`premarkChain` just walks), and a stroke on the page before invalidates the segment.
+- **A TIMEOUT IS SLOW, NOT REFUSED.** `aiTimedOut` (`TimeoutError` or `deadline-exceeded`) records the reason
+  but never marks the engine down. Marking gets `MARK_ROUTE_MS` (120 s) per engine and `MARK_DEADLINE_MS`
+  (240 s) in all; the server's `askOpenAi` allows 240 s.
+- **CHATGPT CALLS ARE SPACED ON THE PAGE** (`aiOpenAiTurn`, 1.6 s, claimed before the wait), because a pupil's
+  account may start one call every 1.5 s. "One request at a time" is still retried, up to `AI_BUSY_TRIES`,
+  for the server's `details.retryAfterMs`.
+- Run **`node tools/tutor-tests.mjs`** (the `⚡ Marked side by side` section runs `runMarking` in a sandbox
+  with replies arriving out of order) and `node --test tools/ai-defaults-tests.mjs`.
+
 ## 📕 A QUESTION IS IN THE BOOK AS SOON AS IT IS MARKED (v1.44.0)
 
 **`fileMistakes(opts)`** and its `{ filed, wentPast }` answer, **`markRation`** beside it, and the

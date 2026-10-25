@@ -3087,7 +3087,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.71.1';
+var APP_VERSION = 'v1.72.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -8558,9 +8558,11 @@ var aiBusy = false;
 var buddyPane = 'hints';
 
 /* Pages go up in batches, several pictures in ONE vision call, so a question
-   spread over a page break comes back as one question. Straight from Scan &
-   Answer, including the number. */
-var MARK_BATCH = 3;
+   spread over a page break comes back as one question. Two, not three
+   (v1.72.0): the batches are now asked side by side (`MARK_PAR`), so the
+   paper takes as long as its SLOWEST batch, and a two-page reply is a third
+   shorter to write — and a third less likely to be cut off. */
+var MARK_BATCH = 2;
 var _markRun = 0;
 var _markFiling = false;
 
@@ -11869,7 +11871,7 @@ function _markFoldRows(rows, pageNums, into, ctx) {
   });
 }
 
-function markPrompt(pageNums, total, carry) {
+function markPrompt(pageNums, total, prevNum) {
   var subj = wsMeta.subject ? subjectLabel(wsMeta.subject) : '';
   var lvl = wsMeta.level ? levelLabel(wsMeta.level) : '';
   var who = (lvl || subj) ? 'It is a ' + [lvl, subj].filter(Boolean).join(' ') + ' worksheet.' : '';
@@ -11878,19 +11880,29 @@ function markPrompt(pageNums, total, carry) {
   // key hidden they are not always consecutive, and a prompt saying
   // "pages 3–5" over pictures of 3, 4 and 6 is a prompt that lies.
   var which = n === 1
-    ? 'picture is page ' + pageNums[0]
-    : n + ' pictures are pages ' + pageNums.join(', ');
+    ? 'first picture is page ' + pageNums[0]
+    : 'first ' + n + ' pictures are pages ' + pageNums.join(', ');
+  /* 🧵 THE PAGE BEFORE, SHOWN RATHER THAN DESCRIBED (v1.72.0). A question
+     that runs over the page break used to be stitched by the TEXT of the
+     last question the previous batch returned, which meant no batch could
+     be asked until the one before it had answered. The page itself is
+     attached last instead, so every batch can be asked at once — and the
+     model sees the whole of the question, not 300 characters of it. */
   return 'The attached ' + which +
       ' of the student\'s own worksheet, in order. ' + who + '\n' +
+    (prevNum ? 'The LAST attached picture (picture ' + (n + 1) + ') is page ' + prevNum + ', the page BEFORE these, ' +
+               'attached ONLY so a question that starts there and runs on to page ' + pageNums[0] + ' can be read whole. ' +
+               'Return NO entry for a question printed only on it, and never give it as a "page". If page ' +
+               pageNums[0] + ' begins part-way through a question from page ' + prevNum + ', the FIRST entry you ' +
+               'return must have "continuation": true and hold only the rest of it — its wording, and the answer ' +
+               'and marking of the WHOLE question now that you can see all of it.\n' : '') +
     markSubjectRule() +
-    'Find EVERY question printed on these pages. Work the correct answer to each one out yourself first. Then, ' +
-    'question by question: where the student has written something, mark it and write them feedback; where the ' +
-    'question is blank, leave the marking fields empty.\n' +
-    (carry ? 'The page before these ended part-way through this question: "' + carry + '". If these pages carry it ' +
-             'on, the FIRST entry you return must have "continuation": true and hold only the rest of it — its ' +
-             'wording, and the answer to the WHOLE question now that you can see all of it.\n' : '') +
+    'Find EVERY question printed on ' + (n === 1 ? 'page ' + pageNums[0] : 'these pages') + '. Work the correct ' +
+    'answer to each one out yourself first. Then, question by question: where the student has written ' +
+    'something, mark it and write them feedback; where the question is blank, leave the marking fields empty.\n' +
     'Every other entry has "continuation": false.\n' +
-    'Count the questions on these pages, then check your reply has that many entries before you send it.';
+    'Count the questions on ' + (n === 1 ? 'that page' : 'these pages') + ', then check your reply has that many ' +
+    'entries before you send it.';
 }
 
 /* ---- The ceiling reaches the marking too ----
@@ -11938,7 +11950,7 @@ function markProgress(done, total, text) {
      as "the marks were different when I pressed it twice".
    - A KEPT ANSWER IS USED ONLY WHEN NOTHING IT WAS BUILT FROM HAS CHANGED.
      Every segment remembers the ink on each of its pages (`premarkInkSig`),
-     the question the page before it ended part-way through (`carry`) and
+     the page in front of it and that page's ink (`carry`, since v1.72.0) and
      the whole system prompt (`premarkCtxSig`, which carries the help level,
      the notes, the key and the syllabus). One stroke added afterwards, a
      help level changed, a key read since — and that segment is simply not
@@ -11946,11 +11958,10 @@ function markProgress(done, total, text) {
      FASTER; it can never make a mark different from the one a fresh read
      would give.
    - THE SEGMENTS ARE A CHAIN, in paper order, because the marking is one.
-     A question that runs over a page break is stitched by `carry`, so a
-     segment is only marked once everything before it is in hand, and the
-     run walks the same chain (`premarkReuse`) from the first page — a kept
-     segment whose `carry` no longer matches is a segment that was marked
-     against a different paper.
+     A question that runs over a page break is stitched by the page before
+     it, sent beside it, and the run walks the same chain (`premarkReuse`)
+     from the first page — a kept segment whose `carry` no longer matches
+     was sent beside a page that has been written on since.
    - ONE PAGE AT A TIME WHEN THEY READ ONE PAGE AT A TIME. A segment covers
      the pages passed since the last one, up to `MARK_BATCH`, so a student
      who scrolls page by page has each page marked as they leave it rather
@@ -12002,8 +12013,8 @@ var _premark = { epoch: -1, segs: [], busy: null, calls: 0, timer: 0 };
      `markReadRows` says so (`complete: false`) rather than letting the
      repair pass it off as the whole page.
    - A CUT-OFF BATCH IS ASKED AGAIN ONE PAGE AT A TIME (`markBatchRows`),
-     each page carrying the question the page before it ended on, exactly
-     as the run chains its batches. One page is a third of the answer, so it
+     each page sent with the page before it, exactly as the run stitches its
+     batches (see ⚡ MARKED SIDE BY SIDE). One page is a third of the answer, so it
      fits where three did not. A page that STILL comes back cut off is the
      best that page will give — the run shows it, and marking ahead never
      keeps it, so the next press of Mark reads it fresh. */
@@ -12029,57 +12040,141 @@ function markReadRows(raw) {
   return { rows: rows, complete: !!rows && complete };
 }
 
-/* The last question folded so far, as a COPY the next page can be folded
-   onto — a question that runs over the page break is finished on that copy,
-   never on the caller's own list. Its `_mkStr(…, 300)` is the carry, the
-   same string the run and the marking-ahead chain work out, so a page asked
-   on its own is asked under exactly the carry they will look for. */
-function markTailCopy(items) {
-  var last = items && items.length ? items[items.length - 1] : null;
-  return last ? [Object.assign({}, last, { options: (last.options || []).slice() })] : [];
+/* ⚡ MARKED SIDE BY SIDE — the paper takes as long as its slowest batch (v1.72.0)
+
+   A paper of ten pages was marked one batch after another: picture, call,
+   wait for the whole reply, file the mistakes, and only THEN the next
+   batch — because the next batch was told the TEXT of the last question
+   the one before had returned (`carry`), and could not be asked until it
+   had. At high reasoning a batch takes most of a minute, so ten pages was
+   several minutes of a progress bar. And it was not only slow, it was
+   brittle: each call had 45 seconds per engine, a three-page reply at high
+   reasoning often needs longer, and a call that ran out of time marked
+   ChatGPT DOWN for ten minutes — so one slow page sent every page after it,
+   and every run for ten minutes, to the backup engine, which was given the
+   same 45 seconds and often ran out too. "Pages 4, 5, 6 could not be read."
+
+   So:
+   - THE STITCH IS THE PAGE BEFORE, NOT THE REPLY BEFORE. Every batch is
+     sent the page in front of it as one extra picture, marked "context
+     only" (`markPrompt`), and a question that started there comes back as
+     its `continuation` entry exactly as before — the model now sees the
+     whole question instead of 300 characters of it. No batch waits for
+     another, so they are asked `MARK_PAR` at a time (`markPool`).
+   - THE FOLD STAYS IN PAPER ORDER. Replies are folded one after another,
+     the first batch first, however they arrive, so `continuation` lands on
+     the right question and the marks fill in from the top of the paper.
+     Filing each batch's mistakes now waits behind the batches still being
+     read, which is exactly where its wait should be.
+   - A ROW FROM THE CONTEXT PAGE IS DROPPED (`markOwnRows`): it is the batch
+     before's to mark, and keeping it would mark that question twice.
+   - THE TIME IS `MARK_ROUTE_MS` PER ENGINE and `MARK_DEADLINE_MS` for the
+     call, room for a reasoning model to finish two pages. A call that ran
+     out of time is SLOW, not refused, and no longer marks its engine down
+     (`_aiRefused`).
+   - ChatGPT CALLS ARE SPACED on this page (`aiOpenAiTurn`), so three
+     batches asked together do not trip the server's one-call-per-1.5 s
+     rule on a pupil's account and bounce to the backup. */
+var MARK_PAR = 3;
+var MARK_ROUTE_MS = 120000;
+var MARK_DEADLINE_MS = 240000;
+
+/* The page in front of the one at `start` in the run, or null. */
+function markPrevOf(work, start) {
+  return start > 0 && work[start - 1] ? work[start - 1] : null;
+}
+
+/* The page before, as the picture that rides along with a batch. Its ink is
+   fingerprinted in the SAME tick the picture is taken, like every page
+   marked ahead. A page that will not render is simply left off: the batch
+   is still marked, it only loses the stitch. */
+async function markPrevPicture(prev) {
+  if (!prev) return null;
+  try { await ensurePageRaster(prev); } catch (e) { return null; }
+  var data = compositeJpeg(prev, 1500, 0.86);
+  if (!data) return null;
+  return { num: prev.num, img: { mimeType: 'image/jpeg', data: data }, ink: premarkInkSig(prev.num) };
+}
+
+/* The rows that belong to THIS batch. With the page before attached as the
+   last picture, a question the model returns from it is the batch before's
+   to mark. A continuation is kept whatever page it names — it is the rest of
+   that question, printed here. */
+function markOwnRows(rows, n, hasPrev) {
+  if (!hasPrev || !Array.isArray(rows)) return rows || [];
+  return rows.filter(function (r, i) {
+    if (r && r.continuation === true) return true;
+    var pg = parseInt(r && r.page, 10);
+    return !(pg > n);
+  });
+}
+
+/* At most `par` of `tasks` running at once, started in paper order. The
+   answer is one promise per task, in the same order, so the caller can
+   fold the first while the third is still being read. Each is marked
+   handled here: a run that stops early must not leave a rejection loose. */
+function markPool(tasks, par) {
+  var next = 0;
+  var slots = tasks.map(function () {
+    var s = {};
+    s.p = new Promise(function (r) { s.r = r; });
+    return s;
+  });
+  function launch() {
+    if (next >= tasks.length) return;
+    var i = next++;
+    var p = Promise.resolve().then(tasks[i]);
+    slots[i].r(p);
+    p.then(launch, launch);
+  }
+  for (var k = 0; k < Math.max(1, par || 1); k++) launch();
+  return slots.map(function (s) { s.p.catch(function () {}); return s.p; });
 }
 
 /* ONE BATCH, MARKED WHOLE. Asks for the batch as it always did; a reply that
-   was cut off is asked again page by page. The answer is a list of PARTS in
-   paper order — `{ rows, pageNums, carry, complete }` — which the caller
-   folds one after another exactly as it would fold batches. `failed` is the
-   pages a page-by-page re-ask could not read at all. `stale()` is the
-   caller's own "has the worksheet or the run moved on" test. */
-async function markBatchRows(imgs, pageNums, total, carry, items, stale) {
-  var raw = await markBatchAsk(imgs, pageNums, total, carry);
+   was cut off is asked again page by page — all of those at once too, each
+   page sent with the one before it. The answer is a list of PARTS in paper
+   order — `{ rows, pageNums, prevNum, complete }` — which the caller folds
+   one after another exactly as it folds batches. `failed` is the pages a
+   page-by-page re-ask could not read at all. `stale()` is the caller's own
+   "has the worksheet or the run moved on" test. */
+async function markBatchRows(imgs, pageNums, total, prev, stale) {
+  var n = pageNums.length;
+  var raw = await markBatchAsk(imgs, pageNums, total, prev);
   if (stale && stale()) return null;
   var got = markReadRows(raw);
-  if (got.complete || pageNums.length < 2) {
+  if (got.complete || n < 2) {
     if (!got.complete) console.warn('✂️ The marking reply for page ' + pageNums.join(', ') + ' was cut off; the rest of that page could not be read');
-    return { parts: [{ rows: got.rows || [], pageNums: pageNums.slice(), carry: carry, complete: got.complete }], failed: [] };
+    return { parts: [{ rows: markOwnRows(got.rows || [], n, !!prev), pageNums: pageNums.slice(),
+                       prevNum: prev ? prev.num : 0, complete: got.complete }], failed: [] };
   }
   console.warn('✂️ The marking reply for pages ' + pageNums.join(', ') + ' was cut off — asking again one page at a time');
-  var parts = [], failed = [], c = carry;
-  var seen = markTailCopy(items);
-  for (var i = 0; i < pageNums.length; i++) {
-    var one;
-    try {
-      one = markReadRows(await markBatchAsk([imgs[i]], [pageNums[i]], total, c));
-    } catch (e) {
-      console.warn('Marking page ' + pageNums[i] + ' on its own failed', e);
-      failed.push(pageNums[i]);
-      continue;
-    }
-    if (stale && stale()) return null;
-    var rows = one.rows || [];
-    parts.push({ rows: rows, pageNums: [pageNums[i]], carry: c, complete: one.complete });
-    if (!one.complete) console.warn('✂️ Page ' + pageNums[i] + ' was cut off even on its own');
-    var tail = markTailCopy(seen);
-    _markFoldRows(rows, [pageNums[i]], tail, { subject: wsMeta.subject, level: wsMeta.level });
-    seen = tail.slice(-1);
-    c = seen.length ? _mkStr(seen[0].question, 300) : '';
-  }
+  var outs = await Promise.all(pageNums.map(function (num, i) {
+    var before = i ? { num: pageNums[i - 1], img: imgs[i - 1] } : prev;
+    return markBatchAsk([imgs[i]], [num], total, before).then(function (one) {
+      var r = markReadRows(one);
+      return { rows: markOwnRows(r.rows || [], 1, !!before), pageNums: [num],
+               prevNum: before ? before.num : 0, complete: r.complete };
+    }, function (e) {
+      console.warn('Marking page ' + num + ' on its own failed', e);
+      return { lost: num };
+    });
+  }));
+  if (stale && stale()) return null;
+  var parts = [], failed = [];
+  outs.forEach(function (o) {
+    if (o.lost) { failed.push(o.lost); return; }
+    if (!o.complete) console.warn('✂️ Page ' + o.pageNums[0] + ' was cut off even on its own');
+    parts.push(o);
+  });
   return { parts: parts, failed: failed };
 }
 
-/* THE ONE PLACE A BATCH OF PAGES IS MARKED. */
-async function markBatchAsk(imgs, pageNums, total, carry) {
-  var raw = await window.askGemini(markPrompt(pageNums, total, carry), {
+/* THE ONE PLACE A BATCH OF PAGES IS MARKED. `prev` is the page before the
+   batch (`markPrevPicture`), sent LAST so the batch's own pages are still
+   pictures 1..n and every "page" the model gives is the batch's own. */
+async function markBatchAsk(imgs, pageNums, total, prev) {
+  var raw = await window.askGemini(markPrompt(pageNums, total, prev ? prev.num : 0), {
     // The ceiling goes in the SYSTEM prompt, beside the grounding and
     // exactly where the chat's does. A hard constraint carried in the
     // user message is a constraint the next question can talk over.
@@ -12091,8 +12186,8 @@ async function markBatchAsk(imgs, pageNums, total, carry) {
     system: MARK_SYS + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
             markSyllabusBlock(wsMeta.subject, wsMeta.level),
     maxOutputTokens: MARK_MAX_OUT, temperature: 0.2, json: true, thinkingLevel: 'high',
-    timeoutMs: 120000, routeTimeoutMs: 45000,
-    images: imgs
+    timeoutMs: MARK_DEADLINE_MS, routeTimeoutMs: MARK_ROUTE_MS,
+    images: prev && prev.img ? imgs.concat([prev.img]) : imgs
   });
   return raw;
 }
@@ -12117,6 +12212,16 @@ function premarkHash(s) {
 function premarkInkSig(num) {
   return premarkHash(JSON.stringify((annotations || []).filter(function (a) { return a && a.page === num; })));
 }
+/* What a segment starting at `start` was stitched to: the page in front of
+   it and the ink on that page — the picture it was sent beside. A key that
+   cannot be worked out today (no page before) is the empty string. */
+function premarkCarry(work, start) {
+  var prev = markPrevOf(work, start);
+  return prev ? premarkCarryKey(prev.num, premarkInkSig(prev.num)) : '';
+}
+function premarkCarryKey(num, ink) {
+  return num ? 'p' + num + ':' + ink : '';
+}
 function premarkCtxSig() {
   try { return premarkHash(markSystemPrompt()); } catch (e) { return ''; }
 }
@@ -12138,7 +12243,7 @@ function premarkWorth(work, from, to) {
 }
 
 /* The kept segment that starts at `start` and still holds: same pages in the
-   same order, same ink on each, same carried question, same prompt. */
+   same order, same ink on each, same page before it, same prompt. */
 function premarkReuse(work, start, carry, ctx) {
   premarkSync();
   if (!ctx) return null;
@@ -12156,26 +12261,24 @@ function premarkReuse(work, start, carry, ctx) {
   return null;
 }
 
-/* Walk the chain from page one, folding each kept segment exactly as the run
-   would, to find where the next segment starts and what it carries in. */
+/* Walk the chain from page one, the way the run will, to find where the
+   next segment starts. Each segment's stitch is the page before it, so the
+   walk needs no folding. */
 function premarkChain(work, ctx) {
-  var at = 0, carry = '', items = [];
+  var at = 0;
   for (var guard = 0; guard < work.length; guard++) {
-    var hit = premarkReuse(work, at, carry, ctx);
+    var hit = premarkReuse(work, at, premarkCarry(work, at), ctx);
     if (!hit) break;
-    _markFoldRows(hit.seg.rows, hit.seg.pageNums, items, { subject: wsMeta.subject, level: wsMeta.level });
-    var last = items[items.length - 1];
-    carry = last ? _mkStr(last.question, 300) : '';
     at += hit.seg.pageNums.length;
   }
-  return { next: at, carry: carry, items: items };
+  return { next: at };
 }
 
 function premarkKeep(seg) {
   var mine = {};
   seg.pageNums.forEach(function (n) { mine[n] = 1; });
   // A kept segment that shares a page with this one was marked against ink
-  // or a carry that no longer holds, or it would not have been redone.
+  // or a page before it that no longer holds, or it would not have been redone.
   _premark.segs = _premark.segs.filter(function (s) {
     return !s.pageNums.some(function (n) { return mine[n]; });
   });
@@ -12237,21 +12340,30 @@ async function premarkTick() {
       pageNums.push(batch[b].num);
       inks.push(premarkInkSig(batch[b].num));
     }
+    var prevPage = markPrevOf(work, chain.next);
+    var prev = await markPrevPicture(prevPage);
+    if (epoch !== wsEpoch || marking.running) return;
+    // A page before that would not render leaves this segment unstitched,
+    // and an unstitched segment is not what the run would ask for — so the
+    // head start is not taken at all.
+    if (prevPage && !prev) return;
     _premark.calls++;
-    var got = await markBatchRows(imgs, pageNums, work.length, chain.carry, chain.items,
+    var got = await markBatchRows(imgs, pageNums, work.length, prev,
                                   function () { return epoch !== wsEpoch; });
     if (!got) return;
     /* ✂️ ONLY A WHOLE REPLY IS KEPT. Each part is its own segment, in
-       paper order, and the first part that was cut off — or a page that
-       could not be read — ends the keeping: everything after it was
-       marked under a carry the run may not arrive at. */
+       paper order, stitched to the page in front of it — the part before
+       inside this batch, or the page before the batch. The first part that
+       was cut off, or a page that could not be read, ends the keeping. */
     for (var q = 0, expect = 0; q < got.parts.length; q++) {
       var part = got.parts[q];
       var from = pageNums.indexOf(part.pageNums[0]);
       if (!part.complete || from !== expect) break;
       expect = from + part.pageNums.length;
+      var carry = from ? premarkCarryKey(pageNums[from - 1], inks[from - 1])
+                       : (prev ? premarkCarryKey(prev.num, prev.ink) : '');
       premarkKeep({ pageNums: part.pageNums.slice(), inks: inks.slice(from, from + part.pageNums.length),
-                    carry: part.carry, ctx: ctx, rows: part.rows, at: Date.now() });
+                    carry: carry, ctx: ctx, rows: part.rows, at: Date.now() });
     }
     // They may have gone several pages on while that was read.
     if (end < hereIdx) premarkSoon();
@@ -12291,78 +12403,85 @@ async function runMarking() {
   var work;
   markProgress(0, studentPages().length, '✨ ' + aiEngineName() + ' is reading your worksheet…');
   var failed = [];
+  function stale() { return run !== _markRun || epoch !== wsEpoch; }
   /* ⏩ A page being marked ahead right now is waited for, never asked for
      twice — it is the same wait this run would have spent on it. */
   premarkCancel();
   try {
     if (_premark.busy) { try { await _premark.busy; } catch (e) {} }
     await Promise.all([aiWithDeadline(function () { return loadTeachingNotes(); }, 10000, null, 'Teaching notes took too long to load. Please try again.'), keyEnsureReady()]);
-    if (run !== _markRun || epoch !== wsEpoch) return;
+    if (stale()) return;
     work = studentPages(); // the key scan may have released questions or hidden solutions
     var total = work.length;
-    var carry = '';
     /* ONE RATION FOR THE WHOLE PAPER. `fileMistakes` runs once a BATCH now,
        so the refill cannot live inside it — see `markRation`. */
     markRation();
     var mistFiled = 0, mistPast = 0;
-    var aheadCtx = premarkCtxSig(), aheadPages = 0, step = MARK_BATCH;
+    /* ⚡ THE PLAN FIRST, THEN EVERY BATCH AT ONCE. The paper is cut into
+       segments up front: a kept segment that still holds — same pages, same
+       ink, same page before it, same prompt — is used whole (⏩ MARKED
+       AHEAD), and the rest go in batches of `MARK_BATCH`. */
+    var aheadCtx = premarkCtxSig(), aheadPages = 0, plan = [], step = MARK_BATCH;
     for (var start = 0; start < total; start += step) {
-      if (run !== _markRun || epoch !== wsEpoch) return;
-      var batch = work.slice(start, start + MARK_BATCH);
-      /* ⏩ MARKED AHEAD: a kept segment that still holds — same pages, same
-         ink, same carried question, same prompt — is folded straight in,
-         with no picture taken and no call made. */
-      var ahead = premarkReuse(work, start, carry, aheadCtx);
-      if (ahead) batch = ahead.batch;
+      var ahead = premarkReuse(work, start, premarkCarry(work, start), aheadCtx);
+      var batch = ahead ? ahead.batch : work.slice(start, start + MARK_BATCH);
       step = batch.length;
+      plan.push({ start: start, batch: batch, ahead: ahead });
+    }
+    /* One reader per segment. A kept segment takes no picture and makes no
+       call. A fresh one composites its pages — the picture and its page
+       number pushed TOGETHER, so a page that would not render drops out of
+       both rather than shifting every page number after it by one — and the
+       page in front of it, and is marked through the ONE call. ONE
+       unreadable batch never sinks the rest: it comes back as failed pages. */
+    var readers = plan.map(function (seg) {
+      return async function () {
+        if (seg.ahead) return { parts: [{ rows: seg.ahead.seg.rows, pageNums: seg.ahead.seg.pageNums.slice() }], failed: [] };
+        if (stale()) return null;
+        var imgs = [], pageNums = [], lost = [];
+        try {
+          for (var b = 0; b < seg.batch.length; b++) {
+            await ensurePageRaster(seg.batch[b]);
+            var data = compositeJpeg(seg.batch[b], 1500, 0.86);
+            if (data) { imgs.push({ mimeType: 'image/jpeg', data: data }); pageNums.push(seg.batch[b].num); }
+            else lost.push(seg.batch[b].num);
+          }
+          if (!imgs.length) return { parts: [], failed: lost };
+          var prev = await markPrevPicture(markPrevOf(work, seg.start));
+          if (stale()) return null;
+          var got = await markBatchRows(imgs, pageNums, total, prev, stale);
+          if (!got) return null;
+          return { parts: got.parts, failed: lost.concat(got.failed) };
+        } catch (e) {
+          console.warn('Marking batch failed', e);
+          return { parts: [], failed: lost.concat(seg.batch.map(function (pg) { return pg.num; }).filter(function (n) { return lost.indexOf(n) < 0; })) };
+        }
+      };
+    });
+    var reads = markPool(readers, MARK_PAR);
+    markProgress(0, total, '✨ ' + aiEngineName() + ' is marking ' +
+      (total === 1 ? 'your page' : 'all ' + total + ' pages, ' + Math.min(MARK_PAR, plan.length) + ' batches at a time') + '…');
+    /* THE FOLD IS IN PAPER ORDER, whatever order the replies arrive in, so a
+       `continuation` always lands on the question it finishes. */
+    for (var k = 0; k < plan.length; k++) {
+      var seg = plan[k];
+      var got = await reads[k];
+      if (!got || stale()) return;
+      got.failed.forEach(function (n) { failed.push(n); });
+      /* ✂️ A fresh batch comes back as PARTS — the batch itself, or, when
+         its reply was cut off, each page asked again on its own — and they
+         are folded one after another exactly as batches are. */
+      got.parts.forEach(function (part) {
+        _markFoldRows(part.rows, part.pageNums, marking.items,
+                      { subject: wsMeta.subject, level: wsMeta.level });
+      });
+      if (seg.ahead) aheadPages += seg.batch.length;
+      var upTo = seg.start + seg.batch.length;
       // Counted over the pages the STUDENT has, not the PDF's own numbers:
       // this is a progress bar, and "page 9–10 of 8" is what page numbers
       // read as once an answer key has been taken out of the middle.
-      markProgress(start, total, (ahead ? '⏩ Already read page ' : '✨ Marking page ') + (start + 1) +
-        (batch.length > 1 ? '–' + (start + batch.length) : '') + ' of ' + total + '…' +
+      markProgress(upTo, total, (upTo < total ? '✨ Marked up to page ' + upTo + ' of ' + total + '…' : '✨ Every page is read…') +
         (marking.items.length ? '  (' + marking.items.length + ' question' + (marking.items.length === 1 ? '' : 's') + ' so far)' : ''));
-      var imgs = [];
-      var pageNums = [];
-      var rows = null;
-      if (ahead) {
-        pageNums = ahead.seg.pageNums.slice();
-        rows = ahead.seg.rows;
-        aheadPages += batch.length;
-      }
-      for (var b = 0; !ahead && b < batch.length; b++) {
-        await ensurePageRaster(batch[b]);
-        var data = compositeJpeg(batch[b], 1500, 0.86);
-        // The picture and its page number are pushed TOGETHER, so a page
-        // that would not render drops out of both rather than shifting every
-        // page number after it by one.
-        if (data) { imgs.push({ mimeType: 'image/jpeg', data: data }); pageNums.push(batch[b].num); }
-        else failed.push(batch[b].num);
-      }
-      if (!ahead && !imgs.length) continue;
-      try {
-        /* ✂️ A fresh batch comes back as PARTS — the batch itself, or, when
-           its reply was cut off, each page asked again on its own — and they
-           are folded one after another exactly as batches are. */
-        var parts = ahead ? [{ rows: rows, pageNums: pageNums }] : null;
-        if (!ahead) {
-          var got = await markBatchRows(imgs, pageNums, total, carry, marking.items,
-                                        function () { return run !== _markRun || epoch !== wsEpoch; });
-          if (!got || run !== _markRun || epoch !== wsEpoch) return;
-          parts = got.parts;
-          got.failed.forEach(function (n) { failed.push(n); });
-        }
-        parts.forEach(function (part) {
-          _markFoldRows(part.rows, part.pageNums, marking.items,
-                        { subject: wsMeta.subject, level: wsMeta.level });
-        });
-      } catch (e) {
-        // ONE unreadable batch never sinks the rest of the worksheet: those
-        // pages are reported and the run carries on.
-        console.warn('Marking batch failed', e);
-        batch.forEach(function (pg) { failed.push(pg.num); });
-      }
-      var last = marking.items[marking.items.length - 1];
-      carry = last ? _mkStr(last.question, 300) : '';
       renderMarking();
       /* 📕 EVERY QUESTION THIS BATCH JUDGED GOES INTO THE BOOK NOW, set
          out through the same rapid-add rebuild as any other mistake — so a
@@ -12374,19 +12493,19 @@ async function runMarking() {
 
          AWAITED, never fired and forgotten: it writes documents, uploads
          pictures and reloads the book, and two passes in flight would race
-         over `have`, the ration and `mistakes` itself. The next batch's
-         reading is the wait, which is time this would have spent anyway.
+         over `have`, the ration and `mistakes` itself. The batches still
+         being read are the wait, which is time this would have spent anyway.
 
          ⏩ A batch that was MARKED AHEAD is not filed here: there is no
          reading to hide the wait behind, so filing it would hold back the
          marks the student is waiting for — and the end-of-run pass below
          files every question anyway, a moment after they are on screen. */
-      if (!ahead) {
+      if (!seg.ahead && got.parts.length) {
         try {
           var filedNow = await fileMistakes({ marked: true, quiet: true });
           mistFiled += filedNow.filed;
         } catch (e) { console.warn('Mistakes could not be filed for this batch', e); }
-        if (run !== _markRun || epoch !== wsEpoch) return;
+        if (stale()) return;
       }
     }
     if (aheadPages) console.info('⏩ ' + aheadPages + ' page(s) were marked ahead and reused');
@@ -12429,6 +12548,7 @@ async function runMarking() {
       renderMarking();
       setDirty(true);
       if (failed.length) {
+        failed.sort(function (a, b) { return a - b; });
         toast('Pages ' + failed.join(', ') + ' could not be read — everything else was marked.', 6000);
       }
     }
@@ -30855,8 +30975,25 @@ function askOpenAiServer(prompt, opts) {
 }
 function askKimiServer(prompt, opts) { return _aiServerAsk("askKimi", prompt, opts); }
 
-function _aiRun(engine, prompt, opts) {
-  if (engine === "openai") return askOpenAiServer(prompt, opts);
+/* ⏱ ChatGPT CALLS ARE SPACED HERE, not bounced by the server (v1.72.0).
+   The server lets a pupil's account start one ChatGPT call every 1.5 s
+   (`MIN_OPENAI_INTERVAL_MS` in polymathlc/math). Marking now asks for
+   several batches at once, and without this every one after the first came
+   back "One request at a time". Each call takes the next turn, at least
+   `AI_OPENAI_GAP_MS` after the one before it started; the turn is claimed
+   BEFORE waiting, so three asked together go out at 0, 1.6 and 3.2 s. */
+const AI_OPENAI_GAP_MS = 1600;
+let _aiOpenAiNext = 0;
+async function aiOpenAiTurn(signal) {
+  const now = Date.now();
+  const at = Math.max(now, _aiOpenAiNext);
+  _aiOpenAiNext = at + AI_OPENAI_GAP_MS;
+  if (at > now) await new Promise(function (r) { setTimeout(r, at - now); });
+  aiThrowIfAborted(signal);
+}
+
+async function _aiRun(engine, prompt, opts) {
+  if (engine === "openai") { await aiOpenAiTurn(opts.signal); return askOpenAiServer(prompt, opts); }
   if (engine === "kimi") return askKimiServer(prompt, opts);
   return askGeminiDirect(prompt, opts);
 }
@@ -30870,9 +31007,18 @@ function aiAskWith(prompt, opts, order) {
 /* A refusal is marked down — EXCEPT ChatGPT refusing a light job's NAMED
    model (see AI_TASK_MODEL), which may only be that model. It is recorded so
    the panel can say it, and nothing else on ChatGPT loses its turn. */
+/* …and a call that RAN OUT OF TIME is slow, not refused (v1.72.0): it is
+   recorded and the next route is tried, but the engine is not skipped for
+   ten minutes. One long marking batch used to send every batch after it —
+   and every run in the next ten minutes — to the backup engine. */
+function aiTimedOut(e) {
+  const code = String((e && e.code) || "");
+  return !!e && (e.name === "TimeoutError" || /deadline-exceeded/i.test(code));
+}
 function _aiRefused(engine, opts, e) {
   const why = String((e && e.message) || e || "");
   if (engine === "openai" && opts.task && AI_TASK_MODEL[opts.task]) _aiWhy[engine] = why;
+  else if (aiTimedOut(e)) _aiWhy[engine] = why;
   else _aiMarkDown(engine, why);
 }
 
@@ -30892,9 +31038,12 @@ async function aiAskRoutes(prompt, opts, order) {
      Two calls that land together — a hint and a page being marked ahead, two
      marking batches — get that answer, and it used to mark ChatGPT DOWN for
      ten minutes on this device, sending every marking run in those ten
-     minutes to the backup engine. It is waited out and asked again instead. */
+     minutes to the backup engine. It is waited out and asked again instead —
+     up to `AI_BUSY_TRIES` times (v1.72.0), for as long as the server says
+     (`details.retryAfterMs`), since a hint can land between marking batches. */
   const AI_BUSY_RE = /one request at a time/i;
   const AI_BUSY_WAIT_MS = 1700;
+  const AI_BUSY_TRIES = 3;
   const busyRetried = {};
   const routeOpts = typeof opts.onStream === "function"
     ? Object.assign({}, opts, { onStream: function (full) { emitted = true; opts.onStream(full); } })
@@ -30913,9 +31062,10 @@ async function aiAskRoutes(prompt, opts, order) {
       return out;
     } catch (e) {
       aiThrowIfAborted(opts.signal);
-      if (!emitted && !busyRetried[engine] && AI_BUSY_RE.test(String((e && e.message) || e || ""))) {
-        busyRetried[engine] = true;
-        await new Promise(function (r) { setTimeout(r, AI_BUSY_WAIT_MS); });
+      if (!emitted && (busyRetried[engine] || 0) < AI_BUSY_TRIES && AI_BUSY_RE.test(String((e && e.message) || e || ""))) {
+        busyRetried[engine] = (busyRetried[engine] || 0) + 1;
+        const after = Number(e && e.details && e.details.retryAfterMs);
+        await new Promise(function (r) { setTimeout(r, Math.min(5000, Math.max(AI_BUSY_WAIT_MS, (after || 0) + 200))); });
         aiThrowIfAborted(opts.signal);
         i--;
         continue;
