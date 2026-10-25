@@ -1299,22 +1299,34 @@ ok('…and it has EXACTLY ONE caller, which is the marking run',
 ok('…so mbRedo still fills only the enhance budget',
    /_mbEnhanceBudget = MB_ENHANCE_MAX;/.test(between('async function mbRedo(', 'function renderMistTools', 'the redo door')));
 
-/* THE PER-BATCH CALL. Fired and forgotten, two passes race over `have`,
-   the ration and `mistakes` itself. */
-const MARKRUN = between('async function runMarking() {', 'function markTally() {', 'the marking run');
-ok('every batch files what it just judged',
-   /var filedNow = await fileMistakes\(\{ marked: true, quiet: true \}\);/.test(MARKRUN));
-ok('…AWAITED, never fired and forgotten',
-   /await fileMistakes\(\{ marked: true/.test(MARKRUN),
+/* THE PER-PAGE PASS (v1.73.0: behind the reading, never in front of it).
+   Fired and forgotten, two passes race over `have`, the ration and
+   `mistakes` itself; awaited INSIDE the reading, every page waits for the
+   book — which is what made marking slow. So it goes on ONE line per run. */
+const MARKRUN = between('async function runMarking(opts) {', 'function markTally() {', 'the marking run');
+const FILE_BEHIND = between('function markFileBehind(filer, stale, settled, add) {', 'function markPageList(', 'the filing line');
+ok('every page that lands sends its finished questions to the book',
+   /markFileBehind\(filer, stale, settledFn, countFiled\);/.test(MARKRUN) &&
+   /var filedNow = await fileMistakes\(\{ marked: true, quiet: true, settled: settled \}\);/.test(FILE_BEHIND));
+ok('…ONE pass at a time, on one line, never two in flight',
+   /filer\.line = filer\.line\.then\(async function \(\) \{/.test(FILE_BEHIND),
    'two passes in flight race over the book itself');
-ok('…and a batch that could not be filed never sinks the marking',
-   /catch \(e\) \{ console\.warn\('Mistakes could not be filed for this batch', e\); \}/.test(MARKRUN));
-ok('…and the run re-checks it is still the run afterwards',
-   /Mistakes could not be filed for this batch[\s\S]{0,120}if \((run !== _markRun \|\| epoch !== wsEpoch|stale\(\))\) return;/.test(MARKRUN) &&
-   /function stale\(\) \{ return run !== _markRun \|\| epoch !== wsEpoch; \}/.test(MARKRUN),
-   'a paper closed mid-filing must not carry on marking it');
-ok('the LAST pass is the one that sees the whole paper',
-   /var endGot = await fileMistakes\(\{ quiet: true \}\);/.test(MARKRUN),
+ok('…and never more than one waiting',
+   /if \(filer\.queued\) return;\n\s*filer\.queued = true;/.test(FILE_BEHIND) && /filer\.queued = false;/.test(FILE_BEHIND));
+ok('…and the READING never waits for it',
+   !/await fileMistakes\(\{ marked: true/.test(MARKRUN),
+   'filing a page is writes, uploads and vision calls — the next page must not sit behind them');
+ok('…and a pass that could not be filed never sinks the marking',
+   /catch \(e\) \{ console\.warn\('Mistakes could not be filed for this page', e\); \}/.test(FILE_BEHIND));
+ok('…and a run that went stale files nothing more',
+   /filer\.queued = false;\n\s*if \(stale\(\)\) return;/.test(FILE_BEHIND),
+   'a paper closed mid-filing must not carry on filing it');
+ok('…and only FINISHED questions, whose next page has landed',
+   /if \(settledOnly && !settledOnly\(it\)\) return;/.test(FILING) &&
+   /var settledFn = markSettledTest\(order, landed\);/.test(MARKRUN) && /landed\[num\] = 1;/.test(MARKRUN),
+   'a question whose second half is still being read can still change its verdict');
+ok('the LAST pass waits for the line, and is the one that sees the whole paper',
+   /await filer\.line;\n\s*if \(stale\(\)\) return;\n\s*var endGot = await fileMistakes\(\{ quiet: true \}\);/.test(MARKRUN),
    '🕳 where the skipped blanks are judged');
 ok('ONE toast a paper, over everything the batches filed as well',
    /mistFiled \+= endGot\.filed;[\s\S]{0,200}if \(mistFiled\) \{[\s\S]{0,120}added to your mistake book/.test(MARKRUN));
@@ -2137,15 +2149,19 @@ ok('the note budgets are pots, not a slice',
 /* THE KEY IS NOT THE STUDENT'S WORK. Marking the pages at the back of the
    paper puts the paper's own answers into the score as questions they "got
    right", and into the mistake book with a picture of the key beside them. */
-const runMark = html.slice(html.indexOf('async function runMarking'),
-                           html.indexOf('function markTally()'));
+const runMark = html.slice(html.indexOf('async function runMarking('), html.indexOf('function markTally() {'));
 ok('marking runs over the student\'s pages after answer-key readiness',
    /work = studentPages\(\)/.test(runMark) && runMark.indexOf('work = studentPages()') > runMark.indexOf('keyEnsureReady()'),
    runMark.replace(/\s+/g, ' ').slice(0, 260));
-ok('…and the picture and its page number are pushed together',
-   /imgs\.push\([^)]*\);\s*pageNums\.push\(batch\[b\]\.num\)/.test(runMark.replace(/\s+/g, ' ')) ||
-   /imgs\.push\([^)]*\); pageNums\.push\(seg\.batch\[b\]\.num\); \}\s*else lost\.push\(seg\.batch\[b\]\.num\);/.test(runMark),
+/* ⚡ v1.73.0: a page is read on its own, so its picture and its page
+   number are ONE call's two arguments — there is no list of pictures that
+   a page which would not render could shift every later number along. */
+ok('…and the picture travels with its OWN page number, one page a call',
+   /markBatchAsk\(\[\{ mimeType: 'image\/jpeg', data: pic\.data \}\], \[num\], order\.length, carry,/.test(runMark),
    runMark.replace(/\s+/g, ' ').slice(0, 400));
+ok('…and the order the paper is put back together in is the student\'s pages, after the key',
+   /var order = work\.map\(function \(p\) \{ return p\.num; \}\);/.test(runMark) &&
+   runMark.indexOf('var order = work.map') > runMark.indexOf('var work = studentPages()'));
 
 /* The key is remembered with the worksheet, or every reopen reads the
    marking scheme again — which costs an AI call a page and makes the pages
@@ -3070,16 +3086,19 @@ ok('…and never a strong one', S.progressFocus(subs[0].rows).every(r => S.diagP
 eq('nothing at all is nothing', S.progressRows([]).length, 0);
 
 section('The diagnostic — against index.html itself');
-const runSrc = html.slice(html.indexOf('async function runMarking()'), html.indexOf('function markTally()'));
+const runSrc = html.slice(html.indexOf('async function runMarking(opts)'), html.indexOf('function markTally()'));
 const askSrc = html.slice(html.indexOf('async function markBatchAsk('), html.indexOf('function markSystemPrompt()'));
+const assembleSrc = html.slice(html.indexOf('function markAssemble(order, got, kept, ctx, how) {'), html.indexOf('function markCarryBefore('));
 ok('the marking\'s system prompt carries the syllabus list',
    /system: MARK_SYS \+ markBlankRule\(\) \+ aiGrounding\('mark'\) \+ keyRuleBlock\(\) \+ tutorMethodRule\(\) \+\s*markSyllabusBlock\(wsMeta\.subject, wsMeta\.level\)/.test(askSrc));
-ok('…and the run reads every fresh batch through that ONE call',
-   /var got = await markBatchRows\(imgs, pageNums, total, prev, stale\);/.test(runSrc) && !/window\.askGemini\(/.test(runSrc) &&
-   /var raw = await markBatchAsk\(imgs, pageNums, total, prev\);/.test(html.slice(html.indexOf('async function markBatchRows('), html.indexOf('async function runMarking()'))));
+ok('…and the run reads every fresh page through that ONE call',
+   /return markBatchAsk\(\[\{ mimeType: 'image\/jpeg', data: pic\.data \}\], \[num\], order\.length, carry,/.test(runSrc) &&
+   !/window\.askGemini\(/.test(runSrc) && !/window\.askGemini\(/.test(html.slice(html.indexOf('async function markReadPaper('), html.indexOf('async function runMarking(opts)'))));
 ok('…and the fold is told the subject and level, or nothing is filed',
-   /_markFoldRows\(part\.rows, part\.pageNums, marking\.items,\s*\{ subject: wsMeta\.subject, level: wsMeta\.level \}\)/.test(runSrc) &&
-   /got\.parts\.forEach\(function \(part\) \{/.test(runSrc));
+   /var foldCtx = \{ subject: wsMeta\.subject, level: wsMeta\.level \};/.test(runSrc) &&
+   /marking\.items = markAssemble\(order, use, keptFor\(use\), foldCtx, \{ lost: gone \}\);/.test(runSrc) &&
+   /marking\.items = markAssemble\(order, useGot, keptFor\(useGot\), foldCtx, \{ final: true, lost: result\.lost \}\);/.test(runSrc) &&
+   /_markFoldRows\(rows, \[num\], out, ctx\);/.test(assembleSrc));
 ok('the reply shape asks for the objective id', /"lo":"the learning objective/.test(html));
 const saveSrc = html.slice(html.indexOf('async function performSave('), html.indexOf('function applyWorksheetBody('));
 ok('the summary rides every save beside the score', /score: scoreOf\(\),[\s\S]{0,300}diagnostic: diagSummary\(\),/.test(saveSrc));
@@ -7224,7 +7243,7 @@ ok('the light model is GPT-6 Luna, and only the light task names it',
    /const AI_LIGHT_MODEL = "gpt-6-luna";/.test(html) &&
    /const AI_TASK_MODEL = \{ light: AI_LIGHT_MODEL \};/.test(html));
 ok('…a refused named model does not mark ChatGPT down for the hints and the marking',
-   /if \(engine === "openai" && opts\.task && AI_TASK_MODEL\[opts\.task\]\) _aiWhy\[engine\] = why;\s*\n\s*else if \(aiTimedOut\(e\)\) _aiWhy\[engine\] = why;\s*\n\s*else _aiMarkDown\(engine, why\);/.test(html) &&
+   /if \(engine === "openai" && opts\.task && AI_TASK_MODEL\[opts\.task\]\) _aiWhy\[engine\] = why;\s*\n\s*else _aiMarkDown\(engine, why\);/.test(html) &&
    /_aiRefused\(engine, opts, e\);/.test(html));
 ok('…and the panel names the light jobs and their model',
    /lightOrder: aiEngineOrder\("light"\)/.test(html) && /Reading a paper at upload and building a keyword check/.test(html));
@@ -7255,7 +7274,8 @@ ok('…and no OpenAI-shaped key is in the file',
 ok('a refused route goes to the BACK of the list and never off it',
    /sort\(\(a, b\) => \(aiEngineIsDown\(a\) \? 1 : 0\) - \(aiEngineIsDown\(b\) \? 1 : 0\)\)/.test(html),
    'taken off, the app is dead once the cap has been lifted');
-ok('…and the mark expires by itself', /_aiDown\[e\] = Date\.now\(\) \+ AI_DOWN_MS/.test(html));
+ok('…and the mark expires by itself', /_aiDown\[e\] = Date\.now\(\) \+ \(ms \|\| AI_DOWN_MS\)/.test(html),
+   'ten minutes for a refusal; a shorter rest only where a caller names one (⏱ the slow strikes, v1.73.0)');
 ok('…and a success clears it', /function _aiMarkUp\(e\) \{ _aiDown\[e\] = 0/.test(html));
 ok('an engine name nobody recognises still yields every route',
    /AI_ENGINES\.indexOf\(first\) >= 0[\s\S]{0,120}: AI_ENGINES\.slice\(\)/.test(html),
@@ -7600,11 +7620,13 @@ ok('retry checking still returns its marking verdict', S.prac.result.verdict ===
 
 /* =====================================================================
    ⏩ MARKING AHEAD — the page they scrolled past, marked while they read
-   the next one, and KEPT until they press Mark
+   the next one, and KEPT until they press Mark (one page at a time since
+   v1.73.0)
    ===================================================================== */
 section('⏩ Marking ahead');
 {
-  const PM_SRC = between('/* =====================================================================\n   ⏩ MARKING AHEAD', 'async function runMarking() {', 'marking ahead');
+  const PM_SRC = between('/* =====================================================================\n   ⏩ MARKING AHEAD',
+                         '/* =====================================================================\n   🖼 THE PICTURE THE MARKING READS', 'marking ahead');
   const calls = [];
   const timers = [];
   const pm = {
@@ -7613,17 +7635,20 @@ section('⏩ Marking ahead');
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
     clearTimeout: () => {},
     document: { hidden: false },
-    MARK_BATCH: 3, wsEpoch: 1, pages: [], annotations: [], wsMeta: { subject: 'science', level: 'P5', guidance: 'full' },
+    wsEpoch: 1, pages: [], annotations: [], wsMeta: { subject: 'science', level: 'P5', guidance: 'full' },
     marking: { items: [], runAt: null, running: false }, _markFiling: false,
     MARK_SYS: 'SYS', markBlankRule: () => '', aiGrounding: () => '[G]', keyRuleBlock: () => '', tutorMethodRule: () => '',
-    markSyllabusBlock: () => '', markPrompt: (nums, total, prevNum) => 'pages ' + nums.join(',') + ' prev=' + prevNum,
+    markSyllabusBlock: () => '',
+    MARK_CALL_MS: 210000, MARK_ROUTE_MS: 150000,
     aiAvailable: () => true, loadTeachingNotes: async () => [], keyEnsureReady: async () => true,
-    ensurePageRaster: async () => {}, compositeJpeg: p => 'JPEG' + p.num,
     _parseAIJson: raw => JSON.parse(raw), _mkStr: (v) => String(v || ''),
     _jsonEndIndex: s => { try { JSON.parse(s); return s.length; } catch (e) { return -1; } },
-    _markFoldRows: (rows, nums, into) => rows.forEach(r => into.push({ question: r.question, page: nums[0] })),
     window: {}
   };
+  // The page's own ask names the subject, as the real one does through markSubjectRule.
+  pm.markPrompt = (nums, total, carry) => 'pages ' + nums.join(',') + ' carry=' + carry + (pm.wsMeta.subject === 'english' ? ' [EN]' : '');
+  const pics = [];
+  pm.markPagePicture = async p => { pics.push(p.num); return { data: 'JPEG' + p.num, ink: pm.premarkInkSig(p.num) }; };
   pm.window.askGemini = async (prompt, cfg) => {
     calls.push({ prompt, cfg });
     return JSON.stringify({ questions: [{ question: 'Q on ' + prompt, continuation: false }] });
@@ -7636,6 +7661,7 @@ section('⏩ Marking ahead');
   let here = pm.pages[0];
   pm.visiblePage = () => here;
   const ink = (page, text) => pm.annotations.push({ id: 'a' + pm.annotations.length, page, type: 'text', text });
+  const drain = async () => { for (let i = 0; i < 12; i++) { const t = timers.shift(); if (!t) break; await t.fn(); } };
 
   /* Reading page one and nothing passed yet: nothing is marked. */
   await pm.premarkTick();
@@ -7650,47 +7676,55 @@ section('⏩ Marking ahead');
   ink(1, 'evaporation');
   await pm.premarkTick();
   eq('the page they just left is marked when they stop on the next', calls.length, 1);
-  ok('…ONE page, not a batch of three, when they read one page at a time',
-     /^pages 1 prev=0$/.test(calls[0].prompt) && calls[0].cfg.images.length === 1, calls[0].prompt);
+  ok('…ONE page, with nothing carried in from another', calls[0].prompt === 'pages 1 carry=', calls[0].prompt);
   ok('…through the same system prompt the run sends, ceiling and grounding included',
      calls[0].cfg.system === 'SYS[G]' && calls[0].cfg.json === true && calls[0].cfg.thinkingLevel === 'high');
+  ok('…standing BEHIND everything else at the ChatGPT gate', calls[0].cfg.lane === 'bg');
+  ok('…with the marking\'s own deadlines, and a slow answer never marking the engine down',
+     calls[0].cfg.routeTimeoutMs === 150000 && calls[0].cfg.timeoutMs === 210000 && calls[0].cfg.keepOnTimeout === true);
+  ok('…and its picture is the marking\'s own, rendered for it', pics.join() === '1');
   eq('…and NOTHING reaches the marking the student can see', pm.marking.items.length, 0);
-  eq('…one segment is kept', pm._pm.state.segs.length, 1);
+  eq('…one page is kept', Object.keys(pm._pm.state.pages), ['1']);
 
   /* Stopping on page 2 again does not ask again. */
   await pm.premarkTick();
   eq('a page already marked ahead is not asked for twice', calls.length, 1);
 
-  /* Jump to page 5: pages 2–4 go as ONE segment, sent beside page 1. */
+  /* Jump to page 5: pages 2, 3 and 4 are each read ON THEIR OWN, one a stop. */
   here = pm.pages[4];
   ink(4, '12 cm');
   await pm.premarkTick();
-  eq('pages passed in one jump go up together, as the run would batch them', calls.length, 2);
-  ok('…sent beside the page before them, as the LAST picture', /^pages 2,3,4 prev=1$/.test(calls[1].prompt) &&
-     calls[1].cfg.images.length === 4 && calls[1].cfg.images[3].data === 'JPEG1', calls[1].prompt);
+  await drain();
+  eq('pages passed in one jump are read one at a time, each as its own call', calls.length, 4);
+  ok('…each with nothing carried in from the page before',
+     calls.slice(1).map(c => c.prompt).join(' | ') === 'pages 2 carry= | pages 3 carry= | pages 4 carry=',
+     calls.map(c => c.prompt).join(' | '));
+  eq('…and every one of them is kept', Object.keys(pm._pm.state.pages).sort(), ['1', '2', '3', '4']);
 
-  /* The run's view: walk the chain from page one. */
+  /* The run's view: any page, from anywhere. */
   const ctx = pm.premarkCtxSig();
-  const first = pm.premarkReuse(pm.pages, 0, '', ctx);
-  ok('the run finds the kept segment at page one', first && first.batch.length === 1 && first.batch[0].num === 1);
-  const second = pm.premarkReuse(pm.pages, 1, pm.premarkCarry(pm.pages, 1), ctx);
-  ok('…and the next one, under the page it was sent beside', second && second.batch.map(p => p.num).join() === '2,3,4');
-  ok('…but never under a DIFFERENT carry — that was a different paper',
-     pm.premarkReuse(pm.pages, 1, 'something else', ctx) === null);
-  ok('…nor under a different prompt — a help level, a key or a note changed since',
-     pm.premarkReuse(pm.pages, 0, '', 'other') === null);
+  ok('the run finds the kept page wherever it reaches it from',
+     [1, 2, 3, 4].every(n => pm.premarkPageReuse(n, ctx)) && pm.premarkPageReuse(5, ctx) === null);
+  ok('…but never under a DIFFERENT prompt — a help level, a key or a note changed since',
+     pm.premarkPageReuse(1, 'other') === null);
+  pm.wsMeta.subject = 'english';
+  ok('…nor under a different SUBJECT, which is in the page\'s own ask', pm.premarkPageReuse(2, ctx) === null);
+  pm.wsMeta.subject = 'science';
 
-  /* One more stroke on page 1 and its kept answer is no longer the answer. */
+  /* One more stroke on page 1 and its kept answer is no longer the answer —
+     and, unlike the v1.62.0 chain, the pages after it are untouched. */
   ink(1, 'condensation');
-  ok('a stroke added after the page was marked ahead throws that segment away',
-     pm.premarkReuse(pm.pages, 0, '', ctx) === null);
-  eq('…and the chain stops there, so nothing after it is trusted either', pm.premarkChain(pm.pages, ctx).next, 0);
+  ok('a stroke added after the page was marked ahead throws THAT page away',
+     pm.premarkPageReuse(1, ctx) === null);
+  ok('…and ONLY that page: the pages after it are still good',
+     [2, 3, 4].every(n => pm.premarkPageReuse(n, ctx)),
+     'a stroke on page 2 used to throw away the kept answers for every page after it');
 
-  /* Stopping again re-marks page 1 alone and drops the stale copy. */
+  /* Stopping again re-marks page 1 alone. */
   await pm.premarkTick();
-  eq('the edited page is marked again on the next stop', calls.length, 3);
-  ok('…and the stale copy of it is dropped rather than kept beside the new one',
-     pm._pm.state.segs.filter(s => s.pageNums.includes(1)).length === 1);
+  eq('the edited page is marked again on the next stop', calls.length, 5);
+  ok('…alone', calls[4].prompt === 'pages 1 carry=');
+  ok('…and its new answer replaces the stale one', !!pm.premarkPageReuse(1, ctx));
 
   /* A paper already marked, a run in flight, a hidden tab: nothing. */
   const before = calls.length;
@@ -7703,7 +7737,7 @@ section('⏩ Marking ahead');
 
   /* A new worksheet takes every kept answer with it. */
   pm.wsEpoch = 2;
-  eq('a worksheet swapped takes its kept answers with it', pm.premarkReuse(pm.pages, 0, '', ctx), null);
+  eq('a worksheet swapped takes its kept answers with it', pm.premarkPageReuse(2, ctx), null);
   eq('…and its own budget starts again', pm._pm.state.calls, 0);
 
   /* The bound. */
@@ -7719,44 +7753,25 @@ section('⏩ Marking ahead');
   try { await pm.premarkTick(); } catch (e) { threw = true; }
   ok('a read that FAILS stands down quietly and keeps nothing', !threw && pm._pm.state.busy === null);
 
-  /* ✂️ A CUT-OFF REPLY (v1.70.0). Three pages asked together come back
-     stopped mid-question; the repair would have passed that off as the
-     whole of three pages. */
+  /* ✂️ A CUT-OFF REPLY is never kept — and is not bought again ahead. */
   pm.wsEpoch = 3;
   pm.annotations.length = 0;
+  timers.length = 0;
   pm._parseAIJson = raw => { try { return JSON.parse(raw); } catch (e) { return JSON.parse(raw + ']}'); } };
   const cutCalls = [];
-  pm.window.askGemini = async (prompt, cfg) => {
-    cutCalls.push({ prompt, cfg });
-    const nums = /^pages ([\d,]+)/.exec(prompt)[1];
-    if (nums.includes(',')) return '{"questions":[{"question":"Q1 of ' + nums + '","continuation":false}';
-    return JSON.stringify({ questions: [{ question: 'Q on ' + nums, continuation: false }] });
-  };
-  here = pm.pages[3];
-  ink(3, 'answer on page 3');
-  await pm.premarkTick();
-  eq('a cut-off reply over three pages is asked again ONE PAGE AT A TIME', cutCalls.length, 4);
-  ok('…each page sent beside the page before it',
-     cutCalls[1].prompt === 'pages 1 prev=0' && cutCalls[2].prompt === 'pages 2 prev=1' &&
-     cutCalls[3].prompt === 'pages 3 prev=2' && cutCalls[3].cfg.images.map(i => i.data).join() === 'JPEG3,JPEG2',
-     cutCalls.map(c => c.prompt).join(' | '));
-  ok('…and with the budget that has room for the thinking as well as the reply',
-     cutCalls.every(c => c.cfg.maxOutputTokens === pm.MARK_MAX_OUT) && pm.MARK_MAX_OUT >= 16000);
-  ok('…kept as three one-page segments the run can walk',
-     pm._pm.state.segs.map(sg => sg.pageNums.join()).join('|') === '1|2|3');
-  const ctx3 = pm.premarkCtxSig();
-  eq('…and the chain the run walks reaches past all three', pm.premarkChain(pm.pages, ctx3).next, 3);
-  ok('the cut-off three-page reply itself is never kept',
-     !pm._pm.state.segs.some(sg => sg.rows.some(r => /^Q1 of/.test(r.question))));
-
-  /* A page that is cut off even on its own is shown by the run, never kept. */
-  pm.wsEpoch = 4;
-  const oneCalls = [];
-  pm.window.askGemini = async (prompt) => { oneCalls.push(prompt); return '{"questions":[{"question":"half","continuation":false}'; };
+  pm.window.askGemini = async (prompt, cfg) => { cutCalls.push({ prompt, cfg }); return '{"questions":[{"question":"half","continuation":false}'; };
   here = pm.pages[1];
+  ink(1, 'answer on page 1');
   await pm.premarkTick();
-  eq('a single page cut off is asked for once', oneCalls.length, 1);
-  eq('…and is not kept, so the next press of Mark reads it fresh', pm._pm.state.segs.length, 0);
+  eq('a page cut off ahead is asked for once', cutCalls.length, 1);
+  ok('…with the budget that has room for the thinking as well as the reply',
+     cutCalls[0].cfg.maxOutputTokens === pm.MARK_MAX_OUT && pm.MARK_MAX_OUT >= 16000);
+  eq('…and is not kept, so the run reads it fresh', Object.keys(pm._pm.state.pages).length, 0);
+  await pm.premarkTick();
+  eq('…and is not bought AGAIN ahead while its ink is the same', cutCalls.length, 1);
+  ink(1, 'and a correction');
+  await pm.premarkTick();
+  eq('…until the ink changes', cutCalls.length, 2);
   const rr = pm.markReadRows('{"questions":[{"question":"a"}');
   ok('markReadRows says a repaired reply was cut off', rr.complete === false && rr.rows.length === 1);
   ok('…and a whole one was not', pm.markReadRows('{"questions":[]} ').complete === true);
@@ -7779,23 +7794,12 @@ section('⏩ Marking ahead');
     ok('the server\'s one-call-at-a-time answer is waited out and asked again on the SAME engine',
        /AI_BUSY_RE\.test\([\s\S]{0,40}\)\) \{\s*\n\s*busyRetried\[engine\] = \(busyRetried\[engine\] \|\| 0\) \+ 1;[\s\S]{0,320}i--;\s*\n\s*continue;\s*\n\s*\}\s*\n\s*_aiRefused\(engine, opts, e\);/.test(routes),
        'marking the lead engine down for ten minutes sends every marking run in those minutes to the backup');
-    ok('…a few times per engine, as long as the server says, and never after text has been handed over',
+    ok('…a few times per engine, as long as the server says, and never after text has been handed over (v1.72.0)',
        /!emitted && \(busyRetried\[engine\] \|\| 0\) < AI_BUSY_TRIES/.test(routes) && /const AI_BUSY_TRIES = [2-5];/.test(routes) &&
        /e\.details && e\.details\.retryAfterMs/.test(routes));
   }
 
   /* Against index.html itself. */
-  const RUN = between('async function runMarking() {', 'function markTally() {', 'the marking run');
-  ok('the run walks the kept chain from the first page, with the prompt\'s fingerprint',
-     /var aheadCtx = premarkCtxSig\(\)/.test(RUN) && /var ahead = premarkReuse\(work, start, premarkCarry\(work, start\), aheadCtx\);/.test(RUN));
-  ok('…steps by the segment it used, so the chain and the run stay in step',
-     /for \(var start = 0; start < total; start \+= step\)/.test(RUN) && /step = batch\.length;/.test(RUN));
-  ok('…and takes no picture and makes no call for a kept segment',
-     /if \(seg\.ahead\) return \{ parts: \[\{ rows: seg\.ahead\.seg\.rows, pageNums: seg\.ahead\.seg\.pageNums\.slice\(\) \}\], failed: \[\] \};/.test(RUN));
-  ok('…waits for a segment in flight rather than asking for it twice',
-     /premarkCancel\(\);[\s\S]{0,40}try \{\n\s*if \(_premark\.busy\) \{ try \{ await _premark\.busy; \}/.test(RUN));
-  ok('…and files a kept batch at the END, so the marks are not held back behind the book',
-     /if \(!seg\.ahead && got\.parts\.length\) \{\n\s*try \{\n\s*var filedNow = await fileMistakes/.test(RUN));
   ok('the ONE marking call and the fingerprint are the same expression',
      (() => {
        const a = between('async function markBatchAsk(', 'function markSystemPrompt()', 'the batch call');
@@ -7809,151 +7813,782 @@ section('⏩ Marking ahead');
   ok('…and it is started when the scrolling STOPS',
      /\$\('viewerArea'\)\.addEventListener\('scroll', function \(\) \{ premarkSoon\(\); \}, \{ passive: true \}\);/.test(html) &&
      /_premark\.timer = setTimeout\(premarkTick, PREMARK_IDLE_MS\);/.test(PM_SRC));
+  ok('…and ONE door in and ONE door out for a kept page, shared with the run',
+     /keep: function \(num, ink, rows\) \{ if \(!stale\(\)\) premarkPageKeep\(num, ink, ctx, rows\); \}/.test(html) &&
+     /if \(fresh && asked && asked\.indexOf\(num\) >= 0\) return null;\n\s*var k = premarkPageReuse\(num, ctx\);\n\s*return k \? k\.rows : null;/.test(html));
 }
 
 /* =====================================================================
-   ⚡ MARKED SIDE BY SIDE (v1.72.0) — every batch asked at once, stitched by
-   the page before, folded in paper order
+   🖼 THE PICTURE THE MARKING READS — rendered from the PDF, one canvas at a
+   time, given back at once (v1.73.0)
    ===================================================================== */
-section('⚡ Marked side by side');
+section('🖼 The picture the marking reads');
 {
-  const SRC = between('/* =====================================================================\n   ⏩ MARKING AHEAD', 'function markTally() {', 'the marking block');
-  const calls = [];
-  let live = 0, peak = 0;
-  const pending = [];
-  const sb = {
-    console: { warn() {}, info() {} },
-    JSON, Math, Date, Promise, Array, String, Object, Number, parseInt,
-    setTimeout: (fn) => { fn(); return 1; }, clearTimeout: () => {},
-    document: { hidden: false },
-    wsEpoch: 1, pages: [], annotations: [], wsMeta: { subject: 'maths', level: 'P5', guidance: 'full' },
-    marking: { items: [], runAt: null, running: false }, _markFiling: false, _markRun: 0,
-    MARK_BATCH: 2, HINT_RUNGS: [1, 2, 3], guidanceDepth: () => 3, docName: 'paper',
-    MARK_SYS: 'SYS', markBlankRule: () => '', aiGrounding: () => '', keyRuleBlock: () => '', tutorMethodRule: () => '',
-    markSyllabusBlock: () => '',
-    markPrompt: (nums, total, prevNum) => 'pages ' + nums.join(',') + ' prev=' + prevNum,
-    aiAvailable: () => true, loadTeachingNotes: async () => [], keyEnsureReady: async () => true,
-    aiWithDeadline: fn => fn(), aiEngineName: () => 'ChatGPT',
-    ensurePageRaster: async () => {}, compositeJpeg: p => 'JPEG' + p.num,
-    _parseAIJson: raw => JSON.parse(raw), _mkStr: v => String(v || ''),
-    _jsonEndIndex: s => { try { JSON.parse(s); return s.length; } catch (e) { return -1; } },
-    _markFoldRows: (rows, nums, into) => rows.forEach((r, i) => {
-      if (i === 0 && r.continuation && into.length) { into[into.length - 1].question += ' + ' + r.question; return; }
-      into.push({ question: r.question, page: nums[(r.page || 1) - 1] });
-    }),
-    toast: () => {}, commitActiveTextEdit: () => {}, openBuddy: () => {}, renderMarking: () => {},
-    progress: [], markRation: () => {}, usageNote: () => {}, usageAdd: () => {},
-    markTally: () => ({ correct: 0, partial: 0, wrong: 0, blank: 0 }), markMarkTally: () => ({ has: false }),
-    fileMistakes: async () => ({ filed: 0, wentPast: 0 }), setDirty: () => {},
-    $: () => ({ classList: { remove() {} } }),
-    window: {}
+  const PIC_SRC = between('/* =====================================================================\n   🖼 THE PICTURE THE MARKING READS',
+                          '/* =====================================================================\n   ⛓ THE PAPER, PUT BACK TOGETHER', 'the marking picture');
+  const canvases = [];
+  const drawn = [];
+  let failNext = 0;          // how many canvases in a row come back empty
+  let renderGate = null;     // a promise every render waits on, to see the line
+  let rendering = 0, maxRendering = 0;
+  const pc = {
+    console: { warn() {} }, Promise, Math, String, Object, Date, Error, setTimeout, clearTimeout,
+    MARK_PAGE_PX: 1600, MARK_PAGE_PX_SMALL: 1100, MARK_PIC_MIN: 600, MARK_PIC_MS: 20000,
+    annotations: [{ page: 1, type: 'pen' }],
+    syncActiveTextEditValue: () => {},
+    drawAnnsOnCtx: (ctx, kx, ky, anns, num) => drawn.push({ kx, ky, num }),
+    premarkInkSig: num => 'ink' + num,
+    ensurePageRaster: async () => {},
+    compositeJpeg: () => 'S'.repeat(5000),
+    document: {
+      createElement: () => {
+        const c = { width: 0, height: 0 };
+        c.getContext = () => ({ fillRect() {}, fillStyle: '' });
+        c.toDataURL = () => {
+          if (failNext > 0) { failNext--; return 'data:,'; }
+          return 'data:image/jpeg;base64,' + 'J'.repeat(4000);
+        };
+        canvases.push(c);
+        return c;
+      }
+    }
   };
-  sb.markProgress = (done, total, text) => sb.progress.push(text);
-  sb.window.askGemini = (prompt, cfg) => {
-    calls.push({ prompt, cfg });
-    live++; peak = Math.max(peak, live);
-    const nums = /^pages ([\d,]+)/.exec(prompt)[1].split(',');
-    return new Promise(res => pending.push({ nums, cfg, res: () => {
-      live--;
-      const qs = [];
-      if (nums[0] === '3') qs.push({ question: 'rest of Q2', continuation: true, page: 1 });
-      if (cfg.images.length > nums.length) qs.push({ question: 'from the page before', page: nums.length + 1 });
-      nums.forEach((n, i) => qs.push({ question: 'Q' + n, page: i + 1, continuation: false }));
-      res(JSON.stringify({ questions: qs }));
-    } }));
-  };
-  const ctx = vm.createContext(sb);
-  vm.runInContext(SRC, ctx, { filename: 'index.html' });
-  sb.pages = [1, 2, 3, 4, 5, 6, 7, 8].map(n => ({ num: n }));
-  sb.studentPages = () => sb.pages;
-  sb.visiblePage = () => sb.pages[0];
-  sb.annotations.push({ id: 'a', page: 1, type: 'text', text: 'x' });
-
-  const flush = () => new Promise(r => setImmediate(r));
-  const runP = sb.runMarking();
-  for (let i = 0; i < 10; i++) await flush();
-  eq('the batches are asked TOGETHER, not one after the other', calls.length, sb.MARK_PAR);
-  ok('…MARK_PAR is a small number', sb.MARK_PAR >= 2 && sb.MARK_PAR <= 4);
-  /* Answer them out of order: the LAST asked first. */
-  pending.slice().reverse().forEach(p => p.res());
-  pending.length = 0;
-  for (let i = 0; i < 10; i++) await flush();
-  while (pending.length) { pending.splice(0).forEach(p => p.res()); for (let i = 0; i < 10; i++) await flush(); }
-  await runP;
-  eq('every page is asked for, two at a time', calls.map(c => /^pages ([\d,]+)/.exec(c.prompt)[1]).join('|'), '1,2|3,4|5,6|7,8');
-  ok('…never more than MARK_PAR at once', peak <= sb.MARK_PAR, String(peak));
-  ok('…each batch after the first sent beside the page before it, as its LAST picture',
-     calls[0].prompt === 'pages 1,2 prev=0' && calls[0].cfg.images.length === 2 &&
-     calls[1].prompt === 'pages 3,4 prev=2' && calls[1].cfg.images.map(i => i.data).join() === 'JPEG3,JPEG4,JPEG2',
-     calls.map(c => c.prompt).join(' | '));
-  eq('…folded in PAPER order however the replies arrived, the context page\'s rows dropped and the stitch landing on its question',
-     sb.marking.items.map(i => i.question).join(','), 'Q1,Q2 + rest of Q2,Q3,Q4,Q5,Q6,Q7,Q8');
-  ok('…with the time a reasoning model needs for two pages, and an overall deadline above it',
-     calls.every(c => c.cfg.routeTimeoutMs === sb.MARK_ROUTE_MS && c.cfg.timeoutMs === sb.MARK_DEADLINE_MS) &&
-     sb.MARK_ROUTE_MS >= 90000 && sb.MARK_DEADLINE_MS > sb.MARK_ROUTE_MS);
-  eq('the run is finished and its marks are shown', sb.marking.running, false);
-
-  /* A batch that fails is reported, and the rest of the paper is still marked. */
-  calls.length = 0;
-  sb.window.askGemini = async (prompt) => {
-    calls.push({ prompt });
-    if (/^pages 3,4/.test(prompt)) throw new Error('down');
-    const nums = /^pages ([\d,]+)/.exec(prompt)[1].split(',');
-    return JSON.stringify({ questions: nums.map((n, i) => ({ question: 'Q' + n, page: i + 1 })) });
-  };
-  let said = '';
-  sb.toast = t => { said = t; };
-  sb.marking = { items: [], runAt: null, running: false };
-  await sb.runMarking();
-  eq('ONE unreadable batch never sinks the rest', sb.marking.items.map(i => i.question).join(','), 'Q1,Q2,Q5,Q6,Q7,Q8');
-  ok('…and its pages are named', /Pages 3, 4 could not be read/.test(said), said);
-
-  eq('markOwnRows drops a question printed only on the page before',
-     sb.markOwnRows([{ question: 'a', page: 3 }, { question: 'b', page: 1 }], 2, true).map(r => r.question).join(), 'b');
-  eq('…keeps a continuation whatever page it names',
-     sb.markOwnRows([{ question: 'c', page: 3, continuation: true }], 2, true).length, 1);
-  eq('…and drops nothing when no page before was sent',
-     sb.markOwnRows([{ question: 'a', page: 3 }], 2, false).length, 1);
-
-  /* The pool itself. */
-  let on = 0, top = 0;
-  const order = [];
-  const tasks = [5, 1, 3, 2].map((ms, i) => async () => {
-    on++; top = Math.max(top, on);
-    await new Promise(r => setTimeout(r, ms * 3));
-    on--; order.push(i);
-    return i;
+  vm.createContext(pc);
+  vm.runInContext(PIC_SRC, pc, { filename: 'index.html' });
+  const viewports = [];
+  const page = (num, extra = {}) => ({
+    num, baseW: 595, baseH: 842,
+    page: {
+      getViewport: ({ scale }) => { viewports.push(scale); return { width: 595 * scale, height: 842 * scale }; },
+      render: () => ({ promise: (async () => {
+        rendering++; maxRendering = Math.max(maxRendering, rendering);
+        if (renderGate) await renderGate;
+        if (extra.throws) { rendering--; throw new Error('render failed'); }
+        rendering--;
+      })() })
+    },
+    ...extra
   });
-  const outs = await Promise.all(sb.markPool(tasks, 2));
-  eq('markPool answers in the order it was given', outs.join(), '0,1,2,3');
-  ok('…with no more than its limit running', top === 2, String(top));
 
-  const RUN = between('async function runMarking() {', 'function markTally() {', 'the marking run');
-  ok('the run reads through the pool and folds by awaiting each batch in turn',
-     /var reads = markPool\(readers, MARK_PAR\);/.test(RUN) && /var got = await reads\[k\];/.test(RUN));
-  const PROMPT = between('function markPrompt(pageNums, total, prevNum) {', '/* ---- The ceiling reaches the marking too', 'the marking prompt');
-  ok('the prompt names the page before as the LAST picture, for context only',
-     /The LAST attached picture \(picture ' \+ \(n \+ 1\) \+ '\) is page ' \+ prevNum/.test(PROMPT) &&
-     /Return NO entry for a question printed only on it/.test(PROMPT) && /"continuation": true/.test(PROMPT));
+  const one = await pc.markPagePicture(page(1));
+  ok('a page is rendered FROM THE PDF at the marking\'s own size, whatever the screen zoom',
+     Math.abs(viewports[0] - 1600 / 842) < 1e-9, String(viewports[0]));
+  ok('…with the ink drawn on at that size', drawn.length === 1 && Math.abs(drawn[0].kx - Math.floor(595 * 1600 / 842) / 595) < 1e-9);
+  ok('…and the fingerprint of exactly that ink comes back with it', one && one.ink === 'ink1' && /^J+$/.test(one.data));
+  ok('…and its canvas is given back at once', canvases.every(c => c.width === 0 && c.height === 0),
+     'iOS budgets canvas memory for the whole tab — a run that keeps twenty of them is a page that comes back blank');
+
+  failNext = 1;
+  canvases.length = 0; viewports.length = 0;
+  const small = await pc.markPagePicture(page(2));
+  ok('a canvas that comes back EMPTY is never sent to be marked as a blank page — the smaller size is tried',
+     small && /^J+$/.test(small.data) && Math.abs(viewports[1] - 1100 / 842) < 1e-9, JSON.stringify(viewports));
+  failNext = 2;
+  const road = await pc.markPagePicture(page(3));
+  ok('…and the screen canvas is the last road, not the first', road && /^S+$/.test(road.data) && road.ink === 'ink3');
+  pc.compositeJpeg = () => '';
+  failNext = 2;
+  eq('a page that will not draw any of three ways is null, for the run to report', await pc.markPagePicture(page(4)), null);
+  pc.compositeJpeg = () => 'S'.repeat(5000);
+
+  canvases.length = 0;
+  const thrown = await pc.markPagePicture(page(5, { throws: true }));
+  ok('a render that THROWS still gives its canvas back', canvases.length >= 1 && canvases.every(c => c.width === 0));
+  ok('…and the page falls through to the screen road rather than sinking', thrown && /^S+$/.test(thrown.data));
+
+  /* ONE AT A TIME: three pages asked for together are drawn one after another. */
+  let open;
+  renderGate = new Promise(r => { open = r; });
+  rendering = 0; maxRendering = 0;
+  const three = [pc.markPagePicture(page(6)), pc.markPagePicture(page(7)), pc.markPagePicture(page(8))];
+  await new Promise(r => setTimeout(r, 5));
+  eq('pictures asked for together are DRAWN one at a time', maxRendering, 1);
+  open(); renderGate = null;
+  const done3 = await Promise.all(three);
+  ok('…and every one of them still arrives', done3.every(p => p && p.data));
+
+  /* The on-screen raster in flight is waited for, not raced. */
+  let screenDone = false;
+  const busy = page(9, { renderTask: { promise: new Promise(r => setTimeout(() => { screenDone = true; r(); }, 5)) } });
+  let sawScreen = null;
+  const origRender = busy.page.render;
+  busy.page.render = (...a) => { sawScreen = screenDone; return origRender(...a); };
+  await pc.markPagePicture(busy);
+  ok('a page whose screen raster is mid-render is drawn only after it', sawScreen === true);
+
+  /* A render that NEVER settles (a suspended tab) is cancelled, and the line moves on. */
+  pc.MARK_PIC_MS = 30;
+  let cancelled = 0;
+  const stuck = page(10);
+  stuck.page.render = () => ({ promise: new Promise(() => {}), cancel: () => { cancelled++; } });
+  const stuckPic = await pc.markPagePicture(stuck);
+  ok('a render that never finishes is given up on and cancelled, and the screen road is tried',
+     cancelled >= 1 && stuckPic && /^S+$/.test(stuckPic.data));
+  const after = await pc.markPagePicture(page(11));
+  ok('…and the page after it is drawn as normal — one stuck page is not every page stuck', after && /^J+$/.test(after.data));
+  pc.MARK_PIC_MS = 20000;
+
+  ok('the picture never comes off the screen canvas first',
+     PIC_SRC.indexOf('markRenderPage(p, MARK_PAGE_PX)') < PIC_SRC.indexOf('ensurePageRaster(p)') &&
+     /finally \{[\s\S]{0,200}if \(c\) \{ c\.width = 0; c\.height = 0; \}/.test(PIC_SRC));
+  ok('the ink is drawn and fingerprinted in ONE tick, nothing awaited between',
+     /syncActiveTextEditValue\(\);\n\s*drawAnnsOnCtx\(ctx, c\.width \/ p\.baseW, c\.height \/ p\.baseH, annotations, p\.num\);\n\s*var ink = premarkInkSig\(p\.num\);/.test(PIC_SRC));
+  ok('compositeJpeg itself is untouched by any of this', !/MARK_PAGE_PX/.test(between('function compositeJpeg(p, maxDim, quality)', 'function bandDataUrl(', 'compositeJpeg')));
 }
 
-/* ⏱ The route loop: ChatGPT calls spaced, and a slow call is not a refusal. */
-section('⏱ Spaced ChatGPT calls and slow replies');
+/* =====================================================================
+   ⛓ THE PAPER, PUT BACK TOGETHER — markAssemble, markCarryBefore and
+   markSettledTest, against the REAL `_markFoldRows`
+   ===================================================================== */
+section('⛓ The paper, put back together');
+const _realConsole = S.console;
+S.console = { warn() {}, info() {}, log() {}, error() {} };
 {
-  ok('ChatGPT calls take a turn, spaced on this page, before they go to the server',
-     /const AI_OPENAI_GAP_MS = 1[5-9]\d\d;/.test(html) &&
-     /if \(engine === "openai"\) \{ await aiOpenAiTurn\(opts\.signal\); return askOpenAiServer\(prompt, opts\); \}/.test(html) &&
-     /_aiOpenAiNext = at \+ AI_OPENAI_GAP_MS;\n  if \(at > now\)/.test(html),
-     'the turn must be claimed BEFORE the wait, or three asked together all go at once');
-  const TURN = between('let _aiOpenAiNext = 0;', 'async function _aiRun(', 'the ChatGPT turn');
-  const tb = { Date: { now: () => tb.t }, t: 1000, waits: [], Math,
-    setTimeout: (fn, ms) => { tb.waits.push(ms); fn(); }, aiThrowIfAborted: () => {}, Promise };
-  vm.runInContext('var _aiOpenAiNext = 0; const AI_OPENAI_GAP_MS = 1600;\n' + TURN.replace(/^let _aiOpenAiNext = 0;/, '') +
-                  '\nthis.turn = aiOpenAiTurn;', vm.createContext(tb));
-  await Promise.all([tb.turn(), tb.turn(), tb.turn()]);
-  eq('…three asked together go out 1.6 s apart', tb.waits.join(), '1600,3200');
-  ok('a call that ran out of TIME is recorded, never a ten-minute mark-down',
-     /function aiTimedOut\(e\) \{/.test(html) && /e\.name === "TimeoutError" \|\| \/deadline-exceeded\/i\.test\(code\)/.test(html));
+  const Q = (number, question, extra = {}) => ({ number, question, answer: 'A' + number, studentAnswer: 'x', verdict: 'wrong', marks: '0/1', ...extra });
+  const C = (question, extra = {}) => ({ continuation: true, question, answer: 'whole answer', studentAnswer: 'y', verdict: 'correct', ...extra });
+  const nums = items => items.map(it => it.number || ('(' + it.question + ')'));
+
+  let items = S.markAssemble([1, 2, 3], { 3: { rows: [Q('5', 'five')] }, 1: { rows: [Q('1', 'one'), Q('2', 'two')] } }, {}, undefined, {});
+  eq('pages that land out of order are put back in PAPER order', nums(items), ['1', '2', '5']);
+  eq('…each question carrying its own page', items.map(it => it.page), [1, 1, 3]);
+
+  items = S.markAssemble([1, 2], { 1: { rows: [Q('1', 'one'), Q('2', 'The first half')] }, 2: { rows: [C('the second half.'), Q('3', 'three')] } }, {}, undefined, {});
+  eq('a question over the page break is JOINED, not filed twice', nums(items), ['1', '2', '3']);
+  ok('…with both halves of its wording and the answer of the half that saw all of it',
+     items[1].question === 'The first half the second half.' && items[1].answer === 'whole answer' && items[1].endPage === 2);
+  ok('…and the verdict of the half that was written on', items[1].verdict === 'correct');
+
+  items = S.markAssemble([1, 2], { 2: { rows: [C('the tail'), Q('3', 'three')] } }, {}, undefined, {});
+  eq('a continuation whose page before has NOT landed yet is held back, neither shown nor filed', nums(items), ['3']);
+  items = S.markAssemble([1, 2], { 2: { rows: [C('the tail'), Q('3', 'three')] } }, {}, undefined, { lost: { 1: 1 } });
+  eq('…but stands as its own question when that page could not be read', nums(items), ['(the tail)', '3']);
+  items = S.markAssemble([1, 2], { 2: { rows: [C('the tail'), Q('3', 'three')] } }, {}, undefined, { final: true });
+  eq('…and when the run is over', nums(items), ['(the tail)', '3']);
+  items = S.markAssemble([1, 2], { 1: { rows: [] }, 2: { rows: [C('the tail'), Q('3', 'three')] } }, {}, undefined, {});
+  eq('a continuation after a page with NO questions (a cover) stands as its own', nums(items), ['(the tail)', '3']);
+  items = S.markAssemble([2], { 2: { rows: [C('starts mid-question')] } }, {}, undefined, {});
+  eq('…and so does one on the first page of the paper', nums(items), ['(starts mid-question)']);
+
+  /* A RE-READ of page 2 when its question was already joined onto page 1's. */
+  const keptQ = Object.assign(S._markNewItem(Q('2', 'The first half the second half.'), [1]), { endPage: 2 });
+  const kept = { 1: [S._markNewItem(Q('1', 'one'), [1]), keptQ] };
+  items = S.markAssemble([1, 2], { 2: { rows: [C('the second half.'), Q('3', 'three')] } }, kept, undefined, {});
+  eq('a re-read page whose first question was ALREADY joined is not joined twice', nums(items), ['1', '2', '3']);
+  ok('…so the question\'s wording is not doubled', items[1].question === 'The first half the second half.', items[1].question);
+  items[0].question = 'changed';
+  ok('…and the questions kept from before are COPIES — assembling never edits the paper in place',
+     kept[1][0].question === 'one');
+  items = S.markAssemble([1, 2, 3], { 2: { rows: [Q('4', 'four')] } }, { 1: [S._markNewItem(Q('1', 'one'), [1])], 3: [S._markNewItem(Q('9', 'nine'), [3])] }, undefined, {});
+  eq('kept pages and re-read pages are woven back in paper order', nums(items), ['1', '4', '9']);
+
+  /* The carry a page that starts mid-question is asked again under. */
+  const got2 = { 1: { rows: [Q('1', 'one'), Q('2', 'The first half')] } };
+  eq('the carry is the question the page before ENDED on', S.markCarryBefore([1, 2], 2, got2, {}, undefined), 'The first half');
+  eq('…nothing on the first page', S.markCarryBefore([1, 2], 1, got2, {}, undefined), '');
+  eq('…nothing after a page with no questions', S.markCarryBefore([1, 2], 2, { 1: { rows: [] } }, {}, undefined), '');
+  eq('…and it is cut to the size the run has always carried',
+     S.markCarryBefore([1, 2], 2, { 1: { rows: [Q('1', 'w'.repeat(500))] } }, {}, undefined).length, 300);
+
+  /* Which marked questions are FINISHED, for the book. */
+  const settled = S.markSettledTest([1, 2, 3], { 3: 1 });
+  ok('a question is finished once the page AFTER it has landed', settled({ page: 2 }) === true);
+  ok('…not before', settled({ page: 1 }) === false);
+  ok('…and one on the last page of the paper always is', settled({ page: 3 }) === true);
+  ok('…and one that runs over a break is measured from its LAST page', S.markSettledTest([1, 2, 3], { 2: 1 })({ page: 1, endPage: 2 }) === false);
+  ok('…and a question on no page of this paper never is', settled({ page: 7 }) === false);
+
+  eq('pages are named the way a person says them',
+     [S.markPageList([3]), S.markPageList([3, 4]), S.markPageList([3, 4, 7])], ['3', '3 and 4', '3, 4 and 7']);
+}
+
+/* =====================================================================
+   ⚡ EVERY PAGE AT ONCE — markReadPaper, driven with fake pages, fake
+   pictures and a fake model
+   ===================================================================== */
+section('⚡ Every page at once');
+{
+  const tick = () => new Promise(r => setImmediate(r));
+  const settle = async (n = 30) => { for (let i = 0; i < n; i++) await tick(); };
+  const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b; }); return { promise, resolve, reject }; };
+  const P = n => ({ num: n });
+  const whole = (num, extra = []) => ({ rows: [{ number: String(num), question: 'Q' + num }].concat(extra), complete: true });
+
+  /* ① Three in the air, never more, and the next starts the moment one lands. */
+  {
+    const waits = {};
+    const reads = [];
+    let inFlight = 0, most = 0;
+    const lands = [];
+    const run = S.markReadPaper({
+      order: [1, 2, 3, 4, 5, 6], targets: [1, 2, 3, 4, 5, 6].map(P),
+      parallel: 3, tries: 3, retryWait: 1, stitchMax: 2,
+      stale: () => false, wait: async () => {},
+      picture: async p => ({ data: 'P' + p.num, ink: 'i' + p.num }),
+      read: (pic, num, carry, t) => {
+        reads.push(num); inFlight++; most = Math.max(most, inFlight);
+        waits[num] = deferred();
+        return waits[num].promise.then(v => { inFlight--; return v; });
+      },
+      onLand: (got, lost, num) => lands.push(num)
+    });
+    await settle();
+    eq('three pages are read at the same moment', reads, [1, 2, 3]);
+    waits[2].resolve(whole(2));
+    await settle();
+    eq('…and the next one starts as soon as ANY of them lands', reads, [1, 2, 3, 4]);
+    [1, 3, 4].forEach(n => waits[n].resolve(whole(n)));
+    await settle();
+    [5, 6].forEach(n => waits[n].resolve(whole(n)));
+    const res = await run;
+    eq('…never more than three in the air', most, 3);
+    eq('every page lands, in whatever order it was ready', lands.slice().sort(), [1, 2, 3, 4, 5, 6]);
+    ok('…and the first to land was page 2, which was quickest', lands[0] === 2);
+    eq('…with nothing lost', Object.keys(res.lost), []);
+  }
+
+  /* ② Tries, the cut-off reply, the page that never comes back, the picture that will not draw. */
+  {
+    const tries = {};
+    const waited = [];
+    const kept = [];
+    const states = {};
+    const script = {
+      1: ['ok'],
+      2: ['throw', 'throw', 'ok'],
+      3: ['cut', 'cut', 'cut'],
+      4: ['throw', 'throw', 'throw'],
+      6: ['cut', 'ok']
+    };
+    const res = await S.markReadPaper({
+      order: [1, 2, 3, 4, 5, 6], targets: [1, 2, 3, 4, 5, 6].map(P),
+      parallel: 2, tries: 3, retryWait: 100, stitchMax: 2,
+      stale: () => false, wait: async ms => { waited.push(ms); },
+      picture: async p => (p.num === 5 ? null : { data: 'P' + p.num, ink: 'ink' + p.num }),
+      read: async (pic, num, carry, t) => {
+        (tries[num] = tries[num] || []).push(t);
+        const step = script[num][t - 1];
+        if (step === 'throw') throw new Error('route refused');
+        if (step === 'cut') return { rows: [{ number: String(num), question: 'half of ' + num }], complete: false };
+        return whole(num);
+      },
+      keep: (num, ink, rows) => kept.push(num + ':' + ink),
+      onPage: (num, s) => { (states[num] = states[num] || []).push(s); }
+    });
+    eq('a page that fails twice is read a THIRD time, and lands', tries[2], [1, 2, 3]);
+    ok('…after a short wait that grows', waited.includes(100) && waited.includes(200));
+    ok('…and the strip says it is being read again', states[2].includes('retry') && states[2].at(-1) === 'done');
+    ok('a page cut off every time is SHOWN, as the best it gave', res.got[3] && res.got[3].complete === false && res.state[3] === 'cut');
+    ok('…and never kept for the next press of Mark', !kept.some(k => k.startsWith('3:')));
+    ok('a page cut off once and whole the second time is whole', res.got[6] && res.got[6].complete === true && tries[6].length === 2);
+    ok('a page that never comes back at all is UNREAD — a state, not a toast', !res.got[4] && res.lost[4] === 1 && res.state[4] === 'unread');
+    eq('…after exactly MARK_TRIES reads', tries[4], [1, 2, 3]);
+    ok('a page whose picture will not draw is unread without a single call', res.lost[5] === 1 && !tries[5]);
+    ok('a whole page is kept, with the fingerprint of the ink its picture carried', kept.includes('1:ink1') && kept.includes('2:ink2'));
+    ok('…and a one-shot page lands first time with no wait', tries[1].length === 1);
+  }
+
+  /* ③ ⏩ A page kept ahead costs no picture and no call. */
+  {
+    const pics = [], reads = [];
+    const res = await S.markReadPaper({
+      order: [1, 2], targets: [P(1), P(2)], parallel: 2, tries: 3, retryWait: 1, stitchMax: 2,
+      stale: () => false, wait: async () => {},
+      reuse: num => (num === 1 ? [{ number: '1', question: 'kept' }] : null),
+      picture: async p => { pics.push(p.num); return { data: 'P', ink: 'i' }; },
+      read: async (pic, num) => { reads.push(num); return whole(num); }
+    });
+    ok('a page kept ahead is folded straight in', res.state[1] === 'ahead' && res.got[1].rows[0].question === 'kept');
+    ok('…with no picture taken and no call made for it', pics.join() === '2' && reads.join() === '2');
+  }
+
+  /* ④ ⛓ THE STITCH: the page that starts mid-question waits for the page before, then is asked again with it in hand. */
+  {
+    const gate = deferred();
+    const reads = [];
+    const states = [];
+    let carryAsked = null;
+    const pending = S.markReadPaper({
+      order: [1, 2, 3], targets: [P(1), P(2), P(3)], parallel: 3, tries: 2, retryWait: 1, stitchMax: 4,
+      stale: () => false, wait: async () => {},
+      picture: async p => ({ data: 'P' + p.num, ink: 'i' }),
+      read: async (pic, num, carry) => {
+        reads.push(num + (carry ? '+' + carry : ''));
+        if (num === 1) { await gate.promise; return whole(1, [{ number: '2', question: 'The first half' }]); }
+        if (num === 2 && !carry) return { rows: [{ continuation: true, question: 'tail' }, { number: '3', question: 'Q3' }], complete: true };
+        if (num === 2 && carry) return { rows: [{ continuation: true, question: 'tail, read whole' }, { number: '3', question: 'Q3' }], complete: true };
+        return whole(num);
+      },
+      carry: (num, got) => { carryAsked = { num, had: Object.keys(got).sort() }; return 'The first half'; },
+      onPage: (num, s) => states.push(num + s)
+    });
+    await settle();
+    ok('…nothing is joined while the page before is still being read',
+       !reads.includes('2+The first half') && !states.includes('2done'), reads.join(' | '));
+    gate.resolve();
+    const res = await pending;
+    ok('the page before is still being read when the continuation comes back — so it WAITS',
+       reads.indexOf('2+The first half') > reads.indexOf('1') && states.indexOf('2stitch') > states.indexOf('1done'),
+       reads.join(' | ') + ' // ' + states.join(' '));
+    ok('…and is asked again only once the page before has LANDED',
+       carryAsked && carryAsked.num === 2 && carryAsked.had.includes('1'));
+    ok('…with the question that page ended on carried in', reads.includes('2+The first half'));
+    ok('…and lands with the rows that saw the whole question', res.got[2].rows[0].question === 'tail, read whole' && res.got[2].stitched === true);
+    ok('…and landing means FINISHED: page 2 lands only after its stitch',
+       states.indexOf('2done') > states.indexOf('2stitch'));
+  }
+
+  /* ⑤ The stitch is bounded, and a stitch that fails keeps what the page said on its own. */
+  {
+    const reads = [];
+    const res = await S.markReadPaper({
+      order: [1, 2, 3], targets: [P(1), P(2), P(3)], parallel: 1, tries: 1, retryWait: 1, stitchMax: 1,
+      stale: () => false, wait: async () => {},
+      picture: async p => ({ data: 'P', ink: 'i' }),
+      read: async (pic, num, carry) => {
+        reads.push(num + (carry ? '+' : ''));
+        if (carry && num === 2) throw new Error('could not join');
+        if (num > 1) return { rows: [{ continuation: true, question: 'tail ' + num }], complete: true };
+        return whole(num);
+      },
+      carry: () => 'before'
+    });
+    eq('MARK_STITCH_MAX bounds the pages asked again', reads.filter(r => r.endsWith('+')).length, 1);
+    ok('…and a stitch that FAILED keeps what the page said on its own, rather than losing it',
+       res.got[2] && res.got[2].rows[0].question === 'tail 2' && res.state[2] === 'done');
+  }
+
+  /* ⑥ A run that goes stale stops, lets go, and never hangs. */
+  {
+    let staleNow = false;
+    const first = deferred();
+    const reads = [];
+    const lands = [];
+    const run = S.markReadPaper({
+      order: [1, 2, 3, 4], targets: [1, 2, 3, 4].map(P), parallel: 2, tries: 2, retryWait: 1, stitchMax: 2,
+      stale: () => staleNow, wait: async () => {},
+      picture: async p => ({ data: 'P', ink: 'i' }),
+      read: async (pic, num, carry) => {
+        reads.push(num + (carry ? '+' : ''));
+        if (num === 1) return first.promise;
+        return { rows: [{ continuation: true, question: 'tail' }], complete: true };
+      },
+      carry: () => 'before',
+      onLand: (got, lost, num) => lands.push(num)
+    });
+    await settle();
+    staleNow = true;
+    first.resolve(whole(1));
+    const res = await Promise.race([run.then(() => 'finished'), new Promise(r => setTimeout(() => r('HUNG'), 300))]);
+    eq('a run that went stale finishes rather than waiting for ever', res, 'finished');
+    ok('…lands nothing once it is stale', !lands.includes(1) && !lands.includes(2));
+    ok('…and starts no page it had not started', !reads.includes(3) && !reads.includes(4));
+  }
+
+  /* ⑦ The deadline stops new tries — not the reads in flight. */
+  {
+    const tries = [];
+    const res = await S.markReadPaper({
+      order: [1], targets: [P(1)], parallel: 1, tries: 3, retryWait: 1, stitchMax: 0,
+      deadline: Date.now() - 1, stale: () => false, wait: async () => {},
+      picture: async p => ({ data: 'P', ink: 'i' }),
+      read: async (pic, num, carry, t) => { tries.push(t); throw new Error('every engine refused'); }
+    });
+    eq('past the run\'s deadline a failing page is not tried again', tries, [1]);
+    ok('…and is named unread rather than left spinning', res.lost[1] === 1);
+  }
+
+  /* ⑧ 📕 The book's line: one pass at a time, one waiting, nothing when stale. */
+  {
+    const passes = [];
+    const gates = [];
+    const filedTotal = [];
+    let staleNow = false;
+    const fake = vm.createContext({
+      console: { warn() {} }, Promise,
+      fileMistakes: opts => { passes.push(opts); const d = deferred(); gates.push(d); return d.promise; }
+    });
+    vm.runInContext(between('function markFileBehind(filer, stale, settled, add) {', 'function markPageList(', 'the filing line'), fake);
+    const filer = { line: Promise.resolve(), queued: false };
+    const settledFn = () => true;
+    fake.markFileBehind(filer, () => staleNow, settledFn, r => filedTotal.push(r.filed));
+    fake.markFileBehind(filer, () => staleNow, settledFn, r => filedTotal.push(r.filed));
+    await settle();
+    eq('pages landing together start ONE pass', passes.length, 1);
+    ok('…a marked-only, quiet one, told which questions are finished',
+       passes[0].marked === true && passes[0].quiet === true && passes[0].settled === settledFn);
+    fake.markFileBehind(filer, () => staleNow, settledFn, r => filedTotal.push(r.filed));
+    fake.markFileBehind(filer, () => staleNow, settledFn, r => filedTotal.push(r.filed));
+    await settle();
+    eq('…pages landing while it runs queue exactly ONE more, never a second in flight', passes.length, 1);
+    gates[0].resolve({ filed: 2, wentPast: 0 });
+    await settle();
+    eq('…which starts when the first has finished', passes.length, 2);
+    gates[1].reject(new Error('quota'));
+    await settle();
+    let threw = false;
+    try { await filer.line; } catch (e) { threw = true; }
+    ok('a pass that FAILS never breaks the line or the marking', !threw);
+    eq('…and the counts come back to the run', filedTotal, [2]);
+    staleNow = true;
+    fake.markFileBehind(filer, () => staleNow, settledFn, () => {});
+    await settle();
+    eq('a run that went stale files nothing more', passes.length, 2);
+  }
+}
+
+/* =====================================================================
+   🧯 THE EDGES — a cut page, a lone tail, a re-read's reach, a keep or a
+   carry that throws, and a picture that never finishes drawing
+   ===================================================================== */
+section('🧯 The edges of the marking run');
+{
+  const Q = (number, question, extra = {}) => ({ number, question, answer: 'A' + number, studentAnswer: 'x', verdict: 'wrong', marks: '0/1', ...extra });
+  const C = (question, extra = {}) => ({ continuation: true, question, answer: 'whole', studentAnswer: 'y', verdict: 'correct', ...extra });
+  let items = S.markAssemble([1, 2], { 1: { rows: [Q('3', 'three')], complete: false }, 2: { rows: [C('the tail of five'), Q('6', 'six')] } }, {}, undefined, {});
+  eq('a continuation after a page that was CUT OFF is never joined onto whatever question that reply stopped at',
+     items.map(it => it.number || '(' + it.question + ')'), ['3', '(the tail of five)', '6']);
+  ok('…so question 3 keeps its own answer and verdict', items[0].answer === 'A3' && items[0].verdict === 'wrong');
+  ok('…and the lone tail is TAGGED, so a later re-read can join it back', items[1].cont === true && !items[2].cont);
+  eq('…and the stitch is never asked under the cut page\'s last question',
+     S.markCarryBefore([1, 2], 2, { 1: { rows: [Q('3', 'three')], complete: false } }, {}, undefined), '');
+
+  const span = [{ page: 1, endPage: 2 }, { page: 2 }, { page: 3 }, { page: 4, cont: true }, { page: 5, endPage: 7 }];
+  eq('a re-read of a page takes in the whole question that runs off it', S.markWidenPages([1], span, [1, 2, 3, 4, 5, 6, 7]), [1, 2]);
+  eq('…and the whole question that runs ONTO it', S.markWidenPages([2], span, [1, 2, 3, 4, 5, 6, 7]), [1, 2]);
+  eq('…and the page after it whose first question is a lone tail', S.markWidenPages([3], span, [1, 2, 3, 4, 5, 6, 7]), [3, 4]);
+  eq('…and every page of a question three pages long', S.markWidenPages([6], span, [1, 2, 3, 4, 5, 6, 7]), [5, 6, 7]);
+  eq('…and nothing else', S.markWidenPages([4], span, [1, 2, 3, 4, 5, 6, 7]), [4]);
+  eq('…measured over the student\'s pages, so a hidden key page between is stepped over',
+     S.markWidenPages([2], [{ page: 2, endPage: 4 }], [1, 2, 4]), [2, 4]);
+
+  /* A keep or a carry that throws never costs a page that was read. */
+  const res = await S.markReadPaper({
+    order: [1, 2], targets: [{ num: 1 }, { num: 2 }], parallel: 1, tries: 2, retryWait: 1, stitchMax: 2,
+    stale: () => false, wait: async () => {},
+    picture: async p => ({ data: 'P', ink: 'i' }),
+    read: async (pic, num) => ({ rows: num === 2 ? [{ continuation: true, question: 'tail' }] : [{ number: '1', question: 'one' }], complete: true }),
+    keep: () => { throw new Error('cache full'); },
+    carry: () => { throw new Error('assembly broke'); }
+  });
+  ok('a keep that THROWS never turns a page that was read into an unread one', res.got[1] && !res.lost[1]);
+  ok('…nor does a carry that throws', res.got[2] && !res.lost[2] && res.state[2] === 'done');
+}
+
+S.console = _realConsole;
+
+/* =====================================================================
+   ⏱ THE ROUTES — one ChatGPT call starts at a time, and a SLOW answer is
+   not a refusal (v1.73.0)
+   ===================================================================== */
+section('⏱ One ChatGPT call starts at a time, and slow is not down');
+{
+  const GATE_SRC = between('const AI_SERVER_GAP_MS = 1700;', 'async function _aiServerAsk(', 'the ChatGPT gate');
+  let clock = 1000;
+  const timers = [];
+  const g = {
+    Date: { now: () => clock }, Promise, Error,
+    setTimeout: (fn, ms) => { timers.push({ fn, at: clock + ms }); return timers.length; }
+  };
+  vm.createContext(g);
+  vm.runInContext(GATE_SRC.replace(/^const /gm, 'var '), g);
+  const advance = async ms => {
+    clock += ms;
+    for (let guard = 0; guard < 20; guard++) {
+      const due = timers.filter(t => t.at <= clock && !t.fired);
+      if (!due.length) break;
+      due.forEach(t => { t.fired = true; t.fn(); });
+    }
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+  };
+  const order = [];
+  g.aiServerTurn('askOpenAi', 'fg').then(() => order.push('a@' + clock));
+  g.aiServerTurn('askOpenAi', 'fg').then(() => order.push('b@' + clock));
+  g.aiServerTurn('askOpenAi', 'fg').then(() => order.push('c@' + clock));
+  await advance(0);
+  eq('the first call goes at once', order, ['a@1000']);
+  await advance(1700);
+  eq('…the next a gap later, before the server can answer "one request at a time"', order, ['a@1000', 'b@2700']);
+  await advance(1700);
+  eq('…and the next a gap after that', order.length, 3);
+
+  /* The background lane. */
+  const lanes = [];
+  g.aiServerTurn('askOpenAi', 'bg').then(() => lanes.push('rebuild'));
+  g.aiServerTurn('askOpenAi', 'fg').then(() => lanes.push('page'));
+  await advance(1700);
+  eq('a foreground call waiting goes before a background one queued earlier', lanes, ['page']);
+  await advance(1700);
+  eq('…and the background call goes when nobody is waiting', lanes, ['page', 'rebuild']);
+
+  /* Kimi has its own gate. */
+  const kimi = [];
+  g.aiServerTurn('askOpenAi', 'fg').then(() => kimi.push('openai'));
+  g.aiServerTurn('askKimi', 'fg').then(() => kimi.push('kimi'));
+  await advance(0);
+  eq('each callable has its OWN gate — the server counts each one separately', kimi, ['kimi']);
+  await advance(1700);
+
+  /* A cancelled call leaves the queue. */
+  const ac = new AbortController();
+  let rejected = false;
+  g.aiServerTurn('askOpenAi', 'fg', ac.signal).catch(() => { rejected = true; });
+  const after = [];
+  g.aiServerTurn('askOpenAi', 'fg').then(() => after.push('next'));
+  ac.abort();
+  await advance(1700);
+  ok('a call cancelled while it waits is rejected and leaves its turn to the next', rejected && after.join() === 'next');
+
+  ok('every server route waits its turn BEFORE the callable is made',
+     /await aiServerTurn\(name, opts\.lane, opts\.signal\);\n\s*aiThrowIfAborted\(opts\.signal\);\n\s*const call = _aiCallable\(/.test(html));
+  ok('…and the lane is never sent to the server',
+     !/lane/.test(between('const res = await call(Object.assign({', '}, extra || {}));', 'the server payload')));
+
+  /* ⏱ Slow is not down — until it is slow again and again. */
+  const R_SRC = between('const AI_SLOW_RE = ', '\nasync function aiAskRoutes(', 'the refusal rule');
+  const down = [];
+  let now = 1000000;
+  const r = { _aiWhy: {}, AI_TASK_MODEL: { light: 'luna' }, _aiMarkDown: (e, why, ms) => down.push(e + (ms ? '@' + ms : '')),
+              String, Error, Date: { now: () => now } };
+  vm.createContext(r);
+  vm.runInContext(R_SRC.replace(/^const /gm, 'var '), r);
+  const timeout = () => Object.assign(new Error('This check took too long. Please try again.'), { name: 'TimeoutError' });
+  r._aiRefused('openai', { keepOnTimeout: true }, timeout());
+  r._aiRefused('openai', { keepOnTimeout: true }, new Error('ChatGPT response was incomplete.'));
+  r._aiRefused('openai', { keepOnTimeout: true }, new Error('One request at a time — give it a couple of seconds.'));
+  eq('a marking route that is SLOW once, cut short or told to wait is not marked down', down, []);
+  ok('…but what it said is kept for the engine panel', /request at a time/.test(r._aiWhy.openai));
+  now += 4 * 60 * 1000;
+  r._aiRefused('openai', { keepOnTimeout: true }, Object.assign(new Error('deadline-exceeded'), { code: 'functions/deadline-exceeded' }));
+  eq('…but a SECOND timeout inside the window rests it — for minutes, not the ten a refusal costs',
+     down, ['openai@' + r.AI_SLOW_REST_MS]);
+  ok('…and the rest is short', r.AI_SLOW_REST_MS > 0 && r.AI_SLOW_REST_MS < 10 * 60 * 1000 && r.AI_SLOW_STRIKES === 2);
+  down.length = 0;
+  r._aiRefused('gemini', { keepOnTimeout: true }, timeout());
+  now += 6 * 60 * 1000;
+  r._aiRefused('gemini', { keepOnTimeout: true }, timeout());
+  eq('two timeouts FURTHER apart than the window are two slow pages, not a hanging engine', down, []);
+  r._aiRefused('openai', { keepOnTimeout: true }, new Error('ChatGPT API error 429: You exceeded your current quota'));
+  eq('a REAL refusal on the same call is marked down as it always was', down, ['openai']);
+  r._aiRefused('kimi', {}, timeout());
+  eq('a HINT that times out once is not marked down either — a timeout is slow, not refused (v1.72.0)', down, ['openai']);
+  r._aiRefused('kimi', {}, new Error('ChatGPT response was incomplete.'));
+  eq('…but a hint is let off ONLY for a timeout: an incomplete reply still marks it down', down, ['openai', 'kimi']);
+  r._aiRefused('kimi', {}, timeout());
+  eq('…and a hint\'s second timeout inside the window rests the engine too', down, ['openai', 'kimi', 'kimi@' + r.AI_SLOW_REST_MS]);
+  r._aiRefused('openai', { task: 'light' }, new Error('model refused'));
+  eq('…and the light model\'s refusal rule is untouched', down, ['openai', 'kimi', 'kimi@' + r.AI_SLOW_REST_MS]);
+
+  ok('the marking call asks for its own deadlines and keeps the engine on a timeout',
+     /timeoutMs: MARK_CALL_MS, routeTimeoutMs: MARK_ROUTE_MS, keepOnTimeout: true,/.test(between('async function markBatchAsk(', 'function markSystemPrompt()', 'the batch call')));
+  ok('…long enough for a page at high thinking, and inside the server\'s own 180 s',
+     (() => { const m = /var MARK_ROUTE_MS = (\d+);/.exec(html); return !!m && +m[1] >= 120000 && +m[1] < 180000; })());
+  ok('the mistake book\'s rebuild keeps the engine on a timeout too, and waits in the background lane',
+     /keepOnTimeout: true, lane: 'bg',/.test(between('async function _mbBuildFrom(', 'function mbStoredPage(', 'the rebuild ask')));
+}
+
+/* =====================================================================
+   ⚡ THE RUN ITSELF — runMarking end to end, with a fake model
+   ===================================================================== */
+section('⚡ The run, end to end');
+{
+  const RUN_SRC = between('/* =====================================================================\n   ⏩ MARKING AHEAD', 'function markTally() {', 'the marking machinery');
+  const toasts = [], progress = [], filings = [], usage = [];
+  let renders = 0;
+  const askLog = [];
+  const R = {
+    console: { warn() {}, info() {} }, JSON, Math, Date, Promise, Array, String, Object, Number,
+    setTimeout, clearTimeout, setImmediate,
+    document: { hidden: false },
+    wsEpoch: 1, wsMeta: { subject: 'english', level: 'P3', guidance: 'full' }, docName: 'P3 English',
+    annotations: [{ page: 1, type: 'pen' }, { page: 3, type: 'text', text: 'raining' }],
+    marking: { items: [], runAt: null, running: false }, _markFiling: false, _markRun: 0,
+    MARK_SYS: 'SYS', markBlankRule: () => '', aiGrounding: () => '', keyRuleBlock: () => '', tutorMethodRule: () => '',
+    markSyllabusBlock: () => '', markPrompt: (nums, total, carry) => 'page ' + nums.join(',') + (carry ? ' carry=' + carry : ''),
+    MARK_PARALLEL: 3, MARK_TRIES: 3, MARK_ROUTE_MS: 150000, MARK_CALL_MS: 210000, MARK_RUN_MS: 360000,
+    MARK_RETRY_WAIT_MS: 1, MARK_STITCH_MAX: 6, MARK_PAGE_PX: 1600, MARK_PAGE_PX_SMALL: 1100, MARK_PIC_MIN: 600,
+    HINT_RUNGS: [1, 2, 3, 4], guidanceDepth: () => 4,
+    StudyAdventure: undefined,
+    toast: (m) => toasts.push(m), aiAvailable: () => true, commitActiveTextEdit: () => {}, openBuddy: () => {},
+    renderMarking: () => { renders++; }, renderMarkPagesOnly: () => {},
+    markProgress: (d, t, text) => progress.push(text), aiEngineName: () => 'Chung GPT',
+    aiWithDeadline: fn => fn(), loadTeachingNotes: async () => [], keyEnsureReady: async () => true,
+    markRation: () => {}, usageNote: (k) => usage.push(k), usageAdd: () => {},
+    markTally: () => ({ correct: 0, partial: 0, wrong: 0, blank: 0 }), markMarkTally: () => ({ has: false }),
+    setDirty: () => {}, scheduleRaster: () => {},
+    $: () => ({ classList: { add() {}, remove() {} }, style: {} }),
+    _parseAIJson: S._parseAIJson, _jsonEndIndex: S._jsonEndIndex, _mkStr: S._mkStr, _markFoldRows: S._markFoldRows,
+    fileMistakes: async opts => { filings.push(opts); return { filed: 1, wentPast: 0 }; },
+    window: {}
+  };
+  const pages = [1, 2, 3, 4].map(n => ({ num: n }));
+  R.pages = pages;
+  R.studentPages = () => pages;
+  let script = {};
+  R.window.askGemini = async (prompt, cfg) => {
+    askLog.push({ prompt, cfg });
+    const num = +/page (\d+)/.exec(prompt)[1];
+    const step = (script[num] || ['ok']).shift() || 'ok';
+    if (step === 'throw') throw new Error('route refused');
+    return JSON.stringify({ questions: [{ number: String(num * 10), question: 'Question on page ' + num, answer: 'a',
+      studentAnswer: num === 2 ? '' : 'x', verdict: num === 2 ? '' : 'wrong', marks: '0/2', page: 1 }] });
+  };
+  vm.createContext(R);
+  vm.runInContext(RUN_SRC, R, { filename: 'index.html' });
+  R.markPagePicture = async p => ({ data: 'P' + p.num, ink: R.premarkInkSig(p.num) });
+  R.markWait = async () => {};
+
+  /* A paper where page 3 never comes back. */
+  script = { 3: ['throw', 'throw', 'throw'] };
+  await R.runMarking({ type: 'click' });
+  eq('a click hands its event in and is a FULL run', askLog.filter(a => !/carry=/.test(a.prompt)).length, 6);
+  ok('…every page asked for on its own', askLog.every(a => a.cfg.images.length === 1));
+  ok('…the last try at a stubborn page thinks at medium, the others at high',
+     askLog.filter(a => /page 3/.test(a.prompt)).map(a => a.cfg.thinkingLevel).join() === 'high,high,medium');
+  eq('the paper comes back in paper order, without the page that could not be read',
+     R.marking.items.map(it => it.page), [1, 2, 4]);
+  eq('…and that page is NAMED on the marking, to be read again', R.marking.unread, [3]);
+  ok('…and said once, with where to go', toasts.some(t => /Page 3 could not be read/.test(t) && /Read it again/.test(t)), toasts.join(' | '));
+  ok('the run is over and the marks are published', R.marking.running === false && !!R.marking.runAt);
+  ok('the book was filed behind the reading, and once more at the end over the whole paper',
+     filings.some(f => f.marked === true && typeof f.settled === 'function') && filings.at(-1).marked === undefined);
+  eq('a full run is counted once', usage, ['mark']);
+  ok('the progress says how many pages are being read at a time', progress.some(t => /your 4 pages, 3 at a time/.test(t)), progress.join(' | '));
+
+  /* ↻ Read it again: page 3 only; every other question stays as it is. */
+  askLog.length = 0; toasts.length = 0; usage.length = 0;
+  const p1 = R.marking.items[0];
+  await R.runMarking({ only: [3], fresh: true });
+  eq('↻ Read it again reads ONLY the pages it names', askLog.map(a => a.prompt), ['page 3']);
+  eq('…and puts that page back in its place in the paper', R.marking.items.map(it => it.page), [1, 2, 3, 4]);
+  ok('…leaving every other question exactly as it was', R.marking.items[0].question === p1.question && R.marking.items[0] !== p1);
+  eq('…and nothing is unread any more', R.marking.unread, []);
+  eq('…and a repair is not counted as a second sitting', usage, []);
+  ok('…and says nothing when it worked', !toasts.some(t => /could not be read/.test(t)));
+
+  /* ✅ Mark it again with nothing changed: nothing is asked for again. */
+  askLog.length = 0;
+  await R.runMarking({ type: 'click' });
+  eq('✅ Mark it again with no ink changed reads NOTHING again — every page was kept', askLog.length, 0);
+  eq('…and the paper is the same paper', R.marking.items.map(it => it.page), [1, 2, 3, 4]);
+
+  /* …one answer fixed on page 4: only page 4 is read. */
+  R.annotations.push({ page: 4, type: 'text', text: 'fixed' });
+  askLog.length = 0;
+  await R.runMarking({ type: 'click' });
+  eq('fix one answer and ✅ Mark it again reads only the page that changed', askLog.map(a => a.prompt), ['page 4']);
+
+  /* Tapping a page reads it afresh even though nothing changed. */
+  askLog.length = 0;
+  await R.runMarking({ only: [2], fresh: true });
+  eq('tapping a page in the strip reads it AFRESH even when nothing on it changed', askLog.map(a => a.prompt), ['page 2']);
+
+  /* A paper whose second page starts mid-question. */
+  askLog.length = 0;
+  R.wsEpoch = 2;
+  R.window.askGemini = async (prompt, cfg) => {
+    askLog.push({ prompt, cfg });
+    const num = +/page (\d+)/.exec(prompt)[1];
+    if (num === 2) {
+      return JSON.stringify({ questions: [
+        { continuation: true, question: /carry=/.test(prompt) ? 'the rest, seen whole' : 'the rest', answer: 'B', studentAnswer: 'B', verdict: 'correct', marks: '2/2' },
+        { number: '7', question: 'Question seven', answer: 'c', studentAnswer: '', verdict: '', marks: '0/1' }] });
+    }
+    return JSON.stringify({ questions: [{ number: String(num * 10), question: 'Question on page ' + num, answer: 'a', studentAnswer: 'x', verdict: 'wrong', marks: '0/2' }] });
+  };
+  await R.runMarking({ type: 'click' });
+  ok('a page that starts mid-question is asked again with the question before it in hand',
+     askLog.some(a => a.prompt === 'page 2 carry=Question on page 1'), askLog.map(a => a.prompt).join(' | '));
+  const joined = R.marking.items.find(it => it.number === '10');
+  ok('…and the two halves are ONE question on the paper, judged by the half that saw it whole',
+     joined && joined.endPage === 2 && /the rest, seen whole/.test(joined.question) && joined.verdict === 'correct',
+     JSON.stringify(joined));
+  eq('…with nothing filed twice', R.marking.items.map(it => it.number), ['10', '7', '30', '40']);
+
+  /* ↻ RE-READS READ WHOLE QUESTIONS (the review's cases). Q2 starts on page 1
+     and is answered on page 2. */
+  const spanModel = (failing) => async (prompt, cfg) => {
+    askLog.push({ prompt, cfg });
+    const num = +/page (\d+)/.exec(prompt)[1];
+    if (failing[num] === 'throw') throw new Error('route refused');
+    if (failing[num] === 'cut') return '{"questions":[{"number":"' + num + '9","question":"half a page","answer":"z","studentAnswer":"q","verdict":"wrong","marks":"0/1"}';
+    if (num === 1) return JSON.stringify({ questions: [
+      { number: '1', question: 'One.', answer: 'a', studentAnswer: 'a', verdict: 'correct', marks: '1/1' },
+      { number: '2', question: 'Two starts here', answer: '', studentAnswer: '', verdict: '', marks: '0/2' }] });
+    if (num === 2) return JSON.stringify({ questions: [
+      { continuation: true, question: /carry=/.test(prompt) ? 'and ends here.' : 'ends here.', answer: 'B', studentAnswer: 'B', verdict: 'correct', marks: '2/2' },
+      { number: '3', question: 'Three.', answer: 'c', studentAnswer: 'x', verdict: 'wrong', marks: '0/1' }] });
+    return JSON.stringify({ questions: [{ number: String(num * 10), question: 'Q' + num, answer: 'a', studentAnswer: 'x', verdict: 'wrong', marks: '0/1' }] });
+  };
+  const cards = () => R.marking.items.map(it => (it.number || '·') + '@' + it.page + (it.endPage && it.endPage !== it.page ? '-' + it.endPage : '') + (it.cont ? '(tail)' : ''));
+
+  R.wsEpoch = 3; toasts.length = 0;
+  R.window.askGemini = spanModel({ 1: 'throw' });
+  await R.runMarking({ type: 'click' });
+  eq('page 1 unread: the tail of its last question stands alone on page 2, tagged as a tail',
+     cards(), ['·@2(tail)', '3@2', '30@3', '40@4']);
+  R.window.askGemini = spanModel({});
+  askLog.length = 0;
+  await R.runMarking({ only: [1], fresh: true });
+  ok('↻ Read page 1 again also reads page 2, whose first question is the rest of page 1\'s last',
+     askLog.some(a => /^page 2/.test(a.prompt)), askLog.map(a => a.prompt).join(' | '));
+  eq('…and the two halves are ONE question again, with no blank half and no orphan tail',
+     cards(), ['1@1', '2@1-2', '3@2', '30@3', '40@4']);
+  ok('…judged by the half that was answered', R.marking.items[1].verdict === 'correct' && R.marking.items[1].studentAnswer === 'B');
+
+  askLog.length = 0;
+  await R.runMarking({ only: [1], fresh: true });
+  ok('tapping page 1 reads page 2 too, because question 2 runs onto it', askLog.some(a => /^page 2/.test(a.prompt)));
+  eq('…so question 2 keeps its answer instead of reading "Not attempted"', cards(), ['1@1', '2@1-2', '3@2', '30@3', '40@4']);
+  ok('…and its verdict', R.marking.items[1].verdict === 'correct');
+  ok('…and page 1, which was ASKED for, is read afresh while page 2 comes from what was kept',
+     askLog.filter(a => /^page 1$/.test(a.prompt)).length === 1 && !askLog.some(a => a.prompt === 'page 2'),
+     askLog.map(a => a.prompt).join(' | '));
+
+  askLog.length = 0;
+  await R.runMarking({ only: [2], fresh: true });
+  ok('tapping page 2 reads page 1 too, so the question is joined afresh rather than left as it was',
+     askLog.some(a => /^page 2/.test(a.prompt)) && cards().join() === '1@1,2@1-2,3@2,30@3,40@4', cards().join());
+
+  /* A failed re-read keeps the marks the page had. */
+  const beforeFail = cards().join();
+  R.window.askGemini = spanModel({ 4: 'throw' });
+  toasts.length = 0;
+  await R.runMarking({ only: [4], fresh: true });
+  eq('a re-read that FAILS keeps the questions the page already had', cards().join(), beforeFail);
+  eq('…and does not call a marked page unread', R.marking.unread, []);
+  ok('…and says the earlier marks are kept', toasts.some(t => /could not be read again/.test(t) && /already had are kept/.test(t)), toasts.join(' | '));
+  R.window.askGemini = spanModel({ 4: 'cut' });
+  await R.runMarking({ only: [4], fresh: true });
+  eq('…and a re-read that comes back CUT OFF keeps them too', cards().join(), beforeFail);
+
+  ok('a re-read never touches usage or the adventure', /if \(!only\) \{\n\s*if \(typeof StudyAdventure !== 'undefined'\) StudyAdventure\.marked/.test(RUN_SRC));
+  ok('the pages that could not be read are saved with the worksheet, and read back',
+     /marking: \{ items: marking\.items, runAt: marking\.runAt, unread: marking\.unread \|\| \[\] \}/.test(html) &&
+     /unread: \(body\.marking && Array\.isArray\(body\.marking\.unread\)\)/.test(html));
+  ok('MARK_PARALLEL is a handful, not the whole centre\'s ChatGPT instances',
+     (() => { const m = /var MARK_PARALLEL = (\d+);/.exec(html); return !!m && +m[1] >= 2 && +m[1] <= 4; })());
+}
+
+/* =====================================================================
+   📄 THE PAGE STRIP — against index.html itself
+   ===================================================================== */
+section('📄 The page strip');
+{
+  const STRIP = between('var MARK_PAGE_STATES = {', 'function renderMarking() {', 'the page strip');
+  ok('every state has a mark as well as a colour', ['queued', 'reading', 'retry', 'stitch', 'done', 'ahead', 'cut', 'unread']
+     .every(s => new RegExp('\\b' + s + ':\\s*\\{ mark: ').test(STRIP)));
+  ok('a chip is the PDF\'s own page number, with its state spoken', /b\.title = 'Page ' \+ s\.num \+ ' — ' \+ meta\.word;/.test(STRIP) &&
+     /b\.setAttribute\('aria-label', b\.title\);/.test(STRIP));
+  ok('tapping a chip reads that page afresh', /markReadPagesAgain\(\[s\.num\]\)/.test(STRIP) &&
+     /runMarking\(\{ only: nums\.slice\(\), fresh: true \}\);/.test(STRIP));
+  ok('…and the chips are dead while a run is going', /b\.disabled = !!marking\.running;/.test(STRIP));
+  ok('a page that could not be read gets a card above the score, with ↻ on it',
+     /markReadPagesAgain\(lost\)/.test(STRIP) && /var unreadCard = markUnreadNode\(\);\n\s*if \(unreadCard\) sum\.appendChild\(unreadCard\);/.test(html));
+  ok('the strip is redrawn on its own while pages change state', /function renderMarkPagesOnly\(\)/.test(STRIP) &&
+     /old\.parentNode\.replaceChild\(node, old\);/.test(STRIP));
+  ok('the strip only lists the student\'s pages, never the answer key', /studentPages\(\)\.forEach\(function \(p\) \{\n\s*var s = live\[p\.num\];/.test(STRIP));
+  ok('the reading chip stops breathing for a student who asked for less motion',
+     /@media \(prefers-reduced-motion: reduce\) \{ \.markPage\.mp-reading \{ animation: none; \} \}/.test(html));
 }
 
 console.log('\n' + (failures

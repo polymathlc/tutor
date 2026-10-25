@@ -2,6 +2,102 @@
 
 Guidance for Claude when working in this repo.
 
+## ⚡ EVERY PAGE AT ONCE — the marking run, rebuilt (v1.73.0)
+
+> **History.** v1.72.0 (PR #110, `⚡ MARKED SIDE BY SIDE`) first attacked this from another session: batches
+> of two asked `MARK_PAR` at a time with the page before attached as a context picture (`markPrevPicture`,
+> `markOwnRows`, `markPool`), 120 s routes, `aiTimedOut`, `aiOpenAiTurn` and `AI_BUSY_TRIES`. v1.73.0
+> replaced the batch design below — it still cut every picture off the iPad's screen canvas, still awaited
+> the book between batches, and still reported a lost page only in a toast. Kept from v1.72.0: a timeout
+> is slow, not refused, on EVERY call (`aiTimedOut`, now inside `aiSlowNotDown` with the slow strikes), and
+> "one request at a time" is retried up to `AI_BUSY_TRIES` for the server's `details.retryAfterMs`.
+> `aiOpenAiTurn` became `aiServerTurn` (lanes, abort, one gate per callable). `markPool`, `markOwnRows`,
+> `markPrevPicture`, `markPrevOf`, `premarkCarry*`, `MARK_PAR`, `MARK_BATCH` and `MARK_DEADLINE_MS` are gone.
+
+Students reported two things: **"some pages cannot be read, so they were not marked"** (a P3 English
+paper came back as 12 out of 18 with forty marks on it) and **"marking is very slow"**. Both came out
+of the same three faults, and all three are fixed here:
+
+1. **A route got 45 s for a batch of three pages; the server gives ChatGPT 180 s.** At `high`
+   thinking a three-page reply routinely ran past 45 s, the timeout **marked ChatGPT down for ten
+   minutes** (`_aiRefused`), the batch fell to Gemini, the two-minute budget ran out, and three pages
+   were reported "could not be read" at once — and every later batch on that device went to the
+   backup too. The mistake book's rebuild (`_mbBuildFrom`, 20 s a route) did the same mid-run.
+2. **On an iPad the picture was cut off the ON-SCREEN canvas** (`ensurePageRaster` → `compositeJpeg`)
+   at the student's zoom — 156% × retina is five million pixels a page — and nothing gave those
+   canvases back. iOS budgets canvas memory per tab, so a long paper's later pages came back blank or
+   as `"data:,"`, which the run reported as unreadable.
+3. **The run was strictly sequential**, and after every batch it **awaited** the mistake book's filing
+   (Firestore writes, uploads and up to `MB_BUILD_MAX` vision calls) before reading the next pages.
+
+What it does now (search `⚡ EVERY PAGE AT ONCE`, `🖼 THE PICTURE THE MARKING READS`, `⛓ THE PAPER, PUT
+BACK TOGETHER`, `📕 THE BOOK FILLS BEHIND THE READING`, `📄 THE PAGE STRIP`, `⏱ A SLOW ANSWER IS NOT A
+REFUSAL` and `⏱ ONE CHATGPT CALL STARTS AT A TIME`):
+
+- **ONE PAGE IS ONE CALL, `MARK_PARALLEL` (3) IN THE AIR.** `markReadPaper(o)` is the reader, and it
+  takes every job it does as an argument (`picture`, `read`, `reuse`, `keep`, `carry`, `stale`,
+  `wait`, `onPage`, `onLand`) so the harness drives it with fakes; `runMarking(opts)` is only the
+  wiring. 3, not more: the `askOpenAi` callable runs at most ten instances for the WHOLE centre.
+- **EVERY PAGE GETS `MARK_TRIES` (3) READS** — a short growing wait between them, the last at `medium`
+  thinking. A cut-off reply is kept as the best so far and tried again; only a page that never came
+  back is UNREAD. `MARK_RUN_MS` stops RETRIES and stitches (never a page's first read, never a read in
+  flight) so a bad day ends with the pages named and a long paper is never unread for being long.
+  Every wait on the picture line is bounded by `MARK_PIC_MS` (`markWithin`; a render that runs out is
+  cancelled), and pasted pictures are decoded (`annPicsReady`) before the ink is drawn.
+- **THE PICTURE IS RENDERED FOR THE MARKING, FROM THE PDF** (`markPagePicture` → `markRenderPage`) at
+  `MARK_PAGE_PX` (1600) on the long side, ink drawn by `drawAnnsOnCtx`, ONE canvas at a time on
+  `_markPicLine`, zeroed in a `finally`. Then `MARK_PAGE_PX_SMALL`, then the old screen road. A JPEG
+  under `MARK_PIC_MIN` is a canvas that failed and is never sent. **The ink fingerprint is taken in the
+  same tick it is drawn** (`syncActiveTextEditValue` → `drawAnnsOnCtx` → `premarkInkSig`, nothing
+  awaited between). `compositeJpeg` itself is untouched (the ruler rule).
+- **⛓ A QUESTION OVER A PAGE BREAK.** A page read alone is told (in `markPrompt`) to return a leading
+  `continuation: true` row when it starts mid-question. `markAssemble(order, got, kept, ctx, how)`
+  rebuilds `marking.items` in **paper order** every time a page lands (the 🕳 skip rule reads that
+  order): it joins a continuation onto the page before through `_markFoldRows` (still the ONE place
+  `continuation` is honoured), HOLDS it while that page is still being read, makes it its own question
+  — tagged `cont: true` — when that page is lost, CUT OFF (its reply stopped at some other question),
+  ended on nothing, or the run is `final`, and DROPS it on a re-read whose question was already joined
+  (`endPage` is this page). `markCarryBefore` carries nothing after a cut page. **The stitch:** a continuation page waits
+  for the page before to LAND, then is asked again with `markCarryBefore`'s carry — the old batch
+  carry, spent only where needed and bounded by `MARK_STITCH_MAX`. A page lands only after its stitch,
+  so "landed" means "finished".
+- **UNREAD IS A STATE, NOT A TOAST.** `marking.unread` is saved with the worksheet
+  (`worksheetBody` / `applyWorksheetBody`); 📄 the strip (`markPagesNode`, one chip a page:
+  waiting / reading / ↻ / ⛓ / ✓ / ½ / !, words in `title` + `aria-label`) shows every page, and
+  `markUnreadNode` puts a card ABOVE the score with **↻ Read page N again** → `runMarking({ only, fresh })`.
+  **Tapping any chip reads that page afresh.** A re-read keeps every other question (`kept`, copied,
+  never edited in place) and does not touch usage or the adventure (`if (!only)`).
+- **↻ A RE-READ READS WHOLE QUESTIONS** (`markWidenPages`): the marking holds folded questions, not raw
+  page replies, so re-reading one page of a question that runs over a break would lose or orphan the
+  other half. The pages read grow to every page such a question spans, plus the page after any page
+  read whose first question is a lone `cont` tail; the added pages come from the cache (only the pages
+  ASKED for are `fresh`). **A re-read never loses what was there:** a page asked for again that could
+  not be read, or came back cut off, keeps its earlier questions (`beforeBy` via `gotFor` / `keptFor`),
+  stays out of `unread`, and the toast says its marks were kept.
+- **⏩ ONE CACHE, PER PAGE.** Marking ahead and the run share `premarkPageKeep` / `premarkPageReuse`,
+  keyed by the page's ink, the system prompt (`premarkCtxSig`) and the page's own ask
+  (`premarkPageSig`, which carries the subject). No chain: a stroke on page 2 no longer throws away
+  pages 3–12. **The run keeps what it read**, so ✅ Mark it again after fixing one answer reads ONE page.
+- **📕 THE BOOK FILLS BEHIND THE READING.** `markFileBehind(filer, …)`: one line per run, one pass at a
+  time, at most one waiting, only FINISHED questions (`markSettledTest` — the page after has landed,
+  passed to `fileMistakes` as `settled`), nothing once stale. The end-of-run pass awaits the line and
+  is still the one that judges 🕳 skipped blanks.
+- **⏱ SLOW IS NOT DOWN, AND STARTS ARE SPACED.** A TIMEOUT on any call (`aiTimedOut`, v1.72.0), and on a
+  `keepOnTimeout` call (the marking, the rebuild) also an incomplete reply / "one request at a time" / an
+  unreachable server, records why and marks NOTHING down (`aiSlowNotDown`) — until `AI_SLOW_STRIKES` (2) TIMEOUTS inside
+  `AI_SLOW_WINDOW_MS` (5 min), when the engine RESTS for `AI_SLOW_REST_MS` (3 min, `_aiMarkDown`'s new
+  `ms`), so a hanging engine costs two pages' wait and not every page's. A real refusal (quota,
+  billing, key) is marked down as before. `_aiServerAsk` waits its turn at a per-callable gate
+  (`aiServerTurn`, `AI_SERVER_GAP_MS` 1.7 s between STARTS — the server's `MIN_OPENAI_INTERVAL_MS` is
+  1.5 s); `lane: 'bg'` (marking ahead, the rebuild) yields to any foreground call waiting. The marking
+  route gets `MARK_ROUTE_MS` (120 s, inside the server's 180 s) and `MARK_CALL_MS` (240 s) per try, so a
+  backup asked after a timeout has as long again.
+- Run **`node tools/tutor-tests.mjs`** (sections ⏩, 🖼, ⛓, ⚡, ⏱, ⚡ end to end, 📄) and
+  **`PW=/path/to/playwright/index.mjs node tools/marking-browser-check.mjs`** (a real Chromium: the
+  JPEG is real and 1600 px with the ink on it, no canvas leaks, three in flight, the unread card and
+  ↻, Mark it again reads only the changed page, the strip wraps on a phone; `MARK_SCREENSHOTS=dir`
+  saves pictures). CI runs both.
+
 ## 📲 Installable app (Polymath install kit v2.0.0) — PC, Android, iPhone and iPad (v1.71.0)
 
 Study Buddy installs like an app: its own icon and window, no app store. It is a Progressive Web
@@ -1642,15 +1738,20 @@ still came back, it simply went on making the mistake the teacher had already co
 - **The three verdicts are `correct` / `partial` / `wrong`** (`MARK_VERDICTS`). Anything else the
   model invents is dropped, but the question still shows as marked with what the student wrote —
   half a mark is better than silently losing their work off the card.
-- **The pages are read as ONE RUN, `MARK_BATCH` (3) at a time**, so a question spread over a page
-  break comes back as one question. **A question straddling a batch boundary is stitched by the
-  `continuation` entry** — the same mechanism Scan & Answer and the Portal's exam-paper builder use.
+- **The pages are read ONE PAGE A CALL, `MARK_PARALLEL` at a time (v1.73.0 — they were three to a
+  call, one call after another, until then).** A question spread over a page break is still one
+  question: the page that starts mid-question returns a `continuation` entry, `markAssemble` joins it
+  onto the page before through `_markFoldRows`, and the stitch asks that page again with the question
+  before it in hand — the same mechanism Scan & Answer and the Portal's exam-paper builder use. See
+  ⚡ EVERY PAGE AT ONCE at the top.
 - **The page number is GLOBAL, not batch-local.** The model numbers the pictures 1..n within the
-  batch it was handed; get this wrong and every question after the third cites the wrong page — and
-  every mistake picture is cropped from it.
-- **The pages are COMPOSITED before they are sent** (`compositeJpeg` → `drawAnnsOnCtx`): the AI
-  must see the worksheet with the student's own ink on it, or it marks every question as blank.
-- **ONE unreadable batch never sinks the rest of the worksheet** — those pages are reported and the
+  call it was handed; get this wrong and every question cites the wrong page — and every mistake
+  picture is cropped from it. One page a call keeps this trivially right, and it stays passed through.
+- **The pages are COMPOSITED before they are sent** (`markPagePicture` renders the page from the PDF
+  and `drawAnnsOnCtx` draws the ink on): the AI must see the worksheet with the student's own ink on
+  it, or it marks every question as blank. Never cut it off the screen canvas first (🖼, v1.73.0).
+- **ONE unreadable page never sinks the rest of the worksheet** — it is tried `MARK_TRIES` times,
+  then named in `marking.unread`, shown on 📄 the strip and in a card with ↻ Read it again, and the
   run carries on.
 - **`renderMarking` says nothing when nothing was attempted.** A fresh worksheet must not be
   announced as a score of zero out of nothing.
@@ -3253,43 +3354,44 @@ slider at it.
   make it usable with a thumb.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
-## ⏩ MARKING AHEAD — the page they scrolled past, marked while they read the next (v1.62.0)
+## ⏩ MARKING AHEAD — the page they scrolled past, marked while they read the next (v1.62.0, one page at a time since v1.73.0)
 
-`PREMARK_IDLE_MS` / `PREMARK_MAX_CALLS` / `PREMARK_SEGS_MAX` / `_premark` / **`markBatchAsk`** /
-**`markSystemPrompt`** / `premarkHash` / **`premarkInkSig`** / **`premarkCtxSig`** / `premarkSync` /
-`premarkWorth` / **`premarkReuse`** / **`premarkChain`** / `premarkKeep` / `premarkSoon` /
-`premarkCancel` / **`premarkTick`** (search `MARKING AHEAD`), the `aheadCtx` / `ahead` / `step`
-walk and the `_premark.busy` wait in `runMarking`, and the third `scroll` listener on `#viewerArea`.
+`PREMARK_IDLE_MS` / `PREMARK_MAX_CALLS` / `_premark` / **`markBatchAsk`** / **`markSystemPrompt`** /
+`premarkHash` / **`premarkInkSig`** / **`premarkCtxSig`** / **`premarkPageSig`** / `premarkSync` /
+`premarkWorth` / **`premarkPageKeep`** / **`premarkPageReuse`** / `premarkNext` / `premarkSoon` /
+`premarkCancel` / **`premarkTick`** (search `MARKING AHEAD`), the `reuse` / `keep` pair and the
+`_premark.busy` wait in `runMarking`, and the third `scroll` listener on `#viewerArea`.
 
-When scrolling stops on a later page, the pages behind are marked in the background and the rows
-are KEPT, not shown. ✅ Mark my work then folds a kept segment in with no picture and no call.
+When scrolling stops on a later page, the pages behind are marked in the background, one a stop, and
+the rows are KEPT, not shown. ✅ Mark my work then folds a kept page in with no picture and no call.
 
 - **`markBatchAsk` IS THE ONE MARKING CALL**, and the run and the head start both go through it.
   `markSystemPrompt` is the same expression, used only to fingerprint it; the harness pins the two
   as identical text. A second copy of the call is a marker that drifts.
-- **A KEPT SEGMENT IS USED ONLY WHEN NOTHING IT WAS BUILT FROM HAS CHANGED**: the same pages in
-  order, each page's ink (`premarkInkSig`, taken in the same tick as its picture), the same
-  `carry`, the same prompt fingerprint. Anything else and the run reads the page fresh, so this
-  can only make marking FASTER, never different.
-- **THE SEGMENTS ARE A CHAIN IN PAPER ORDER**, because `carry` stitches a question over a page
-  break. `premarkChain` folds kept segments exactly as the run does to find where the next one
-  starts; the run's loop steps by the segment it used (`start += step`).
+- **A KEPT PAGE IS USED ONLY WHEN NOTHING IT WAS BUILT FROM HAS CHANGED**: that page's ink
+  (`premarkInkSig`, taken in the tick its picture is drawn), the prompt fingerprint and the page's own
+  ask (`premarkPageSig`, which carries the subject). Anything else and the run reads the page fresh,
+  so this can only make marking FASTER, never different.
+- **NO CHAIN (v1.73.0).** A page is read with nothing carried in, so a kept page holds wherever the
+  run reaches it from; a question over a page break is joined afterwards (⛓ in ⚡ EVERY PAGE AT ONCE).
+  The v1.62.0 segments (`premarkChain`, `premarkReuse`, `PREMARK_SEGS_MAX`) are gone.
+- **THE RUN KEEPS WHAT IT READ** through `premarkPageKeep`, so ✅ Mark it again reads only the pages
+  whose ink changed. `fresh` (📄 tapping a page) skips the cache.
 - **IT IS NEVER SHOWN.** Nothing in the block touches `marking`, `renderMarking`, the progress bar
   or a toast; the harness checks the source. A tick appearing before Mark is pressed is the app
   marking a paper nobody handed in.
-- **IT ONLY SPENDS A CALL ON WORK THAT IS THERE**: ink on the segment or on a later page (🕳 the
+- **IT ONLY SPENDS A CALL ON WORK THAT IS THERE**: ink on the page or on a later page (🕳 the
   went-past rule). A marked paper, a run in flight, a hidden tab and `PREMARK_MAX_CALLS` all stop
-  it. A failed read stands down silently: it is a head start lost, never an error.
-- **A KEPT BATCH IS FILED AT THE END, NOT PER BATCH.** Per-batch filing hides its wait behind the
-  next batch's reading; a kept batch has none, so filing it there would hold back the marks.
-  The end-of-run `fileMistakes({ quiet: true })` files every question anyway.
+  it; a page whose read failed is not bought again ahead until its ink changes (`_premark.missed`).
+  A failed read stands down silently: it is a head start lost, never an error.
+- **IT STANDS BEHIND EVERYTHING ELSE**: `lane: 'bg'` at the ChatGPT gate.
 - **ONE AT A TIME, AND THE RUN WAITS FOR IT** (`_premark.busy`), rather than asking twice.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
 ## ✂️ THE WHOLE PAPER, NOT ITS FIRST FEW QUESTIONS (v1.70.0)
 
-`MARK_MAX_OUT` / **`markReadRows`** / `markTailCopy` / **`markBatchRows`** (search `THE WHOLE PAPER`),
-`window.aiLeadDown`, and `AI_BUSY_RE` / `busyRetried` in `aiAskRoutes`.
+`MARK_MAX_OUT` / **`markReadRows`** (search `THE WHOLE PAPER`), `window.aiLeadDown`, and
+`AI_BUSY_RE` / `busyRetried` in `aiAskRoutes`.
 
 Students saw a paper of thirty questions marked as four. The marking reply was asked for in 8000
 tokens; on Gemini at `thinkingLevel: 'high'` the thinking counts inside that budget, so the JSON was
@@ -3302,52 +3404,30 @@ worksheet ate the account's daily ChatGPT allowance (`DAILY_OPENAI_CAP` in polym
 - **THE BUDGET IS `MARK_MAX_OUT`** (20000), room for the reply AND the thinking. Both routes clamp it.
 - **A REPAIRED REPLY IS A CUT-OFF REPLY.** `markReadRows` returns `complete: false` for anything
   `_parseAIJson` had to repair.
-- **A CUT-OFF BATCH IS ASKED AGAIN ONE PAGE AT A TIME** (`markBatchRows`), each page under the carry
-  the run would reach (`markTailCopy` folds onto a copy). It returns PARTS that the run folds one
-  after another, and marking ahead keeps each COMPLETE part as its own segment. A part that is still
-  cut off is shown by the run but never kept.
+- **A CUT-OFF PAGE IS ASKED AGAIN** (v1.73.0 — `markBatchRows` / `markTailCopy`, which split a cut-off
+  three-page batch, are gone with the batches): `markReadPaper` keeps the longest cut-off reply as the
+  best so far and gives the page another try, the last at `medium` thinking. A page still cut off is
+  shown (½ on the strip) and never kept.
 - **"ONE REQUEST AT A TIME" IS WAITED OUT** (`AI_BUSY_WAIT_MS`) and asked again once on the same
-  engine. It is never a mark-down.
+  engine. It is never a mark-down — and since v1.73.0 the gate (`aiServerTurn`) spaces the starts so
+  it is rarely said at all.
 - **MARKING AHEAD BUYS AT MOST `PREMARK_MAX_CALLS` = 12** a worksheet, and none while
   `window.aiLeadDown()` says the leading engine is down.
 - Run **`node tools/tutor-tests.mjs`** after touching any of it.
 
-## ⚡ MARKED SIDE BY SIDE — the paper takes as long as its slowest batch (v1.72.0)
-
-`MARK_PAR` / `MARK_ROUTE_MS` / `MARK_DEADLINE_MS` / `markPrevOf` / **`markPrevPicture`** / **`markOwnRows`** /
-**`markPool`** / `premarkCarry` / `premarkCarryKey` (search `MARKED SIDE BY SIDE`), the `plan` / `readers` /
-`reads` walk in `runMarking`, `aiOpenAiTurn` / `AI_OPENAI_GAP_MS`, `aiTimedOut` in `_aiRefused`, and
-`AI_BUSY_TRIES` in `aiAskRoutes`.
-
-Marking was slow and dropped pages. Batches ran strictly one after another because each was told the TEXT of
-the last question the batch before returned (`carry`). Each engine had 45 s, a reply at high reasoning often
-needs longer, and a timeout marked ChatGPT down for ten minutes, so one slow batch sent the rest of the paper
-(and every run for ten minutes) to Gemini under the same 45 s.
-
-- **THE STITCH IS THE PAGE BEFORE, NOT THE REPLY BEFORE.** Each batch is sent the page in front of it as its
-  LAST picture (so its own pages stay pictures 1..n), and `markPrompt(pageNums, total, prevNum)` says it is
-  context only. A question that started there comes back as the `continuation` entry, as before.
-  `markOwnRows` drops any other row the model returns from that page.
-- **EVERY BATCH IS ASKED AT ONCE, `MARK_PAR` (3) at a time** (`markPool`), and `MARK_BATCH` is 2. The fold
-  stays in PAPER ORDER (`await reads[k]`), so a continuation always lands on the question it finishes, and
-  per-batch filing waits behind the batches still being read.
-- **A KEPT SEGMENT'S `carry` IS NOW `premarkCarryKey(prevPage, itsInk)`**, the page it was sent beside. The
-  chain needs no folding (`premarkChain` just walks), and a stroke on the page before invalidates the segment.
-- **A TIMEOUT IS SLOW, NOT REFUSED.** `aiTimedOut` (`TimeoutError` or `deadline-exceeded`) records the reason
-  but never marks the engine down. Marking gets `MARK_ROUTE_MS` (120 s) per engine and `MARK_DEADLINE_MS`
-  (240 s) in all; the server's `askOpenAi` allows 240 s.
-- **CHATGPT CALLS ARE SPACED ON THE PAGE** (`aiOpenAiTurn`, 1.6 s, claimed before the wait), because a pupil's
-  account may start one call every 1.5 s. "One request at a time" is still retried, up to `AI_BUSY_TRIES`,
-  for the server's `details.retryAfterMs`.
-- Run **`node tools/tutor-tests.mjs`** (the `⚡ Marked side by side` section runs `runMarking` in a sandbox
-  with replies arriving out of order) and `node --test tools/ai-defaults-tests.mjs`.
-
 ## 📕 A QUESTION IS IN THE BOOK AS SOON AS IT IS MARKED (v1.44.0)
 
 **`fileMistakes(opts)`** and its `{ filed, wentPast }` answer, **`markRation`** beside it, and the
-per-batch `await fileMistakes({ marked: true, quiet: true })` at the foot of `runMarking`'s batch
-loop with the accumulated `mistFiled` / `mistPast` toast after it (search `A QUESTION IS IN THE
-BOOK AS SOON AS IT IS MARKED` and `THE ONE PLACE A MARKING RUN'S REBUILD RATION IS FILLED`).
+per-page `markFileBehind(filer, stale, settledFn, countFiled)` in `runMarking`'s `onLand` with the
+accumulated `mistFiled` / `mistPast` toast after the run (search `A QUESTION IS IN THE BOOK AS SOON
+AS IT IS MARKED`, `THE BOOK FILLS BEHIND THE READING` and `THE ONE PLACE A MARKING RUN'S REBUILD
+RATION IS FILLED`).
+
+> **v1.73.0 changed the WAIT, not the rule.** Every page still files what it judged the moment it
+> lands, and two passes still never run at once — but the passes go on ONE line per run
+> (`filer.line`, at most one waiting) **behind** the reading instead of being awaited inside it, the
+> mid-run pass files only FINISHED questions (`opts.settled`, from `markSettledTest`), and the end
+> pass awaits the line first. Read "batch" below as "page".
 
 `fileMistakes` ran ONCE, after the last batch of the whole paper. So a run that was interrupted —
 the tab closed, the network gone, a worksheet left half marked, a student simply stopping — filed
@@ -4886,6 +4966,28 @@ and nothing on any screen says what changed.
 - Run **`node --test tools/writing-tests.mjs`** after touching any of it.
 
 ## House rules
+- After touching **⚡ the marking run** (`MARK_PARALLEL` / `MARK_TRIES` / `MARK_ROUTE_MS` /
+  `MARK_CALL_MS` / `MARK_RUN_MS` / `MARK_STITCH_MAX` / `MARK_PAGE_PX*` / `MARK_PIC_MIN`,
+  `markPagePicture`, `markRenderPage`, `markAssemble`, `markCarryBefore`, `markSettledTest`,
+  `markReadPaper`, `markWidenPages`, `markWithin`, `markFileBehind`, `runMarking`, `markBatchAsk`,
+  the `gotFor` / `keptFor` fallbacks, the slow strikes, the `premarkPage*` cache, the
+  `fileMistakes` `settled` option, `marking.unread` in `worksheetBody` / `applyWorksheetBody`, the 📄
+  strip and card, `aiSlowNotDown` / `_aiRefused`, or the `aiServerTurn` gate), run
+  **`node tools/tutor-tests.mjs`** **and** **`node tools/marking-browser-check.mjs`**. Every failure
+  here is silent and the app still shows a score. Cut the picture off the screen canvas again and an
+  iPad runs out of canvas memory on page eight and calls the rest unreadable; forget the `finally`
+  that zeroes it and the same happens one run later. Let a timeout on a `keepOnTimeout` call mark the
+  engine down and one slow page sends the whole paper to the backup for ten minutes. Await the book
+  inside the reading and every page waits for vision calls the student did not ask for. Fold pages in
+  the order they LAND rather than `markAssemble`'s paper order and 🕳 files a blank as skipped because
+  page 9 came back before page 4. Show a continuation whose page before has not landed and half a
+  question is filed in the book; join it twice on a re-read and its wording prints twice; join it onto
+  a CUT page and another question's answer and verdict are written over. Re-read one page of a question
+  that runs over a break without widening and its answer is lost off the score; let a failed re-read
+  replace the page and one tap on bad wifi wipes a marked page. Let a stitch
+  wait on a page nobody will release and the run never ends. Give the cache a chain again and one
+  stroke throws away every page after it. And let a re-read count usage and a repaired page is a
+  second sitting on the teacher's panel.
 - After touching **🙋 the consult** (`consult.js`, `consult.css`, `#consultBtn`,
   `functions/consult-service.js`, the `studyBuddyConsult` export, or Ans Key's `consult-alert.js`),
   run `node --test tools/consult-tests.mjs`, `node --test functions/test/consult-service.test.js`
