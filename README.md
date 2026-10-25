@@ -17,6 +17,17 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.72.0 — ⚡ marking is faster and stops dropping pages
+
+- **The pages are marked side by side**, three batches of two pages at a time, instead of one batch
+  after another. A ten-page paper now takes about as long as its slowest batch.
+- A question that runs over a page break is still marked as one question: each batch is sent the page
+  before it as well, so the marker sees the whole question.
+- **"Pages … could not be read" should be rare now.** A slow reply gets two minutes instead of 45 seconds,
+  and a slow reply no longer switches Study Buddy to the backup engine for ten minutes.
+- ChatGPT calls from one page are spaced 1.6 seconds apart, so marking several batches at once no longer
+  trips the server's "one request at a time" rule.
+
 ## v1.71.1 — the offline screen shows its picture
 
 - Opened with no connection, the installed app's "You're offline" screen now shows the Study Buddy icon

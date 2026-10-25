@@ -5,7 +5,7 @@ import vm from 'node:vm';
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 function runtime(call) {
   const source = html.slice(html.indexOf('const AI_ENGINES ='), html.indexOf('/* `onStream` is an OPTIONAL EARLY-DELIVERY'));
-  const sandbox = { window: {}, geminiModel: {}, Date, console: { warn() {} },
+  const sandbox = { window: {}, geminiModel: {}, Date, console: { warn() {} }, setTimeout: fn => fn(),
     firebase: { functions: {}, app: () => ({ functions: () => ({ httpsCallable: name => body => call(body, name) }) }) },
     aiWithDeadline: fn => fn(undefined), aiThrowIfAborted: () => {}, askGeminiDirect: async () => 'Gemini answer' };
   vm.runInNewContext(source, sandbox);
