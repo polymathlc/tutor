@@ -7981,6 +7981,23 @@ S.console = { warn() {}, info() {}, log() {}, error() {} };
   items = S.markAssemble([1, 2, 3], { 2: { rows: [Q('4', 'four')] } }, { 1: [S._markNewItem(Q('1', 'one'), [1])], 3: [S._markNewItem(Q('9', 'nine'), [3])] }, undefined, {});
   eq('kept pages and re-read pages are woven back in paper order', nums(items), ['1', '4', '9']);
 
+  /* 🪞 The same question twice — what v1.72.0's page-before picture did. */
+  items = S.markAssemble([1, 2], { 1: { rows: [Q('1', 'one'), Q('2', 'How many apples did Ali buy in all?')] },
+                                   2: { rows: [Q('2', 'How many apples did Ali buy in all?'), Q('3', 'three')] } }, {}, undefined, {});
+  eq('a question the next page lists AGAIN is on the paper once', nums(items), ['1', '2', '3']);
+  items = S.markAssemble([1, 3], { 1: { rows: [Q('1', 'Find the area of the rectangle shown below.')] },
+                                   3: { rows: [Q('1', 'A train leaves the station at 9 am. When does it arrive?')] } }, {}, undefined, {});
+  eq('…but Booklet B restarting at Q1 with different wording is two questions', nums(items), ['1', '1']);
+  items = S.markAssemble([4, 9], { 4: { rows: [Q('5', 'Find the value of x in the figure.')] },
+                                   9: { rows: [Q('5', 'Find the value of x in the figure.')] } }, {}, undefined, {});
+  eq('…and the same wording pages apart is two questions', nums(items).length, 2);
+  const twin = S.markDedupe([
+    { number: '2', question: 'How many apples did Ali buy in all?', page: 1, marked: false },
+    { number: '2', question: 'How many apples did Ali buy in all?', page: 2, marked: true, verdict: 'correct', studentAnswer: '24', marks: '2/2' }]);
+  ok('a twin\'s marking is kept when the first copy had none', twin.length === 1 && twin[0].verdict === 'correct' && twin[0].studentAnswer === '24');
+  ok('markAssemble always returns the paper through markDedupe', /return markDedupe\(out\);/.test(html.slice(html.indexOf('function markAssemble('), html.indexOf('function markCarryBefore('))));
+  ok('a saved paper is cleaned of v1.72.0\'s twins when it is opened', /markDedupe\(body\.marking\.items\)/.test(html));
+
   /* The carry a page that starts mid-question is asked again under. */
   const got2 = { 1: { rows: [Q('1', 'one'), Q('2', 'The first half')] } };
   eq('the carry is the question the page before ENDED on', S.markCarryBefore([1, 2], 2, got2, {}, undefined), 'The first half');

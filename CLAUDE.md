@@ -2,6 +2,22 @@
 
 Guidance for Claude when working in this repo.
 
+## 🪞 THE SAME QUESTION IS NEVER ON THE PAPER TWICE (v1.73.1)
+
+`markQText` / `markSameQuestion` / **`markDedupe`** just above `markAssemble`, which returns
+`markDedupe(out)`, and the `markDedupe(body.marking.items)` where a saved body is read back.
+
+v1.72.0's page-before context picture made the model list the previous page's questions again
+under the next page's numbers, so every page came out duplicated. v1.73.0 removed the picture;
+this is the belt to that brace, and it cleans papers saved by v1.72.0 when they are opened.
+
+- **A twin is the same number AND the same wording on the same or a NEIGHBOURING page.** Booklet B
+  restarting at Q1 has different wording; a question repeated pages apart is a real question. Loosen
+  either test and real questions vanish from a paper that looks complete.
+- **The marked copy wins** (its answer, verdict, marks and position move onto the one kept).
+- Twins already filed in the mistake book by v1.72.0 are not removed here.
+- Run **`node tools/tutor-tests.mjs`** (⛓ section) after touching any of it.
+
 ## ⚡ EVERY PAGE AT ONCE — the marking run, rebuilt (v1.73.0)
 
 > **History.** v1.72.0 (PR #110, `⚡ MARKED SIDE BY SIDE`) first attacked this from another session: batches

@@ -17,6 +17,16 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.73.1 — 🪞 a marked paper never lists the same question twice
+
+After marking, each page's questions could appear twice. v1.72.0 sent every batch the page before
+it as a context picture, and the model often listed that page's questions again under the next
+page. v1.73.0 stopped sending that picture; this release adds a guard (`markDedupe`) so a question
+read twice off neighbouring pages — same number, same wording — is kept once, with whichever copy
+was marked. Papers already saved with the repeats are cleaned the next time they are opened.
+Booklet B restarting at Q1, and the same wording pages apart, are still separate questions.
+Mistakes filed twice by v1.72.0 stay in the book until deleted there.
+
 ## v1.73.0 — ⚡ Marking reads every page, and much faster
 
 Builds on v1.72.0 below. Students were told "some pages could not be read" and those questions were left out of the score,

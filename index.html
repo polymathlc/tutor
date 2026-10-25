@@ -3122,7 +3122,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.73.0';
+var APP_VERSION = 'v1.73.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -12475,6 +12475,64 @@ function markItemCopy(it) {
   return Object.assign({}, it, { options: (it && it.options || []).slice() });
 }
 
+/* =====================================================================
+   🪞 THE SAME QUESTION IS NEVER ON THE PAPER TWICE — `markDedupe` (v1.73.1)
+
+   v1.72.0 sent each batch the page BEFORE it as a context picture, and the
+   model listed that page's questions again under the batch's own pages — so
+   after marking every page's questions came back twice, the second copy
+   wearing the next page's number. v1.73.0 stopped sending that picture; this
+   is the guard that keeps a repeat from ever reaching the screen, the score,
+   the ticks or the mistake book, whatever a model returns.
+
+   - TWO ITEMS ARE ONE QUESTION when they sit on the same or neighbouring
+     pages, do not carry two DIFFERENT numbers, and their wording agrees
+     (`markQText`: the shorter one's opening is the longer one's opening).
+     Wording is required, never the number alone: a paper whose Booklet B
+     starts again at Q1 has two honest Q1s.
+   - THE FIRST IS KEPT, in paper order, and takes the marking of the second
+     when it had none — a repeat that the model happened to mark is the
+     student's work, not noise.
+   - It runs at the end of `markAssemble`, so every assembly is clean, and
+     on a saved body, so a paper marked by v1.72.0 is put right when it is
+     opened rather than only when it is marked again.
+   ===================================================================== */
+function markQText(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9\u00c0-\uffff]+/g, ' ').trim();
+}
+function markSameQuestion(a, b) {
+  if (!a || !b) return false;
+  var a1 = Number(a.page) || 0, a2 = Number(a.endPage || a.page) || a1;
+  var b1 = Number(b.page) || 0, b2 = Number(b.endPage || b.page) || b1;
+  if (b1 > a2 + 1 || a1 > b2 + 1) return false;
+  var na = markQText(a.number), nb = markQText(b.number);
+  if (na && nb && na !== nb) return false;
+  var ta = markQText(a.question), tb = markQText(b.question);
+  if (!ta || !tb) return false;
+  var short = ta.length <= tb.length ? ta : tb;
+  var long = ta.length <= tb.length ? tb : ta;
+  if (short.length < 12) return short === long && !!(na && nb);
+  var head = short.slice(0, Math.min(60, short.length));
+  return long.indexOf(head) === 0 || (head.length >= 30 && long.indexOf(head) >= 0);
+}
+function markDedupe(items) {
+  var out = [];
+  (items || []).forEach(function (it) {
+    if (!it) return;
+    var twin = null;
+    for (var i = out.length - 1; i >= 0 && !twin; i--) if (markSameQuestion(out[i], it)) twin = out[i];
+    if (!twin) { out.push(it); return; }
+    if (!twin.marked && it.marked) {
+      ['marked', 'studentAnswer', 'verdict', 'feedback', 'marks', 'at', 'atPage'].forEach(function (k) {
+        if (it[k] !== undefined) twin[k] = it[k];
+      });
+    }
+    if (!twin.answer && it.answer) twin.answer = it.answer;
+    if (!twin.number && it.number) twin.number = it.number;
+  });
+  return out;
+}
+
 function markAssemble(order, got, kept, ctx, how) {
   got = got || {};
   kept = kept || {};
@@ -12523,7 +12581,7 @@ function markAssemble(order, got, kept, ctx, how) {
       kept[num].forEach(function (it) { out.push(markItemCopy(it)); });
     }
   });
-  return out;
+  return markDedupe(out);
 }
 
 /* The question the paper stands at when page `num` begins: the last
@@ -24075,7 +24133,7 @@ function applyWorksheetBody(body, w) {
   w = w || {};
   annotations = Array.isArray(body.annotations) ? body.annotations : [];
   hints = Array.isArray(body.hints) ? body.hints : [];
-  marking = { items: (body.marking && Array.isArray(body.marking.items)) ? body.marking.items : [],
+  marking = { items: (body.marking && Array.isArray(body.marking.items)) ? (typeof markDedupe === 'function' ? markDedupe(body.marking.items) : body.marking.items) : [],
               runAt: (body.marking && body.marking.runAt) || null, running: false,
               unread: (body.marking && Array.isArray(body.marking.unread))
                 ? body.marking.unread.map(Number).filter(function (n) { return n >= 1; }) : [] };
