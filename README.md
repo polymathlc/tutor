@@ -17,6 +17,34 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.73.0 — ⚡ Marking reads every page, and much faster
+
+Builds on v1.72.0 below. Students were told "some pages could not be read" and those questions were left out of the score,
+and marking a long paper took minutes. Both are fixed.
+
+- **No more unread pages from slow AI.** A page that took longer than 45 seconds used to be given up
+  on, and that one slow page switched the main AI off for ten minutes. A page now gets two minutes,
+  then the backup AI gets as long again; one slow answer never switches anything off (only an AI that
+  is slow twice in a few minutes is set aside, for three minutes); and every page gets
+  **three tries** before it is called unreadable.
+- **No more unread pages on an iPad.** The picture the AI reads is drawn fresh from the PDF for each
+  page and thrown away straight after, instead of being cut off the screen at whatever zoom the
+  student is using — which ran the iPad out of memory part-way through a long paper.
+- **Every page is read at once** — three at a time — instead of three pages, then the next three. The
+  mistake book fills in behind the marking instead of holding it up. Marks appear page by page as
+  they arrive.
+- **📄 A row of page buttons** under the score shows every page: being read, ↻ being read again,
+  ✓ marked, or ! could not be read. **Tap any page to have it read again.**
+- **A page that still could not be read gets a red card** above the score — "Page 3 could not be
+  read yet… its questions are not in your score" — with **↻ Read page 3 again**, which reads just
+  that page and slots its questions back into place. The card is still there if the worksheet is
+  opened later.
+- Reading a page again always reads whole questions — a question that runs onto the next page is
+  read with it — and if the re-read fails, the page keeps the marks it already had.
+- **✅ Mark it again is nearly instant**: only the pages the student wrote on since the last marking
+  are read again.
+- A question that runs over a page break is still marked as one question.
+
 ## v1.72.0 — ⚡ marking is faster and stops dropping pages
 
 - **The pages are marked side by side**, three batches of two pages at a time, instead of one batch

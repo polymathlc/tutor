@@ -4,7 +4,10 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 function runtime(call) {
-  const source = html.slice(html.indexOf('const AI_ENGINES ='), html.indexOf('/* `onStream` is an OPTIONAL EARLY-DELIVERY'));
+  // ⏱ The ChatGPT gate spaces real calls 1.7 s apart (v1.73.0, Study Buddy); these tests are about
+  // what each call SENDS, so the gap is closed here rather than waited out. A no-op where there is no gate.
+  const source = html.slice(html.indexOf('const AI_ENGINES ='), html.indexOf('/* `onStream` is an OPTIONAL EARLY-DELIVERY'))
+    .replace('const AI_SERVER_GAP_MS = 1700;', 'const AI_SERVER_GAP_MS = 0;');
   const sandbox = { window: {}, geminiModel: {}, Date, console: { warn() {} }, setTimeout: fn => fn(),
     firebase: { functions: {}, app: () => ({ functions: () => ({ httpsCallable: name => body => call(body, name) }) }) },
     aiWithDeadline: fn => fn(undefined), aiThrowIfAborted: () => {}, askGeminiDirect: async () => 'Gemini answer' };

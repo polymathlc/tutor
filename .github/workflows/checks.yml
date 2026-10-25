@@ -65,3 +65,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/consult-browser-check.mjs
+      - name: Check the marking reads every page, from the PDF, side by side
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/marking-browser-check.mjs
