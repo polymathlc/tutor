@@ -2,6 +2,34 @@
 
 Guidance for Claude when working in this repo.
 
+## ✂️ ASK ABOUT A PART OF THE PAGE (v1.74.0)
+
+Search `✂️ ASK ABOUT A PART OF THE PAGE`. `#snipBtn` (toolbar) and `#chatSnipBtn` (the Ask row) call
+`snipStart()`: a full-window `.snipVeil` takes a pointer drag (a drag under `SNIP_MIN_PX` is a tap and
+asks again; Escape / Cancel → `snipEnd(true)`). On lift, `snipPartsUnder` clips the box to
+`#viewerArea`, measures every `studentPages()` wrap (never a hidden key page) and turns the box into
+page units, at most three pages. `snipCapture` cuts each piece off the page canvas with the ink drawn
+(`drawAnnsOnCtx`), stacks them (`snipStack`, grey rule between pages, `SNIP_MAX_PX` long side), reads
+the printed words inside from `getTextContent` (`snipTextIn`, a word is inside when its middle is) and
+the typed answers that overlap (`snipTypedIn`). The result is `chatSnip`, shown by `snipChipNode` above
+the Ask box; `snipPending()` drops it when `wsEpoch` has moved on.
+
+- **`sendChat` sends the cut FIRST**, then the whole page(s) it sits on (`snipContextPages`, two at
+  most), and `snipPromptLines` says so ("the FIRST attached picture is exactly what is inside their
+  box"), with where the box is as percentages and the words as JSON data, not instructions. Empty text
+  with a part waiting asks `SNIP_DEFAULT_ASK`. The system prompt is untouched, so the help ceiling,
+  grounding and key rules apply as for any chat question. Every snip helper is reached from `sendChat`
+  / `renderBuddyFoot` only behind `typeof snipPending === 'function'` or a non-null `snip`, because the
+  harnesses lift `sendChat` out alone.
+- **The picture is never saved.** The bubble carries `area` and `thumb`; `worksheetBody` maps the chat
+  through `chatForSave`, which drops `thumb`. Twenty boxed questions would otherwise eat a fifth of
+  `BODY_INLINE_LIMIT`.
+- **Every canvas is zeroed** (`finally` in `snipCapture`) — the v1.73.0 iOS canvas budget rule.
+- On a phone (`max-width: 760px`) an open panel is closed while the box is drawn and reopens with the
+  chip (or as it was, on Cancel).
+- Run `node --test tools/*-tests.mjs` **and** `PW=… node tools/snip-browser-check.mjs` (CI runs both;
+  `SNIP_SCREENSHOTS=dir` saves the veil and the chip).
+
 ## 🪞 THE SAME QUESTION IS NEVER ON THE PAPER TWICE (v1.73.1)
 
 `markQText` / `markSameQuestion` / **`markDedupe`** just above `markAssemble`, which returns
