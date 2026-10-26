@@ -28,7 +28,8 @@ import fs from 'node:fs';
 const PW = process.env.PW || '/opt/node22/lib/node_modules/playwright/index.mjs';
 let chromium;
 try {
-  ({ chromium } = await import(PW));
+  // A relative PW (CI passes ./node_modules/…) is the repo's, not this file's.
+  ({ chromium } = await import(PW.startsWith('file:') ? PW : pathToFileURL(path.resolve(PW)).href));
 } catch (e) {
   console.log('snip-browser-check: no Playwright at ' + PW + ' — skipped.');
   process.exit(0);
