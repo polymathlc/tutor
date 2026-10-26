@@ -69,3 +69,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/marking-browser-check.mjs
+      - name: Check a boxed part of the page reaches the tutor
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/snip-browser-check.mjs

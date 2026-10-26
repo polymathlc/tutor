@@ -17,6 +17,17 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.74.0 — ✂️ Ask Chung GPT about one part of the page
+
+Press **✂️ Ask about this** on the toolbar (or ✂️ beside the 💬 Ask box) and drag a box around the
+part of the worksheet you need help with. The part waits beside the Ask box as a small picture:
+type a question, or just press ➤ to ask for help with it. Chung GPT is sent that part cut out of the
+page with your own writing on it, the printed words inside the box (read from the PDF, so small
+numbers are exact), anything you typed inside it, and the whole page around it for context. A box
+over a page break reads both pages. Escape or Cancel stops without picking anything; on a phone the
+panel steps aside while you draw. The help level on the worksheet still applies. The picture is
+not saved with the worksheet; the chat keeps a line saying which page the question was about.
+
 ## v1.73.1 — 🪞 a marked paper never lists the same question twice
 
 After marking, each page's questions could appear twice. v1.72.0 sent every batch the page before
