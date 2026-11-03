@@ -2,6 +2,33 @@
 
 Guidance for Claude when working in this repo.
 
+## 📐 THE PAPER'S YEAR and MARKS BY LEARNING OBJECTIVE (v1.78.0)
+
+Search `📐 THE YEAR THE PAPER IS SET FOR`, `📐 MATHS FALLS BACK TO EARLIER YEARS` and `📐 THE MARKS BY
+LEARNING OBJECTIVE`.
+
+- **`wsMeta.paperLevel`** (P1–P6) is the year PRINTED on the paper, kept beside `wsMeta.level` (the
+  student's own, which decides the shelf). Filled by the upload read (`paperReadClean` → `printed`,
+  `paperApplyRead` → `got.printed`), saved as the worksheet's `paperLevel`, read back on open, and for
+  an older maths paper by `paperLevelEnsure()` (front pages' text layer, "Primary 5"/"Pri 5" only —
+  "P1" is often "Paper 1") at the start of `runMarking`. **`markLoLevel()`** is the one answer: paper
+  year, else the student's level. Both marking prompts, the fold's `foldCtx`, `reportDiagnostic` and
+  `diagSummary.level` ask it.
+- **`diagChoices(subject, level)`** for a ladder subject (`diagLadder`: ids start `P<n>.`, i.e. maths)
+  returns the level's objectives then `earlier` (P(n-1) … P1). `markSyllabusBlock` lists the level, then
+  "EARLIER YEARS — only when no P5 objective above fits", and says never later. `diagPlace` refuses a
+  later-year id (`diagTooLate`) and places a bare topic at the latest year not after the paper's.
+  `SYLLABUS.math` now holds P1–P6, 240 objectives (the harness pins the count). Never write
+  `subject === 'math'` again — the maths pad owns the one predicate (`mathWorksheet()`).
+- **`lo-marks.js` / `lo-marks.css` (`window.LoMarks`) and `tools/lo-marks-tests.mjs` are byte for byte
+  Ans Key's copies.** The catalogue (`MATH_TREE`) is the maths app's `MOE_SYLLABUS`; the test compares
+  it when polymathlc/math is checked out beside. It encodes rows (`sheetEntry`, `encodeQs`), reads them
+  safely (`sheetsOf`/`cleanEntry`), builds the objective × worksheet `matrix` and draws it (`mount`).
+- **Saved:** `diagSummary` rows carry `qs` (`diagQsOf`). `loSheetSync()` runs right after
+  `gapSheetSync()` at the end of a run and merges ONE entry into `studentProfiles/{uid}.tutorLos.{docId}`
+  (+ `tutorLosAt`), `LoMarks.SHEETS_MAX` (60) kept, never from the admin's device. `loSheetCatchUp()`
+  runs after `loadWorksheets()` and writes only papers missing or changed. No rules change.
+- **Shown:** `renderProgress` ends with `LoMarks.mount` over `loLocalSheets()` (the shelf's summaries).
 ## 📝 BLANKS COUNT AS WRONG — EXAM CONDITIONS (v1.77.0)
 
 Search `📝 BLANKS COUNT AS WRONG`. `markApplyBlanks(items, on)` is a pass over the FINISHED items (after

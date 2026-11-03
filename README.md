@@ -17,6 +17,24 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.78.0 — 📐 Every maths mark tracked by learning objective
+
+- **The paper's own year.** The cover read at upload now keeps the year the paper is SET FOR
+  ("Primary 5"), P1 to P6, beside the student's level, and a paper uploaded before this has its front
+  pages' text read when it is marked (no extra AI call). A P6 student revising on a P5 paper is marked
+  against P5 objectives.
+- **That year first, earlier years only as a fall-back, never later.** The marking files each maths
+  question under a P5 objective on a P5 paper; only where none fits does it take one from P4, then P3,
+  P2, P1. A P6 objective is not offered to a P5 paper, and one that comes back anyway is refused. The
+  syllabus list now carries all 240 objectives of the MOE Primary Mathematics Syllabus (P1 and P2 added).
+- **📐 The dense table.** My progress now ends with *Maths marks by learning objective, paper by paper*:
+  every objective down the side (grouped by level, sub-strand and topic, with subtotals), every marked
+  paper across the top, each cell the marks got over the marks attempted, coloured by rate, with the
+  total, the % and a ▲ ▬ ▼ trend. Filter by level, sort weakest first, show untested objectives for
+  coverage, tap a cell for the questions behind it, and 📋 copy it into a spreadsheet.
+- **For the teacher.** Each marked maths worksheet's objective marks are also written to the student's
+  roster row (`tutorLos`), so Ans Key's new 📐 Objectives button shows the same table. Papers marked
+  before this are written once, the next time the student signs in.
 ## v1.77.0 — 📝 Treat blanks as wrong (exam conditions)
 
 - **A checkbox under ✅ Mark my work** (and on the 🔁 / ✅ Mark it again card): *Treat blanks as wrong
