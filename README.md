@@ -17,6 +17,28 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.79.0 — ✏️ Every objective and topic opens its mistakes as practice
+
+- **Tap any topic or learning objective** in 📈 My progress, 📊 My report or the 📐 objective × paper table and
+  a window opens on the mistakes filed under it. Each one is written again as a **fresh practice question on the
+  same skill** (new numbers and story, same steps), with its **answer key and a full worked solution**, in the
+  shape the maths app's ⚡ Rapid add files a question. Maths working uses **no algebra**: model drawing, units
+  and parts, the unitary method, before-and-after, working backwards. A reply that slips into "let x be" is asked
+  again once with the rule said louder.
+- **Sort** the topics and objectives weakest first, by most marks lost, most mistakes, newest or syllabus order,
+  both in the table and in the practice window. **✏️ Practise / print mistakes** opens every mistake in the
+  subject at once.
+- **Print or save as PDF**: the practice sheet prints the questions with working space, then the answer key and
+  working on pages of their own (optionally the original mistakes too).
+- **One subject at a time** in 📈 My progress: a chip per subject; Copy and Print carry that subject only, and the
+  📐 maths table shows on the maths page only.
+- **📐 Objective report** in the control panel once a paper is marked: every objective the paper tested with its
+  marks and questions, its mistakes as practice, and **⬇ Export PDF**. Tapping a worksheet number in the 📐 table
+  opens the same report for that paper.
+- `lo-practice.js` / `lo-practice.css` / `tools/lo-practice-tests.mjs` are byte for byte Ans Key's copies. The file
+  never reaches a model itself; the app hands it `lpAsk` (grounded like every other ask). A practice question is
+  kept on the device, so opening the same row again asks nothing.
+
 ## v1.78.0 — 📐 Every maths mark tracked by learning objective
 
 - **The paper's own year.** The cover read at upload now keeps the year the paper is SET FOR

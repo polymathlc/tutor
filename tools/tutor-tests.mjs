@@ -8893,15 +8893,65 @@ section('🔑 Key-first marking and 🎯 concept tags');
   ok('…and a catch-up that writes nothing when every paper is there', /if \(!Object\.keys\(out\)\.length\) return null;/.test(loSrc) &&
      /Number\(had\.at\) === Number\(x\.entry\.at\)/.test(loSrc));
   ok('the catch-up runs once the shelf has loaded', /loadWorksheets\(\)\.then\(function \(x\) \{[\s\S]{0,300}loSheetCatchUp\(\);/.test(html));
-  ok('My progress draws the dense table', /LoMarks\.mount\(host, \{ sheets: loSheets/.test(html));
-  ok('lo-marks.js and its CSS are loaded, versioned', /<script src="lo-marks\.js\?v=1\.78\.0"><\/script>/.test(html) &&
-     /<link rel="stylesheet" href="lo-marks\.css\?v=1\.78\.0">/.test(html));
+  ok('My progress draws the dense table', /LoMarks\.mount\(host, \{\s*sheets: loSheets/.test(html));
+  ok('lo-marks.js and its CSS are loaded, versioned', /<script src="lo-marks\.js\?v=1\.79\.0"><\/script>/.test(html) &&
+     /<link rel="stylesheet" href="lo-marks\.css\?v=1\.79\.0">/.test(html));
   ok('💰 no new model call: lo-marks.js never asks one', !/askGemini|aiAsk|fetch\(/.test(readFileSync(join(here, '..', 'lo-marks.js'), 'utf8')));
   /* The roster row entry, end to end through the module. */
   const LM = (await import('node:module')).createRequire(import.meta.url)('../lo-marks.js');
   const e = LM.sheetEntry({ name: 'P5 WA1', subject: 'math', diagnostic: { subject: 'math', level: 'P5', at: 1,
     rows: [{ t: '', n: '', lo: 'P5.FR.2.6', q: 2, tot: 4, got: 3, att: 4, qs: '1=2/2 2=1/2' }] } });
   ok('a maths summary becomes one roster entry', e && e.r[0].l === 'P5.FR.2.6' && e.r[0].s === '1=2/2 2=1/2');
+}
+
+/* =====================================================================
+   ✏️ PRACTISE WHAT THE DIAGNOSTIC FOUND (v1.79.0)
+   ===================================================================== */
+{
+  section('✏️ Objectives and topics open their mistakes as practice');
+  const lpSrc = readFileSync(join(here, '..', 'lo-practice.js'), 'utf8');
+  ok('lo-practice.js and its CSS are loaded, versioned with the app',
+     /<script src="lo-practice\.js\?v=1\.79\.0"><\/script>/.test(html) &&
+     /<link rel="stylesheet" href="lo-practice\.css\?v=1\.79\.0">/.test(html) &&
+     /var APP_VERSION = 'v1\.79\.0'/.test(html));
+  ok('💰 lo-practice.js never reaches a model by itself — the app hands it askGemini',
+     !/askGemini|fetch\(|XMLHttpRequest/.test(lpSrc));
+  ok('the one ask is grounded like every other', /function lpAsk\(prompt, opts\) \{[\s\S]{0,400}aiGrounding\('teach'/.test(html));
+  ok('the diagnostic table takes an onRow door', /if \(opts\.onRow\) diagGoable\(tr, tc,/.test(html) &&
+     /if \(opts\.onRow\) diagGoable\(rr, oc,/.test(html));
+  ok('📈 shows one subject at a time', /progressPickSubject\(subs\)/.test(html) &&
+     /subs\.filter\(function \(x\) \{ return x\.subject === cur; \}\)/.test(html));
+  ok('…and Copy copies that subject only', /subs\.filter\(function \(s\) \{ return s\.subject === cur; \}\)\.forEach/.test(html));
+  ok('📐 the dense table is drawn on the maths page only', /var loSheets = diagLadder\(subj\) \? loLocalSheets\(\) : \[\];/.test(html));
+  ok('📐 the control panel has the worksheet\'s objective report', /lor\.addEventListener\('click', openSheetLoReport\)/.test(html));
+  ok('…which exports (report: true gives ⬇ Export PDF)', /function openSheetLoReport\(\) \{[\s\S]{0,900}report: true/.test(html));
+
+  section('✏️ Which mistakes a row stands for');
+  vm.runInContext(between('/* ================= ✏️ PRACTISE WHAT THE DIAGNOSTIC FOUND', 'function renderProgress() {', 'the practice doors'),
+                  sandbox, { filename: 'index.html#practice' });
+  eq('an objective row is its id', JSON.stringify(S.lpSelOfDiag({ lo: 'P5.FR.2.6', sylTopic: 'x', topic: 'Fractions' }).los), '["P5.FR.2.6"]');
+  eq('a topic-only row is its topic key', JSON.stringify(S.lpSelOfDiag({ lo: '', sylTopic: 'P5.FR Fractions: Four Operations', topic: 'Fractions' }).tkeys),
+     '["P5.FR Fractions: Four Operations"]');
+  const grp = S.lpSelOfDiag({ topic: 'Fractions', sylTopic: 'T1', rows: [{ lo: 'A' }, { lo: 'B' }, { lo: '', sylTopic: 'T1' }] });
+  eq('a topic is every objective in it', JSON.stringify(grp.los), '["A","B"]');
+  ok('…and its topic-only mistakes', grp.tkeys.indexOf('T1') >= 0);
+  const g = S.lpGroupOfDiag({ key: '#k', lo: 'P5.FR.2.6', objective: 'word problems', topic: 'Fractions', level: 'P5',
+                              order: 3, awarded: 3, attempted: 6, total: 8, n: 4 });
+  eq('a row becomes a practice group with its rate', g.pct, 50);
+  eq('…its code is the objective id', g.code, 'P5.FR.2.6');
+
+  section('✏️ The topics in the order asked for');
+  const rowsA = [
+    { topic: 'A', order: 1, total: 10, awarded: 9, attempted: 10, rows: [{ lo: 'a1', order: 1, total: 10, awarded: 9, attempted: 10 }] },
+    { topic: 'B', order: 2, total: 10, awarded: 2, attempted: 10, rows: [{ lo: 'b1', order: 2, total: 4, awarded: 2, attempted: 4 },
+                                                                        { lo: 'b2', order: 3, total: 6, awarded: 0, attempted: 6 }] },
+    { topic: 'C', order: 3, total: 20, awarded: 10, attempted: 20, rows: [{ lo: 'c1', order: 4, total: 20, awarded: 10, attempted: 20 }] }
+  ];
+  eq('syllabus order is left alone', S.progressSortGroups(rowsA, 'syllabus').map(x => x.topic).join(''), 'ABC');
+  eq('weakest topic first', S.progressSortGroups(rowsA, 'weak').map(x => x.topic).join(''), 'BCA');
+  eq('…and its weakest objective first inside it', S.progressSortGroups(rowsA, 'weak')[0].rows.map(x => x.lo).join(','), 'b2,b1');
+  eq('most marks lost first', S.progressSortGroups(rowsA, 'lost').map(x => x.topic).join(''), 'CBA');
+  eq('the caller\'s list is not reordered in place', rowsA.map(x => x.topic).join(''), 'ABC');
 }
 
 console.log('\n' + (failures

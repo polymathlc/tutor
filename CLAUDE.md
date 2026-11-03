@@ -2,6 +2,17 @@
 
 Guidance for Claude when working in this repo.
 
+## ✏️ PRACTISE WHAT THE DIAGNOSTIC FOUND (v1.79.0)
+
+Search `✏️ PRACTISE WHAT THE DIAGNOSTIC FOUND`. `lo-practice.js` (`window.LoPractice`), `lo-practice.css` and
+`tools/lo-practice-tests.mjs` are byte for byte Ans Key's copies; copy fixes across. The module never names a model:
+the app passes `lpAsk` (window.askGemini + `aiGrounding('teach')` + `tutorMethodRule()`; the tutor-tests grounding
+check covers it) and `_parseAIJson`. `diagTableNode(..., { onRow })` makes topic and objective rows doors
+(`diagGoable`); `LoMarks.mount` takes `onRow` / `onSheet` / `onPractice`. 📈 My progress shows one subject
+(`progressSubject`, chips) in `progressSort` order (`progressSortGroups`). `openSheetLoReport()` (📐 Objective
+report on the control panel's markTools row) uses the paper's own marked items (`sheetLoMistakes`), `report: true`
+gives ⬇ Export PDF. Practice questions are cached in localStorage (`lp1:` keys), never in Firestore.
+
 ## 📐 THE PAPER'S YEAR and MARKS BY LEARNING OBJECTIVE (v1.78.0)
 
 Search `📐 THE YEAR THE PAPER IS SET FOR`, `📐 MATHS FALLS BACK TO EARLIER YEARS` and `📐 THE MARKS BY
