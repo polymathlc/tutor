@@ -8578,6 +8578,80 @@ section('⚡ The run, end to end');
   await R.runMarking({ only: [4], fresh: true });
   eq('…and a re-read that comes back CUT OFF keeps them too', cards().join(), beforeFail);
 
+  /* 🔁 / ✅ REMARK ALL, OR MARK WHAT IS LEFT (v1.75.0). Page 1 has Q1
+     answered and Q2 blank; page 3 has Q4 blank. The student answers Q2 and
+     Q4 and chooses ✅ Mark remaining questions. */
+  {
+    R.wsEpoch = 4; toasts.length = 0; usage.length = 0;
+    let phase = 'first';
+    const Qr = (number, question, verdict, sa) => ({ number, question, answer: 'k', studentAnswer: sa == null ? (verdict ? 'x' : '') : sa,
+      verdict: verdict || '', marks: verdict === 'correct' ? '1/1' : '0/1' });
+    R.window.askGemini = async (prompt, cfg) => {
+      askLog.push({ prompt, cfg });
+      const num = +/page (\d+)/.exec(prompt)[1];
+      const later = phase !== 'first';
+      const rows = {
+        1: [Qr('1', 'One, page one.', later ? 'wrong' : 'correct'), Qr('2', 'Two, page one.', later ? 'correct' : '')],
+        2: [Qr('3', 'Three, page two.', later ? 'correct' : 'wrong')],
+        3: [Qr('4', 'Four, page three.', later ? 'correct' : '')],
+        4: [Qr('5', 'Five, page four.', 'correct')]
+      }[num];
+      return JSON.stringify({ questions: rows });
+    };
+    const vd = () => R.marking.items.map(it => it.number + ':' + (it.marked ? it.verdict : 'blank'));
+    await R.runMarking({ type: 'click' });
+    eq('the first sitting marks what was answered and leaves the blanks blank', vd(), ['1:correct', '2:blank', '3:wrong', '4:blank', '5:correct']);
+
+    eq('markRemainingPages: the pages with a blank on them, in paper order',
+       R.markRemainingPages(R.marking.items, [], [1, 2, 3, 4]), [1, 3]);
+    eq('…plus a page that could not be read and a page with no question on it',
+       R.markRemainingPages(R.marking.items.filter(it => it.page !== 4), [2], [1, 2, 3, 4, 5]), [1, 2, 3, 4, 5]);
+    eq('…and every page a blank question runs over',
+       R.markRemainingPages([{ page: 1, marked: true }, { page: 2, endPage: 3, marked: false }, { page: 4, marked: true }], [], [1, 2, 3, 4]), [2, 3]);
+    eq('…and nothing when every question is marked',
+       R.markRemainingPages([{ page: 1, marked: true }, { page: 2, marked: true }], [], [1, 2]), []);
+
+    /* The student writes the two missing answers. */
+    R.annotations.push({ page: 1, type: 'text', text: 'two' }, { page: 3, type: 'text', text: 'four' });
+    phase = 'second'; askLog.length = 0; usage.length = 0; toasts.length = 0;
+    await R.runMarking({ mode: 'remaining' });
+    eq('✅ Mark remaining reads ONLY the pages that still had something to mark', askLog.map(a => a.prompt).sort(), ['page 1', 'page 3']);
+    eq('…marks the questions that were blank, and keeps every earlier mark exactly as it was',
+       vd(), ['1:correct', '2:correct', '3:wrong', '4:correct', '5:correct']);
+    ok('…even Q1, on a page that WAS read again and came back with another verdict',
+       R.marking.items[0].verdict === 'correct' && R.marking.items[0].marks === '1/1');
+    eq('…and it counts as a sitting, for the new questions', usage, ['mark']);
+    ok('…and says how many more were marked, and that the rest are kept',
+       toasts.some(t => /2 more questions marked/.test(t) && /earlier marks are kept/.test(t)), toasts.join(' | '));
+    eq('markNewlyMarked names only what was not marked before',
+       R.markNewlyMarked(R.marking.items, [{ number: '1', question: 'One, page one.', page: 1, marked: true }]).map(it => it.number), ['2', '3', '4', '5']);
+
+    /* Nothing left: nothing is asked. */
+    askLog.length = 0; toasts.length = 0;
+    await R.runMarking({ mode: 'remaining' });
+    eq('✅ Mark remaining on a fully marked paper asks for NOTHING', askLog.length, 0);
+    ok('…and says so, pointing at 🔁 Remark all', toasts.some(t => /already marked/.test(t) && /Remark all/.test(t)), toasts.join(' | '));
+
+    /* 🔁 Remark all: every page, fresh, the earlier marks gone. */
+    askLog.length = 0; usage.length = 0;
+    await R.runMarking({ mode: 'all' });
+    eq('🔁 Remark all reads EVERY page again, even with no ink changed', askLog.map(a => a.prompt).sort(), ['page 1', 'page 2', 'page 3', 'page 4']);
+    eq('…and the earlier marks are thrown away for the new reading', vd(), ['1:wrong', '2:correct', '3:correct', '4:correct', '5:correct']);
+    eq('…and counted as a full sitting', usage, ['mark']);
+
+    /* A kept mark never depends on the model listing the question again. */
+    const kept = R.markKeepMarked([{ number: '2', question: 'Two, page one.', page: 1, marked: true, verdict: 'wrong' }],
+      [{ number: '1', question: 'One, page one.', page: 1, marked: true, verdict: 'wrong' },
+       { number: '2', question: 'Two, page one.', page: 1, marked: true, verdict: 'correct' },
+       { number: '6', question: 'Six, page two.', page: 2, marked: true, verdict: 'partial' }]);
+    eq('markKeepMarked puts back a marked question the reading left out, in paper order, and keeps the old verdict',
+       kept.map(it => it.number + ':' + it.verdict), ['1:wrong', '2:correct', '6:partial']);
+    ok('…a copy, never the earlier object itself', kept[0] !== undefined && Object.isFrozen(kept[0]) === false);
+    ok('…the same number on the same page is the same question even when the wording came back different',
+       R.markKeepSameQ({ number: 'Q7', question: 'Ali has 5 apples.', page: 3 }, { number: 'q7', question: 'Ali had five apples', page: 3 }) &&
+       !R.markKeepSameQ({ number: '7', question: 'x', page: 3 }, { number: '7', question: 'x', page: 9 }));
+  }
+
   ok('a re-read never touches usage or the adventure', /if \(!only\) \{\n\s*if \(typeof StudyAdventure !== 'undefined'\) StudyAdventure\.marked/.test(RUN_SRC));
   ok('the pages that could not be read are saved with the worksheet, and read back',
      /marking: \{ items: marking\.items, runAt: marking\.runAt, unread: marking\.unread \|\| \[\] \}/.test(html) &&

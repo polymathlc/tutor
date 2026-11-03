@@ -2,6 +2,30 @@
 
 Guidance for Claude when working in this repo.
 
+## 🔁 REMARK ALL, OR ✅ MARK WHAT IS LEFT (v1.75.0)
+
+Search `🔁 REMARK ALL, OR ✅ MARK WHAT IS LEFT` (the helpers, just above `markAssemble`) and `🔁 / ✅ THE
+CHOICE CARD` (the foot). The ✅ Mark it again button calls `markAgainPressed`: on a paper with no
+MARKED question it is `runMarking()` as before; otherwise it sets `markChoiceOpen` (tied to `wsEpoch`)
+and `renderBuddyFoot` draws `markChoiceNode()` in place of the button row, focused on the first choice,
+Escape / Cancel → `markChoiceClose`.
+
+- **`runMarking({ mode: 'remaining' })`** turns into an `only` run over `markRemainingPages(items,
+  unread, order)` (pages with a `!marked` question, every page it spans, unread pages, pages with no
+  question). It is NOT `fresh`: an unchanged page comes from the ⏩ cache. After every `markAssemble`
+  (both the per-page `onLand` and the final one) `markKeepMarked(items, keepFrom)` swaps each question
+  that was marked in the earlier marking back for a copy of that earlier question (`markKeepSameQ` =
+  `markSameQuestion` OR same number on the same start page) and re-inserts any the reading omitted, in
+  their old place. Usage and `StudyAdventure.marked` get only `markNewlyMarked(...)`; nothing left →
+  a toast and no call.
+- **`runMarking({ mode: 'all' })`** is the full run with `reuse` returning null for every page: every
+  page is read afresh and the old marks are dropped. Counted as a full sitting, like before.
+- A plain `runMarking()` / a click event is unchanged (the smart re-mark through the cache), so the
+  harnesses and the 📄 strip (`{ only, fresh }`) behave exactly as before.
+- Tests: `tools/tutor-tests.mjs` (⚡ The run, end to end → the 🔁 / ✅ block) and
+  `tools/marking-browser-check.mjs` (🔁 / ✅ section; `MARK_SCREENSHOTS=dir` saves the card at iPad and
+  phone width).
+
 ## ✂️ ASK ABOUT A PART OF THE PAGE (v1.74.0)
 
 Search `✂️ ASK ABOUT A PART OF THE PAGE`. `#snipBtn` (toolbar) and `#chatSnipBtn` (the Ask row) call
