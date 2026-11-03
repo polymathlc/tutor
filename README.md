@@ -17,7 +17,7 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
-## v1.77.0 — 📐 Every maths mark tracked by learning objective
+## v1.78.0 — 📐 Every maths mark tracked by learning objective
 
 - **The paper's own year.** The cover read at upload now keeps the year the paper is SET FOR
   ("Primary 5"), P1 to P6, beside the student's level, and a paper uploaded before this has its front
@@ -35,6 +35,15 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 - **For the teacher.** Each marked maths worksheet's objective marks are also written to the student's
   roster row (`tutorLos`), so Ans Key's new 📐 Objectives button shows the same table. Papers marked
   before this are written once, the next time the student signs in.
+## v1.77.0 — 📝 Treat blanks as wrong (exam conditions)
+
+- **A checkbox under ✅ Mark my work** (and on the 🔁 / ✅ Mark it again card): *Treat blanks as wrong
+  (exam conditions)*. Ticked, every question left blank is marked ❌ wrong, scores 0 of its marks, and
+  goes in the mistake book like any wrong answer. Unticked (the default), blanks stay blanks as before.
+- **Per worksheet, and changeable afterwards.** Ticking or unticking on a marked paper changes the score
+  at once with no ChatGPT call; a paper opens with the box as it was last marked, and a new paper starts
+  unticked. A blank counted wrong is still re-read by ✅ Mark remaining, so an answer written in later
+  is marked properly.
 
 ## v1.76.0 — 🔑 Marked against the key, and 🧩 every mistake named
 
