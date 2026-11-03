@@ -942,6 +942,12 @@
   .markChoice .mcTitle { font-weight: 700; }
   .markChoice .mcSub { font-size: 0.76rem; font-weight: 400; opacity: 0.85; overflow-wrap: anywhere; }
   .markChoice .markChoiceCancel { align-self: center; }
+  /* 📝 Treat blanks as wrong (v1.77.0): one quiet line under the buttons. */
+  .markBlanksToggle {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+    font-size: 0.8rem; color: var(--ink-soft); cursor: pointer; user-select: none;
+  }
+  .markBlanksToggle input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; accent-color: var(--accent-deep); }
   .buddyNudge {
     font-size: 0.8rem; color: var(--ink-soft); background: var(--bg-soft);
     border: 1px solid var(--line); border-radius: var(--radius-sm);
@@ -3115,7 +3121,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.76.0"></script>
+<script src="concept-tags.js?v=1.77.0"></script>
 <script>
 'use strict';
 
@@ -3212,7 +3218,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.76.0';
+var APP_VERSION = 'v1.77.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -12787,7 +12793,7 @@ function markRemainingPages(items, unread, order) {
     if (b < a) b = a;
     for (var i = a; i <= b; i++) {
       has[order[i]] = 1;
-      if (!it.marked) want[order[i]] = 1;
+      if (!it.marked || it.blankWrong) want[order[i]] = 1;
     }
   });
   (unread || []).forEach(function (n) { want[Number(n)] = 1; });
@@ -12803,7 +12809,8 @@ function markKeepSameQ(a, b) {
 }
 
 function markKeepMarked(items, before) {
-  var olds = (before || []).filter(function (it) { return it && it.marked; });
+  // 📝 A blank counted wrong is not a mark to keep: it is read again.
+  var olds = (before || []).filter(function (it) { return it && it.marked && !it.blankWrong; });
   if (!olds.length) return items || [];
   var placed = olds.map(function () { return null; });
   var out = (items || []).map(function (it) {
@@ -12839,19 +12846,101 @@ function markKeepMarked(items, before) {
 }
 
 function markNewlyMarked(items, before) {
-  var olds = (before || []).filter(function (it) { return it && it.marked; });
+  var olds = (before || []).filter(function (it) { return it && it.marked && !it.blankWrong; });
   return (items || []).filter(function (it) {
     return it && it.marked && !olds.some(function (o) { return markKeepSameQ(o, it); });
   });
 }
 
+/* =====================================================================
+   📝 BLANKS COUNT AS WRONG — EXAM CONDITIONS (v1.77.0)
+
+   "A blank is never marked wrong" is right for practice, and wrong for a
+   paper sat under exam conditions: there a question left empty is a lost
+   mark like any other, and the teacher wants it on the score and in the
+   mistake book as one. So the marking foot carries a checkbox,
+   "Treat blanks as wrong (exam conditions)", per worksheet.
+
+   - IT IS A PASS OVER THE FINISHED ITEMS, never a change to the prompt or
+     to `_markFields`: the ⏩ cache key, the model's reply, the fold and
+     the help ceiling (`markBlankRule`) are exactly as they were. Ticked, a
+     question with nothing written comes out marked, verdict "wrong", marks
+     0 of what was printed, and `blankWrong: true` so it can be put back.
+   - IT IS REVERSIBLE. Unticking puts every `blankWrong` question back to a
+     plain blank, so the box can be changed after the paper is marked and
+     the score follows at once, with no call.
+   - A BLANK-WRONG QUESTION IS STILL "LEFT" for ✅ Mark remaining
+     (`markRemainingPages`) and is not one of the kept marks
+     (`markKeepMarked`), so a question written in afterwards gets marked.
+   - THE STATE IS THE WORKSHEET'S. It is read from the saved marks the first
+     time it is asked for on a worksheet (any `blankWrong` question → ticked)
+     and otherwise starts unticked, so a practice paper opened after an exam
+     paper is not quietly marked as an exam.
+   ===================================================================== */
+var _markBlanksWrong = { epoch: -1, set: false, on: false };
+function markBlanksWrongOn() {
+  if (_markBlanksWrong.epoch !== wsEpoch) _markBlanksWrong = { epoch: wsEpoch, set: false, on: false };
+  if (_markBlanksWrong.set) return _markBlanksWrong.on;
+  return (marking.items || []).some(function (it) { return it && it.blankWrong; });
+}
+function markBlankWrongText() { return 'Left blank. Under exam conditions a blank answer counts as wrong.'; }
+function markApplyBlanks(items, on) {
+  return (items || []).map(function (it) {
+    if (!it) return it;
+    if (on && !it.marked && !it.blankWrong) {
+      var pair = String(it.marks || '').match(/\/\s*([0-9.]+)\s*$/);
+      return Object.assign({}, it, {
+        marked: true, blankWrong: true, verdict: 'wrong',
+        studentAnswer: '(left blank)',
+        marks: pair ? ('0/' + pair[1]) : (it.marks || ''),
+        feedback: markBlankWrongText()
+      });
+    }
+    if (!on && it.blankWrong) {
+      var back = Object.assign({}, it, { marked: false, verdict: '', studentAnswer: '', feedback: '' });
+      delete back.blankWrong;
+      return back;
+    }
+    return it;
+  });
+}
+function markBlanksWrongSet(on) {
+  markBlanksWrongOn();
+  _markBlanksWrong.set = true;
+  _markBlanksWrong.on = !!on;
+  if (marking.running) return;   // the run applies it when it lands
+  var before = JSON.stringify(marking.items || []);
+  marking.items = markApplyBlanks(marking.items, !!on);
+  if (JSON.stringify(marking.items) !== before) {
+    renderMarking();   // the score, the cards and the ticks on the page
+    setDirty(true);
+    toast(on ? 'Blanks now count as wrong.' : 'Blanks are no longer counted as wrong.', 3000);
+  }
+}
+function markBlanksToggleNode() {
+  var lab = document.createElement('label');
+  lab.className = 'markBlanksToggle';
+  lab.title = 'For a paper done under exam conditions: a question left blank is marked wrong and scores 0';
+  var cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = markBlanksWrongOn();
+  cb.disabled = !!marking.running;
+  cb.addEventListener('change', function () { markBlanksWrongSet(cb.checked); });
+  cb.addEventListener('keydown', function (e) { e.stopPropagation(); });
+  var t = document.createElement('span');
+  t.textContent = 'Treat blanks as wrong (exam conditions)';
+  lab.appendChild(cb);
+  lab.appendChild(t);
+  return lab;
+}
+
 /* What is waiting to be marked, in words, for the card: the questions not
    marked yet and the pages that could not be read. */
 function markRemainingCount() {
-  var blank = (marking.items || []).filter(function (it) { return it && !it.marked; }).length;
+  var blank = (marking.items || []).filter(function (it) { return it && (!it.marked || it.blankWrong); }).length;
   var unread = typeof markUnreadPages === 'function' ? markUnreadPages().length : (marking.unread || []).length;
   return { blank: blank, unread: unread,
-           marked: (marking.items || []).filter(function (it) { return it && it.marked; }).length };
+           marked: (marking.items || []).filter(function (it) { return it && it.marked && !it.blankWrong; }).length };
 }
 
 function markAssemble(order, got, kept, ctx, how) {
@@ -13351,6 +13440,7 @@ async function runMarking(opts) {
         var use = gotFor(got);
         marking.items = markAssemble(order, use, keptFor(use), foldCtx, { lost: gone });
         if (keepMarks) marking.items = markKeepMarked(marking.items, keepFrom);
+        marking.items = markApplyBlanks(marking.items, markBlanksWrongOn());   // 📝 exam conditions
         renderMarking();
         say();
         /* 📕 EVERY FINISHED QUESTION GOES INTO THE BOOK NOW, behind the
@@ -13368,6 +13458,7 @@ async function runMarking(opts) {
     var useGot = gotFor(result.got);
     marking.items = markAssemble(order, useGot, keptFor(useGot), foldCtx, { final: true, lost: result.lost });
     if (keepMarks) marking.items = markKeepMarked(marking.items, keepFrom);
+    marking.items = markApplyBlanks(marking.items, markBlanksWrongOn());   // 📝 exam conditions
     // Unread: listed before and not read now, or lost now with nothing to keep.
     marking.unread = order.filter(function (n) {
       return marking.unread.indexOf(n) >= 0 || (!!result.lost[n] && !beforeBy[n]);
@@ -19290,6 +19381,7 @@ function renderBuddyFoot() {
     m.addEventListener('click', markAgainPressed);
     row2.appendChild(m);
     foot.appendChild(row2);
+    foot.appendChild(markBlanksToggleNode());   // 📝 exam conditions (v1.77.0)
   } else {
     var picked = typeof snipPending === 'function' ? snipPending() : null;
     if (picked) foot.appendChild(snipChipNode(picked));
@@ -19733,6 +19825,8 @@ function markChoiceNode() {
     !left.length);
   all.addEventListener('click', function () { runMarking({ mode: 'all' }); });
   box.appendChild(all);
+
+  box.appendChild(markBlanksToggleNode());   // 📝
 
   var cancel = document.createElement('button');
   cancel.type = 'button';

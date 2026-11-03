@@ -2,6 +2,16 @@
 
 Guidance for Claude when working in this repo.
 
+## 📝 BLANKS COUNT AS WRONG — EXAM CONDITIONS (v1.77.0)
+
+Search `📝 BLANKS COUNT AS WRONG`. `markApplyBlanks(items, on)` is a pass over the FINISHED items (after
+`markAssemble` + `markKeepMarked`, both in `runMarking`), never a prompt or `_markFields` change, so the ⏩
+cache key and the help ceiling are untouched. On: a `!marked` item → `marked: true, verdict: 'wrong',
+blankWrong: true`, marks `0/total`; off: every `blankWrong` back to a plain blank. State is per `wsEpoch`
+(`markBlanksWrongOn` → explicit choice, else "any saved item is `blankWrong`"). `markRemainingPages`,
+`markKeepMarked`, `markNewlyMarked` and `markRemainingCount` treat `blankWrong` as NOT marked. The
+checkbox (`markBlanksToggleNode`) is in the marking foot and on the choice card.
+
 ## 🔑 KEY-FIRST MARKING and 🎯 CONCEPT TAGS (v1.76.0)
 
 Search `🔑 KEY-FIRST MARKING`, `🎯 THE CONCEPT TAGS RIDE THE SAME CALL`, `🎯 EVERY TAG IS KEPT` and

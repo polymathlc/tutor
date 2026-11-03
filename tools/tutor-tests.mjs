@@ -8662,6 +8662,44 @@ section('⚡ The run, end to end');
        !R.markKeepSameQ({ number: '7', question: 'x', page: 3 }, { number: '7', question: 'x', page: 9 }));
   }
 
+  /* 📝 TREAT BLANKS AS WRONG — EXAM CONDITIONS (v1.77.0). A pass over the
+     finished items, reversible, and a blank counted wrong is still "left". */
+  {
+    const items = [
+      { number: '1', question: 'One.', page: 1, marked: true, verdict: 'correct', studentAnswer: '4', marks: '1/1' },
+      { number: '2', question: 'Two.', page: 2, marked: false, verdict: '', studentAnswer: '', marks: '0/2', answer: '7' }
+    ];
+    const on = R.markApplyBlanks(items, true);
+    eq('📝 ticked: a blank comes out marked wrong, 0 of what was printed', on.map(it => it.number + ':' + (it.marked ? it.verdict : 'blank') + ':' + it.marks),
+       ['1:correct:1/1', '2:wrong:0/2']);
+    ok('…flagged so it can be put back, and the answer is kept', on[1].blankWrong === true && on[1].answer === '7' && /exam conditions/.test(on[1].feedback));
+    ok('…the answered question is the very same object', on[0] === items[0]);
+    ok('…and the items handed in are not changed', items[1].marked === false && !items[1].blankWrong);
+    const off = R.markApplyBlanks(on, false);
+    eq('📝 unticked: it is a plain blank again', off.map(it => it.number + ':' + (it.marked ? it.verdict : 'blank') + ':' + it.marks), ['1:correct:1/1', '2:blank:0/2']);
+    ok('…with no flag, no answer of theirs and no feedback', !('blankWrong' in off[1]) && off[1].studentAnswer === '' && off[1].feedback === '');
+    eq('📝 applying it twice changes nothing more', R.markApplyBlanks(on, true), on);
+    eq('📝 a blank counted wrong is still a page ✅ Mark remaining reads', R.markRemainingPages(on, [], [1, 2]), [2]);
+    eq('📝 …and is not one of the kept marks', R.markKeepMarked([], on).map(it => it.number), ['1']);
+    eq('📝 …so it is counted as new when it is marked for real', R.markNewlyMarked([{ number: '2', question: 'Two.', page: 2, marked: true, verdict: 'correct' }], on).length, 1);
+
+    R.wsEpoch = 77;
+    R.marking.items = [];
+    ok('📝 a worksheet starts unticked', R.markBlanksWrongOn() === false);
+    R.marking.items = on;
+    ok('📝 …and opens ticked when its saved marks were made that way', R.markBlanksWrongOn() === true);
+    R.markBlanksWrongSet(false);
+    ok('📝 unticking puts the marks on screen back at once', R.markBlanksWrongOn() === false && R.marking.items[1].marked === false);
+    R.markBlanksWrongSet(true);
+    ok('📝 ticking again counts it wrong again', R.marking.items[1].marked === true && R.marking.items[1].verdict === 'wrong');
+    R.wsEpoch = 78;
+    R.marking.items = [];
+    ok('📝 another worksheet does not inherit the box', R.markBlanksWrongOn() === false);
+    ok('📝 the run applies it after every assembly', (RUN_SRC.match(/markApplyBlanks\(marking\.items, markBlanksWrongOn\(\)\)/g) || []).length === 2);
+    ok('📝 the checkbox is in the marking foot and on the choice card',
+       (html.match(/appendChild\(markBlanksToggleNode\(\)\)/g) || []).length === 2 && /Treat blanks as wrong \(exam conditions\)/.test(html));
+  }
+
   ok('a re-read never touches usage or the adventure', /if \(!only\) \{\n\s*if \(typeof StudyAdventure !== 'undefined'\) StudyAdventure\.marked/.test(RUN_SRC));
   ok('the pages that could not be read are saved with the worksheet, and read back',
      /marking: \{ items: marking\.items, runAt: marking\.runAt, unread: marking\.unread \|\| \[\] \}/.test(html) &&
@@ -8781,8 +8819,11 @@ section('🔑 Key-first marking and 🎯 concept tags');
      /pruneIds\(_gapSeen\.map, ConceptTags\.SHEETS_MAX\)/.test(gapSrc) && /FieldValue\.delete\(\)/.test(gapSrc));
   ok('the filed mistake keeps its tag (a skipped blank has none)',
      /tag: skipped \? '' : \(it\.tag \|\| ''\),/.test(html) && /tagWhy: skipped \? '' : \(it\.tagWhy \|\| ''\),/.test(html));
-  ok('the script is loaded, versioned with the app', /<script src="concept-tags\.js\?v=1\.76\.0"><\/script>/.test(html) &&
-     /var APP_VERSION = 'v1\.76\.0';/.test(html));
+  ok('the script is loaded, versioned with the app', (function () {
+    var sv = html.match(/<script src="concept-tags\.js\?v=([0-9.]+)"><\/script>/);
+    var av = html.match(/var APP_VERSION = 'v([0-9.]+)';/);
+    return !!(sv && av && sv[1] === av[1]);
+  })());
 
   /* The two copies are one file. */
   const sib = join(here, '..', '..', 'anskey', 'concept-tags.js');
