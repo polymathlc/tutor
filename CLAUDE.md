@@ -2,6 +2,40 @@
 
 Guidance for Claude when working in this repo.
 
+## 🔑 KEY-FIRST MARKING and 🎯 CONCEPT TAGS (v1.76.0)
+
+Search `🔑 KEY-FIRST MARKING`, `🎯 THE CONCEPT TAGS RIDE THE SAME CALL`, `🎯 EVERY TAG IS KEPT` and
+`🎯 THE BOOK AIMS AT THE REAL GAP`.
+
+- **`concept-tags.js` (`window.ConceptTags`) is byte for byte Ans Key's copy** — the fixed catalogue
+  (`DEFS`, `COMMON_IDS`, `SUBJECT_IDS`, `TOPIC_IDS`), `clean` (the one door for a reply's tag),
+  `promptBlock`, `sheetEntry`, `summarize` (the trend, by RATE over the older vs newer half of the
+  sheets), `fromMistakes`, `hintBlock`, `pruneIds`. Pure, no calls. Copy changes across;
+  `tools/concept-tags-tests.mjs` (same file in both repos) and the 🔑/🎯 section of
+  `tools/tutor-tests.mjs` compare the copies when both repos are side by side. **An id is for ever** —
+  add a new one, never rename.
+- **Key-first:** `markKeyFirstRule()` goes straight after `MARK_SYS` in BOTH `markBatchAsk` and
+  `markSystemPrompt` (the ⏩ cache key) whenever `wsKey.rows` is not empty. It overrides "work it out
+  yourself first" for keyed questions only; `markBlankRule` still follows it, so blanks below the top
+  help level still get a nudge. Items carry `keyed` (`markKeyedOf`, believed only when the worksheet
+  has key rows) → the 🔑 Key chip. Key rows now transcribe the key's `marks` (`KEY_READ_SYS`), shown
+  to the model as `[marks: N]`.
+- **Tags:** `markConceptBlock()` is appended last to the same system prompt. `_markNewItem` reads
+  `tag` / `tagWhy` through `markGapOf` → `ConceptTags.clean` (only `wrong`/`partial` after
+  `_markFields`; off-list → `concept-gap`); `_markFoldRows` moves the tag with the verdict that
+  stands. `fileMistakes` writes `tag` / `tagWhy` / `keyed` (a skipped blank: no tag);
+  `mistakeMirrorRow` adds `tg` / `why` / `id` (the census test pins them).
+- **Saved:** `gapSheetSync()` runs after the end-of-run `fileMistakes` and merges ONE entry per
+  worksheet into `studentProfiles/{uid}.tutorGaps.{docId}` (+ `tutorGapsAt`) — a re-mark replaces it,
+  `ConceptTags.SHEETS_MAX` (80) oldest pruned in the same write, keys read once a session
+  (`_gapSeen`). Never from the admin's own device. No rules change (the roster row).
+- **Follow-through:** `gapStripNode` (top of the book, ▶ Practise this gap → `pracStart(ids, {gap})`),
+  `mistGap` / `mistGapFacet` / `mistFilterGap`, `gapNode` (one builder for both cards),
+  `pracGapNode` (*Watch for* before answering, the reason after), `pracCheck` tells the retry marker
+  the gap, and `gapHintBlock()` is appended to the hint's system prompt.
+- **💰 Cost guard:** no new `askGemini` anywhere; the harness fails if `markBatchAsk` grows a second
+  call or `concept-tags.js` makes one.
+
 ## 🔁 REMARK ALL, OR ✅ MARK WHAT IS LEFT (v1.75.0)
 
 Search `🔁 REMARK ALL, OR ✅ MARK WHAT IS LEFT` (the helpers, just above `markAssemble`) and `🔁 / ✅ THE

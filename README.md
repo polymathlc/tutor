@@ -17,6 +17,30 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.76.0 — 🔑 Marked against the key, and 🧩 every mistake named
+
+- **🔑 Key-first marking.** When a worksheet has an answer key (its own key pages, or a key PDF the
+  teacher attached), the marking now marks against THE KEY rather than working every answer out on its
+  own: the key's answer is the answer, the student's working is compared with the key's working and
+  marking points, the key's marks are the allocation, and the feedback names the key step that was
+  missed. A different method that reaches the key's answer soundly is still right. Each card marked
+  this way wears a **🔑 Key** chip. A question the key does not answer is marked as before.
+- **🧩 Concept tags.** Every wrong or partly right answer comes back with ONE tag from a fixed list for
+  its subject (*Sign or direction error*, *Forgot or wrong units*, *Misread the question*, *Unlike
+  denominators* on fractions, *Heat mixed up with temperature* on Heat…) and a one-line reason. It is
+  on the marking card, on the mistake-book card, and saved for the long run on the student's roster
+  row with the worksheet and the date — which is what Ans Key's new gap view reads.
+- **The mistake book aims at the real gap.** A strip at the top shows *your top gaps* with
+  **▶ Practise this gap**; a **🧩 Gap** picker and a tap on any card's gap filter the book to that
+  slip; a practice question shows *Watch for: …* before you answer, and the retry's feedback says
+  whether you avoided that slip this time.
+- **Hints know your gaps.** A hint is told your most frequent slips in that subject, so the nudge lands
+  on the one you actually make — without ever giving more than your help level allows.
+- **💰 No extra ChatGPT calls.** The tags come back inside the marking call that already runs; the
+  hints and the practice read the book already on the device.
+
+---
+
 ## v1.75.0 — 🔁 Remark all, or ✅ mark only the questions that are left
 
 Mark part of a worksheet, come back later, do the rest, and press **✅ Mark it again**. On a paper
