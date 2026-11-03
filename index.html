@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.77.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -3116,6 +3117,7 @@
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
 <script src="concept-tags.js?v=1.76.0"></script>
+<script src="lo-marks.js?v=1.77.0"></script>
 <script>
 'use strict';
 
@@ -3212,7 +3214,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.76.0';
+var APP_VERSION = 'v1.77.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -3440,7 +3442,7 @@ function subjectLabel(s) {
 /* What the notes are being applied to right now — the open worksheet's own
    level and subject. `noteAppliesHere` reads this object exactly as Ans Key
    reads its own `wsMeta` and Scan & Answer reads its pickers. */
-var wsMeta = { level: '', subject: '', school: '', topic: '', guidance: 'method', assignmentId: '', setBy: '', guidanceLocked: false };
+var wsMeta = { level: '', paperLevel: '', subject: '', school: '', topic: '', guidance: 'method', assignmentId: '', setBy: '', guidanceLocked: false };
 
 /* ================= THE HELP LADDER =================
    The whole app turns on this. A student handed the answer has learned
@@ -5241,7 +5243,7 @@ async function loadPdf(bytes, name) {
   chat = [];
   attempts = 1;
   keyReset();
-  wsMeta = { level: '', subject: '', school: '', topic: '', guidance: HINT_DEFAULT, assignmentId: '', setBy: '', guidanceLocked: false };
+  wsMeta = { level: '', paperLevel: '', subject: '', school: '', topic: '', guidance: HINT_DEFAULT, assignmentId: '', setBy: '', guidanceLocked: false };
   setDirty(false);
 
   // pdf.js transfers (detaches) the buffer it is given — hand it a copy.
@@ -8016,7 +8018,7 @@ var PAPER_READ_SYS =
   '{"subject":"science","level":"P5","title":"P5 Science SA2 2024","school":"Nan Hua Primary School",' +
   '"exam":true,"topic":"","keyPages":[11,12]}. ' +
   'subject is exactly one of "science", "math", "english", "chinese", or "" when the paper does not make ' +
-  'it plain. level is the year the paper is SET FOR as PRINTED on it — "P3", "P4", "P5", "P6" or "S1" — ' +
+  'it plain. level is the year the paper is SET FOR as PRINTED on it — "P1", "P2", "P3", "P4", "P5", "P6" or "S1" — ' +
   'read off its own heading ("Primary 5", "P5", "Sec 1", "Secondary 1"); never guess a level from how hard ' +
   'the questions look, and use "" when nothing on the paper says. title is what the paper calls itself, in ' +
   'at most ten words, or "" when it has no heading. school is the NAME OF THE SCHOOL printed on the ' +
@@ -8073,6 +8075,60 @@ function paperReadLevel(v) {
   return LEVELS.indexOf(s) >= 0 ? s : '';
 }
 
+/* =====================================================================
+   📐 THE YEAR THE PAPER IS SET FOR — read off its own cover (v1.77.0)
+
+   `wsMeta.level` is the STUDENT's level (it comes off their own row, and a
+   worksheet tagged otherwise vanishes from their shelf), and a P6 child
+   revising on a P5 paper is doing a P5 paper. The learning objectives a
+   question is filed under belong to the PAPER, so the year printed on its
+   cover is kept beside the level as `wsMeta.paperLevel`, P1 to P6 (the
+   centre takes P3 up, but a P3 paper's questions fall back to P2 and P1).
+
+   - THE COVER READ AT UPLOAD names it (`paperReadEnds`, the call that
+     already runs — no new one). It is what the paper PRINTS: "Primary 5",
+     "P5", never a guess from how hard it looks.
+   - A PAPER UPLOADED BEFORE THIS has its front pages' TEXT read when it is
+     marked (`paperLevelEnsure`) — plain code, no call. Only "Primary 5" /
+     "Pri 5" counts there: "P1" on a cover is "Paper 1" as often as not.
+   - NOTHING ON THE COVER → the student's own level, as before.
+   `markLoLevel()` is the ONE answer every caller asks.
+   ===================================================================== */
+var PAPER_LEVELS = ['P1', 'P2', 'P3', 'P4', 'P5', 'P6'];
+function paperPrintedLevel(v) {
+  var s = String(v || '').trim().toUpperCase();
+  if (!s) return '';
+  s = s.replace(/^PRIMARY\s*/, 'P').replace(/^PRI\.?\s*/, 'P').replace(/\s+/g, '');
+  return PAPER_LEVELS.indexOf(s) >= 0 ? s : '';
+}
+function paperLevelFromText(text) {
+  var t = String(text || '');
+  var m = /\b(?:primary|pri\.?)\s*(?:level\s*)?([1-6])\b/i.exec(t);
+  if (m) return 'P' + m[1];
+  var w = /\bprimary\s+(one|two|three|four|five|six)\b/i.exec(t);
+  if (w) return 'P' + (['one', 'two', 'three', 'four', 'five', 'six'].indexOf(w[1].toLowerCase()) + 1);
+  return '';
+}
+function markLoLevel() {
+  return paperPrintedLevel(wsMeta && wsMeta.paperLevel) || (wsMeta && wsMeta.level) || '';
+}
+/* For a paper with no year kept: read the first two pages' text layer.
+   Never throws, never asks a model; a scanned paper with no text layer
+   simply keeps the student's level. */
+async function paperLevelEnsure() {
+  if (!wsMeta || wsMeta.paperLevel || !mathWorksheet()) return wsMeta ? wsMeta.paperLevel : '';
+  try {
+    var epoch = wsEpoch;
+    for (var i = 0; i < Math.min(2, (pages || []).length); i++) {
+      var t = await pageText(pages[i]);
+      if (epoch !== wsEpoch) return '';
+      var lv = paperLevelFromText(t);
+      if (lv) { wsMeta.paperLevel = lv; setDirty(true); return lv; }
+    }
+  } catch (e) { /* the student's level stands */ }
+  return '';
+}
+
 /* What the model said, made safe: only our subjects, only our levels, a
    title cut to a line, and key pages that were actually SHOWN — a page
    number the model invented for a page it never saw is not a key page. */
@@ -8093,6 +8149,7 @@ function paperReadClean(res, nums) {
   return {
     subject: paperReadSubject(res.subject),
     level: paperReadLevel(res.level),
+    printed: paperPrintedLevel(res.level),
     title: line(res.title, PAPER_READ_TITLE_MAX),
     school: line(res.school, PAPER_READ_SCHOOL_MAX),
     exam: res.exam === true || String(res.exam).toLowerCase() === 'true',
@@ -8160,7 +8217,8 @@ function paperApplyRead(read, chosen) {
   read = read || {};
   chosen = chosen || {};
   var out = { level: chosen.level || '', subject: chosen.subject || '', name: chosen.name || '',
-              school: String(read.school || ''), topic: String(read.topic || ''), exam: !!read.exam, filled: [] };
+              school: String(read.school || ''), topic: String(read.topic || ''), exam: !!read.exam, filled: [],
+              printed: paperPrintedLevel(read.printed || read.level) };
   var allowed = Array.isArray(chosen.subjects) ? chosen.subjects.filter(function (s) { return SUBJECT_OK[s]; }) : null;
   if (!out.level && chosen.levelFree !== false && read.level && LEVELS.indexOf(read.level) >= 0) {
     out.level = read.level;
@@ -12351,7 +12409,7 @@ async function markBatchAsk(imgs, pageNums, total, carry, how) {
     // the exception to MARK_SYS's "work it out yourself first"; 🎯 the
     // concept tags go last, beside the syllabus list they are filed with.
     system: MARK_SYS + markKeyFirstRule() + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
-            markSyllabusBlock(wsMeta.subject, wsMeta.level) + markConceptBlock(),
+            markSyllabusBlock(wsMeta.subject, markLoLevel()) + markConceptBlock(),
     maxOutputTokens: MARK_MAX_OUT, temperature: 0.2, json: true, thinkingLevel: how.thinkingLevel || 'high',
     timeoutMs: MARK_CALL_MS, routeTimeoutMs: MARK_ROUTE_MS, keepOnTimeout: true,
     lane: how.lane === 'bg' ? 'bg' : 'fg',
@@ -12364,7 +12422,7 @@ async function markBatchAsk(imgs, pageNums, total, carry, how) {
    `markBatchAsk` sends — the harness pins the two side by side. */
 function markSystemPrompt() {
   return MARK_SYS + markKeyFirstRule() + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
-         markSyllabusBlock(wsMeta.subject, wsMeta.level) + markConceptBlock();
+         markSyllabusBlock(wsMeta.subject, markLoLevel()) + markConceptBlock();
 }
 
 function premarkHash(s) {
@@ -13242,7 +13300,7 @@ async function runMarking(opts) {
   premarkCancel();
   try {
     if (_premark.busy) { try { await _premark.busy; } catch (e) {} }
-    await Promise.all([aiWithDeadline(function () { return loadTeachingNotes(); }, 10000, null, 'Teaching notes took too long to load. Please try again.'), keyEnsureReady()]);
+    await Promise.all([aiWithDeadline(function () { return loadTeachingNotes(); }, 10000, null, 'Teaching notes took too long to load. Please try again.'), keyEnsureReady(), paperLevelEnsure()]);
     if (stale()) return;
     // THE ANSWER KEY IS NOT THE STUDENT'S WORK. Marking the pages at the
     // back of the paper would put the paper's own answers into the score as
@@ -13262,7 +13320,7 @@ async function runMarking(opts) {
       toast(only ? 'That page is not part of the worksheet any more.' : 'There are no pages to mark.', 5000);
       return;
     }
-    var foldCtx = { subject: wsMeta.subject, level: wsMeta.level };
+    var foldCtx = { subject: wsMeta.subject, level: markLoLevel() };
     /* The questions already on the paper, filed under the page each one
        starts on: `kept` for the pages NOT being read again, `beforeBy` for
        every page — which is what a page being read again falls back to
@@ -13436,6 +13494,9 @@ async function runMarking(opts) {
          filed, so every tagged mistake can carry its mistake-book id (the
          gap view's link). Fired and forgotten: it never rejects. */
       if (!stale()) gapSheetSync();
+      /* 📐 …and its marks by learning objective (v1.77.0), for Ans Key's
+         objective table. Fired and forgotten: it never rejects. */
+      if (!stale()) loSheetSync();
     } finally { _markFiling = false; }
   } catch (e) {
     toast('Marking failed: ' + ((e && e.message) || 'please try again.'), 6000);
@@ -14753,7 +14814,7 @@ async function mbRedo(ids) {
    Syllabus 2023, 18 headings and 79 objectives, each heading tagged with
    the portal's own rapid-add topic (`bank`) — and `SYLLABUS.math` is the
    Maths app's `MOE_SYLLABUS`, the content column of the MOE Primary
-   Mathematics Syllabus 2021 for P3 to P6, 171 objectives. THE IDS ARE
+   Mathematics Syllabus 2021 for P1 to P6, 240 objectives. THE IDS ARE
    THEIRS, byte for byte (`heat-flow`, `P5.FR.2.6`): a diagnostic filed here
    names the same objective a question in those banks is filed under, which
    is what lets a weak objective on this report be matched to practice
@@ -14916,12 +14977,120 @@ var SYLLABUS = {
       ['econv-forms', 'Forms of energy', 'Recognise and give examples of the various forms of energy: kinetic energy, potential energy, light energy, electrical energy, sound energy and heat energy.'],
       ['econv-conversion', 'Converting energy from one form to another', 'Investigate energy conversion from one form to another.'],
     ] },  ],
-  /* MATHS — the Maths app's MOE_SYLLABUS, P3 to P6. An objective's id is the
+  /* MATHS — the Maths app's MOE_SYLLABUS, P1 to P6 (P1 and P2 since v1.77.0,
+     for a P3 paper's fall-back years). An objective's id is the
      entry's `code` plus its own number ('P5.FR' + '2.6'). A few objectives
      read short ("properties of", "perimeter of") because the syllabus PDF
      lists what follows as sub-bullets that app never carried; they are kept
      as written so the ids and the wording stay that app's. */
   math: [
+    { level: 'P1', group: 'Number and Algebra', code: 'P1.WN', sub: 'Whole Numbers', topic: 'Numbers up to 100', los: [
+      ['1.1', 'counting to tell the number of objects in a given set'],
+      ['1.2', 'number notation, representations and place values (tens, ones)'],
+      ['1.3', 'reading and writing numbers in numerals and in words'],
+      ['1.4', 'comparing the number of objects in two or more sets'],
+      ['1.5', 'comparing and ordering numbers'],
+      ['1.6', 'patterns in number sequences'],
+      ['1.7', 'ordinal numbers (first, second, up to tenth) and symbols (1st, 2nd, 3rd, etc)'],
+      ['1.8', 'number bonds for numbers up to 10'],
+    ] },
+    { level: 'P1', group: 'Number and Algebra', code: 'P1.WN', sub: 'Whole Numbers', topic: 'Addition and Subtraction', los: [
+      ['2.1', 'concepts of addition and subtraction'],
+      ['2.2', 'use of +, – and ='],
+      ['2.3', 'relationship between addition and subtraction'],
+      ['2.4', 'adding more than two 1-digit numbers'],
+      ['2.5', 'adding and subtracting within 100'],
+      ['2.6', 'adding and subtracting using algorithms'],
+      ['2.7', 'solving 1-step word problems involving addition and subtraction within 20'],
+      ['2.8', 'mental calculation involving addition and subtraction'],
+    ] },
+    { level: 'P1', group: 'Number and Algebra', code: 'P1.WN', sub: 'Whole Numbers', topic: 'Multiplication and Division', los: [
+      ['3.1', 'concepts of multiplication and division'],
+      ['3.2', 'use of ×'],
+      ['3.3', 'multiplying within 40'],
+      ['3.4', 'dividing within 20'],
+      ['3.5', 'solving 1-step word problems involving multiplication and division with pictorial representation'],
+    ] },
+    { level: 'P1', group: 'Number and Algebra', code: 'P1.MON', sub: 'Money', topic: 'Money', los: [
+      ['1.1', 'counting amount of money'],
+      ['1.2', 'solving 1-step word problems involving addition and subtraction of money in dollars only (or in cents only)'],
+    ] },
+    { level: 'P1', group: 'Measurement and Geometry', code: 'P1.MEA', sub: 'Measurement', topic: 'Length', los: [
+      ['1.1', 'measuring and comparing the length of objects in non-standard units'],
+    ] },
+    { level: 'P1', group: 'Measurement and Geometry', code: 'P1.MEA', sub: 'Measurement', topic: 'Time', los: [
+      ['2.1', 'telling time to the hour/half hour'],
+    ] },
+    { level: 'P1', group: 'Measurement and Geometry', code: 'P1.GEO', sub: 'Geometry', topic: '2D Shapes', los: [
+      ['1.1', 'identifying, naming, describing and classifying 2D shapes'],
+      ['1.2', 'making/completing patterns with 2D shapes according to one or two of the following attributes'],
+    ] },
+    { level: 'P1', group: 'Statistics', code: 'P1.DRI', sub: 'Data Representation and Interpretation', topic: 'Picture Graphs', los: [
+      ['1.1', 'reading and interpreting data from picture graphs'],
+    ] },
+    { level: 'P2', group: 'Number and Algebra', code: 'P2.WN', sub: 'Whole Numbers', topic: 'Numbers up to 1000', los: [
+      ['1.1', 'counting in tens/hundreds'],
+      ['1.2', 'number notation, representations and place values (hundreds, tens, ones)'],
+      ['1.3', 'reading and writing numbers in numerals and in words'],
+      ['1.4', 'comparing and ordering numbers'],
+      ['1.5', 'patterns in number sequences'],
+      ['1.6', 'odd and even numbers'],
+    ] },
+    { level: 'P2', group: 'Number and Algebra', code: 'P2.WN', sub: 'Whole Numbers', topic: 'Addition and Subtraction', los: [
+      ['2.1', 'addition and subtraction algorithms (up to 3 digits)'],
+      ['2.2', 'solving up to 2-step word problems involving addition and subtraction'],
+      ['2.3', 'mental calculation involving addition and subtraction of a 3-digit number and ones/tens/ hundreds'],
+    ] },
+    { level: 'P2', group: 'Number and Algebra', code: 'P2.WN', sub: 'Whole Numbers', topic: 'Multiplication and Division', los: [
+      ['3.1', 'multiplication tables of 2, 3, 4, 5 and 10'],
+      ['3.2', 'use of ÷'],
+      ['3.3', 'relationship between multiplication and division'],
+      ['3.4', 'multiplying and dividing within the multiplication tables'],
+      ['3.5', 'solving 1-step word problems involving multiplication and division within the multiplication tables'],
+      ['3.6', 'mental calculation involving multiplication and division within the multiplication tables of 2, 3, 4, 5 and 10'],
+    ] },
+    { level: 'P2', group: 'Number and Algebra', code: 'P2.FR', sub: 'Fractions', topic: 'Fraction of a Whole', los: [
+      ['1.1', 'fraction as part of a whole'],
+      ['1.2', 'notation and representations of fractions'],
+      ['1.3', 'comparing and ordering fractions with denominators of given fractions not exceeding 12'],
+    ] },
+    { level: 'P2', group: 'Number and Algebra', code: 'P2.FR', sub: 'Fractions', topic: 'Addition and Subtraction', los: [
+      ['2.1', 'adding and subtracting like fractions within one whole with denominators of given fractions not exceeding 12'],
+    ] },
+    { level: 'P2', group: 'Number and Algebra', code: 'P2.MON', sub: 'Money', topic: 'Money', los: [
+      ['1.1', 'counting amount of money in dollars and cents'],
+      ['1.2', 'reading and writing money in decimal notation'],
+      ['1.3', 'comparing two or three amounts of money'],
+      ['1.4', 'converting an amount of money in decimal notation to cents only, and vice versa'],
+      ['1.5', 'solving word problems involving money in dollars only (or in cents only)'],
+    ] },
+    { level: 'P2', group: 'Measurement and Geometry', code: 'P2.MEA', sub: 'Measurement', topic: 'Length, Mass and Volume', los: [
+      ['1.1', 'measuring'],
+      ['1.2', 'measuring and drawing a line segment to the nearest cm'],
+      ['1.3', 'using appropriate units of measurement and their abbreviations cm, m, g, kg, ℓ'],
+      ['1.4', 'comparing and ordering'],
+      ['1.5', 'solving word problems involving length/mass/ volume'],
+    ] },
+    { level: 'P2', group: 'Measurement and Geometry', code: 'P2.MEA', sub: 'Measurement', topic: 'Time', los: [
+      ['2.1', 'telling time to 5 minutes'],
+      ['2.2', 'use of ‘a.m.’ and ‘p.m.’'],
+      ['2.3', 'use of abbreviations h and min'],
+      ['2.4', 'drawing hands on the clock face to show time'],
+      ['2.5', 'duration of 1 hour/half hour'],
+    ] },
+    { level: 'P2', group: 'Measurement and Geometry', code: 'P2.GEO', sub: 'Geometry', topic: '2D Shapes', los: [
+      ['1.1', 'identifying, naming and describing 2D shapes'],
+      ['1.2', 'identifying the basic shapes that make up a given figure'],
+      ['1.3', 'forming different 2D figures with'],
+      ['1.4', 'copying figures on dot grid or square grid'],
+    ] },
+    { level: 'P2', group: 'Measurement and Geometry', code: 'P2.GEO', sub: 'Geometry', topic: '3D Shapes', los: [
+      ['2.1', 'identifying, naming, describing and classifying 3D shapes'],
+    ] },
+    { level: 'P2', group: 'Statistics', code: 'P2.DRI', sub: 'Data Representation and Interpretation', topic: 'Picture Graphs with Scales', los: [
+      ['1.1', 'reading and interpreting data from picture graphs with scales'],
+      ['1.2', 'solving 1-step problems using data from picture graphs'],
+    ] },
     { level: 'P3', group: 'Number and Algebra', code: 'P3.WN', sub: 'Whole Numbers', topic: 'Numbers up to 10 000', los: [
       ['1.1', 'counting in hundreds/thousands'],
       ['1.2', 'number notation, representations and place values (thousands, hundreds, tens, ones)'],
@@ -15253,10 +15422,38 @@ function syllabusTopic(subject, tkey) {
    and the harness can say so too. */
 function diagChoices(subject, level) {
   var all = syllabusEntries(subject);
-  if (!all.length) return { entries: [], level: '' };
+  if (!all.length) return { entries: [], level: '', earlier: [] };
   var lv = String(level || '');
   var inLevel = lv ? all.filter(function (e) { return e.level === lv; }) : [];
-  return inLevel.length ? { entries: inLevel, level: lv } : { entries: all, level: '' };
+  if (!inLevel.length) return { entries: all, level: '', earlier: [] };
+  /* 📐 MATHS FALLS BACK TO EARLIER YEARS, NEVER LATER (v1.77.0). A P5
+     paper's question is filed under a P5 objective first; only where no P5
+     objective fits does it take one from P4, then P3, P2, P1 — the newest
+     year first. A P6 objective is never offered to a P5 paper at all, and
+     `diagPlace` refuses one that comes back anyway. Science keeps its one
+     level: its P3/P4 and P5/P6 blocks are not a ladder. */
+  var earlier = [];
+  if (diagLadder(subject)) {
+    var n = diagLevelNum(lv);
+    for (var k = n - 1; k >= 1; k--) {
+      all.forEach(function (e) { if (e.level === 'P' + k) earlier.push(e); });
+    }
+  }
+  return { entries: inLevel.concat(earlier), level: lv, earlier: earlier };
+}
+/* A list that is a LADDER of years (maths: every id starts with its year,
+   "P5.FR.2.6") — read off the list itself, so "is this maths" stays the
+   one predicate the maths pad owns. */
+function diagLadder(subject) {
+  var all = syllabusEntries(subject);
+  return !!(all.length && /^P\d\./.test(all[0].id));
+}
+function diagLevelNum(lv) { var m = /^P([1-6])$/.exec(String(lv || '')); return m ? +m[1] : 0; }
+/* True when an objective is from a LATER year than the paper — the one
+   placement this never accepts. */
+function diagTooLate(e, level) {
+  var p = diagLevelNum(level), q = diagLevelNum(e && e.level);
+  return !!(p && q && q > p);
 }
 
 /* THE PROMPT BLOCK, appended to the marking's system prompt beside the
@@ -15274,15 +15471,25 @@ function markSyllabusBlock(subject, level) {
     if (!byTopic[k]) { byTopic[k] = { topic: e.topic, level: e.level, los: [] }; lines.push(byTopic[k]); }
     byTopic[k].los.push(e.id + ' — ' + e.obj);
   });
-  var list = lines.map(function (l) {
-    return '• ' + l.topic + ' [' + l.level + ']: ' + l.los.join('; ');
-  }).join('\n');
+  var fall = ch.earlier && ch.earlier.length;
+  var one = function (l) { return '• ' + l.topic + ' [' + l.level + ']: ' + l.los.join('; '); };
+  var list = fall
+    ? lines.filter(function (l) { return l.level === ch.level; }).map(one).join('\n') +
+      '\nEARLIER YEARS — only when no ' + ch.level + ' objective above fits:\n' +
+      lines.filter(function (l) { return l.level !== ch.level; }).map(one).join('\n')
+    : lines.map(one).join('\n');
   return '\nTHE SYLLABUS LIST. This is a ' + (ch.level ? ch.level + ' ' : '') + subjectLabel(subject) +
     ' worksheet, and the report files every question under the syllabus topic and learning objective it ' +
     'tests, so "topic" and "lo" come from THIS list and nowhere else. "topic" is copied EXACTLY as written ' +
     'below, without the level in brackets. "lo" is the id of the ONE learning objective the question mainly ' +
     'tests, from the same list. ' +
-    (ch.level
+    (ch.level && fall
+      ? 'The paper is set for ' + ch.level + ', so FIRST choose a ' + ch.level + ' objective — one is right ' +
+        'whenever the question uses or builds on it. ONLY where no ' + ch.level + ' objective fits at all, ' +
+        'take one from the EARLIER years below, the latest year first (' +
+        ch.earlier.map(function (e) { return e.level; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join(', then ') +
+        '). Never choose an objective from a later year than ' + ch.level + ' — none is listed, and none is allowed. '
+      : ch.level
       ? 'Choose from this ' + ch.level + ' list even where an objective you know from another year would fit ' +
         'better — the year is not in question here, only which objective within it. '
       : '') +
@@ -15302,15 +15509,21 @@ function diagPlace(subject, level, topicRaw, loRaw) {
   var all = syllabusEntries(subject);
   if (!all.length) return { topic: topic, lo: '', sylTopic: '', onList: false };
   var hit = syllabusLo(subject, loRaw);
+  // 📐 A later year's objective on an earlier paper is refused outright.
+  if (hit && diagLadder(subject) && diagTooLate(hit, level)) hit = null;
   if (hit) return { topic: hit.topic, lo: hit.id, sylTopic: hit.tkey, onList: true };
   var key = reportTopicKey(topic);
   if (key) {
     var lv = String(level || '');
     var exact = all.filter(function (e) { return reportTopicKey(e.topic) === key; });
     if (!exact.length) exact = all.filter(function (e) { return reportTopicKey(e.bare) === key; });
+    if (diagLadder(subject)) exact = exact.filter(function (e) { return !diagTooLate(e, lv); });
     var pick = null;
     for (var i = 0; i < exact.length && !pick; i++) if (exact[i].level === lv) pick = exact[i];
-    if (!pick && exact.length) pick = exact[0];
+    // Otherwise the latest earlier year that has the name.
+    if (!pick && exact.length) {
+      pick = exact.slice().sort(function (a, b) { return diagLevelNum(b.level) - diagLevelNum(a.level); })[0];
+    }
     if (pick) return { topic: pick.topic, lo: '', sylTopic: pick.tkey, onList: true };
   }
   return { topic: topic, lo: '', sylTopic: '', onList: false };
@@ -15337,7 +15550,7 @@ function diagRowKey(p) {
 function reportDiagnostic(items, subject, level) {
   items = items || marking.items;
   if (subject == null) subject = wsMeta.subject;
-  if (level == null) level = wsMeta.level;
+  if (level == null) level = markLoLevel();
   var by = {}, rows = [];
   items.forEach(function (it) {
     var p = diagItemPlace(it, subject, level);
@@ -15426,14 +15639,31 @@ function diagSummary() {
   return {
     v: 1,
     subject: wsMeta.subject || '',
-    level: wsMeta.level || '',
+    // 📐 The PAPER's year (the cover), which its objectives were filed by.
+    level: markLoLevel(),
     at: marking.runAt || Date.now(),
     rows: d.rows.slice(0, DIAG_ROWS_MAX).map(function (r) {
       return { t: r.sylTopic || '', n: _mkStr(r.topic, 80), lo: r.lo || '', q: r.n,
                tot: r.total, got: r.awarded, att: r.attempted,
-               ok: r.correct, half: r.partial, no: r.wrong, blank: r.blank };
+               ok: r.correct, half: r.partial, no: r.wrong, blank: r.blank,
+               // 📐 v1.77.0: the questions behind the row, "3=2/2 5=-/1", so
+               // a cell of the objective table can say WHICH questions.
+               qs: diagQsOf(r.items) };
     })
   };
+}
+
+/* 📐 The questions on one row of the summary, through LoMarks' one encoder
+   (number, marks got or "-" for a blank, marks it carried). Empty when the
+   file did not load — the summary itself never depends on it. */
+function diagQsOf(items) {
+  if (typeof LoMarks === 'undefined' || !LoMarks || !LoMarks.encodeQs) return '';
+  try {
+    return LoMarks.encodeQs((items || []).map(function (it) {
+      var pair = markPairOf(it);
+      return { n: it.number || '', got: pair ? pair.awarded : 0, tot: pair ? pair.total : 0, marked: !!it.marked };
+    }));
+  } catch (e) { return ''; }
 }
 
 /* THE LONG RUN — every marked worksheet's summary added up, per subject,
@@ -16259,6 +16489,93 @@ async function _gapSheetWrite() {
     tutorGaps: gaps,
     tutorGapsAt: firebase.firestore.FieldValue.serverTimestamp()
   }, { merge: true });
+}
+
+/* =====================================================================
+   📐 THE MARKS BY LEARNING OBJECTIVE, on the roster row (v1.77.0)
+
+   Every marked maths worksheet already carries `diagnostic` — its marks
+   added up per syllabus objective, filed inside the marking call that ran
+   anyway. That summary lives on the WORKSHEET document, which only its
+   owner reads, so the teacher's objective table in Ans Key could never see
+   it. Each one is now also written, small, to
+   `studentProfiles/{uid}.tutorLos.{worksheetId}` (`LoMarks.sheetEntry`, the
+   shape is in lo-marks.js — byte for byte Ans Key's copy).
+
+   - THE ROSTER ROW, for the gap entry's reason: the student's own device
+     already writes it and the teacher already reads it, so no rules change.
+   - ONE ENTRY PER WORKSHEET. A re-mark replaces it; `LoMarks.SHEETS_MAX`
+     newest are kept and the oldest deleted in the same write.
+   - THE CATCH-UP (`loSheetCatchUp`) writes the papers marked before this
+     existed, off the summaries the shelf already holds — once, and nothing
+     at all when every paper is already there.
+   - A MERGE, never from the teacher's own device, and it never rejects.
+   ===================================================================== */
+var _loSeen = null;
+function loSheetEntryFor(w) {
+  if (typeof LoMarks === 'undefined' || !LoMarks || !LoMarks.sheetEntry) return null;
+  try { return LoMarks.sheetEntry(w); } catch (e) { return null; }
+}
+function loCurrentSheet() {
+  if (!currentDocId || !marking.items.length) return [];
+  var entry = loSheetEntryFor({ name: docName || '', subject: wsMeta.subject || '', level: markLoLevel(),
+                                diagnostic: diagSummary() });
+  return entry ? [{ id: currentDocId, entry: entry }] : [];
+}
+async function loSheetSync() {
+  try { return await _loSheetWrite(loCurrentSheet(), false); }
+  catch (e) { console.warn('objective marks: not recorded', e); return null; }
+}
+function loSheetCatchUp() {
+  if (!currentUser || !db || isAdmin(currentUser)) return;
+  var list = (worksheets || []).map(function (w) {
+    return { id: w.id, entry: loSheetEntryFor(w) };
+  }).filter(function (x) { return x.id && x.entry; });
+  if (!list.length) return;
+  _loSheetWrite(list, true).catch(function (e) { console.warn('objective marks: catch-up skipped', e); });
+}
+async function _loSheetWrite(list, onlyMissing) {
+  if (!currentUser || !db || isAdmin(currentUser) || !list || !list.length) return null;
+  var uid = currentUser.uid;
+  var ref = peopleRef(uid);
+  if (!_loSeen || _loSeen.uid !== uid) {
+    var map = {};
+    try {
+      var snap = await ref.get();
+      var data = (snap && snap.exists && snap.data()) || {};
+      if (data.tutorLos && typeof data.tutorLos === 'object') map = data.tutorLos;
+    } catch (e) { if (onlyMissing) return null; /* a fresh mark still goes */ }
+    _loSeen = { uid: uid, map: map };
+  }
+  if (!currentUser || currentUser.uid !== uid) return null;   // signed out while we read
+  var out = {};
+  list.forEach(function (x) {
+    var had = _loSeen.map[x.id];
+    if (onlyMissing && had && Number(had.at) === Number(x.entry.at)) return;
+    _loSeen.map[x.id] = x.entry;
+    out[x.id] = x.entry;
+  });
+  LoMarks.pruneIds(_loSeen.map, LoMarks.SHEETS_MAX).forEach(function (id) {
+    delete _loSeen.map[id];
+    if (out[id]) delete out[id];          // too old to keep: never written at all
+    else out[id] = firebase.firestore.FieldValue.delete();
+  });
+  if (!Object.keys(out).length) return null;
+  return ref.set({
+    tutorLos: out,
+    tutorLosAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
+}
+/* The student's own table is drawn off the shelf they already hold. */
+function loLocalSheets() {
+  if (typeof LoMarks === 'undefined' || !LoMarks) return [];
+  var out = [];
+  (worksheets || []).forEach(function (w) {
+    var c = LoMarks.cleanEntry(w.id, loSheetEntryFor(w));
+    if (c) out.push(c);
+  });
+  out.sort(function (a, b) { return a.at - b.at; });
+  return out;
 }
 
 /* 🖼 THE CATCH-UP, so a book filed before the links were kept fills itself
@@ -20216,7 +20533,7 @@ function renderReport() {
     tn.className = 'repTopicName';
     tn.textContent = it.topic || REPORT_UNLABELLED;
     td.appendChild(tn);
-    if (dg.hasList && it.topic && !diagItemPlace(it, wsMeta.subject, wsMeta.level).onList) {
+    if (dg.hasList && it.topic && !diagItemPlace(it, wsMeta.subject, markLoLevel()).onList) {
       var unl = document.createElement('div');
       unl.className = 'repObj';
       unl.textContent = DIAG_UNLISTED;
@@ -20535,6 +20852,20 @@ function renderProgress() {
     body.appendChild(diagTableNode(diagGroupsOf(s.rows), tot,
       { history: true, hasList: syllabusEntries(s.subject).length > 0 }));
   });
+  /* 📐 THE DENSE TABLE (v1.77.0): every maths objective down the side,
+     every marked paper across the top, the marks in each cell — the same
+     table the teacher sees in Ans Key, drawn by the same file. */
+  var loSheets = loLocalSheets();
+  if (loSheets.length && typeof LoMarks !== 'undefined' && LoMarks.mount) {
+    var lh = document.createElement('h3');
+    lh.className = 'repH';
+    lh.textContent = '📐 Maths marks by learning objective, paper by paper';
+    body.appendChild(lh);
+    var host = document.createElement('div');
+    host.className = 'lmHost';
+    body.appendChild(host);
+    LoMarks.mount(host, { sheets: loSheets, name: st && st.name ? st.name : '' });
+  }
 }
 function progressAsText() {
   var subs = progressRows(worksheets);
@@ -25076,6 +25407,8 @@ async function performSave(quiet) {
       // and label by, so they ride every save like the level does.
       school: wsMeta.school || '',
       topic: wsMeta.topic || '',
+      // 📐 The year printed on the cover, which the objectives are filed by.
+      paperLevel: wsMeta.paperLevel || '',
       guidance: wsMeta.guidance || HINT_DEFAULT,
       score: scoreOf(),
       // The paper filed under the syllabus, small enough to ride every
@@ -25440,6 +25773,7 @@ async function openWorksheet(id) {
     currentDocId = id;
     attempts = Math.max(1, parseInt(w.attempts, 10) || 1);
     wsMeta.level = w.level || '';
+    wsMeta.paperLevel = paperPrintedLevel(w.paperLevel);
     wsMeta.subject = w.subject || '';
     wsMeta.school = w.school || '';
     wsMeta.topic = w.topic || '';
@@ -25899,6 +26233,7 @@ async function uploadOne(file, s, keyFile, solo) {
   });
   if (currentDocId === id) {
     wsMeta.level = got.level;
+    wsMeta.paperLevel = got.printed || '';
     wsMeta.subject = got.subject;
     wsMeta.school = got.school;
     wsMeta.topic = got.topic;
@@ -32187,7 +32522,12 @@ if (auth) auth.onAuthStateChanged(async function (user) {
     aiEngineWatchShared();
     // The linked worksheet (?ws=) opens once the list it is looked up in has
     // arrived — and only once, whatever else the sign-in does.
-    loadWorksheets().then(openFromLink);
+    loadWorksheets().then(function (x) {
+      /* 📐 Papers marked before v1.77.0 still reach the teacher's
+         objective table: their summary is already on the worksheet. */
+      try { loSheetCatchUp(); } catch (e) { /* never blocks the link */ }
+      return openFromLink(x);
+    });
     /* 🖼 …and the pictures of anything filed before the links were kept.
        Nothing waits on it and nothing fails because of it. */
     loadMistakes().then(mistakeMirrorCatchUp, function () {});

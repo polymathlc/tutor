@@ -723,7 +723,7 @@ eq('key pages are only the pages that were SHOWN, deduped and sorted — 4 and 9
    cleaned.keyPages, [11, 12]);
 ok('a title is cut to a line', S.paperReadClean({ title: 'x'.repeat(300) }, []).title.length <= S.PAPER_READ_TITLE_MAX);
 eq('a reply that is not an object is an empty read',
-   S.paperReadClean(null, [1, 2]), { subject: '', level: '', title: '', school: '', exam: false, topic: '', keyPages: [] });
+   S.paperReadClean(null, [1, 2]), { subject: '', level: '', printed: '', title: '', school: '', exam: false, topic: '', keyPages: [] });
 /* The school, the exam flag and the topic. */
 const rich = S.paperReadClean({ school: '  Nan Hua   Primary School ', exam: 'true', topic: ' Heat ' }, []);
 eq('the school is tidied to a line', rich.school, 'Nan Hua Primary School');
@@ -2882,7 +2882,7 @@ eq('a worksheet marked before the marks existed reports no score, not zero',
 section('The diagnostic — the syllabus catalogue');
 
 /* The two lists are COPIES of the sibling apps' own — cer's
-   SYLLABUS_LO_TOPICS and the Maths app's MOE_SYLLABUS (P3–P6) — and the
+   SYLLABUS_LO_TOPICS and the Maths app's MOE_SYLLABUS (P1–P6) — and the
    ids have to stay theirs byte for byte, or a weak objective here stops
    naming the question bank's objective there. The counts and a sample of
    ids pin the copy. */
@@ -2890,12 +2890,12 @@ const sci = S.syllabusEntries('science');
 const mth = S.syllabusEntries('math');
 eq('science carries every one of the portal\'s 79 objectives', sci.length, 79);
 eq('…under its 18 syllabus headings', S.SYLLABUS.science.length, 18);
-eq('maths carries the 171 P3–P6 objectives of the maths app', mth.length, 171);
+eq('maths carries the 240 P1–P6 objectives of the maths app', mth.length, 240);
 ok('a science id is cer\'s own', !!S.syllabusLo('science', 'heat-flow'));
 ok('a maths id is the maths app\'s own', !!S.syllabusLo('math', 'P5.FR.2.6'));
 eq('…and reads level.sub-strand.number', S.syllabusLo('math', 'P5.FR.2.6').level, 'P5');
 ok('every id is unique within its subject',
-   new Set(sci.map(e => e.id)).size === 79 && new Set(mth.map(e => e.id)).size === 171);
+   new Set(sci.map(e => e.id)).size === 79 && new Set(mth.map(e => e.id)).size === 240);
 /* The TOPIC a student reads is the portal's rapid-add topic, not the
    syllabus's own heading: "Heat", not "Energy Forms and Uses (Heat)". */
 eq('a science topic is the rapid-add name', S.syllabusLo('science', 'heat-flow').topic, 'Heat');
@@ -2953,7 +2953,7 @@ eq('…and the list\'s own spelling', pl.topic, 'Electrical Systems');
 pl = S.diagPlace('math', 'P5', 'Angles', '');
 ok('a bare maths topic is placed under the worksheet\'s own level', /^P5\.GEO /.test(pl.sylTopic), pl.sylTopic);
 ok('…where the level has it', /^P3\.GEO /.test(S.diagPlace('math', 'P3', 'Angles', '').sylTopic));
-ok('…and under the first level that does otherwise', /^P3\.GEO /.test(S.diagPlace('math', 'P6', 'Angles', '').sylTopic));
+ok('…and under the LATEST EARLIER level that does otherwise (📐 v1.77.0)', /^P5\.GEO /.test(S.diagPlace('math', 'P6', 'Angles', '').sylTopic));
 eq('the strand spelled out matches too', S.diagPlace('math', 'P5', 'Geometry: Angles', '').lo, '');
 ok('…', /^P5\.GEO /.test(S.diagPlace('math', 'P5', 'Geometry: Angles', '').sylTopic));
 /* NEVER SNAPPED: a reply off the list keeps its own wording, unplaced. */
@@ -3100,12 +3100,12 @@ const runSrc = html.slice(html.indexOf('async function runMarking(opts)'), html.
 const askSrc = html.slice(html.indexOf('async function markBatchAsk('), html.indexOf('function markSystemPrompt()'));
 const assembleSrc = html.slice(html.indexOf('function markAssemble(order, got, kept, ctx, how) {'), html.indexOf('function markCarryBefore('));
 ok('the marking\'s system prompt carries the syllabus list',
-   /system: MARK_SYS \+ markKeyFirstRule\(\) \+ markBlankRule\(\) \+ aiGrounding\('mark'\) \+ keyRuleBlock\(\) \+ tutorMethodRule\(\) \+\s*markSyllabusBlock\(wsMeta\.subject, wsMeta\.level\) \+ markConceptBlock\(\)/.test(askSrc));
+   /system: MARK_SYS \+ markKeyFirstRule\(\) \+ markBlankRule\(\) \+ aiGrounding\('mark'\) \+ keyRuleBlock\(\) \+ tutorMethodRule\(\) \+\s*markSyllabusBlock\(wsMeta\.subject, markLoLevel\(\)\) \+ markConceptBlock\(\)/.test(askSrc));
 ok('…and the run reads every fresh page through that ONE call',
    /return markBatchAsk\(\[\{ mimeType: 'image\/jpeg', data: pic\.data \}\], \[num\], order\.length, carry,/.test(runSrc) &&
    !/window\.askGemini\(/.test(runSrc) && !/window\.askGemini\(/.test(html.slice(html.indexOf('async function markReadPaper('), html.indexOf('async function runMarking(opts)'))));
 ok('…and the fold is told the subject and level, or nothing is filed',
-   /var foldCtx = \{ subject: wsMeta\.subject, level: wsMeta\.level \};/.test(runSrc) &&
+   /var foldCtx = \{ subject: wsMeta\.subject, level: markLoLevel\(\) \};/.test(runSrc) &&
    /marking\.items = markAssemble\(order, use, keptFor\(use\), foldCtx, \{ lost: gone \}\);/.test(runSrc) &&
    /marking\.items = markAssemble\(order, useGot, keptFor\(useGot\), foldCtx, \{ final: true, lost: result\.lost \}\);/.test(runSrc) &&
    /_markFoldRows\(rows, \[num\], out, ctx\);/.test(assembleSrc));
@@ -7648,7 +7648,7 @@ section('⏩ Marking ahead');
     wsEpoch: 1, pages: [], annotations: [], wsMeta: { subject: 'science', level: 'P5', guidance: 'full' },
     marking: { items: [], runAt: null, running: false }, _markFiling: false,
     MARK_SYS: 'SYS', markBlankRule: () => '', aiGrounding: () => '[G]', keyRuleBlock: () => '', tutorMethodRule: () => '',
-    markSyllabusBlock: () => '', markKeyFirstRule: () => '', markConceptBlock: () => '',
+    markSyllabusBlock: () => '', markKeyFirstRule: () => '', markConceptBlock: () => '', markLoLevel: () => 'P5',
     MARK_CALL_MS: 210000, MARK_ROUTE_MS: 150000,
     aiAvailable: () => true, loadTeachingNotes: async () => [], keyEnsureReady: async () => true,
     _parseAIJson: raw => JSON.parse(raw), _mkStr: (v) => String(v || ''),
@@ -8430,7 +8430,7 @@ section('⚡ The run, end to end');
     annotations: [{ page: 1, type: 'pen' }, { page: 3, type: 'text', text: 'raining' }],
     marking: { items: [], runAt: null, running: false }, _markFiling: false, _markRun: 0,
     MARK_SYS: 'SYS', markBlankRule: () => '', aiGrounding: () => '', keyRuleBlock: () => '', tutorMethodRule: () => '',
-    markSyllabusBlock: () => '', markKeyFirstRule: () => '', markConceptBlock: () => '', markPrompt: (nums, total, carry) => 'page ' + nums.join(',') + (carry ? ' carry=' + carry : ''),
+    markSyllabusBlock: () => '', markKeyFirstRule: () => '', markConceptBlock: () => '', markLoLevel: () => '', markPrompt: (nums, total, carry) => 'page ' + nums.join(',') + (carry ? ' carry=' + carry : ''),
     MARK_PARALLEL: 3, MARK_TRIES: 3, MARK_ROUTE_MS: 150000, MARK_CALL_MS: 210000, MARK_RUN_MS: 360000,
     MARK_RETRY_WAIT_MS: 1, MARK_STITCH_MAX: 6, MARK_PAGE_PX: 1600, MARK_PAGE_PX_SMALL: 1100, MARK_PIC_MIN: 600,
     HINT_RUNGS: [1, 2, 3, 4], guidanceDepth: () => 4,
@@ -8439,6 +8439,7 @@ section('⚡ The run, end to end');
     renderMarking: () => { renders++; }, renderMarkPagesOnly: () => {},
     markProgress: (d, t, text) => progress.push(text), aiEngineName: () => 'Chung GPT',
     aiWithDeadline: fn => fn(), loadTeachingNotes: async () => [], keyEnsureReady: async () => true,
+    paperLevelEnsure: async () => '', loSheetSync: () => null,
     markRation: () => {}, usageNote: (k) => usage.push(k), usageAdd: () => {},
     markTally: () => ({ correct: 0, partial: 0, wrong: 0, blank: 0 }), markMarkTally: () => ({ has: false }),
     setDirty: () => {}, scheduleRaster: () => {},
@@ -8782,7 +8783,7 @@ section('🔑 Key-first marking and 🎯 concept tags');
   ok('the filed mistake keeps its tag (a skipped blank has none)',
      /tag: skipped \? '' : \(it\.tag \|\| ''\),/.test(html) && /tagWhy: skipped \? '' : \(it\.tagWhy \|\| ''\),/.test(html));
   ok('the script is loaded, versioned with the app', /<script src="concept-tags\.js\?v=1\.76\.0"><\/script>/.test(html) &&
-     /var APP_VERSION = 'v1\.76\.0';/.test(html));
+     /var APP_VERSION = 'v1\.\d+\.\d+';/.test(html));
 
   /* The two copies are one file. */
   const sib = join(here, '..', '..', 'anskey', 'concept-tags.js');
@@ -8793,6 +8794,73 @@ section('🔑 Key-first marking and 🎯 concept tags');
   S.wsKey = keepKey;
   S.wsMeta = keepMeta;
   delete S.ConceptTags;
+}
+
+/* =====================================================================
+   📐 THE PAPER'S OWN YEAR, AND MARKS BY OBJECTIVE FOR THE TEACHER (v1.77.0)
+   ===================================================================== */
+{
+  section('📐 The year printed on the paper picks the objectives');
+  eq('"Primary 5" on the cover is P5', S.paperPrintedLevel('Primary 5'), 'P5');
+  eq('…and so is "pri 5"', S.paperPrintedLevel('pri 5'), 'P5');
+  eq('P1 and P2 are years a paper can be set for', S.paperPrintedLevel('P2'), 'P2');
+  eq('Sec 1 is not a primary year', S.paperPrintedLevel('Sec 1'), '');
+  eq('the read at upload keeps what it printed', S.paperReadClean({ level: 'Primary 2' }, []).printed, 'P2');
+  eq('…while the shelf level stays one of ours', S.paperReadClean({ level: 'Primary 2' }, []).level, '');
+  eq('a cover\'s text names the year', S.paperLevelFromText('NAN HUA PRIMARY SCHOOL\nPRIMARY 5 MATHEMATICS\nSA2 2024'), 'P5');
+  eq('…in words too', S.paperLevelFromText('Primary Four Mathematics'), 'P4');
+  eq('"Paper 1" is never a year', S.paperLevelFromText('PSLE Mathematics Paper 1 Booklet A P1'), '');
+  const keepMeta2 = S.wsMeta;
+  S.wsMeta = { level: 'P6', paperLevel: 'P5', subject: 'math' };
+  eq('the paper\'s year wins over the student\'s', S.markLoLevel(), 'P5');
+  S.wsMeta = { level: 'P6', paperLevel: '', subject: 'math' };
+  eq('…and the student\'s stands when the cover says nothing', S.markLoLevel(), 'P6');
+  S.wsMeta = keepMeta2;
+
+  const ch = S.diagChoices('math', 'P5');
+  ok('a P5 paper is offered P5 objectives first', ch.entries[0].level === 'P5' && ch.level === 'P5');
+  ok('…then the earlier years, latest first', ch.earlier.length > 0 &&
+     ch.earlier.map(e => e.level).filter((v, i, a) => a.indexOf(v) === i).join() === 'P4,P3,P2,P1');
+  ok('…and NEVER a P6 objective', ch.entries.every(e => e.level !== 'P6'));
+  eq('a P3 paper falls back to P2 and P1', [...new Set(S.diagChoices('math', 'P3').earlier.map(e => e.level))], ['P2', 'P1']);
+  eq('science keeps its one level (its blocks are not a ladder)', S.diagChoices('science', 'P5').earlier.length, 0);
+  const blk5 = S.markSyllabusBlock('math', 'P5');
+  ok('the prompt says P5 first, earlier years only when none fits, never later',
+     /FIRST choose a P5 objective/.test(blk5) && /EARLIER YEARS — only when no P5 objective above fits/.test(blk5) &&
+     /Never choose an objective from a later year than P5/.test(blk5));
+  ok('…and lists no P6 objective at all', !/\[P6\]/.test(blk5) && !/P6\.\w+\.\d/.test(blk5));
+  ok('…with the P5 list BEFORE the earlier years', blk5.indexOf('[P5]') < blk5.indexOf('[P4]'));
+  eq('a later year\'s objective coming back anyway is refused', S.diagPlace('math', 'P5', '', 'P6.PCT.1.1').lo, '');
+  eq('an earlier year\'s is kept', S.diagPlace('math', 'P5', '', 'P4.WN.1.1').lo, 'P4.WN.1.1');
+  eq('a paper with no year can still take any', S.diagPlace('math', '', '', 'P6.PCT.1.1').lo, 'P6.PCT.1.1');
+  ok('a bare topic on a P4 paper never lands in P5', !/^P[56]\./.test(S.diagPlace('math', 'P4', 'Angles', '').sylTopic));
+
+  section('📐 Against index.html — the year, the marking and the roster row');
+  ok('the marking asks the paper\'s year in both prompts',
+     (html.match(/markSyllabusBlock\(wsMeta\.subject, markLoLevel\(\)\)/g) || []).length === 2);
+  ok('the run reads the cover\'s text for an older paper before it marks', /keyEnsureReady\(\), paperLevelEnsure\(\)\]\);/.test(html));
+  ok('the cover\'s year is saved with the worksheet and read back', /paperLevel: wsMeta\.paperLevel \|\| '',/.test(html) &&
+     /wsMeta\.paperLevel = paperPrintedLevel\(w\.paperLevel\);/.test(html) && /wsMeta\.paperLevel = got\.printed \|\| '';/.test(html));
+  ok('the summary is filed by the paper\'s year', /level: markLoLevel\(\),\n    at: marking\.runAt/.test(html));
+  ok('each summary row names its questions', /qs: diagQsOf\(r\.items\) \};/.test(html));
+  ok('the objective marks are written after the gaps, at the end of the run',
+     /if \(!stale\(\)\) gapSheetSync\(\);[\s\S]{0,300}if \(!stale\(\)\) loSheetSync\(\);/.test(html));
+  const loSrc = html.slice(html.indexOf('async function _loSheetWrite('), html.indexOf('/* The student\'s own table is drawn'));
+  ok('…as a MERGE onto the roster row, never from the teacher\'s device',
+     /tutorLos: out,/.test(loSrc) && /\}, \{ merge: true \}\);/.test(loSrc) && /isAdmin\(currentUser\)/.test(loSrc) && /peopleRef\(uid\)/.test(loSrc));
+  ok('…bounded, the oldest deleted in the same write', /LoMarks\.pruneIds\(_loSeen\.map, LoMarks\.SHEETS_MAX\)/.test(loSrc) && /FieldValue\.delete\(\)/.test(loSrc));
+  ok('…and a catch-up that writes nothing when every paper is there', /if \(!Object\.keys\(out\)\.length\) return null;/.test(loSrc) &&
+     /Number\(had\.at\) === Number\(x\.entry\.at\)/.test(loSrc));
+  ok('the catch-up runs once the shelf has loaded', /loadWorksheets\(\)\.then\(function \(x\) \{[\s\S]{0,300}loSheetCatchUp\(\);/.test(html));
+  ok('My progress draws the dense table', /LoMarks\.mount\(host, \{ sheets: loSheets/.test(html));
+  ok('lo-marks.js and its CSS are loaded, versioned', /<script src="lo-marks\.js\?v=1\.77\.0"><\/script>/.test(html) &&
+     /<link rel="stylesheet" href="lo-marks\.css\?v=1\.77\.0">/.test(html));
+  ok('💰 no new model call: lo-marks.js never asks one', !/askGemini|aiAsk|fetch\(/.test(readFileSync(join(here, '..', 'lo-marks.js'), 'utf8')));
+  /* The roster row entry, end to end through the module. */
+  const LM = (await import('node:module')).createRequire(import.meta.url)('../lo-marks.js');
+  const e = LM.sheetEntry({ name: 'P5 WA1', subject: 'math', diagnostic: { subject: 'math', level: 'P5', at: 1,
+    rows: [{ t: '', n: '', lo: 'P5.FR.2.6', q: 2, tot: 4, got: 3, att: 4, qs: '1=2/2 2=1/2' }] } });
+  ok('a maths summary becomes one roster entry', e && e.r[0].l === 'P5.FR.2.6' && e.r[0].s === '1=2/2 2=1/2');
 }
 
 console.log('\n' + (failures
