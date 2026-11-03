@@ -1528,7 +1528,15 @@ eq('a row carries the question, what they put and the answer',
 /* THE CENSUS. Everything here is a decision about a child's privacy, so the
    row is pinned BY NAME and a field nobody decided to send fails the run. */
 eq('…and nothing else at all', Object.keys(mrow).sort(),
-   ['ans', 'at', 'doc', 'done', 'figs', 'img', 'lo', 'lvl', 'mine', 'mk', 'n', 'q', 'sh', 'sub', 'top', 'v']);
+   ['ans', 'at', 'doc', 'done', 'figs', 'id', 'img', 'lo', 'lvl', 'mine', 'mk', 'n', 'q', 'sh', 'sub', 'tg', 'top', 'v', 'why']);
+/* 🎯 v1.76.0 decided to send three more: the concept tag, its one-line
+   reason and the mistake's id, which is how Ans Key's gap view links a
+   tagged slip back to this row. */
+{
+  const tagged = S.mistakeMirrorRow({ question: 'Q', id: 'm1', tag: 'sign-error', tagWhy: 'took away the wrong way round' });
+  eq('a tagged mistake carries its tag, its reason and its id', [tagged.tg, tagged.why, tagged.id],
+     ['sign-error', 'took away the wrong way round', 'm1']);
+}
 /* 🖼 A LINK TRAVELS AND A PATH NEVER DOES, and the difference is the whole
    feature: the admin cannot read a Storage object under the student's own
    uid, so a path would be a grid of broken images — while a download URL
@@ -2067,8 +2075,10 @@ ok('the pad and the page both grow a segment on its own `units`',
    hard constraint carried in the user message is one the next question can
    talk over, and the two call sites drifting apart is exactly how the chat
    ends up locked and the marking wide open. */
-const markCall = html.slice(html.indexOf('var raw = await window.askGemini(markPrompt'), html.indexOf('var raw = await window.askGemini(markPrompt') + 900);
-ok('the marking sends its blank rule in the SYSTEM prompt', /system:\s*MARK_SYS \+ markBlankRule\(\)/.test(markCall),
+const markCall = html.slice(html.indexOf('var raw = await window.askGemini(markPrompt'), html.indexOf('var raw = await window.askGemini(markPrompt') + 1400);
+/* 🔑 v1.76.0: the key-first rule sits between MARK_SYS and the blank rule,
+   so the blank rule (read last) still wins for a question nobody answered. */
+ok('the marking sends its blank rule in the SYSTEM prompt', /system:\s*MARK_SYS \+ markKeyFirstRule\(\) \+ markBlankRule\(\)/.test(markCall),
    markCall.replace(/\s+/g, ' ').slice(0, 240));
 const chatCall = html.slice(html.indexOf('var out = await window.askGemini('), html.indexOf('var out = await window.askGemini(') + 700);
 ok('the chat sends its ceiling rule in the SYSTEM prompt', /system:\s*CHAT_SYS \+ buddyCeilingRule\(\)/.test(chatCall),
@@ -3090,7 +3100,7 @@ const runSrc = html.slice(html.indexOf('async function runMarking(opts)'), html.
 const askSrc = html.slice(html.indexOf('async function markBatchAsk('), html.indexOf('function markSystemPrompt()'));
 const assembleSrc = html.slice(html.indexOf('function markAssemble(order, got, kept, ctx, how) {'), html.indexOf('function markCarryBefore('));
 ok('the marking\'s system prompt carries the syllabus list',
-   /system: MARK_SYS \+ markBlankRule\(\) \+ aiGrounding\('mark'\) \+ keyRuleBlock\(\) \+ tutorMethodRule\(\) \+\s*markSyllabusBlock\(wsMeta\.subject, wsMeta\.level\)/.test(askSrc));
+   /system: MARK_SYS \+ markKeyFirstRule\(\) \+ markBlankRule\(\) \+ aiGrounding\('mark'\) \+ keyRuleBlock\(\) \+ tutorMethodRule\(\) \+\s*markSyllabusBlock\(wsMeta\.subject, wsMeta\.level\) \+ markConceptBlock\(\)/.test(askSrc));
 ok('…and the run reads every fresh page through that ONE call',
    /return markBatchAsk\(\[\{ mimeType: 'image\/jpeg', data: pic\.data \}\], \[num\], order\.length, carry,/.test(runSrc) &&
    !/window\.askGemini\(/.test(runSrc) && !/window\.askGemini\(/.test(html.slice(html.indexOf('async function markReadPaper('), html.indexOf('async function runMarking(opts)'))));
@@ -3876,7 +3886,7 @@ ok('the filters are NOT remembered anywhere',
    !/localStorage|sessionStorage/.test(BOOK_SRC),
    'a topic filter that survived a reload is one somebody set last Tuesday and never noticed again');
 ok('…and clearing them clears every one',
-   /mistSubject = 'all'; mistTopic = 'all'; mistLo = 'all'; mistQuery = '';/.test(BOOK_SRC));
+   /mistSubject = 'all'; mistTopic = 'all'; mistLo = 'all'; mistGap = 'all'; mistQuery = '';/.test(BOOK_SRC));
 ok('the search is bounded before it is read',
    /MIST_SEARCH_MAX/.test(BOOK_SRC) && /input\.value\.slice\(0, MIST_SEARCH_MAX\)/.test(html));
 /* Typing re-runs the LIST and nothing else: the input is never destroyed,
@@ -7638,7 +7648,7 @@ section('⏩ Marking ahead');
     wsEpoch: 1, pages: [], annotations: [], wsMeta: { subject: 'science', level: 'P5', guidance: 'full' },
     marking: { items: [], runAt: null, running: false }, _markFiling: false,
     MARK_SYS: 'SYS', markBlankRule: () => '', aiGrounding: () => '[G]', keyRuleBlock: () => '', tutorMethodRule: () => '',
-    markSyllabusBlock: () => '',
+    markSyllabusBlock: () => '', markKeyFirstRule: () => '', markConceptBlock: () => '',
     MARK_CALL_MS: 210000, MARK_ROUTE_MS: 150000,
     aiAvailable: () => true, loadTeachingNotes: async () => [], keyEnsureReady: async () => true,
     _parseAIJson: raw => JSON.parse(raw), _mkStr: (v) => String(v || ''),
@@ -8420,7 +8430,7 @@ section('⚡ The run, end to end');
     annotations: [{ page: 1, type: 'pen' }, { page: 3, type: 'text', text: 'raining' }],
     marking: { items: [], runAt: null, running: false }, _markFiling: false, _markRun: 0,
     MARK_SYS: 'SYS', markBlankRule: () => '', aiGrounding: () => '', keyRuleBlock: () => '', tutorMethodRule: () => '',
-    markSyllabusBlock: () => '', markPrompt: (nums, total, carry) => 'page ' + nums.join(',') + (carry ? ' carry=' + carry : ''),
+    markSyllabusBlock: () => '', markKeyFirstRule: () => '', markConceptBlock: () => '', markPrompt: (nums, total, carry) => 'page ' + nums.join(',') + (carry ? ' carry=' + carry : ''),
     MARK_PARALLEL: 3, MARK_TRIES: 3, MARK_ROUTE_MS: 150000, MARK_CALL_MS: 210000, MARK_RUN_MS: 360000,
     MARK_RETRY_WAIT_MS: 1, MARK_STITCH_MAX: 6, MARK_PAGE_PX: 1600, MARK_PAGE_PX_SMALL: 1100, MARK_PIC_MIN: 600,
     HINT_RUNGS: [1, 2, 3, 4], guidanceDepth: () => 4,
@@ -8680,6 +8690,109 @@ section('📄 The page strip');
   ok('the strip only lists the student\'s pages, never the answer key', /studentPages\(\)\.forEach\(function \(p\) \{\n\s*var s = live\[p\.num\];/.test(STRIP));
   ok('the reading chip stops breathing for a student who asked for less motion',
      /@media \(prefers-reduced-motion: reduce\) \{ \.markPage\.mp-reading \{ animation: none; \} \}/.test(html));
+}
+
+/* =====================================================================
+   🔑 KEY-FIRST MARKING and 🎯 CONCEPT TAGS (v1.76.0)
+
+   The tags come back inside the marking call that already runs — so the
+   one thing this section must catch is a tag that quietly cost a call of
+   its own, or one that lands on a correct answer or a blank.
+   ===================================================================== */
+section('🔑 Key-first marking and 🎯 concept tags');
+{
+  const { createRequire } = await import('node:module');
+  const req = createRequire(import.meta.url);
+  const CT = req('../concept-tags.js');
+  S.ConceptTags = CT;
+  const keepKey = S.wsKey;
+  const keepMeta = S.wsMeta;
+  S.wsMeta = { level: 'P5', subject: 'math', guidance: 'answer' };
+
+  /* The item carries the tag, through the ONE door. */
+  S.wsKey = { rows: [] };
+  let it = S._markNewItem({ number: '4', question: 'q', answer: '12', studentAnswer: '-12', verdict: 'wrong',
+                            marks: '0/2', tag: 'sign-error', tagWhy: 'took 20 from 8', keyed: true },
+                          [3], { subject: 'math', level: 'P5' });
+  eq('a wrong answer carries its tag and its reason', [it.tag, it.tagWhy], ['sign-error', 'took 20 from 8']);
+  eq('…and a key it was never handed is not believed', it.keyed, false);
+  S.wsKey = { rows: [{ number: '4', answer: '12', working: '20 - 8 = 12', marks: '2' }] };
+  it = S._markNewItem({ number: '4', question: 'q', answer: '12', studentAnswer: '12', verdict: 'correct',
+                        marks: '2/2', tag: 'sign-error', tagWhy: 'x', keyed: true }, [3], { subject: 'math', level: 'P5' });
+  eq('a correct answer carries NO tag whatever came back', [it.tag, it.tagWhy], ['', '']);
+  eq('…and a key-marked question says so when the paper has a key', it.keyed, true);
+  it = S._markNewItem({ number: '5', question: 'q', answer: '7', studentAnswer: '', verdict: 'wrong',
+                        tag: 'calc-slip', tagWhy: 'x' }, [3], { subject: 'math', level: 'P5' });
+  eq('a blank carries no tag either (the verdict that survived `_markFields` decides)', it.tag, '');
+  it = S._markNewItem({ number: '6', question: 'q', answer: '7', studentAnswer: '8', verdict: 'partial',
+                        tag: 'made-up-tag', tagWhy: 'x' }, [3], { subject: 'math', level: 'P5' });
+  eq('a tag off the list becomes the tag of last resort, never a new id', it.tag, 'concept-gap');
+  it = S._markNewItem({ number: '6', question: 'q', answer: '7', studentAnswer: '8', verdict: 'wrong',
+                        tag: 'Forgot or wrong units' }, [3], { subject: 'math', level: 'P5' });
+  eq('a reply that gave the LABEL is read as its id', it.tag, 'forgot-units');
+
+  /* The fold: the half that judged carries the tag; a verdict that became
+     correct takes it off. */
+  const into = [];
+  S._markFoldRows([{ number: '9', question: 'first half', answer: '', studentAnswer: '3', verdict: 'wrong', tag: 'calc-slip', page: 1 }], [1], into, { subject: 'math' });
+  S._markFoldRows([{ continuation: true, question: 'second half', answer: '30', studentAnswer: '30', verdict: 'correct', page: 1 }], [2], into, { subject: 'math' });
+  eq('a question that came right on its second half has its tag taken off', [into[0].verdict, into[0].tag], ['correct', '']);
+
+  /* Key-first is in the SYSTEM prompt, only when there is a key, and it says
+     it replaces "work it out yourself first" for keyed questions. */
+  S.wsKey = { rows: [] };
+  eq('no key, no key-first block', S.markKeyFirstRule(), '');
+  S.wsKey = { rows: [{ number: '1', answer: '3' }] };
+  const kf = S.markKeyFirstRule();
+  ok('with a key, the key leads', /KEY-FIRST MARKING/.test(kf) && /REPLACES the rule above/.test(kf) && /"keyed" is true/.test(kf));
+  ok('…the key\'s working is the rubric, and a sound other method still counts', /RUBRIC/.test(kf) && /different method/.test(kf));
+  ok('…its marks are the allocation', /use its total and award one mark/.test(kf));
+  ok('the key rows carry the key\'s own marks', /\[marks: 2\]/.test((S.wsKey = { rows: [{ number: '1', answer: '3', marks: '2' }] }, S.keyContext())));
+
+  /* 🎯 The concept block is the fixed list, in the same call. */
+  const cb = S.markConceptBlock();
+  ok('the concept block lists the subject\'s tags', /sign-error/.test(cb) && /concept-gap/.test(cb) && /unlike-denominators/.test(cb));
+  ok('…and not another subject\'s', !/heat-vs-temperature/.test(cb));
+  const sysExpr = html.slice(html.indexOf('async function markBatchAsk('), html.indexOf('function premarkHash('));
+  ok('💰 the tags ride the marking call that already runs: one askGemini in markBatchAsk, and the concept block in its system',
+     (sysExpr.match(/window\.askGemini\(/g) || []).length === 1 && /markConceptBlock\(\),\n/.test(sysExpr));
+  ok('💰 …and markSystemPrompt (the cache key) carries the same blocks, so a kept page is never a page without tags',
+     /return MARK_SYS \+ markKeyFirstRule\(\) \+ markBlankRule\(\)[\s\S]*markConceptBlock\(\);/.test(sysExpr));
+  const ctSrc = readFileSync(join(here, '..', 'concept-tags.js'), 'utf8');
+  ok('💰 concept-tags.js makes no call of any kind', !/askGemini|fetch\(|XMLHttpRequest|firebase/.test(ctSrc.replace(/\/\*[\s\S]*?\*\//g, '')));
+
+  /* The hint is told the student's real gaps, in the same call. */
+  const hintSys = html.slice(html.indexOf('var raw = await window.askGemini(lines.join'), html.indexOf('var raw = await window.askGemini(lines.join') + 900);
+  ok('the hint carries the student\'s own gaps beside the key', /keyRuleBlock\(\) \+ tutorMethodRule\(\) \+ gapHintBlock\(\)/.test(hintSys));
+  const hb = CT.hintBlock(CT.fromMistakes([
+    { id: 'a', tag: 'sign-error', subject: 'math', at: Date.now(), why: 'took 20 from 8' },
+    { id: 'b', tag: 'sign-error', subject: 'math', at: Date.now() }
+  ], { subject: 'math' }));
+  ok('…and the gap line never lifts the help level', /never give more of the answer than their help level allows/.test(hb) && /Sign or direction error \(2 times\)/.test(hb));
+
+  /* The worksheet entry: wiring checked against the source. */
+  ok('the gaps are written AFTER the book is filed, so each one can link to its mistake',
+     /var endGot = await fileMistakes\(\{ quiet: true \}\);[\s\S]{0,900}if \(!stale\(\)\) gapSheetSync\(\);/.test(html));
+  const gapSrc = html.slice(html.indexOf('async function _gapSheetWrite()'), html.indexOf('/* 🖼 THE CATCH-UP'));
+  ok('…as a MERGE onto the roster row, never from the teacher\'s own device',
+     /\}, \{ merge: true \}\);/.test(gapSrc) && /isAdmin\(currentUser\)/.test(gapSrc) && /peopleRef\(uid\)/.test(gapSrc));
+  ok('…keyed by the worksheet, so a re-mark replaces rather than adds', /gaps\[docId\] = entry;/.test(gapSrc));
+  ok('…and the oldest sheets beyond the cap are deleted in the same write',
+     /pruneIds\(_gapSeen\.map, ConceptTags\.SHEETS_MAX\)/.test(gapSrc) && /FieldValue\.delete\(\)/.test(gapSrc));
+  ok('the filed mistake keeps its tag (a skipped blank has none)',
+     /tag: skipped \? '' : \(it\.tag \|\| ''\),/.test(html) && /tagWhy: skipped \? '' : \(it\.tagWhy \|\| ''\),/.test(html));
+  ok('the script is loaded, versioned with the app', /<script src="concept-tags\.js\?v=1\.76\.0"><\/script>/.test(html) &&
+     /var APP_VERSION = 'v1\.76\.0';/.test(html));
+
+  /* The two copies are one file. */
+  const sib = join(here, '..', '..', 'anskey', 'concept-tags.js');
+  let other = null;
+  try { other = readFileSync(sib, 'utf8'); } catch (e) { other = null; }
+  if (other !== null) ok('concept-tags.js is Ans Key\'s, byte for byte', other === ctSrc);
+
+  S.wsKey = keepKey;
+  S.wsMeta = keepMeta;
+  delete S.ConceptTags;
 }
 
 console.log('\n' + (failures

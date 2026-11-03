@@ -1006,6 +1006,34 @@
   .verdict.mSkip { background: #EEF0FA; color: #36409A; border-color: #C8CFEE; }
   .ansMarks { font-size: 0.73rem; font-weight: 700; color: var(--ink-soft); }
   .ansMarks.avail { font-weight: 400; color: var(--ink-faint); }
+  /* 🔑 / 🎯 v1.76.0 — the key chip and the gap box. Indigo-violet, never
+     the red of a wrong answer: a gap is a thing to work on, not a cross. */
+  .ansKeyed {
+    font-size: 0.7rem; font-weight: 700; color: #5A4A00; background: #FFF6D6;
+    border: 1px solid #EAD48A; border-radius: 999px; padding: 2px 9px; white-space: nowrap;
+  }
+  .gapBox {
+    margin: 8px 0; padding: 9px 12px; border-radius: 12px;
+    background: #F3F0FC; border: 1px solid #D9D1F3; color: #3B2F73;
+  }
+  .gapTag {
+    font: inherit; font-size: 0.78rem; font-weight: 700; color: #3B2F73;
+    background: none; border: 0; padding: 0; text-align: left;
+  }
+  button.gapTag { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+  .gapWhy { font-size: 0.82rem; margin-top: 3px; line-height: 1.5; }
+  .gapFix { font-size: 0.78rem; margin-top: 4px; color: #5B5196; line-height: 1.5; }
+  .gapStrip { margin: 0 0 12px; padding: 12px; border-radius: 14px; background: #F7F5FE; border: 1px solid #E2DCF7; }
+  .gapStrip h4 { margin: 0 0 8px; font-size: 0.86rem; color: #3B2F73; }
+  .gapStripRow { display: flex; flex-wrap: wrap; gap: 8px; }
+  .gapPill {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: #fff; border: 1px solid #D9D1F3; border-radius: 12px; padding: 7px 10px; font-size: 0.8rem;
+    max-width: 100%;
+  }
+  .gapPill b { color: #3B2F73; }
+  .gapPill .dim { color: var(--ink-faint); }
+  .pracGap { margin: 6px 0 10px; }
   .ansTopic {
     font-size: 0.73rem; font-weight: 700; color: var(--ink-soft);
     background: var(--bg-soft); border: 1px solid var(--line); border-radius: 999px;
@@ -3087,6 +3115,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
+<script src="concept-tags.js?v=1.76.0"></script>
 <script>
 'use strict';
 
@@ -3183,7 +3212,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.75.1';
+var APP_VERSION = 'v1.76.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -7880,12 +7909,15 @@ async function pageText(p) {
 var KEY_READ_SYS =
   'You are transcribing the ANSWER KEY of a school worksheet or exam paper. The attached pictures are its ' +
   'answer-key pages, in order. Reply with STRICT JSON only, no markdown, exactly this shape: ' +
-  '{"rows":[{"number":"7","answer":"24 g","working":"the worked solution as printed, or an empty string"}]}. ' +
+  '{"rows":[{"number":"7","answer":"24 g","working":"the worked solution as printed, or an empty string",' +
+  '"marks":"the marks the key gives this answer, as a number, or an empty string"}]}. ' +
   'Rules: one entry per numbered answer PRINTED on the pages, in the order they appear, keeping the paper\'s ' +
   'own numbering in "number" ("7", "3a", "12(b)"). ONE ENTRY PER LETTERED PART. For a multiple-choice answer ' +
   '"answer" is the option as the key prints it ("3", "B"), with the option\'s wording after it when the key ' +
   'prints that too. "working" is the key\'s own worked solution or marking points where it shows any, copied ' +
   'as printed and condensed to plain text — leave it an empty string when the key just states the answer. ' +
+  '"marks" is the mark allocation the KEY prints beside that answer ("[2]", "2m", "(1)"), as a number; leave ' +
+  'it an empty string when the key prints none. It is the rubric the marking awards against. ' +
   'TRANSCRIBE, NEVER SOLVE: if the key does not answer a question, it is not in your reply. Do not correct ' +
   'the key, do not finish it, and do not add a question it does not answer. If the pictures are not an answer ' +
   'key at all, return {"rows":[]}. Plain text in every field: no markdown, no bullets, no line breaks.';
@@ -7908,7 +7940,10 @@ async function keyReadImages(imgs, what, signal) {
       var answer = _mkStr(r.answer, 600);
       var number = _mkStr(r.number, 16);
       if (!answer && !number) return;
-      rows.push({ number: number, answer: answer, working: _mkStr(r.working, 1200) });
+      // 🔑 `marks` (v1.76.0) is the key's own allocation — the rubric key-first
+      // marking awards against. A key transcribed before it simply has none.
+      var km = /^\s*(\d+(?:\.\d+)?)\s*$/.exec(String(r.marks == null ? '' : r.marks).replace(/[^\d.]/g, ' ').trim().split(/\s+/)[0] || '');
+      rows.push({ number: number, answer: answer, working: _mkStr(r.working, 1200), marks: km ? km[1] : '' });
     });
   }
   return rows;
@@ -8538,7 +8573,8 @@ function keyContext(question) {
   for (var i = 0; i < rows.length; i++) {
     var r = rows[i];
     var line = (r.number ? r.number + ' — ' : '• ') + (r.answer || '') +
-               (r.working ? '   [working: ' + r.working + ']' : '');
+               (r.working ? '   [working: ' + r.working + ']' : '') +
+               (r.marks ? '   [marks: ' + r.marks + ']' : '');
     if (used + line.length > KEY_CTX_MAX) { lines.push('The rest of the key is not shown. If the matching question is missing, ask for its question number before solving.'); break; }
     used += line.length;
     lines.push(line);
@@ -8913,7 +8949,10 @@ async function hintLadderFor(p, pt) {
     // The key goes in BESIDE the grounding, and `keyRuleBlock` restates the
     // ceiling with it: a model handed the answers and then asked for "a
     // nudge" is exactly the door the ladder exists to shut.
-    system: HINT_SYS + aiGrounding('hint', { q: q }) + keyRuleBlock() + tutorMethodRule(),
+    // 🎯 …and the student's own top gaps in this subject (v1.76.0), after
+    // the key, so a nudge is aimed at the slip they really make. It is text
+    // in this same call: no call of its own.
+    system: HINT_SYS + aiGrounding('hint', { q: q }) + keyRuleBlock() + tutorMethodRule() + gapHintBlock(),
     // 🤖 TEACHING leads with ChatGPT — see AI_TASK_ENGINE.
     task: 'teach',
     maxOutputTokens: 1600, temperature: 0.4, json: true, thinkingLevel: 'high',
@@ -11729,6 +11768,8 @@ var MARK_SYS =
   'empty string","verdict":"correct | partial | wrong, or an empty string when nothing was written",' +
   '"marks":"awarded/total, as \'2/3\'","at":[520,180],' +
   '"feedback":"what to say to the student about what they wrote, or an empty string",' +
+  '"tag":"the concept tag id for a wrong or partial answer, or an empty string",' +
+  '"tagWhy":"one line on exactly what went wrong, or an empty string","keyed":false,' +
   '"topic":"the syllabus topic","lo":"the learning objective\'s id from the syllabus list, or an empty string",' +
   '"objective":"what the student must be able to do"}]}. ' +
   'Rules: one entry for every question actually PRINTED on the attached pictures, in the order they appear, ' +
@@ -11945,6 +11986,13 @@ function _markNewItem(r, pageNums, ctx) {
   // topic exactly as before.
   var place = ctx ? diagPlace(ctx.subject, ctx.level, r.topic, r.lo)
                   : { topic: _mkStr(r.topic, 70), lo: '', sylTopic: '', onList: false };
+  /* 🎯 THE CONCEPT TAG, read back through the ONE door that knows the list
+     (`ConceptTags.clean`): only a WRONG or PARTLY RIGHT answer carries one,
+     a reply off the list becomes the tag of last resort with its reason
+     kept, and a correct answer or a blank carries none whatever came back.
+     The verdict it is read against is `mk`'s, the verdict that survived
+     `_markFields` — so a blank that came back "wrong" is not tagged either. */
+  var gap = markGapOf(ctx ? ctx.subject : (wsMeta && wsMeta.subject), mk.marked ? mk.verdict : '', r.tag, r.tagWhy);
   return {
     number: _mkStr(r.number, 16),
     page: real,                       // the PDF's own page number
@@ -11965,8 +12013,26 @@ function _markNewItem(r, pageNums, ctx) {
     studentAnswer: mk.studentAnswer,
     verdict: mk.verdict,
     marks: mk.marks,
-    feedback: mk.feedback
+    feedback: mk.feedback,
+    tag: gap.tag,
+    tagWhy: gap.why,
+    // 🔑 Marked against the paper's own key entry (v1.76.0). Only believed
+    // while the worksheet HAS a key: a model claiming a key it was never
+    // handed is a card that would tell the student something untrue.
+    keyed: markKeyedOf(r)
   };
+}
+
+/* The tag and the key flag, each through ONE function so the fold, the
+   harness and the item cannot read them three ways. `ConceptTags` missing
+   (a script that did not load) costs the tag and never the marking. */
+function markGapOf(subject, verdict, tag, why) {
+  if (typeof ConceptTags === 'undefined' || !ConceptTags || !ConceptTags.clean) return { tag: '', why: '' };
+  try { return ConceptTags.clean(subject || '', verdict, tag, why); } catch (e) { return { tag: '', why: '' }; }
+}
+function markKeyedOf(r) {
+  if (!r || !(r.keyed === true || r.keyed === 'true')) return false;
+  return !!(typeof wsKey !== 'undefined' && wsKey && Array.isArray(wsKey.rows) && wsKey.rows.length);
 }
 
 /* Fold a batch's rows into the run. The ONE place `continuation` is
@@ -12009,6 +12075,12 @@ function _markFoldRows(rows, pageNums, into, ctx) {
         if (it.verdict) prev.verdict = it.verdict;
         if (it.feedback) prev.feedback = it.feedback;
       }
+      /* 🎯 The tag follows the VERDICT that stands: the half that judged
+         carries its tag over, and a verdict that became "correct" on the
+         half that saw the whole question takes the earlier tag off. */
+      if (it.marked && it.verdict) { prev.tag = it.tag || ''; prev.tagWhy = it.tagWhy || ''; }
+      if (prev.verdict !== 'wrong' && prev.verdict !== 'partial') { prev.tag = ''; prev.tagWhy = ''; }
+      if (it.answer) prev.keyed = !!it.keyed;
       return;
     }
     into.push(it);
@@ -12064,6 +12136,75 @@ function markBlankRule() {
     '"explanation" ONE sentence telling them what to look at to get started, without giving the answer or any ' +
     'part of it. Where they DID write something, mark it and give the correct answer in full as usual: they ' +
     'have done the work and the mark is no use to them otherwise.\n';
+}
+
+/* =====================================================================
+   🔑 KEY-FIRST MARKING (v1.76.0)
+
+   Until this, the marking was handed the paper's own answer key BESIDE a
+   rule that said "work every answer out YOURSELF FIRST, from the printed
+   question alone" — and a model told both of those mostly did the second:
+   it solved the question, marked against its own answer, and glanced at
+   the key afterwards if at all. So a paper with the teacher's own key and
+   marking points on it was marked exactly like a paper with none.
+
+   Where the key answers a question, the key now LEADS. The model finds the
+   entry by number, takes the key's answer as "answer", compares the
+   student's final answer AND working with the key's answer and working
+   (the key's working is the rubric, its marks the allocation), and names
+   the key step that was missed. It says which questions it marked this
+   way ("keyed"), so the card can say so and the teacher can trust it.
+
+   - A QUESTION THE KEY DOES NOT ANSWER is worked out as it always was. The
+     "work it out yourself first" rule still stands for those — this block
+     overrides it ONLY for keyed questions, and says so in as many words.
+   - A DIFFERENT, SOUND METHOD to the key's answer is still right. A key is
+     a rubric, not the only road; a child who reaches the answer by the
+     unitary method on a key that used a model is not wrong.
+   - A MISPRINTED KEY is still the standard (the rule `keyRuleBlock` has
+     always carried) — but the model adds one sentence saying what looks
+     wrong with it, so the teacher sees it instead of a class marked wrong.
+   - THE HELP CEILING IS UNTOUCHED. A blank below the top help level still
+     comes back with a nudge in place of its answer (`markBlankRule` is
+     read AFTER this block and wins for blanks), because a key in hand is
+     never permission to hand the answer to a question nobody attempted.
+   - NO EXTRA CALL. It is text in the system prompt of the one marking call
+     that already runs (`markBatchAsk`), beside the key rows themselves.
+   ===================================================================== */
+function markKeyFirstRule() {
+  if (!wsKey || !Array.isArray(wsKey.rows) || !wsKey.rows.length) return '';
+  return '\nKEY-FIRST MARKING. This paper has its OWN ANSWER KEY (transcribed further below), and for every ' +
+    'question the key answers, the KEY — not your own working — is what you mark against. For those ' +
+    'questions this REPLACES the rule above that tells you to work the answer out yourself first:\n' +
+    '1. Find the key entry for the question by its number, and by its wording where a paper numbers two ' +
+    'sections alike.\n' +
+    '2. "answer" is the KEY\'s answer, written out in full (for a multiple-choice question, the key\'s option and ' +
+    'its wording). Never replace it with an answer of your own.\n' +
+    '3. Compare what the student wrote — the final answer AND every line of their working — with the key\'s ' +
+    'answer and the key\'s working or marking points, step by step. The key\'s working is the RUBRIC: a ' +
+    'different method that reaches the key\'s answer by sound working is still correct, and a right final ' +
+    'answer reached by working that contradicts the key\'s marking points is not full marks.\n' +
+    '4. Marks: where the key gives a mark allocation or lists marking points, use its total and award one mark ' +
+    'for each marking point the student has earned. Otherwise follow the marks rule above.\n' +
+    '5. "feedback" names the key step they missed, or the line where their working leaves the key\'s — "the ' +
+    'key finds one unit first; you divided by the wrong number of units".\n' +
+    '6. "keyed" is true for every question marked against a key entry, and false for a question the key does ' +
+    'not answer, which you work out yourself exactly as before.\n' +
+    '7. Where you are SURE the key itself is misprinted (its own working contradicts its answer, or the answer ' +
+    'cannot fit the question), still mark against the key, and add one sentence at the end of "explanation" ' +
+    'saying what looks wrong with it, so the teacher can check.\n';
+}
+
+/* 🎯 THE CONCEPT TAGS RIDE THE SAME CALL (v1.76.0). The fixed list lives in
+   `concept-tags.js` (byte for byte Ans Key's copy) and goes into the SYSTEM
+   prompt of the marking call that already runs, so every wrong or partly
+   right answer comes back tagged with no call of its own — see 🎯 CONCEPT
+   TAGS in CLAUDE.md. The subject is the WORKSHEET's: an unlevelled paper
+   is offered every subject's list, because the marking works the subject
+   out from the page itself in that case. */
+function markConceptBlock() {
+  if (typeof ConceptTags === 'undefined' || !ConceptTags || !ConceptTags.promptBlock) return '';
+  try { return ConceptTags.promptBlock(wsMeta.subject || ''); } catch (e) { return ''; }
 }
 
 function markProgress(done, total, text) {
@@ -12206,8 +12347,11 @@ async function markBatchAsk(imgs, pageNums, total, carry, how) {
     // notes say what counts as a full-mark one.
     // The syllabus list goes in last, so the report can file every
     // question under the objective it tests — see THE DIAGNOSTIC.
-    system: MARK_SYS + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
-            markSyllabusBlock(wsMeta.subject, wsMeta.level),
+    // 🔑 Key-first (v1.76.0) goes straight after MARK_SYS, so it is read as
+    // the exception to MARK_SYS's "work it out yourself first"; 🎯 the
+    // concept tags go last, beside the syllabus list they are filed with.
+    system: MARK_SYS + markKeyFirstRule() + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
+            markSyllabusBlock(wsMeta.subject, wsMeta.level) + markConceptBlock(),
     maxOutputTokens: MARK_MAX_OUT, temperature: 0.2, json: true, thinkingLevel: how.thinkingLevel || 'high',
     timeoutMs: MARK_CALL_MS, routeTimeoutMs: MARK_ROUTE_MS, keepOnTimeout: true,
     lane: how.lane === 'bg' ? 'bg' : 'fg',
@@ -12219,8 +12363,8 @@ async function markBatchAsk(imgs, pageNums, total, carry, how) {
 /* What the marking was told, as one short string. It is the SAME expression
    `markBatchAsk` sends — the harness pins the two side by side. */
 function markSystemPrompt() {
-  return MARK_SYS + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
-         markSyllabusBlock(wsMeta.subject, wsMeta.level);
+  return MARK_SYS + markKeyFirstRule() + markBlankRule() + aiGrounding('mark') + keyRuleBlock() + tutorMethodRule() +
+         markSyllabusBlock(wsMeta.subject, wsMeta.level) + markConceptBlock();
 }
 
 function premarkHash(s) {
@@ -13288,6 +13432,10 @@ async function runMarking(opts) {
               ' added to your mistake book' +
               (mistPast ? ' — ' + mistPast + ' you skipped past' : '') + '.', 5000);
       }
+      /* 🎯 The worksheet's gaps go to the roster row AFTER the book is
+         filed, so every tagged mistake can carry its mistake-book id (the
+         gap view's link). Fired and forgotten: it never rejects. */
+      if (!stale()) gapSheetSync();
     } finally { _markFiling = false; }
   } catch (e) {
     toast('Marking failed: ' + ((e && e.message) || 'please try again.'), 6000);
@@ -15575,6 +15723,12 @@ async function fileMistakes(opts) {
       // objective too. The ids are the sibling apps' own.
       lo: it.lo || '',
       sylTopic: it.sylTopic || '',
+      /* 🎯 WHAT WENT WRONG, from the fixed list (v1.76.0), and whether it was
+         marked against the paper's own key. A skipped blank carries no tag:
+         nothing was attempted, so there is no slip to name. */
+      tag: skipped ? '' : (it.tag || ''),
+      tagWhy: skipped ? '' : (it.tagWhy || ''),
+      keyed: !!it.keyed,
       blocks: [],
       imagePath: '',
       shot: '',
@@ -15915,6 +16069,12 @@ function mistakeMirrorRow(m) {
     mine: _mkStr(m.studentAnswer, MIST_MIRROR_A),
     ans: _mkStr(m.answer, MIST_MIRROR_A),
     done: !!m.cleared,
+    /* 🎯 The gap it was filed under and the one-line reason (v1.76.0), and
+       the mistake's own id — which is how Ans Key's gap view links each
+       tagged slip back to THIS row and its picture. */
+    tg: _mkStr(m.tag, 32),
+    why: _mkStr(m.tagWhy, 140),
+    id: _mkStr(m.id, 40),
     /* 🖼 The question as a PICTURE — a link, never a path (see above). `sh`
        is which of the three tiers it is, and it is not decoration: a
        whole-PAGE shot has two other questions on it, so a panel that
@@ -16017,6 +16177,88 @@ async function _mistakeMirrorWrite() {
   // Never a reason to interrupt a student. Worth knowing about, and nothing more.
   if (write && write.catch) write.catch(function (e) { console.warn('mistake mirror: not recorded', e); });
   return write;
+}
+
+/* =====================================================================
+   🎯 EVERY TAG IS KEPT — the worksheet's gaps, on the roster row (v1.76.0)
+
+   The mistake book is the student's own and it changes: a question is
+   sorted, deleted, set out again. A record of WHAT KIND of mistake they
+   make, paper after paper, must not change with it — "is the sign error
+   going away?" is a question about last month as much as about today. So
+   each marked worksheet writes ONE entry to
+   `studentProfiles/{uid}.tutorGaps.{worksheetId}`: the worksheet's name,
+   subject and level, WHEN it was marked, how many questions were attempted,
+   and every tagged mistake (tag, question number, one-line reason, verdict,
+   topic, page and its mistake-book id). Built by `ConceptTags.sheetEntry`.
+
+   - IT IS THE ROSTER ROW, FOR THE MIRROR'S REASON. That document is one the
+     student's own device already writes and the teacher already reads, so
+     this needs NO Firestore rules change and NO deploy — the rules live in
+     polymathlc/math and a collection nobody wrote a rule for fails closed,
+     in silence. Ans Key's gap view reads it from the same row.
+   - A RE-MARK REPLACES THE ENTRY, never adds to it. The entry is keyed by
+     the worksheet, so 🔁 Remark all, ✅ Mark remaining and ↻ a page read
+     again each leave ONE entry describing the paper as it now stands — a
+     mistake is never counted twice for being marked twice.
+   - IT IS BOUNDED (`ConceptTags.SHEETS_MAX`). The oldest entries beyond it
+     are deleted in the same write, so a row a student keeps for years never
+     reaches the megabyte at which Firestore refuses the WHOLE write. The
+     keys already there are read ONCE a session (`_gapSeen`), not per paper.
+   - A MERGE, ALWAYS, and never from the teacher's own device — the two
+     rules `_mistakeMirrorWrite` carries, for the same reasons.
+   - IT NEVER REJECTS. Every caller fires and forgets it, and a gap entry
+     that could not be written costs the gap view a paper and never costs
+     the student a mark.
+   ===================================================================== */
+var _gapSeen = null;
+function gapSheetEntry() {
+  if (typeof ConceptTags === 'undefined' || !ConceptTags || !ConceptTags.sheetEntry) return null;
+  var byKey = {};
+  (mistakes || []).forEach(function (m) { if (m && m.key && m.id) byKey[m.key] = m.id; });
+  var docId = currentDocId;
+  var entry = ConceptTags.sheetEntry({
+    ws: docName || '',
+    subject: wsMeta.subject || '',
+    level: wsMeta.level || '',
+    at: marking.runAt || Date.now(),
+    items: marking.items || [],
+    mids: function (it) { return byKey[mistakeKey(docId, it)] || ''; }
+  });
+  return entry && entry.n ? entry : null;
+}
+async function gapSheetSync() {
+  try { return await _gapSheetWrite(); }
+  catch (e) { console.warn('concept tags: not recorded', e); return null; }
+}
+async function _gapSheetWrite() {
+  if (!currentUser || !db || isAdmin(currentUser) || !currentDocId) return null;
+  var entry = gapSheetEntry();
+  if (!entry) return null;
+  var uid = currentUser.uid, docId = currentDocId;
+  var ref = peopleRef(uid);
+  if (!_gapSeen || _gapSeen.uid !== uid) {
+    var map = {};
+    try {
+      var snap = await ref.get();
+      var data = (snap && snap.exists && snap.data()) || {};
+      if (data.tutorGaps && typeof data.tutorGaps === 'object') map = data.tutorGaps;
+    } catch (e) { /* the write still goes; pruning waits for a read that works */ }
+    _gapSeen = { uid: uid, map: map };
+  }
+  if (!currentUser || currentUser.uid !== uid) return null;   // signed out while we read
+  _gapSeen.map[docId] = entry;
+  var gaps = {};
+  gaps[docId] = entry;
+  ConceptTags.pruneIds(_gapSeen.map, ConceptTags.SHEETS_MAX).forEach(function (id) {
+    if (id === docId) return;
+    gaps[id] = firebase.firestore.FieldValue.delete();
+    delete _gapSeen.map[id];
+  });
+  return ref.set({
+    tutorGaps: gaps,
+    tutorGapsAt: firebase.firestore.FieldValue.serverTimestamp()
+  }, { merge: true });
 }
 
 /* 🖼 THE CATCH-UP, so a book filed before the links were kept fills itself
@@ -19705,6 +19947,36 @@ function verdictChip(it) {
   return s;
 }
 
+/* 🎯 THE GAP, ON THE CARD (v1.76.0) — the tag's own words, the one-line
+   reason the marking gave, and what to do about it next time. ONE builder
+   for the marking card and the mistake book, so the two cannot describe
+   the same slip two ways. A tag this build does not know draws nothing. */
+function gapNode(tag, why, onPick) {
+  if (!tag || typeof ConceptTags === 'undefined' || !ConceptTags.isTag(tag)) return null;
+  var box = document.createElement('div');
+  box.className = 'gapBox';
+  var top = document.createElement(onPick ? 'button' : 'div');
+  top.className = 'gapTag';
+  if (onPick) {
+    top.type = 'button';
+    top.title = 'Show every mistake with this gap';
+    top.addEventListener('click', onPick);
+  }
+  top.textContent = '🧩 ' + ConceptTags.label(tag);
+  box.appendChild(top);
+  if (why) {
+    var w = document.createElement('div');
+    w.className = 'gapWhy';
+    w.textContent = why;
+    box.appendChild(w);
+  }
+  var f = document.createElement('div');
+  f.className = 'gapFix';
+  f.textContent = 'Next time: ' + ConceptTags.fix(tag);
+  box.appendChild(f);
+  return box;
+}
+
 function markCard(it) {
   var card = document.createElement('div');
   card.className = 'ansCard' + (it.marked ? ' marked' : '') +
@@ -19737,6 +20009,16 @@ function markCard(it) {
     mk.title = it.marked ? 'What you earned' : 'What this question is worth';
     head.appendChild(mk);
   }
+  /* 🔑 SAID ON THE CARD (v1.76.0): a mark given against the teacher's own
+     key is a mark the student can trust in a way a model's own working is
+     not, and a card that did not say which is a card they cannot weigh. */
+  if (it.marked && it.keyed) {
+    var ky = document.createElement('span');
+    ky.className = 'ansKeyed';
+    ky.textContent = '🔑 Key';
+    ky.title = 'Marked against the answer key that came with this paper';
+    head.appendChild(ky);
+  }
   card.appendChild(head);
 
   if (it.topic) {
@@ -19756,6 +20038,8 @@ function markCard(it) {
   if (it.marked) {
     card.appendChild(boxNode('What you wrote', it.studentAnswer, 'youBox'));
     if (it.feedback) card.appendChild(boxNode(aiEngineName() + ' says', it.feedback, 'whyBox', true));
+    var gapN = gapNode(it.tag, it.tagWhy);
+    if (gapN) card.appendChild(gapN);
   }
   if (it.answer) card.appendChild(boxNode('The answer', it.answer, 'ansBox'));
   // A blank question below the top help level comes back with a nudge where
@@ -20370,6 +20654,10 @@ function renderMistFilters() {
   var filters = $('mistFilters');
   if (!filters) return;
   filters.innerHTML = '';
+  /* 🎯 YOUR TOP GAPS come first (v1.76.0): the book read as "what do I keep
+     getting wrong", with one press to practise exactly that. */
+  var strip = gapStripNode();
+  if (strip) filters.appendChild(strip);
   var statusRow = document.createElement('div');
   statusRow.className = 'mistChipRow';
   [['open', 'Still to redo'], ['done', 'Sorted'], ['all', 'Everything']].forEach(function (f) {
@@ -20421,6 +20709,12 @@ function renderMistFilters() {
     mistSelect(pickRow, '🎯 Learning objective', mistLo,
       [{ key: 'all', label: 'Every objective', n: null }].concat(los),
       function (v) { mistLo = v; renderMistakes(); });
+  }
+  var gapsF = mistGapFacet();
+  if (gapsF.length > 1 || (gapsF.length === 1 && gapsF[0].key !== MIST_NO_GAP && mistGap !== 'all')) {
+    mistSelect(pickRow, '🧩 Gap', mistGap,
+      [{ key: 'all', label: 'Every gap', n: null }].concat(gapsF),
+      function (v) { mistGap = v; renderMistakes(); });
   }
 
   var sw = document.createElement('label');
@@ -20793,6 +21087,8 @@ function mistakeCard(m) {
   }
   if (m.studentAnswer) body.appendChild(boxNode('What you wrote', m.studentAnswer, 'youBox'));
   if (m.feedback) body.appendChild(boxNode('Chung GPT says', m.feedback, 'whyBox'));
+  var mGap = gapNode(m.tag, m.tagWhy, function () { mistFilterGap(m.tag); });
+  if (mGap) body.appendChild(mGap);
   if (m.answer) body.appendChild(boxNode('The answer', m.answer, 'ansBox'));
   /* A blank below the top help level came back with a place to START where
      its answer would be (`markBlankRule`), so "Why" would be a heading over
@@ -20918,6 +21214,9 @@ var mistFilter = 'open';          // the status chips — the name the rest of t
 var mistSubject = 'all';
 var mistTopic = 'all';
 var mistLo = 'all';
+/* 🎯 The gap picker (v1.76.0): a concept tag id, or 'all'. */
+var mistGap = 'all';
+var MIST_NO_GAP = '~nogap';
 var mistQuery = '';
 
 /* 🕒 HOW THE BOOK IS ORDERED — and it is a SORT, never a filter.
@@ -21007,7 +21306,9 @@ function mistHaystack(m) {
     /* So "skipped" FINDS them. A skipped card carries no answer of its own
        and no feedback, so it is the one kind of card with almost nothing to
        be searched by. */
-    mistSkipped(m) ? 'skipped blank went past not attempted' : ''
+    mistSkipped(m) ? 'skipped blank went past not attempted' : '',
+    /* 🎯 …and "units" or "sign" finds the cards filed under that gap. */
+    (m.tag && typeof ConceptTags !== 'undefined') ? ConceptTags.label(m.tag) + ' ' + (m.tagWhy || '') : ''
   ];
   mistakeBlocks(m).forEach(function (b) { if (b.type === 'text') bits.push(b.text); });
   mistakeOptions(m).forEach(function (o) { bits.push(o.label); bits.push(o.text); });
@@ -21041,6 +21342,8 @@ function mistMatches(m, terms, upTo) {
   if (mistTopic !== 'all' && mistTopicKey(m) !== mistTopic) return false;
   if (stage === 'lo') return true;
   if (mistLo !== 'all' && (mistPlace(m).lo || MIST_NO_TOPIC) !== mistLo) return false;
+  if (stage === 'gap') return true;
+  if (mistGap !== 'all' && (m.tag || MIST_NO_GAP) !== mistGap) return false;
   return mistSearchHit(m, terms || mistSearchTerms());
 }
 
@@ -21142,6 +21445,19 @@ function mistTopicFacet() {
   return mistFacet('topic', mistTopicKey, mistTopicLabel)
     .sort(function (a, b) { return a.label.toLowerCase() < b.label.toLowerCase() ? -1 : 1; });
 }
+/* 🎯 THE GAPS ON OFFER, counted against every filter above them — the most
+   common first, because "what do I keep getting wrong?" is what the picker
+   is opened to ask. A card with no tag (filed before v1.76.0, or skipped)
+   is its own row, last. */
+function mistGapFacet() {
+  return mistFacet('gap', function (m) { return m.tag || MIST_NO_GAP; }, function (m) {
+    return (m.tag && typeof ConceptTags !== 'undefined' && ConceptTags.label(m.tag)) || 'No gap recorded';
+  }).sort(function (a, b) {
+    if (a.key === MIST_NO_GAP) return 1;
+    if (b.key === MIST_NO_GAP) return -1;
+    return b.n - a.n || (a.label < b.label ? -1 : 1);
+  });
+}
 function mistLoFacet() {
   return mistFacet('lo', function (m) { return mistPlace(m).lo || MIST_NO_TOPIC; },
     function (m) {
@@ -21162,13 +21478,97 @@ function mistPruneFilters() {
   if (mistSubject !== 'all' && !mistSubjectFacet().some(function (f) { return f.key === mistSubject; })) mistSubject = 'all';
   if (mistTopic !== 'all' && !mistTopicFacet().some(function (f) { return f.key === mistTopic; })) mistTopic = 'all';
   if (mistLo !== 'all' && !mistLoFacet().some(function (f) { return f.key === mistLo; })) mistLo = 'all';
+  if (mistGap !== 'all' && !mistGapFacet().some(function (f) { return f.key === mistGap; })) mistGap = 'all';
 }
 function mistFiltered() {
-  return mistSubject !== 'all' || mistTopic !== 'all' || mistLo !== 'all' || !!mistSearchTerms().length;
+  return mistSubject !== 'all' || mistTopic !== 'all' || mistLo !== 'all' || mistGap !== 'all' || !!mistSearchTerms().length;
 }
 function mistClearFilters() {
-  mistSubject = 'all'; mistTopic = 'all'; mistLo = 'all'; mistQuery = '';
+  mistSubject = 'all'; mistTopic = 'all'; mistLo = 'all'; mistGap = 'all'; mistQuery = '';
   renderMistakes();
+}
+/* Tapping the gap ON a card shows every card with that gap, across every
+   subject and topic — a sign error in fractions and one in ratio are the
+   same habit, and seeing them side by side is the lesson. */
+function mistFilterGap(key) {
+  mistSubject = 'all'; mistTopic = 'all'; mistLo = 'all'; mistGap = key || 'all';
+  if (mistFilter === 'done') mistFilter = 'open';
+  renderMistakes();
+}
+
+/* =====================================================================
+   🎯 THE BOOK AIMS AT THE REAL GAP (v1.76.0)
+
+   `gapRowsOf` turns the book already in memory into the rows
+   `ConceptTags.fromMistakes` ranks — no read of its own, no call. Three
+   things read it: the strip at the top of the book (your top gaps, each
+   with ▶ Practise this gap), a practice session (which tells the retry's
+   marker and the student which slip to watch for), and every hint (which
+   is told the student's top gaps in the worksheet's subject, so a nudge
+   lands on the slip they really make).
+   ===================================================================== */
+var GAP_STRIP_MAX = 3;
+function gapRowsOf(list) {
+  return (list || []).filter(function (m) { return m && m.tag; }).map(function (m) {
+    return { id: m.id, tag: m.tag, why: m.tagWhy || '', subject: m.subject || '',
+             cleared: !!m.cleared, at: stampOf(m.createdAt) || 0 };
+  });
+}
+function gapTop(subject, limit) {
+  if (typeof ConceptTags === 'undefined' || !ConceptTags.fromMistakes) return [];
+  try {
+    return ConceptTags.fromMistakes(gapRowsOf(mistakes), { subject: subject || '', limit: limit || GAP_STRIP_MAX });
+  } catch (e) { return []; }
+}
+function gapStripNode() {
+  var top = gapTop(mistSubject !== 'all' && mistSubject !== MIST_NO_SUBJECT ? mistSubject : '', GAP_STRIP_MAX)
+    .filter(function (g) { return g.open > 0; });
+  if (!top.length) return null;
+  var box = document.createElement('div');
+  box.className = 'gapStrip';
+  var h = document.createElement('h4');
+  h.textContent = '🧩 Your top gaps — the slips you make most often';
+  box.appendChild(h);
+  var row = document.createElement('div');
+  row.className = 'gapStripRow';
+  top.forEach(function (g) {
+    var pill = document.createElement('div');
+    pill.className = 'gapPill';
+    var b = document.createElement('b');
+    b.textContent = g.label;
+    pill.appendChild(b);
+    var n = document.createElement('span');
+    n.className = 'dim';
+    n.textContent = g.n + ' time' + (g.n === 1 ? '' : 's') + ' · ' + g.open + ' to redo';
+    pill.appendChild(n);
+    var show = document.createElement('button');
+    show.type = 'button';
+    show.className = 'btn btnSm';
+    show.textContent = 'Show';
+    show.addEventListener('click', function () { mistFilterGap(g.tag); });
+    pill.appendChild(show);
+    var go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'btn btnSm btnPrimary';
+    go.textContent = '▶ Practise this gap';
+    go.title = g.fix;
+    go.addEventListener('click', function () { pracStart(g.ids.slice(0, PRAC_GAP_MAX), { gap: g.tag }); });
+    pill.appendChild(go);
+    row.appendChild(pill);
+  });
+  box.appendChild(row);
+  return box;
+}
+/* A gap session is the questions still to redo under that gap, newest
+   first (the order `loadMistakes` returns), at most this many at a time. */
+var PRAC_GAP_MAX = 8;
+
+/* THE HINT'S LINE. The student's own top gaps in THIS worksheet's subject,
+   from their own book — and nothing at all for a student with no tagged
+   mistakes yet, so a first paper's hints are exactly what they were. */
+function gapHintBlock() {
+  if (typeof ConceptTags === 'undefined' || !ConceptTags.hintBlock) return '';
+  try { return ConceptTags.hintBlock(gapTop(wsMeta.subject || '', 3)); } catch (e) { return ''; }
 }
 /* Tapping a topic or an objective ON a card filters to it — the fastest
    way to ask "what else did I get wrong on this?", and the reason the
@@ -21205,10 +21605,12 @@ function pracSelectAll(on) {
 function mistakeById(id) { return mistakes.find(function (m) { return m.id === id; }) || null; }
 
 /* ---- The session ---- */
-function pracStart(ids) {
+function pracStart(ids, opts) {
   ids = (ids || []).filter(function (id) { return !!mistakeById(id); });
   if (!ids.length) { toast('Pick at least one question to practise.'); return; }
-  prac = { ids: ids, i: 0, done: 0, right: 0, busy: false, revealed: false, result: null, typed: '' };
+  prac = { ids: ids, i: 0, done: 0, right: 0, busy: false, revealed: false, result: null, typed: '',
+           // 🎯 a session started from ▶ Practise this gap names the gap it is for
+           gap: (opts && opts.gap) || '' };
   $('pracModal').classList.add('open');
   pracRender();
 }
@@ -21241,6 +21643,26 @@ var PRAC_SYS =
   'refer to a previous try, and say what they have got right NOW. Never be ' +
   'unkind and never be vague. Plain text only — no markdown, no bullets, no line breaks.';
 
+function pracGapNode(m, after) {
+  if (!m || !m.tag || typeof ConceptTags === 'undefined' || !ConceptTags.isTag(m.tag)) return null;
+  if (after) {
+    var n = gapNode(m.tag, m.tagWhy);
+    if (n) n.classList.add('pracGap');
+    return n;
+  }
+  var box = document.createElement('div');
+  box.className = 'gapBox pracGap';
+  var t = document.createElement('div');
+  t.className = 'gapTag';
+  t.textContent = '🧩 Watch for: ' + ConceptTags.label(m.tag);
+  box.appendChild(t);
+  var f = document.createElement('div');
+  f.className = 'gapFix';
+  f.textContent = ConceptTags.fix(m.tag);
+  box.appendChild(f);
+  return box;
+}
+
 async function pracCheck() {
   if (!prac || prac.busy) return;
   var m = pracCurrent();
@@ -21271,6 +21693,13 @@ async function pracCheck() {
        child who left it blank is praise for something that never happened,
        and it tells them the app has not noticed. */
     else if (mistSkipped(m)) lines.push('They LEFT THIS QUESTION BLANK the first time — they did not attempt it at all.');
+    /* 🎯 THE GAP IT WAS FILED UNDER (v1.76.0), so the feedback says whether
+       they have beaten THAT slip — which is what the session is for. */
+    if (m.tag && typeof ConceptTags !== 'undefined' && ConceptTags.isTag(m.tag)) {
+      lines.push('The gap this question was filed under: ' + ConceptTags.label(m.tag) +
+        (m.tagWhy ? ' — last time: ' + m.tagWhy : '') +
+        '. In the feedback, say plainly whether they have avoided that slip this time.');
+    }
     lines.push('What they have written NOW: ' + mine);
     var raw = await window.askGemini(lines.join('\n'), {
       system: PRAC_SYS + aiGrounding('mark', { context: m, q: m.question }) + tutorMethodRule(),
@@ -21362,6 +21791,13 @@ function pracRender(finished) {
 
   // The same question the card shows and the sheet prints — one renderer.
   questionNodes(m, 'prac').forEach(function (n) { body.appendChild(n); });
+
+  /* 🎯 THE NUDGE AIMED AT THE GAP (v1.76.0). Before they answer, the slip
+     this question was filed under — its name and what to do about it, NEVER
+     the answer or the reason it was wrong last time (that would be the
+     answer, near enough). After they answer, the reason comes too. */
+  var watch = pracGapNode(m, !!prac.revealed);
+  if (watch) body.appendChild(watch);
 
   var lab = document.createElement('div');
   lab.className = 'boxLabel';
