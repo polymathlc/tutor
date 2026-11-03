@@ -3183,7 +3183,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.75.0';
+var APP_VERSION = 'v1.75.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -24961,6 +24961,23 @@ function setWsTitle(name) {
   return docName;
 }
 
+/* 🔬 A SCIENCE-PORTAL PAGE PHOTOGRAPHED BEFORE ITS EXPORT FIX (v1.75.1).
+   A worksheet the Science portal (polymathlc/cer) sends here is a PDF of
+   PHOTOGRAPHS of its pages, taken once, when it is sent. Up to cer v1.451.2
+   that photograph drew every line of text an ascent too high (MCQ options on
+   their boxes' top edge), painted grey radio circles, and squeezed a long
+   question onto one A4 with "Pages 3–4 of 13" printed over an answer box.
+   cer v1.451.3 (live 2026-11-03 17:11 UTC) fixed the camera — but a PDF made
+   before then still holds the old pictures, and nothing here can redraw them.
+   So such a worksheet says so when it is opened, and says what fixes it:
+   sending it again from the Science portal. */
+var CER_PHOTO_FIX_AT = Date.UTC(2026, 10, 3, 17, 11, 23);
+function cerPhotoIsOld(w) {
+  if (!w || w.source !== 'cer') return false;
+  var made = stampOf(w.createdAt);
+  return !!made && made < CER_PHOTO_FIX_AT;
+}
+var CER_PHOTO_OLD_MSG = 'These pages were photographed by the Science portal before its 3 Nov fix, so some text may sit high in its boxes. Send the worksheet to Study Buddy again from the Science portal for clean pages.';
 async function openWorksheet(id) {
   var w = worksheets.find(function (x) { return x.id === id; });
   // Silence here was the whole of "nothing happens": a copy filtered out of
@@ -25036,6 +25053,8 @@ async function openWorksheet(id) {
     // 🎬 Its video solutions — and, on a copy, the teacher's list followed live.
     lessonVideosOpen(w);
     if (window.innerWidth > 900) openBuddy('hints'); else closeBuddy();
+    // 🔬 An old Science-portal photograph says so — after the "Opening…" toast has had its turn.
+    if (cerPhotoIsOld(w)) setTimeout(function () { if (currentDocId === id) toast(CER_PHOTO_OLD_MSG, 14000); }, 1800);
     // 🕒 WHEN IT WAS LAST OPENED, for the recently-opened shelf. `updatedAt`
     // already means “last worked on” for anything that has been written on,
     // because every auto-save writes it — this is what adds the paper that
