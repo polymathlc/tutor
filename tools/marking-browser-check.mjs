@@ -131,6 +131,18 @@ async function openWorksheet(viewport) {
       await new Promise(r => setTimeout(r, 120 + num * 30));
       window.__inFlight--;
       if (window.__unreadable[num]) throw new Error('route refused');
+      // 🔁 / ✅ v1.75.0: once the student has written the second answers,
+      // the model marks them — and would mark page 1's first one RIGHT now.
+      const later = !!(window.__later && window.__later[num]);
+      if (later) return JSON.stringify({ questions: [
+        { continuation: false, number: String(num * 10), page: 1, type: 'open',
+          question: 'Combine the sentences on page ' + num + '.', answer: 'Since it was raining, we stayed at home.',
+          explanation: 'Since gives the reason.', studentAnswer: 'Since it was raining, we stayed at home.',
+          verdict: 'correct', marks: '1/1', at: [150, 700], feedback: 'Well done.', topic: 'Synthesis', lo: '', objective: '' },
+        { continuation: false, number: String(num * 10 + 1), page: 1, type: 'open',
+          question: 'A second question on page ' + num + '.', answer: 'b', explanation: 'b.', studentAnswer: 'b',
+          verdict: 'correct', marks: '1/1', at: [400, 700], feedback: 'Good.', topic: 'Synthesis', lo: '', objective: '' }
+      ] });
       return JSON.stringify({ questions: [
         { continuation: false, number: String(num * 10), page: 1, type: 'open',
           question: 'Combine the sentences on page ' + num + '.', answer: 'Since it was raining, we stayed at home.',
@@ -278,6 +290,72 @@ await page.evaluate(() => { window.__asks = []; document.querySelectorAll('.mark
 await page.waitForFunction(() => !marking.running && !_markFiling, null, { timeout: 30000 });
 const tapped = await page.evaluate(() => window.__asks.map(a => a.num));
 ok('tapping page 4 reads page 4, and only page 4', tapped.join() === '4', tapped.join());
+console.log('\n🔁 / ✅ Mark it again: remark all, or mark what is left');
+const verdicts = () => page.evaluate(() => marking.items.map(it => it.number + ':' + (it.marked ? it.verdict : 'blank')));
+const startV = await verdicts();
+ok('the paper starts with the second question on every page blank',
+   startV.join() === '10:wrong,11:blank,20:correct,21:blank,30:wrong,31:blank,40:wrong,41:blank', startV.join());
+await page.evaluate(() => {
+  window.__asks = [];
+  [...document.querySelectorAll('#buddyFoot button')].find(b => /Mark it again/.test(b.textContent)).click();
+});
+const card = await page.evaluate(() => {
+  const box = document.querySelector('#buddyFoot .markChoice');
+  const btns = box ? [...box.querySelectorAll('.markChoiceBtn')] : [];
+  return {
+    shown: !!box,
+    head: box ? box.querySelector('.markChoiceHead').textContent : '',
+    titles: btns.map(b => b.querySelector('.mcTitle').textContent),
+    subs: btns.map(b => b.querySelector('.mcSub').textContent),
+    disabled: btns.map(b => b.disabled),
+    focused: document.activeElement && document.activeElement.classList.contains('markChoiceBtn')
+      ? document.activeElement.querySelector('.mcTitle').textContent : '',
+    asks: window.__asks.length,
+    fits: box ? box.getBoundingClientRect().right <= document.getElementById('buddyFoot').getBoundingClientRect().right + 1 : false
+  };
+});
+ok('✅ Mark it again on a marked paper ASKS first, and marks nothing yet', card.shown && card.asks === 0, JSON.stringify(card));
+ok('…offering Mark remaining questions first, then Remark all questions',
+   card.titles.join('|') === 'Mark remaining questions|Remark all questions', card.titles.join('|'));
+ok('…each saying what it does, in numbers', /Keeps your 4 marked questions/.test(card.subs[0]) && /4 questions not marked yet/.test(card.subs[0]) &&
+   /Throws away the 4 marks/.test(card.subs[1]) && /all 4 pages/.test(card.subs[1]), card.subs.join(' | '));
+ok('…with the safe choice focused', card.focused === 'Mark remaining questions', card.focused);
+ok('…inside the foot', card.fits);
+if (SHOTS) await page.locator('#buddyFoot').screenshot({ path: path.join(SHOTS, 'ipad-mark-again-choice.png') });
+await page.keyboard.press('Escape');
+ok('Escape puts the button back without marking', await page.evaluate(() =>
+  !document.querySelector('#buddyFoot .markChoice') && [...document.querySelectorAll('#buddyFoot button')].some(b => /Mark it again/.test(b.textContent)) && window.__asks.length === 0));
+
+// The student writes the missing answers on pages 1 and 3 only.
+await page.evaluate(() => {
+  window.__later = { 1: true, 3: true };
+  annotations.push({ id: 'rest1', page: 1, type: 'pen', color: '#0d47a1', width: 3, points: [{ x: 80, y: 520 }, { x: 300, y: 530 }] });
+  annotations.push({ id: 'rest3', page: 3, type: 'pen', color: '#0d47a1', width: 3, points: [{ x: 80, y: 520 }, { x: 300, y: 530 }] });
+  renderAllOverlays();
+  window.__asks = [];
+  [...document.querySelectorAll('#buddyFoot button')].find(b => /Mark it again/.test(b.textContent)).click();
+  [...document.querySelectorAll('#buddyFoot .markChoiceBtn')].find(b => /Mark remaining/.test(b.textContent)).click();
+});
+await page.waitForFunction(() => !marking.running && !_markFiling, null, { timeout: 30000 });
+const rest = await page.evaluate(() => ({ asks: window.__asks.map(a => a.num).sort(), card: !!document.querySelector('#buddyFoot .markChoice') }));
+const restV = await verdicts();
+ok('✅ Mark remaining reads only the pages whose ink changed — the others come from what was read', rest.asks.join() === '1,3', rest.asks.join());
+ok('…marks the new answers and KEEPS the earlier marks, even where the model would now say otherwise',
+   restV.join() === '10:wrong,11:correct,20:correct,21:blank,30:wrong,31:correct,40:wrong,41:blank', restV.join());
+ok('…and the choice card has gone', !rest.card);
+
+await page.evaluate(() => {
+  window.__asks = [];
+  [...document.querySelectorAll('#buddyFoot button')].find(b => /Mark it again/.test(b.textContent)).click();
+  [...document.querySelectorAll('#buddyFoot .markChoiceBtn')].find(b => /Remark all/.test(b.textContent)).click();
+});
+await page.waitForFunction(() => !marking.running && !_markFiling, null, { timeout: 30000 });
+const allAsks = await page.evaluate(() => window.__asks.map(a => a.num).sort());
+const allV = await verdicts();
+ok('🔁 Remark all reads every page afresh, nothing from the cache', allAsks.join() === '1,2,3,4', allAsks.join());
+ok('…and the earlier marks give way to the new reading',
+   allV.join() === '10:correct,11:correct,20:correct,21:blank,30:correct,31:correct,40:wrong,41:blank', allV.join());
+
 ok('no error was thrown on the iPad', ipad.errors.length === 0, ipad.errors.join('\n      '));
 await ipad.ctx.close();
 
@@ -310,6 +388,20 @@ if (SHOTS) {
   await phone.page.screenshot({ path: path.join(SHOTS, 'phone-unread.png') });
   await phone.page.locator('.markPages').screenshot({ path: path.join(SHOTS, 'phone-strip.png') });
 }
+await phone.page.evaluate(() => {
+  window.__unreadable = {};
+  [...document.querySelectorAll('#buddyFoot button')].find(b => /Mark it again/.test(b.textContent)).click();
+});
+const phoneCard = await phone.page.evaluate(() => {
+  const box = document.querySelector('#buddyFoot .markChoice');
+  if (!box) return null;
+  const r = box.getBoundingClientRect();
+  return { right: r.right, w: window.innerWidth, btns: [...box.querySelectorAll('.markChoiceBtn')].map(b => b.getBoundingClientRect().height),
+           sideways: document.documentElement.scrollWidth <= window.innerWidth + 1 };
+});
+ok('on a phone the choice card fits, with buttons big enough for a thumb',
+   !!phoneCard && phoneCard.right <= phoneCard.w + 1 && phoneCard.btns.every(h => h >= 44) && phoneCard.sideways, JSON.stringify(phoneCard));
+if (SHOTS) await phone.page.locator('#buddyFoot').screenshot({ path: path.join(SHOTS, 'phone-mark-again-choice.png') });
 ok('no error was thrown on the phone', phone.errors.length === 0, phone.errors.join('\n      '));
 await phone.ctx.close();
 

@@ -17,6 +17,22 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.75.0 — 🔁 Remark all, or ✅ mark only the questions that are left
+
+Mark part of a worksheet, come back later, do the rest, and press **✅ Mark it again**. On a paper
+that already has marks, Chung GPT now asks what you mean:
+
+- **✅ Mark remaining questions** keeps every question that is already marked exactly as it was and
+  marks the rest: the questions that were blank, pages that could not be read, and pages with nothing
+  marked on them yet. Only those pages are read (an unchanged page comes back from what was already
+  read), and only the newly marked questions count towards your progress.
+- **🔁 Remark all questions** throws the earlier marks away and reads every page again from the
+  start, nothing reused. Use it after changing answers that were already marked.
+
+The card says how many questions each choice covers. Cancel or Escape goes back without marking.
+When every question is already marked, Mark remaining is greyed out and Remark all is the
+highlighted choice. Tapping a single page under “Pages read” still reads just that page again.
+
 ## v1.74.0 — ✂️ Ask Chung GPT about one part of the page
 
 Press **✂️ Ask about this** on the toolbar (or ✂️ beside the 💬 Ask box) and drag a box around the

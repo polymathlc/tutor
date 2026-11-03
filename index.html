@@ -928,6 +928,20 @@
      onto two rows rather than squeezing "Mark it again" onto two lines
      inside a button that is too narrow for it. */
   .footRow .btn { flex: 1 1 140px; min-width: 0; }
+  /* 🔁 / ✅ Mark it again: which kind (v1.75.0). Two full-width choices,
+     each a title and one line of what it does, then a quiet Cancel. */
+  .markChoice { display: flex; flex-direction: column; gap: 8px; }
+  .markChoiceHead { font-size: 0.85rem; font-weight: 700; color: var(--ink); }
+  .markChoice .markChoiceBtn {
+    display: flex; align-items: flex-start; gap: 10px; width: 100%;
+    text-align: left; white-space: normal; padding: 10px 12px; line-height: 1.35;
+  }
+  .markChoice .markChoiceBtn[disabled] { opacity: 0.55; cursor: not-allowed; }
+  .markChoice .mcIcon { font-size: 1.1rem; line-height: 1.2; flex: 0 0 auto; }
+  .markChoice .mcText { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .markChoice .mcTitle { font-weight: 700; }
+  .markChoice .mcSub { font-size: 0.76rem; font-weight: 400; opacity: 0.85; overflow-wrap: anywhere; }
+  .markChoice .markChoiceCancel { align-self: center; }
   .buddyNudge {
     font-size: 0.8rem; color: var(--ink-soft); background: var(--bg-soft);
     border: 1px solid var(--line); border-radius: var(--radius-sm);
@@ -3169,7 +3183,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.74.0';
+var APP_VERSION = 'v1.75.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -12580,6 +12594,122 @@ function markDedupe(items) {
   return out;
 }
 
+/* =====================================================================
+   🔁 REMARK ALL, OR ✅ MARK WHAT IS LEFT (v1.75.0)
+
+   A student marks the half of the paper they have done, goes away, does the
+   rest, and presses ✅ Mark it again. Two different things can be meant, so
+   the foot asks (`markAgainPressed` → `markChoiceNode`):
+
+   - 🔁 REMARK ALL QUESTIONS — `runMarking({ mode: 'all' })`: the earlier
+     marks are thrown away and EVERY page is read afresh, none from the
+     cache. For "I think the marking was wrong" and "start the score again".
+   - ✅ MARK REMAINING QUESTIONS — `runMarking({ mode: 'remaining' })`: only
+     the pages that still need it are read, and a question that was already
+     marked keeps its mark EXACTLY as it was, even when the page it is on is
+     read again for the blank question beside it.
+
+   The helpers are plain functions of the marking so the harness drives them
+   with no screen:
+
+   - `markRemainingPages(items, unread, order)` — the pages to read: a page
+     with a question not marked yet (`!it.marked`, every page it spans), a
+     page that could not be read, and a page with no question on it at all
+     (a page added since, or one the last run found nothing on). In paper
+     order. Empty means there is nothing left to mark.
+   - `markKeepSameQ(a, b)` — the same question for keeping a mark: what
+     `markSameQuestion` says, OR the same printed number starting on the same
+     page (the wording of one question can come back differently on two
+     reads; its number and page do not).
+   - `markKeepMarked(items, before)` — every question in `items` that was
+     MARKED in `before` is swapped back for a copy of that earlier marked
+     question; an earlier marked question the new reading did not list at
+     all is put back in paper order. A promise of "your marks are kept"
+     must not depend on the model listing the question a second time.
+   - `markNewlyMarked(items, before)` — the marked questions that were not
+     marked before: the only ones a second sitting counts.
+   ===================================================================== */
+var markChoiceOpen = false;
+var markChoiceEpoch = -1;
+
+function markRemainingPages(items, unread, order) {
+  order = (order || []).map(Number);
+  var want = {}, has = {};
+  (items || []).forEach(function (it) {
+    if (!it) return;
+    var a = order.indexOf(Number(it.page));
+    var b = order.indexOf(Number(it.endPage || it.page));
+    if (a < 0) return;
+    if (b < a) b = a;
+    for (var i = a; i <= b; i++) {
+      has[order[i]] = 1;
+      if (!it.marked) want[order[i]] = 1;
+    }
+  });
+  (unread || []).forEach(function (n) { want[Number(n)] = 1; });
+  order.forEach(function (n) { if (!has[n]) want[n] = 1; });
+  return order.filter(function (n) { return want[n]; });
+}
+
+function markKeepSameQ(a, b) {
+  if (!a || !b) return false;
+  if (markSameQuestion(a, b)) return true;
+  var na = markQText(a.number), nb = markQText(b.number);
+  return !!na && na === nb && Number(a.page) === Number(b.page);
+}
+
+function markKeepMarked(items, before) {
+  var olds = (before || []).filter(function (it) { return it && it.marked; });
+  if (!olds.length) return items || [];
+  var placed = olds.map(function () { return null; });
+  var out = (items || []).map(function (it) {
+    if (!it) return it;
+    for (var i = 0; i < olds.length; i++) {
+      if (!placed[i] && markKeepSameQ(olds[i], it)) {
+        placed[i] = markItemCopy(olds[i]);
+        return placed[i];
+      }
+    }
+    return it;
+  });
+  /* A marked question the reading left out goes back where it WAS: after
+     the earlier marked question before it, else before the one after it,
+     else by its page. */
+  olds.forEach(function (o, i) {
+    if (placed[i]) return;
+    var copy = markItemCopy(o);
+    var at = -1, j;
+    for (j = i - 1; j >= 0 && at < 0; j--) if (placed[j]) at = out.indexOf(placed[j]) + 1;
+    for (j = i + 1; j < olds.length && at < 0; j++) if (placed[j]) at = out.indexOf(placed[j]);
+    if (at < 0) {
+      var page = Number(o.page) || 0;
+      at = out.length;
+      for (var k = 0; k < out.length; k++) {
+        if (out[k] && (Number(out[k].page) || 0) > page) { at = k; break; }
+      }
+    }
+    out.splice(at, 0, copy);
+    placed[i] = copy;
+  });
+  return markDedupe(out.filter(Boolean));
+}
+
+function markNewlyMarked(items, before) {
+  var olds = (before || []).filter(function (it) { return it && it.marked; });
+  return (items || []).filter(function (it) {
+    return it && it.marked && !olds.some(function (o) { return markKeepSameQ(o, it); });
+  });
+}
+
+/* What is waiting to be marked, in words, for the card: the questions not
+   marked yet and the pages that could not be read. */
+function markRemainingCount() {
+  var blank = (marking.items || []).filter(function (it) { return it && !it.marked; }).length;
+  var unread = typeof markUnreadPages === 'function' ? markUnreadPages().length : (marking.unread || []).length;
+  return { blank: blank, unread: unread,
+           marked: (marking.items || []).filter(function (it) { return it && it.marked; }).length };
+}
+
 function markAssemble(order, got, kept, ctx, how) {
   got = got || {};
   kept = kept || {};
@@ -12909,6 +13039,33 @@ async function runMarking(opts) {
      again even if nothing on them has changed (📄 tapping a page). */
   var only = (opts && Array.isArray(opts.only) && opts.only.length) ? opts.only.slice() : null;
   var fresh = !!(opts && opts.fresh === true);
+  /* 🔁 / ✅ THE TWO WAYS TO MARK A PAPER AGAIN (v1.75.0), chosen on the
+     card `markAgainPressed` puts in the foot:
+     - `mode: 'all'` REMARKS EVERY QUESTION: the earlier marks are thrown
+       away and every page is read afresh — nothing comes from the cache.
+     - `mode: 'remaining'` MARKS ONLY WHAT IS LEFT: the pages that still have
+       a question not marked, a page that could not be read, or no questions
+       at all yet are read (`markRemainingPages`), and every question that
+       was ALREADY marked keeps its mark as it was (`markKeepMarked`). Only
+       the questions marked for the first time count in usage and the
+       adventure.
+     A plain call (the harness, an old door) is the run it always was. */
+  var mode = opts && (opts.mode === 'all' || opts.mode === 'remaining') ? opts.mode : '';
+  markChoiceOpen = false;
+  var remarkAll = mode === 'all' && !only;
+  var keepMarks = mode === 'remaining';
+  if (keepMarks && !only) {
+    if (!pages.length) { toast('Open a worksheet first.'); return; }
+    var left = markRemainingPages(marking.items, marking.unread, studentPages().map(function (p) { return p.num; }));
+    if (!left.length) {
+      toast('Every question on this paper is already marked. Choose 🔁 Remark all questions to mark it from the start, ' +
+            'or tap a page under “Pages read” to read just that page again.', 6500);
+      if (typeof renderBuddyFoot === 'function') renderBuddyFoot();
+      return;
+    }
+    only = left;
+  }
+  var keepFrom = keepMarks ? (marking.items || []).slice() : [];
   var adventureContext = typeof StudyAdventure !== 'undefined' ? StudyAdventure.capture(wsMeta.subject) : null;
   if (!pages.length) { toast('Open a worksheet first.'); return; }
   if (marking.running || _markFiling) { toast(_markFiling ? 'Your marks are ready. The mistake book is still saving…' : 'Chung GPT is still marking — one moment…'); return; }
@@ -13027,6 +13184,7 @@ async function runMarking(opts) {
          have not changed is folded straight in with no picture and no call —
          except a page the student ASKED to have read afresh. */
       reuse: function (num) {
+        if (remarkAll) return null;
         if (fresh && asked && asked.indexOf(num) >= 0) return null;
         var k = premarkPageReuse(num, ctx);
         return k ? k.rows : null;
@@ -13048,6 +13206,7 @@ async function runMarking(opts) {
         landed[num] = 1;
         var use = gotFor(got);
         marking.items = markAssemble(order, use, keptFor(use), foldCtx, { lost: gone });
+        if (keepMarks) marking.items = markKeepMarked(marking.items, keepFrom);
         renderMarking();
         say();
         /* 📕 EVERY FINISHED QUESTION GOES INTO THE BOOK NOW, behind the
@@ -13064,6 +13223,7 @@ async function runMarking(opts) {
     });
     var useGot = gotFor(result.got);
     marking.items = markAssemble(order, useGot, keptFor(useGot), foldCtx, { final: true, lost: result.lost });
+    if (keepMarks) marking.items = markKeepMarked(marking.items, keepFrom);
     // Unread: listed before and not read now, or lost now with nothing to keep.
     marking.unread = order.filter(function (n) {
       return marking.unread.indexOf(n) >= 0 || (!!result.lost[n] && !beforeBy[n]);
@@ -13086,6 +13246,26 @@ async function runMarking(opts) {
       usageAdd('wrong', uc.wrong);
       usageAdd('blank', uc.blank);
       if (um.has) { usageAdd('awarded', um.awarded); usageAdd('total', um.attempted); }
+    } else if (keepMarks) {
+      /* ✅ MARK REMAINING IS A SECOND SITTING FOR THE NEW ANSWERS ONLY: the
+         questions marked last time were counted, and paid out, then. */
+      var newly = markNewlyMarked(marking.items, keepFrom);
+      if (newly.length) {
+        if (typeof StudyAdventure !== 'undefined') StudyAdventure.marked(newly, adventureContext);
+        usageNote('mark', docName || '');
+        var nc = { correct: 0, partial: 0, wrong: 0 };
+        newly.forEach(function (it) { if (nc[it.verdict] !== undefined) nc[it.verdict]++; });
+        usageAdd('questions', newly.length);
+        usageAdd('correct', nc.correct);
+        usageAdd('partial', nc.partial);
+        usageAdd('wrong', nc.wrong);
+      }
+      var stillBlank = marking.items.filter(function (it) { return it && !it.marked; }).length;
+      toast(newly.length
+        ? '✅ ' + newly.length + ' more question' + (newly.length === 1 ? '' : 's') + ' marked — your earlier marks are kept' +
+          (stillBlank ? ', and ' + stillBlank + ' still blank.' : '.')
+        : 'Nothing new to mark yet — ' + (stillBlank ? stillBlank + ' question' + (stillBlank === 1 ? ' is' : 's are') + ' still blank. ' : '') +
+          'Your earlier marks are kept.', 6000);
     }
     // Publish the score before the optional question-image reconstruction.
     marking.running = false;
@@ -18837,6 +19017,13 @@ function renderBuddyFoot() {
     });
     foot.appendChild(b);
   } else if (buddyPane === 'marking') {
+    /* 🔁 / ✅ Marking a paper that is already marked asks which of the two
+       the student means, right here where the button was (v1.75.0). */
+    if (markChoiceOpen && markChoiceEpoch === wsEpoch && !marking.running && markHasMarks()) {
+      foot.appendChild(markChoiceNode());
+      return;
+    }
+    markChoiceOpen = false;
     var row2 = document.createElement('div');
     row2.className = 'footRow';
     // ↻ comes FIRST and is the quieter of the two: it is the destructive one,
@@ -18854,7 +19041,11 @@ function renderBuddyFoot() {
     m.className = 'btn btnPrimary';
     m.disabled = marking.running;
     m.textContent = marking.running ? 'Marking…' : (marking.items.length ? '✅ Mark it again' : '✅ Mark my work');
-    m.addEventListener('click', runMarking);
+    if (!marking.running && markHasMarks()) {
+      m.title = 'Choose: mark only the questions not marked yet, or remark every question';
+      m.setAttribute('aria-haspopup', 'true');
+    }
+    m.addEventListener('click', markAgainPressed);
     row2.appendChild(m);
     foot.appendChild(row2);
   } else {
@@ -19229,6 +19420,109 @@ function markUnreadPages() {
 function markReadPagesAgain(nums) {
   if (!nums || !nums.length) return;
   runMarking({ only: nums.slice(), fresh: true });
+}
+
+/* =====================================================================
+   🔁 / ✅ THE CHOICE CARD — see REMARK ALL, OR MARK WHAT IS LEFT
+   ===================================================================== */
+function markHasMarks() {
+  return (marking.items || []).some(function (it) { return it && it.marked; });
+}
+
+/* ✅ Mark my work / Mark it again. A paper with nothing marked on it yet has
+   only one thing to do; a paper with marks on it asks first. */
+function markAgainPressed() {
+  if (marking.running || _markFiling) { runMarking(); return; }
+  if (!markHasMarks()) { runMarking(); return; }
+  markChoiceOpen = true;
+  markChoiceEpoch = wsEpoch;
+  renderBuddyFoot();
+  var first = document.querySelector('#buddyFoot .markChoiceBtn:not([disabled])');
+  if (first) { try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); } }
+}
+
+function markChoiceClose() {
+  markChoiceOpen = false;
+  renderBuddyFoot();
+  var again = document.querySelector('#buddyFoot .btnPrimary');
+  if (again) { try { again.focus({ preventScroll: true }); } catch (e) {} }
+}
+
+function markChoiceNode() {
+  var c = markRemainingCount();
+  var order = studentPages().map(function (p) { return p.num; });
+  var left = markRemainingPages(marking.items, marking.unread, order);
+  var box = document.createElement('div');
+  box.className = 'markChoice';
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-label', 'Mark this worksheet again');
+  box.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); markChoiceClose(); }
+    else e.stopPropagation();   // the page's one-letter tool shortcuts must not fire
+  });
+
+  var head = document.createElement('div');
+  head.className = 'markChoiceHead';
+  head.textContent = 'What should ' + aiEngineName() + ' mark?';
+  box.appendChild(head);
+
+  var bits = [];
+  if (c.blank) bits.push(c.blank + ' question' + (c.blank === 1 ? '' : 's') + ' not marked yet');
+  if (c.unread) bits.push(c.unread + ' page' + (c.unread === 1 ? '' : 's') + ' not read');
+  var newPages = left.filter(function (n) {
+    return !(marking.items || []).some(function (it) { return it && Number(it.page) === n; }) &&
+           (marking.unread || []).indexOf(n) < 0;
+  }).length;
+  if (newPages) bits.push(newPages + ' page' + (newPages === 1 ? '' : 's') + ' with nothing marked on ' + (newPages === 1 ? 'it' : 'them'));
+
+  var rest = choiceBtn('✅', 'Mark remaining questions',
+    left.length
+      ? 'Keeps your ' + c.marked + ' marked question' + (c.marked === 1 ? '' : 's') + ' as they are, and marks ' +
+        (bits.length ? bits.join(', ') : 'what is left') + ' — ' + left.length + ' page' + (left.length === 1 ? '' : 's') + ' to read.'
+      : 'Every question is already marked — nothing is left to mark.',
+    true);
+  rest.disabled = !left.length;
+  rest.addEventListener('click', function () { runMarking({ mode: 'remaining' }); });
+  box.appendChild(rest);
+
+  var all = choiceBtn('🔁', 'Remark all questions',
+    'Throws away the ' + c.marked + ' mark' + (c.marked === 1 ? '' : 's') + ' you have and reads all ' + order.length +
+    ' page' + (order.length === 1 ? '' : 's') + ' again from the start — use this if you changed earlier answers.',
+    !left.length);
+  all.addEventListener('click', function () { runMarking({ mode: 'all' }); });
+  box.appendChild(all);
+
+  var cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn btnGhost btnSm markChoiceCancel';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', markChoiceClose);
+  box.appendChild(cancel);
+  return box;
+
+  function choiceBtn(icon, title, sub, primary) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn markChoiceBtn' + (primary ? ' btnPrimary' : '');
+    var i = document.createElement('span');
+    i.className = 'mcIcon';
+    i.setAttribute('aria-hidden', 'true');
+    i.textContent = icon;
+    var t = document.createElement('span');
+    t.className = 'mcText';
+    var tt = document.createElement('span');
+    tt.className = 'mcTitle';
+    tt.textContent = title;
+    var ts = document.createElement('span');
+    ts.className = 'mcSub';
+    ts.textContent = sub;
+    t.appendChild(tt);
+    t.appendChild(ts);
+    b.appendChild(i);
+    b.appendChild(t);
+    b.setAttribute('aria-label', title + '. ' + sub);
+    return b;
+  }
 }
 
 function markPagesNode() {
