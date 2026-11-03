@@ -17,6 +17,16 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.77.0 — 📝 Treat blanks as wrong (exam conditions)
+
+- **A checkbox under ✅ Mark my work** (and on the 🔁 / ✅ Mark it again card): *Treat blanks as wrong
+  (exam conditions)*. Ticked, every question left blank is marked ❌ wrong, scores 0 of its marks, and
+  goes in the mistake book like any wrong answer. Unticked (the default), blanks stay blanks as before.
+- **Per worksheet, and changeable afterwards.** Ticking or unticking on a marked paper changes the score
+  at once with no ChatGPT call; a paper opens with the box as it was last marked, and a new paper starts
+  unticked. A blank counted wrong is still re-read by ✅ Mark remaining, so an answer written in later
+  is marked properly.
+
 ## v1.76.0 — 🔑 Marked against the key, and 🧩 every mistake named
 
 - **🔑 Key-first marking.** When a worksheet has an answer key (its own key pages, or a key PDF the
