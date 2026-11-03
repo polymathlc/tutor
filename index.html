@@ -11,7 +11,8 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.78.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.79.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.79.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -1529,6 +1530,21 @@
      inside its OWN box rather than making the whole window scroll sideways. */
   .repScroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-sm); }
   .repTable { width: 100%; border-collapse: collapse; font-size: 0.8rem; min-width: 720px; }
+  /* ✏️ 📈 My progress, one subject at a time (v1.79.0). */
+  .progBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 6px 0 10px; }
+  .progChips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .progChip {
+    font: inherit; font-size: 0.82rem; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+    border: 1px solid var(--line, #E2E2DD); background: var(--bg, #fff); color: var(--ink, #1F1F1C);
+  }
+  .progChip.on { background: #1F4E79; border-color: #1F4E79; color: #fff; font-weight: 600; }
+  .progSort {
+    font: inherit; font-size: 0.82rem; padding: 5px 8px; border-radius: 8px;
+    border: 1px solid var(--line, #E2E2DD); background: var(--bg, #fff); color: var(--ink, #1F1F1C);
+  }
+  .progPractise { border-color: #C9A227; background: #FFF6D8; font-weight: 600; }
+  .progTip { margin: 2px 0 8px; }
+  @media print { .progBar, .progTip, .lpGoMark { display: none !important; } }
   .repTable th {
     text-align: left; font-weight: 700; font-size: 0.72rem; color: var(--ink-faint);
     padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
@@ -3122,8 +3138,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.78.0"></script>
-<script src="lo-marks.js?v=1.78.0"></script>
+<script src="concept-tags.js?v=1.79.0"></script>
+<script src="lo-marks.js?v=1.79.0"></script>
+<script src="lo-practice.js?v=1.79.0"></script>
 <script>
 'use strict';
 
@@ -3220,7 +3237,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.78.0';
+var APP_VERSION = 'v1.79.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -20329,6 +20346,16 @@ function renderMarking() {
     rep.textContent = '📊 My report';
     rep.addEventListener('click', openReport);
     row.appendChild(rep);
+    /* 📐 v1.79.0: this worksheet's learning-objective report, with its
+       mistakes as practice and ⬇ Export PDF. */
+    if (lpReady()) {
+      var lor = document.createElement('button');
+      lor.className = 'btn btnSm';
+      lor.textContent = '📐 Objective report';
+      lor.title = 'This worksheet by learning objective — marks, mistakes as practice questions, and Export PDF';
+      lor.addEventListener('click', openSheetLoReport);
+      row.appendChild(lor);
+    }
     var tk = document.createElement('button');
     tk.className = 'btn btnSm';
     tk.textContent = showMarkPins ? '✓ Ticks on the page' : '✓ Ticks are off';
@@ -20593,7 +20620,14 @@ function renderReport() {
   body.appendChild(dsub);
   body.appendChild(diagTableNode(dg.groups, mt.has ? {
     n: marking.items.length, total: mt.total, awarded: mt.awarded, attempted: mt.attempted, blankMarks: mt.blank
-  } : null, { hasList: dg.hasList }));
+  } : null, { hasList: dg.hasList, onRow: lpReady() ? function (r, isGroup) {
+    // ✏️ This paper's own marked questions, not the whole book.
+    var rows = isGroup ? (r.rows || []) : [r];
+    lpOpen(rows.map(lpGroupOfDiag), {
+      subject: wsMeta.subject || '', book: sheetLoMistakes(), sort: 'syllabus', level: markLoLevel(),
+      title: '✏️ ' + (isGroup ? r.topic : (r.objective || r.topic)) + ' — practise the mistakes'
+    });
+  } : null }));
 
   /* ---- every question ---- */
   var h2 = document.createElement('h3');
@@ -20801,6 +20835,25 @@ function reportAsText() {
    home screen's, across every paper — so the two cannot disagree about
    what a row is. The verdict is a word with a class, never a colour on its
    own, for the reason the report's verdicts are. */
+/* ✏️ A diagnostic row that opens the practice window (v1.79.0): the whole
+   row is the control, reachable by Tab and Enter, with a small ✏️ after
+   its name so it reads as tappable on a printout-shaped table. */
+function diagGoable(tr, nameCell, title, fn) {
+  tr.classList.add('lpRowGo');
+  tr.tabIndex = 0;
+  tr.setAttribute('role', 'button');
+  tr.title = title;
+  var mark = document.createElement('span');
+  mark.className = 'lpGoMark';
+  mark.textContent = '✏️ practise';
+  mark.setAttribute('aria-hidden', 'true');
+  nameCell.appendChild(mark);
+  tr.addEventListener('click', fn);
+  tr.addEventListener('keydown', function (ev) {
+    if (ev.target !== tr) return;
+    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); fn(); }
+  });
+}
 function diagTableNode(groups, totals, opts) {
   opts = opts || {};
   var scroll = document.createElement('div');
@@ -20861,14 +20914,17 @@ function diagTableNode(groups, totals, opts) {
       objCell.appendChild(un);
     }
     marksCells(tr, g);
+    if (opts.onRow) diagGoable(tr, tc, single ? 'Practise the mistakes on this' : 'Practise every mistake in this topic',
+      function () { if (single) opts.onRow(g.rows[0], false); else opts.onRow(g, true); });
     tbody.appendChild(tr);
     if (single) return;
     g.rows.forEach(function (r) {
       var rr = document.createElement('tr');
       rr.className = 'repObjRow ' + diagResult(r).cls;
       repCell(rr, '', 'repIndent');
-      repCell(rr, (r.lo ? r.objective : (r.objective || '(no objective named)')), 'repObj repObjCell');
+      var oc = repCell(rr, (r.lo ? r.objective : (r.objective || '(no objective named)')), 'repObj repObjCell');
       marksCells(rr, r);
+      if (opts.onRow) diagGoable(rr, oc, 'Practise the mistakes on this learning objective', function () { opts.onRow(r, false); });
       tbody.appendChild(rr);
     });
   });
@@ -20893,6 +20949,254 @@ function openProgress() {
   $('progressModal').classList.add('open');
 }
 function closeProgress() { $('progressModal').classList.remove('open'); }
+/* ================= ✏️ PRACTISE WHAT THE DIAGNOSTIC FOUND (v1.79.0) =================
+   Every learning objective and topic in the diagnostic tables is a door:
+   tap it and lo-practice.js (byte for byte Ans Key's copy) opens on the
+   mistakes filed under it, each one written again as a FRESH practice
+   question on the same skill, with its answer key and a worked solution
+   that uses no algebra. The window sorts the objectives (weakest first,
+   most marks lost, most mistakes, newest, syllabus order) and prints the
+   lot — or saves it as a PDF — with the key on pages of its own.
+
+   - 📈 My progress shows ONE SUBJECT AT A TIME (`progressSubject`). Maths
+     and science objectives were one long page; a diagnostic is read a
+     subject at a time, and so is the practice that comes out of it.
+   - The table's own order (`progressSort`) is the order the topics and
+     their objectives are drawn in, and the order the practice opens in.
+   - 📐 The worksheet's OWN objective report (`openSheetLoReport`) opens
+     from the control panel once a paper is marked: every objective the
+     paper tested, its marks, and the questions missed as practice, with
+     ⬇ Export PDF.
+   - The model is asked through `window.askGemini`, the app's one door to
+     it, in the background lane; a practice question is kept on the device
+     so the same row opened again asks nothing. */
+var progressSubject = '';
+var progressSort = 'syllabus';
+var PROGRESS_SORTS = [
+  ['syllabus', 'Syllabus order'],
+  ['weak', 'Weakest first'],
+  ['lost', 'Most marks lost'],
+  ['mistakes', 'Most mistakes']
+];
+
+function lpReady() {
+  return typeof LoPractice !== 'undefined' && LoPractice && typeof LoPractice.open === 'function';
+}
+/* The teacher's notes, guidance and method rule ride along like every
+   other ask — a practice question written in this centre's way of working
+   (its model-drawing wording, its units) is the one worth practising. */
+function lpAsk(prompt, opts) {
+  var o = Object.assign({}, opts || {});
+  return window.askGemini(prompt, Object.assign(o, {
+    system: String(o.system || '') + aiGrounding('teach', { q: String(prompt || '').slice(0, 1200) }) + tutorMethodRule()
+  }));
+}
+function lpParse(raw) { return _parseAIJson(raw); }
+
+/* The mistake book of ONE subject, in lo-practice's shape. */
+function lpBook(subject) {
+  if (!lpReady()) return [];
+  return LoPractice.norm(mistakes, subject);
+}
+/* Which mistakes a diagnostic row (or a topic of rows) stands for. */
+function lpSelOfDiag(r) {
+  if (!r) return { los: [], tkeys: [], topics: [] };
+  if (r.rows) {
+    var los = [], tkeys = [], topics = [];
+    r.rows.forEach(function (x) {
+      if (x.lo) los.push(x.lo);
+      else if (x.sylTopic) tkeys.push(x.sylTopic);
+      else if (x.topic) topics.push(x.topic);
+    });
+    if (r.sylTopic) tkeys.push(r.sylTopic);
+    if (r.topic) topics.push(r.topic);
+    return { los: los, tkeys: tkeys, topics: topics };
+  }
+  if (r.lo) return { los: [r.lo], tkeys: [], topics: [] };
+  if (r.sylTopic) return { los: [], tkeys: [r.sylTopic], topics: [] };
+  return { los: [], tkeys: [], topics: [r.topic] };
+}
+/* A diagnostic row as one group of the practice window. */
+function lpGroupOfDiag(r) {
+  return {
+    key: 'd:' + String(r.key || r.lo || r.sylTopic || r.topic || ''),
+    kind: r.lo ? 'lo' : 'topic',
+    code: r.lo || '',
+    title: r.lo ? (r.objective || r.topic) : (r.objective ? r.topic + ' — ' + r.objective : r.topic),
+    topic: r.lo ? r.topic : '',
+    level: r.level || '',
+    order: Number(r.order) || 0,
+    got: r.awarded || 0, att: r.attempted || 0, tot: r.total || 0,
+    pct: diagPct(r),
+    q: r.n || 0,
+    qs: '',
+    sel: lpSelOfDiag(r)
+  };
+}
+function lpFill(groups, book) {
+  groups.forEach(function (g) {
+    g.mistakes = book.filter(function (m) { return LoPractice.matches(m, g.sel); });
+  });
+  return groups;
+}
+function lpSortName(how) {
+  return { weak: 'weak', lost: 'lost', mistakes: 'count', weaktopic: 'weak', syllabus: 'syllabus' }[how] || 'weak';
+}
+async function lpOpen(groups, opts) {
+  if (!lpReady()) { toast('The practice window did not load — refresh the page and try again.'); return; }
+  var subject = opts.subject || '';
+  if (!mistakes.length && currentUser && typeof loadMistakes === 'function') {
+    try { await loadMistakes(true); } catch (e) { /* the window says there are none */ }
+  }
+  var book = opts.book || lpBook(subject);
+  lpFill(groups, book);
+  var st = activeStudent();
+  LoPractice.open({
+    doc: document,
+    title: opts.title,
+    subtitle: opts.subtitle || ('Each mistake is written again as a fresh question on the same skill, with the answer and the ' +
+      (diagLadder(subject) ? 'working (model drawing and units, never algebra)' : 'key points') +
+      '. Try it first, then open the answer.'),
+    name: st && st.name ? st.name : '',
+    sub: subject,
+    level: opts.level || '',
+    groups: groups,
+    sort: opts.sort || 'weak',
+    focus: opts.focus || '',
+    report: !!opts.report,
+    printTitle: opts.printTitle || '',
+    ask: lpAsk,
+    parse: lpParse,
+    emptyText: opts.emptyText || ''
+  });
+}
+
+/* 📈 → a row of the topic × objective table. A TOPIC opens on every one of
+   its objectives, weakest first; an objective on itself. */
+function lpFromProgressRow(subject, r, isGroup) {
+  var rows = isGroup ? (r.rows || []) : [r];
+  var groups = rows.map(lpGroupOfDiag);
+  var title = isGroup
+    ? '✏️ ' + r.topic + ' — practise the mistakes'
+    : '✏️ ' + (r.objective || r.topic) + ' — practise the mistakes';
+  lpOpen(groups, { subject: subject, title: title, sort: isGroup ? 'weak' : 'syllabus' });
+}
+/* 📈 → every mistake in the subject, in the order the table is read in. */
+function lpFromProgressAll(subject, rows) {
+  var groups = (rows || []).filter(function (r) { return r.labelled !== false; }).map(lpGroupOfDiag);
+  lpOpen(groups, {
+    subject: subject,
+    title: '✏️ ' + (subjectLabel(subject) || 'Subject') + ' — every mistake as practice',
+    sort: lpSortName(progressSort)
+  });
+}
+
+/* 📐 → the dense objective × paper table's hooks (maths only). */
+function lpLoMarksHooks() {
+  return {
+    onRow: function (r, kind) {
+      var rows = kind === 'group' ? (r.rows || []) : [r];
+      var groups = rows.map(function (x) { return LoMarks.groupOf(x); });
+      var title = kind === 'group'
+        ? '✏️ ' + (r.sub && r.sub !== r.topic ? r.sub + ' · ' : '') + r.topic + ' — practise the mistakes'
+        : '✏️ ' + (r.id ? r.id + ' ' : '') + r.text;
+      lpOpen(groups, { subject: 'math', title: title, sort: kind === 'group' ? 'weak' : 'syllabus' });
+    },
+    onSheet: function (sheet) {
+      if (!sheet) return;
+      var groups = LoMarks.sheetGroups(sheet);
+      groups.forEach(function (g) { g.sel = Object.assign({}, g.sel, { docId: sheet.id, ws: sheet.ws }); });
+      lpOpen(groups, {
+        subject: 'math', report: true, sort: 'syllabus', level: sheet.lvl || '',
+        title: '📐 ' + sheet.ws + ' — learning objective report',
+        printTitle: sheet.ws + ' — learning objective report'
+      });
+    },
+    onPractice: function (model, how) {
+      var groups = model.rows.map(function (x) { return LoMarks.groupOf(x); });
+      lpOpen(groups, {
+        subject: 'math', sort: lpSortName(how && how.sort),
+        title: '✏️ Maths' + (how && how.level && how.level !== 'all' ? ' ' + how.level : '') + ' — every mistake as practice'
+      });
+    }
+  };
+}
+
+/* 📐 THE WORKSHEET'S OWN OBJECTIVE REPORT — from the control panel, for the
+   paper on screen, any subject. Its mistakes are the paper's own marked
+   questions (wrong, partly right, or a blank counted wrong), so it is
+   whole the moment marking ends, before the mistake book has caught up. */
+function sheetLoMistakes() {
+  var subject = wsMeta.subject || '';
+  return LoPractice.norm(marking.items.filter(function (it) {
+    return it.marked && (it.verdict === 'wrong' || it.verdict === 'partial');
+  }).map(function (it) {
+    var p = diagItemPlace(it, subject, markLoLevel());
+    return {
+      key: mistakeKey(currentDocId || 'ws', it), docId: currentDocId || '', docName: docName || '',
+      subject: subject, number: it.number || '', question: it.question || '', type: it.type,
+      options: it.options || [], studentAnswer: it.studentAnswer || '', answer: it.answer || '',
+      explanation: it.explanation || '', verdict: it.verdict, marks: it.marks || '',
+      lo: p.lo || '', sylTopic: p.sylTopic || '', topic: p.topic || it.topic || '',
+      skipped: false, createdAt: marking.runAt || Date.now()
+    };
+  }), subject);
+}
+function sheetLoGroups() {
+  var dg = reportDiagnostic();
+  return dg.rows.map(function (r) {
+    var g = lpGroupOfDiag(r);
+    g.qs = r.items.map(function (it) {
+      var pair = markPairOf(it);
+      return (it.number ? 'Q' + it.number : 'Q?') + ' ' +
+        (!it.marked ? 'blank' : (pair ? markPretty(pair.awarded) + '/' + markPretty(pair.total) : (repVerdict(it).text)));
+    }).join(' · ');
+    return g;
+  });
+}
+function openSheetLoReport() {
+  if (!marking.items.length) { toast('Mark the worksheet first — the report is built from its marks.'); return; }
+  var subject = wsMeta.subject || '';
+  var lv = markLoLevel();
+  lpOpen(sheetLoGroups(), {
+    subject: subject, report: true, sort: 'syllabus', level: lv, book: sheetLoMistakes(),
+    title: '📐 ' + (docName || 'This worksheet') + ' — learning objective report',
+    printTitle: (docName || 'Worksheet') + ' — learning objective report',
+    subtitle: (subjectLabel(subject) || 'This subject') + (lv ? ' · ' + levelLabel(lv) : '') +
+      ' · every objective this paper tested, with its marks. Tap a row to jump to its mistakes, each written again as a ' +
+      'fresh practice question with the answer and working. ⬇ Export PDF prints it, or saves it as a PDF.',
+    emptyText: 'Every marked question on this paper was right — nothing to practise. 🎉'
+  });
+}
+
+/* The subjects 📈 can show, and the one it is showing. Maths first when it
+   is there, because that is the subject with the syllabus ladder. */
+function progressPickSubject(subs) {
+  var keys = subs.map(function (s) { return s.subject; });
+  if (progressSubject && keys.indexOf(progressSubject) >= 0) return progressSubject;
+  var m = keys.filter(function (k) { return diagLadder(k); })[0];
+  progressSubject = m || keys[0] || '';
+  return progressSubject;
+}
+/* The topics (and the objectives inside each) in the order asked for. */
+function progressSortGroups(groups, how, book) {
+  var lost = function (g) { return Math.max(0, (g.total || 0) - (g.awarded || 0)); };
+  var p = function (g) { var x = diagPct(g); return x === null ? 1e9 : x; };
+  var cnt = function (g) {
+    if (!book || !lpReady()) return 0;
+    var sel = lpSelOfDiag(g);
+    return book.filter(function (m) { return LoPractice.matches(m, sel); }).length;
+  };
+  var cmp = null;
+  if (how === 'weak') cmp = function (a, b) { return (p(a) - p(b)) || (lost(b) - lost(a)) || (a.order - b.order); };
+  else if (how === 'lost') cmp = function (a, b) { return (lost(b) - lost(a)) || (p(a) - p(b)) || (a.order - b.order); };
+  else if (how === 'mistakes') cmp = function (a, b) { return (cnt(b) - cnt(a)) || (p(a) - p(b)) || (a.order - b.order); };
+  if (!cmp) return groups;
+  return groups.map(function (g) {
+    return Object.assign({}, g, { rows: g.rows.slice().sort(cmp) });
+  }).sort(cmp);
+}
+
 function renderProgress() {
   var body = $('progressBody');
   body.innerHTML = '';
@@ -20904,12 +21208,6 @@ function renderProgress() {
   h.className = 'repTitle';
   h.textContent = (st && st.name ? st.name + ' — ' : '') + 'Progress by topic and learning objective';
   head.appendChild(h);
-  var papers = subs.reduce(function (n, s) { return n + s.papers; }, 0);
-  var when = document.createElement('div');
-  when.className = 'repWhen';
-  when.textContent = 'Across ' + papers + ' marked worksheet' + (papers === 1 ? '' : 's') + ' · as at ' +
-    new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
-  head.appendChild(when);
   body.appendChild(head);
   if (!subs.length) {
     var pad = document.createElement('div');
@@ -20921,35 +21219,92 @@ function renderProgress() {
     body.appendChild(pad);
     return;
   }
-  subs.forEach(function (s) {
-    var h2 = document.createElement('h3');
-    h2.className = 'repH';
-    h2.textContent = (subjectLabel(s.subject) || 'Other') + ' · ' + s.papers + ' worksheet' + (s.papers === 1 ? '' : 's');
-    body.appendChild(h2);
-    var focus = progressFocus(s.rows);
-    if (focus.length) {
-      var f = document.createElement('div');
-      f.className = 'repNote';
-      f.textContent = 'Work on: ' + focus.map(function (g) {
-        return g.topic + (g.objective ? ' — ' + g.objective : '') + ' (' + diagPct(g) + '%)';
-      }).join(' · ');
-      body.appendChild(f);
-    } else {
-      var ok = document.createElement('div');
-      ok.className = 'repNote repGood';
-      ok.textContent = 'Every objective you have attempted in ' + (subjectLabel(s.subject) || 'this subject') +
-        ' is at ' + DIAG_FOCUS_PCT + '% or better. Keep going.';
-      body.appendChild(ok);
-    }
-    var tot = diagTotals(s.rows);
-    tot.papers = s.papers;
-    body.appendChild(diagTableNode(diagGroupsOf(s.rows), tot,
-      { history: true, hasList: syllabusEntries(s.subject).length > 0 }));
+  var cur = progressPickSubject(subs);
+  var s = subs.filter(function (x) { return x.subject === cur; })[0] || subs[0];
+  var when = document.createElement('div');
+  when.className = 'repWhen';
+  when.textContent = (subjectLabel(s.subject) || 'Other') + ' · across ' + s.papers + ' marked worksheet' +
+    (s.papers === 1 ? '' : 's') + ' · as at ' +
+    new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
+  head.appendChild(when);
+
+  /* ONE SUBJECT AT A TIME — a chip per subject, never two on one page. */
+  var bar = document.createElement('div');
+  bar.className = 'progBar';
+  if (subs.length > 1) {
+    var chips = document.createElement('div');
+    chips.className = 'progChips';
+    chips.setAttribute('role', 'tablist');
+    subs.forEach(function (x) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'progChip' + (x.subject === s.subject ? ' on' : '');
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', x.subject === s.subject ? 'true' : 'false');
+      b.textContent = (subjectLabel(x.subject) || 'Other') + ' (' + x.papers + ')';
+      b.addEventListener('click', function () { progressSubject = x.subject; renderProgress(); });
+      chips.appendChild(b);
+    });
+    bar.appendChild(chips);
+  }
+  var sortSel = document.createElement('select');
+  sortSel.className = 'progSort';
+  sortSel.setAttribute('aria-label', 'Order the topics');
+  PROGRESS_SORTS.forEach(function (o) {
+    var op = document.createElement('option');
+    op.value = o[0];
+    op.textContent = o[1];
+    if (progressSort === o[0]) op.selected = true;
+    sortSel.appendChild(op);
   });
+  sortSel.addEventListener('change', function () { progressSort = sortSel.value; renderProgress(); });
+  bar.appendChild(sortSel);
+  var book = lpBook(s.subject);
+  if (lpReady()) {
+    var prac = document.createElement('button');
+    prac.type = 'button';
+    prac.className = 'btn btnSm progPractise';
+    prac.textContent = '✏️ Practise / print mistakes' + (book.length ? ' (' + book.length + ')' : '');
+    prac.title = 'Every ' + (subjectLabel(s.subject) || '') + ' mistake as a fresh practice question with its answer and working — printable';
+    prac.addEventListener('click', function () { lpFromProgressAll(s.subject, s.rows); });
+    bar.appendChild(prac);
+  }
+  body.appendChild(bar);
+
+  var focus = progressFocus(s.rows);
+  if (focus.length) {
+    var f = document.createElement('div');
+    f.className = 'repNote';
+    f.textContent = 'Work on: ' + focus.map(function (g) {
+      return g.topic + (g.objective ? ' — ' + g.objective : '') + ' (' + diagPct(g) + '%)';
+    }).join(' · ');
+    body.appendChild(f);
+  } else {
+    var ok = document.createElement('div');
+    ok.className = 'repNote repGood';
+    ok.textContent = 'Every objective you have attempted in ' + (subjectLabel(s.subject) || 'this subject') +
+      ' is at ' + DIAG_FOCUS_PCT + '% or better. Keep going.';
+    body.appendChild(ok);
+  }
+  if (lpReady()) {
+    var tip = document.createElement('div');
+    tip.className = 'repSub progTip';
+    tip.textContent = 'Tap a topic or a learning objective to see its mistakes as fresh practice questions, with the answers and working.';
+    body.appendChild(tip);
+  }
+  var tot = diagTotals(s.rows);
+  tot.papers = s.papers;
+  var subj = s.subject;
+  body.appendChild(diagTableNode(progressSortGroups(diagGroupsOf(s.rows), progressSort, book), tot, {
+    history: true, hasList: syllabusEntries(subj).length > 0,
+    onRow: lpReady() ? function (r, isGroup) { lpFromProgressRow(subj, r, isGroup); } : null
+  }));
+
   /* 📐 THE DENSE TABLE (v1.78.0): every maths objective down the side,
      every marked paper across the top, the marks in each cell — the same
-     table the teacher sees in Ans Key, drawn by the same file. */
-  var loSheets = loLocalSheets();
+     table the teacher sees in Ans Key, drawn by the same file. Maths only,
+     so it shows on the maths page and nowhere else. */
+  var loSheets = diagLadder(subj) ? loLocalSheets() : [];
   if (loSheets.length && typeof LoMarks !== 'undefined' && LoMarks.mount) {
     var lh = document.createElement('h3');
     lh.className = 'repH';
@@ -20958,7 +21313,11 @@ function renderProgress() {
     var host = document.createElement('div');
     host.className = 'lmHost';
     body.appendChild(host);
-    LoMarks.mount(host, { sheets: loSheets, name: st && st.name ? st.name : '' });
+    var hooks = lpReady() ? lpLoMarksHooks() : {};
+    LoMarks.mount(host, {
+      sheets: loSheets, name: st && st.name ? st.name : '',
+      onRow: hooks.onRow, onSheet: hooks.onSheet, onPractice: hooks.onPractice
+    });
   }
 }
 function progressAsText() {
@@ -20967,7 +21326,8 @@ function progressAsText() {
   var st = activeStudent();
   out.push((st && st.name ? st.name + ' — ' : '') + 'progress by topic and learning objective');
   if (!subs.length) { out.push('Nothing to add up yet — mark a worksheet first.'); return out.join('\n'); }
-  subs.forEach(function (s) {
+  var cur = progressPickSubject(subs);
+  subs.filter(function (s) { return s.subject === cur; }).forEach(function (s) {
     out.push('');
     out.push((subjectLabel(s.subject) || 'OTHER').toUpperCase() + ' · ' + s.papers + ' worksheet' + (s.papers === 1 ? '' : 's'));
     var focus = progressFocus(s.rows);
@@ -20976,10 +21336,12 @@ function progressAsText() {
         return g.topic + (g.objective ? ' — ' + g.objective : '') + ' (' + diagPct(g) + '%)';
       }).join('; '));
     }
-    out.push.apply(out, diagAsText(diagGroupsOf(s.rows), { history: true, hasList: syllabusEntries(s.subject).length > 0 }));
+    out.push.apply(out, diagAsText(progressSortGroups(diagGroupsOf(s.rows), progressSort, lpBook(s.subject)),
+      { history: true, hasList: syllabusEntries(s.subject).length > 0 }));
   });
   return out.join('\n');
 }
+
 
 function renderChat() {
   var box = $('chatThread');
