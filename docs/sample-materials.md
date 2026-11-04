@@ -11,9 +11,12 @@ enable audio. Leaving the iframe stops local media and requests remote cleanup.
 Pages and localhost. `initialize` resolves only the current worksheet at
 `schedule_config/main.sampleMaterials[subject].worksheet`; clients cannot choose
 an arbitrary PDF. It returns a random guest token, a 15-minute expiry and the
-published worksheet title/PDF URL. Subsequent `ask`, `start`, `stop` and `check`
-requests include that token and subject. `questions` can also create a guest
-token without a worksheet. Tokens are hashed in server-only Firestore records.
+published worksheet title/PDF URL. Subsequent `ask`, `start` and `stop`
+requests include that token and subject. Tokens are hashed in server-only
+Firestore records. The teacher-selected sample questions (`questions` and
+`check`, used by the home page card and the Sample Materials tab) need no token
+and never end: there is no expiry, question count or daily start limit on them,
+so a visitor can keep answering for as long as they like.
 
 Question previews contain the published question wording, diagrams, tables and
 answer controls. They exclude correct choices, model answers, explanations and
@@ -50,7 +53,7 @@ never carries the teacher's annotation answers. Grade and review calls share a
 95-second budget, and original/model image requests run concurrently; reused
 original diagrams are fetched once within a check.
 
-Every trial allows 15 tutor/check requests and one live session of at most five
+Every worksheet trial allows 15 tutor requests and one live session of at most five
 minutes. IP hashes allow 25 trial starts per Singapore day; the whole suite
 allows 300. These caps apply independently of existing signed-in tutoring.
 Worksheet replacement invalidates previous worksheet tokens. A server sweep
