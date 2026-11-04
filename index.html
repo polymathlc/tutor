@@ -11,8 +11,8 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.79.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.79.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.80.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.80.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -3138,9 +3138,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.79.0"></script>
-<script src="lo-marks.js?v=1.79.0"></script>
-<script src="lo-practice.js?v=1.79.0"></script>
+<script src="concept-tags.js?v=1.80.0"></script>
+<script src="lo-marks.js?v=1.80.0"></script>
+<script src="lo-practice.js?v=1.80.0"></script>
 <script>
 'use strict';
 
@@ -3237,7 +3237,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.79.0';
+var APP_VERSION = 'v1.80.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -20993,6 +20993,49 @@ function lpAsk(prompt, opts) {
 }
 function lpParse(raw) { return _parseAIJson(raw); }
 
+/* 🖼 THE PICTURES (v1.80.0). lo-practice now draws a mistake the way the
+   book keeps it — blocks with their cut-out figures, the whole-question
+   crop, or the page — so it needs the book's paths turned into links.
+   Same resolve as `mistakeBlockUrl`, cached by path for the page's life. */
+var _lpUrlCache = {};
+async function lpPicUrl(path) {
+  var p = String(path || '');
+  if (!p) return '';
+  if (/^https:\/\//i.test(p)) return p;
+  if (_lpUrlCache[p]) return _lpUrlCache[p];
+  if (!storage) return '';
+  try { _lpUrlCache[p] = await storage.ref(p).getDownloadURL(); return _lpUrlCache[p]; }
+  catch (e) { return ''; }
+}
+/* ✂️ A TEXT-ONLY MISTAKE SET OUT AGAIN before its practice question is
+   written: the same 🧩 pipeline as the book's button (`mbRedoOne` — read
+   it off its own clean page, cut each figure out, tidy the crop, redraw it
+   as clean line work), so the practice question can be asked of the real
+   figure instead of a paragraph in square brackets. lo-practice decides
+   WHEN (wording that leans on a figure, none cut yet, at most
+   `LoPractice.REBUILD_MAX` a window, one at a time); this only does it.
+   It hands back the mistake as the book now holds it, or null. */
+async function lpRebuild(nm) {
+  if (!nm || !currentUser || _mbRedoBusy) return null;
+  var m = (nm.id && mistakeById(nm.id)) || mistakes.find(function (x) { return x.key === nm.key; }) || null;
+  if (!m || mistakeTier(m) === 'blocks') return m;
+  _mbRedoBusy = true;
+  try {
+    var r = await mbRedoOne(m);
+    if (r === 'done') { usageNote('redo', '1'); renderMistakes(); return m; }
+    return null;
+  } catch (e) { console.warn('practice: setting the question out again failed', e); return null; }
+  finally { _mbRedoBusy = false; }
+}
+/* The ration of clean-ups for those rebuilds. A THIRD door beside
+   `fileMistakes` and `mbRedo`: the window's rebuilds run behind
+   `_mbRedoBusy` exactly as the button's do, and it is topped up only
+   when it has run low, so it can never hand a marking run a fresh ration
+   it was not given. */
+function lpRation() {
+  if (!_mbRedoBusy && _mbEnhanceBudget < LoPractice.REBUILD_MAX) _mbEnhanceBudget = Math.min(MB_ENHANCE_MAX, LoPractice.REBUILD_MAX * 2);
+}
+
 /* The mistake book of ONE subject, in lo-practice's shape. */
 function lpBook(subject) {
   if (!lpReady()) return [];
@@ -21067,8 +21110,11 @@ async function lpOpen(groups, opts) {
     printTitle: opts.printTitle || '',
     ask: lpAsk,
     parse: lpParse,
+    picUrl: lpPicUrl,
+    rebuild: lpRebuild,
     emptyText: opts.emptyText || ''
   });
+  lpRation();
 }
 
 /* 📈 → a row of the topic × objective table. A TOPIC opens on every one of
@@ -21118,8 +21164,45 @@ function lpLoMarksHooks() {
         subject: 'math', sort: lpSortName(how && how.sort),
         title: '✏️ Maths' + (how && how.level && how.level !== 'all' ? ' ' + how.level : '') + ' — every mistake as practice'
       });
-    }
+    },
+    /* 👆 A COLOURED CELL (v1.80.0): tap it and the practice window opens on
+       that paper's questions for that objective; point at it and a card
+       shows the question itself — with its figure — to try again there. */
+    onCell: lpCellOpen,
+    onCellHover: function (pick, how) {
+      if (!pick || !how || !how.td) return;
+      lpPreviewCell(pick, how.td, false, lpCellOpen);
+    },
+    onCellLeave: function () { LoPractice.hidePreview(true); }
   };
+}
+function lpCellOpen(pick) {
+  if (!pick) return;
+  LoPractice.hidePreview(false);
+  lpOpen(pick.groups, {
+    subject: 'math', sort: 'syllabus',
+    title: '✏️ ' + pick.title + ' — ' + pick.sheet,
+    subtitle: 'The questions this paper asked on ' + (pick.groups.length > 1 ? 'these objectives' : 'this objective') +
+      (pick.qs.length ? ' (' + pick.qs.map(function (q) { return 'Q' + q.n; }).join(', ') + ')' : '') +
+      ', each one you missed with its figure, and a fresh practice question on the same skill with the answer and working (model drawing and units, never algebra).',
+    emptyText: 'Nothing was missed here — every question this paper asked on it was right. 🎉'
+  });
+}
+/* The mistakes behind one cell, from the book, as a hover card — the
+   question with its figure and somewhere to try it again. */
+async function lpPreviewCell(pick, td, sticky, onOpen) {
+  if (!lpReady() || !pick) return;
+  if (!mistakes.length && currentUser && typeof loadMistakes === 'function') {
+    try { await loadMistakes(true); } catch (e) { /* the card says it is not in the book */ }
+  }
+  var book = lpBook('math');
+  var items = book.filter(function (m) { return LoPractice.matches(m, pick.sel); });
+  LoPractice.preview({
+    doc: document, anchor: td, sticky: !!sticky,
+    title: pick.title, sub: pick.sheet,
+    items: items, qs: pick.qs, picUrl: lpPicUrl, rebuild: lpRebuild,
+    onOpen: function () { if (onOpen) onOpen(pick); }
+  });
 }
 
 /* 📐 THE WORKSHEET'S OWN OBJECTIVE REPORT — from the control panel, for the
@@ -21138,9 +21221,22 @@ function sheetLoMistakes() {
       options: it.options || [], studentAnswer: it.studentAnswer || '', answer: it.answer || '',
       explanation: it.explanation || '', verdict: it.verdict, marks: it.marks || '',
       lo: p.lo || '', sylTopic: p.sylTopic || '', topic: p.topic || it.topic || '',
-      skipped: false, createdAt: marking.runAt || Date.now()
+      skipped: false, createdAt: marking.runAt || Date.now(),
+      /* 🖼 The book's own entry for this question, when it is filed, brings
+         its pictures — blocks, the whole-question crop or the page — and
+         its id, so ✂️ setting it out again finds the right document. */
+      id: lpFiledOf(it) ? lpFiledOf(it).id : '',
+      blocks: lpFiledOf(it) ? lpFiledOf(it).blocks : [],
+      imagePath: lpFiledOf(it) ? lpFiledOf(it).imagePath : '',
+      imageUrl: lpFiledOf(it) ? lpFiledOf(it).imageUrl : '',
+      figUrls: lpFiledOf(it) ? lpFiledOf(it).figUrls : [],
+      shot: lpFiledOf(it) ? lpFiledOf(it).shot : ''
     };
   }), subject);
+}
+function lpFiledOf(it) {
+  var key = mistakeKey(currentDocId || 'ws', it);
+  return mistakes.find(function (m) { return m.key === key; }) || null;
 }
 function sheetLoGroups() {
   var dg = reportDiagnostic();
@@ -21316,7 +21412,8 @@ function renderProgress() {
     var hooks = lpReady() ? lpLoMarksHooks() : {};
     LoMarks.mount(host, {
       sheets: loSheets, name: st && st.name ? st.name : '',
-      onRow: hooks.onRow, onSheet: hooks.onSheet, onPractice: hooks.onPractice
+      onRow: hooks.onRow, onSheet: hooks.onSheet, onPractice: hooks.onPractice,
+      onCell: hooks.onCell, onCellHover: hooks.onCellHover, onCellLeave: hooks.onCellLeave
     });
   }
 }

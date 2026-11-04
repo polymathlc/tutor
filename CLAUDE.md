@@ -2,6 +2,30 @@
 
 Guidance for Claude when working in this repo.
 
+## 🖼 THE QUESTION WITH ITS FIGURE, and 👆 THE CELLS OPEN (v1.80.0)
+
+Search `🖼 v2 — THE QUESTION IS SHOWN THE WAY ⚡ RAPID ADD STORES IT` (lo-practice.js) and `🖼 THE PICTURES (v1.80.0)`.
+`lo-practice.js` / `.css` / `tools/lo-practice-tests.mjs` and `lo-marks.js` / `.css` / `tools/lo-marks-tests.mjs` are still
+byte for byte Ans Key's (v1.188.0).
+
+- **A mistake keeps its pictures** (`fromMistake` → `blocks`, `figs`, `qimg`, `pimg`, `popts`; `fromMirror` reads `img`/`sh`/`figs`)
+  and is drawn in its best tier (`tierOf`): blocks → whole-question crop → wording + figures → wording + 📄 page. A bracketed
+  figure description is taken off the wording whenever the figure is on screen (`stripFigureNotes`). `picSrc` is the only door
+  into an `<img>`: https:, data:image/, blob: or a plain storage path (the host's `picUrl`, here `lpPicUrl`, resolves it).
+- **A practice question keeps the figure.** The figures go to the model as `images` (canvas, no fetch) and the prompt asks for a
+  new question on the SAME figure with `[[FIG n]]` markers; `cleanPractice(o, nFigs)` → `blocks` (`practiceBlocks`, Rapid add's
+  shape). Cache prefix is now `lp2:` and the key includes the figure count, so a mistake that gains its figure is written again.
+- **✂️ A text-only mistake whose wording leans on a figure (`needsFigure` / `wantsRebuild`) is set out again first** through
+  `opts.rebuild` = `lpRebuild` → `mbRedoOne` (the 🧩 pipeline: read off its clean page, `_mbCropBox`, `mbEnhance` redraw),
+  behind `_mbRedoBusy`, at most `LoPractice.REBUILD_MAX` (6) per window and per page of hover cards. `lpRation()` tops up
+  `_mbEnhanceBudget` only when low. The window never crops by itself (the harness checks).
+- **👆 Cells:** `LoMarks.mount` takes `onCell` / `onCellHover` / `onCellLeave`; `LoMarks.cellPick(row, kind, col, ci)` is the
+  pure selection (the row's objectives narrowed to that paper, that cell's marks and `qs`). Tap → `lpCellOpen` (the practice
+  window on that paper's questions); hover (fine pointers only, 320 ms) → `LoPractice.preview` — the question with its figure
+  and a ✍️ try box (`tryNode`, `answerMatches`, `optionIsKey`), which stays while the pupil types.
+- `sheetLoMistakes` brings each filed question's pictures (`lpFiledOf`). Run `node --test tools/lo-practice-tests.mjs
+  tools/lo-marks-tests.mjs` and `node tools/tutor-tests.mjs`.
+
 ## ✏️ PRACTISE WHAT THE DIAGNOSTIC FOUND (v1.79.0)
 
 Search `✏️ PRACTISE WHAT THE DIAGNOSTIC FOUND`. `lo-practice.js` (`window.LoPractice`), `lo-practice.css` and
