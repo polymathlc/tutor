@@ -45,7 +45,7 @@ function createSampleRepository(db) {
     return db.runTransaction(async tx => { const snap = await tx.get(ref), data = snap.data();
       if (!data || data.subject !== subject || data.expiresAt <= now) throw new SampleError(401, 'trial_expired', 'Your sample session has ended. Open the sample again to continue.');
       if (action === 'start') { if (data.liveStarts >= 1) throw new SampleError(429, 'voice_trial_used', 'Your voice trial has ended. You can continue with the text tutor.'); tx.update(ref, { liveStarts: data.liveStarts + 1, liveExpiresAt: now + TRIAL_SECONDS * 1000, pending: true }); }
-      else if (['ask', 'check'].includes(action)) { if (data.questions >= QUESTION_LIMIT) throw new SampleError(429, 'question_trial_used', 'You have finished this sample lesson. Contact us to try a full lesson.'); tx.update(ref, { questions: data.questions + 1 }); }
+      else if (action === 'ask') { if (data.questions >= QUESTION_LIMIT) throw new SampleError(429, 'question_trial_used', 'You have finished this sample lesson. Contact us to try a full lesson.'); tx.update(ref, { questions: data.questions + 1 }); }
       return { ...data, id: ref.id, liveExpiresAt: action === 'start' ? now + TRIAL_SECONDS * 1000 : data.liveExpiresAt };
     });
   }
@@ -62,16 +62,20 @@ function createSampleService({ auth, repository, liveProvider, teachProvider, qu
   async function close(guest) { if (guest.sessionId) await liveProvider.close(guest.sessionId); await repository.clear(guest); }
   async function publicAction(body, req) {
     const subject = subjectOf(body);
-    if (body.action === 'initialize' || (body.action === 'questions' && !body.token)) {
-      const worksheet = body.action === 'initialize' ? await repository.selected(subject) : null;
-      if (body.action === 'initialize' && !validWorksheet(worksheet, subject)) throw new SampleError(404, 'worksheet_not_published', 'A sample worksheet will be available here soon.');
-      const guest = await repository.open(subject, req.ip, now(), worksheet?.id || '');
-      if (body.action === 'questions') return { ...await questionService.public(body), ...guest };
+    // The teacher-selected sample questions on the public pages (home page card,
+    // Sample Materials tab) are always open: no guest session, no expiry, no
+    // per-visitor question count and no daily start limit. Visitors can keep
+    // answering for as long as they like. A token sent by an older page is ignored.
+    if (body.action === 'questions' || body.action === 'check') return questionService.public(body);
+    if (body.action === 'initialize') {
+      const worksheet = await repository.selected(subject);
+      if (!validWorksheet(worksheet, subject)) throw new SampleError(404, 'worksheet_not_published', 'A sample worksheet will be available here soon.');
+      const guest = await repository.open(subject, req.ip, now(), worksheet.id);
       return { ...guest, worksheet: { id: worksheet.id, title: worksheet.title, pdfUrl: worksheet.pdfUrl, level: normalizeLevel(worksheet.level) || '' } };
     }
     // Stopping a paid call is possible even after the guest token expires.
     if (body.action === 'stop') { const guest = await repository.find(body.token, subject); if (guest?.sessionId && guest.sessionId === body.sessionId) await close(guest); return { stopped: true }; }
-    if (!['ask', 'start', 'questions', 'check'].includes(body.action)) throw new SampleError(400, 'invalid_action', 'Choose a valid sample activity.');
+    if (!['ask', 'start'].includes(body.action)) throw new SampleError(400, 'invalid_action', 'Choose a valid sample activity.');
     if (body.action === 'ask') validateTeaching(body);
     if (body.action === 'start') validateSdp(body.sdp);
     // Validate publication before spending a guest's limited requests.
@@ -79,7 +83,6 @@ function createSampleService({ auth, repository, liveProvider, teachProvider, qu
     const known = await repository.find(body.token, subject);
     if (['ask', 'start'].includes(body.action) && (!validWorksheet(current, subject) || !known?.worksheetId || known.worksheetId !== current.id)) throw new SampleError(409, 'worksheet_changed', 'This worksheet has changed. Open the sample again.');
     const guest = await repository.use(body.token, subject, now(), body.action);
-    if (['questions', 'check'].includes(body.action)) return questionService.public(body);
     if (body.action === 'ask') {
       const text = await teachProvider.fresh({ ceiling: 'method', authority: { level: normalizeLevel(current.level), subject: subject === 'math' ? 'Maths' : 'Science', keyRows: [] } }, { message: body.message, page: body.page, image: body.image, workContext: body.working || '', history: body.history || [], grounding: [] });
       return { text: String(text).slice(0, 2000) };

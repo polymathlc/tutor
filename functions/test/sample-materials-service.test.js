@@ -27,12 +27,21 @@ test('expired or exhausted tokens fail before provider work', async () => { cons
 test('teaching keeps the authoritative method ceiling and subject', async () => { const h = harness(), r = await h.request({ action: 'ask', subject: 'math', token, message: 'What now?', page: 1, image: 'data:image/jpeg;base64,AAAA', working: '3/4', history: [] }); assert.equal(r.statusCode, 200); const context = h.calls.find(c => c[0] === 'teach')[1]; assert.equal(context.ceiling, 'method'); assert.equal(context.authority.level, 'P5'); assert.equal(context.authority.subject, 'Maths'); assert.deepEqual(context.authority.keyRows, []); });
 test('a long successful reply fits the next request history limit', async () => { const h = harness(); h.deps.teachProvider.fresh = async () => 'x'.repeat(2600); const body = { action: 'ask', subject: 'math', token, message: 'Help', page: 1, image: 'data:image/jpeg;base64,AAAA' }, first = await h.request(body); assert.equal(first.body.text.length, 2000); const next = await h.request({ ...body, history: [{ role: 'buddy', text: first.body.text }] }); assert.equal(next.statusCode, 200); });
 test('malformed oversized teaching input and SDP are rejected before quota use', async () => { for (const body of [{ action: 'ask', subject: 'math', token, message: 'Help', page: 0, image: 'data:image/jpeg;base64,AAAA' }, { action: 'ask', subject: 'math', token, message: 'Help', page: 1, image: 'https://attacker.test/page.jpg' }, { action: 'start', subject: 'math', token, sdp: 'bad' }]) { const h = harness(), r = await h.request(body); assert.equal(r.statusCode, 400); assert.deepEqual(h.calls, []); } });
-test('questions initialize independently of a published PDF and receive a bounded token', async () => { const h = harness(); h.deps.repository.selected = async () => null; const r = await h.request({ action: 'questions', subject: 'math' }); assert.equal(r.statusCode, 200); assert.equal(r.body.token, token); assert.deepEqual(h.calls.map(c => c[0]), ['open', 'questions']); });
+test('sample questions load without a guest session, a PDF or a daily start', async () => { const h = harness(); h.deps.repository.selected = async () => null; const r = await h.request({ action: 'questions', subject: 'math' }); assert.equal(r.statusCode, 200); assert.equal(r.body.token, undefined); assert.deepEqual(h.calls.map(c => c[0]), ['questions']); });
+test('sample questions never end: expired, exhausted, missing or old tokens still check answers', async () => {
+  for (const extra of [{}, { token }, { token: 'not-a-token' }]) {
+    const h = harness(); h.deps.repository.use = async () => { throw new SampleError(401, 'trial_expired', 'Your sample session has ended. Open the sample again to continue.'); };
+    h.deps.repository.find = async () => null; h.deps.repository.open = async () => { throw new SampleError(429, 'trial_limit', 'busy'); };
+    for (let i = 0; i < 40; i += 1) { const r = await h.request({ action: 'check', subject: 'science', questionId: 'q1', ...extra }); assert.equal(r.statusCode, 200); }
+    const again = await h.request({ action: 'questions', subject: 'science', ...extra }); assert.equal(again.statusCode, 200);
+    assert.ok(h.calls.every(c => c[0] === 'questions'));
+  }
+});
 
 test('only Science drawing checks get the larger bounded body allowance', async () => {
   const science = harness();
   const accepted = await science.request({ action: 'check', subject: 'science', token }, { rawBody: { length: 3 * 1024 * 1024 } });
-  assert.equal(accepted.statusCode, 200); assert.deepEqual(science.calls.map(call => call[0]), ['use', 'questions']);
+  assert.equal(accepted.statusCode, 200); assert.deepEqual(science.calls.map(call => call[0]), ['questions']);
   for (const [action, subject, length] of [['check', 'science', 8 * 1024 * 1024 + 1], ['check', 'math', 3 * 1024 * 1024], ['questions', 'science', 3 * 1024 * 1024]]) {
     const h = harness(), refused = await h.request({ action, subject, token }, { rawBody: { length } });
     assert.equal(refused.statusCode, 413); assert.deepEqual(h.calls, []);
