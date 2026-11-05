@@ -11,8 +11,9 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.81.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.81.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.82.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.82.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.82.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -3191,9 +3192,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.81.0"></script>
-<script src="lo-marks.js?v=1.81.0"></script>
-<script src="lo-practice.js?v=1.81.0"></script>
+<script src="concept-tags.js?v=1.82.0"></script>
+<script src="lo-marks.js?v=1.82.0"></script>
+<script src="lo-practice.js?v=1.82.0"></script>
+<script src="cer-mcq.js?v=1.82.0"></script>
 <script>
 'use strict';
 
@@ -3290,7 +3292,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.81.0';
+var APP_VERSION = 'v1.82.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -21089,6 +21091,83 @@ function lpRation() {
   if (!_mbRedoBusy && _mbEnhanceBudget < LoPractice.REBUILD_MAX) _mbEnhanceBudget = Math.min(MB_ENHANCE_MAX, LoPractice.REBUILD_MAX * 2);
 }
 
+/* =====================================================================
+   🔘 A WRONG MCQ IS TRIED AGAIN AS AN MCQ, IN THE SCIENCE PORTAL'S FORMAT (v1.82.0)
+   ---------------------------------------------------------------------
+   A multiple-choice question in the mistake book used to come back as a
+   text box ("Write it out again…") in ▶ Practise, and as a row of plain
+   buttons in the objective window. `cer-mcq.js` (window.CerMcq) draws it
+   the way polymathlc/cer draws every practice MCQ: the options as rows to
+   choose between, a neutral highlight on the one picked, 💡 Hint and
+   ✓ Check answer, the right option green and the chosen wrong one red,
+   "Correct answer: 2) …", and an ⓘ on every other option that opens WHY
+   it is wrong — one grounded vision call for the whole list, cached.
+
+   The doors that hand it a question:
+     · `pracRender` (the book's ▶ Practise) — `pracIsMcq(m)`, `pracMcqSpec(m)`;
+       the first ✓ Check counts, exactly as the AI-marked retry did, and a
+       right answer files the mistake under Sorted.
+     · lo-practice's try box (the objective window's mistake cards, its
+       fresh practice questions and the 👆 cell hover card) through
+       `LoPractice.setMcq(lpMcqNode)`.
+   The model is reached only through `lpAsk`, which is grounded
+   (`aiGrounding('teach')` + `tutorMethodRule()`).
+   ===================================================================== */
+/* A [[FIG 2]] marker is where a figure is drawn, not words to read out. */
+function cmqPlainQ(text) {
+  return String(text || '').replace(/\[\[\s*FIG\s*\d+\s*\]\]/gi, '(see the figure)').replace(/\s+\n/g, '\n').trim();
+}
+/* The pictures the why-not call is shown, for a mistake in lo-practice's
+   shape: the cut-out figures (and a picture of the options) first, then
+   the whole-question crop, then the page — as many as are there, at most
+   four. Each `{ src }` is a storage path or a link (`lpPicUrl` resolves). */
+function cmqLpImages(m) {
+  return function () {
+    if (!m || !cmqReady()) return Promise.resolve([]);
+    var pics = [];
+    (m.blocks || []).forEach(function (b) { if (b && b.t === 'img' && b.pic) pics.push(b.pic); });
+    if (!pics.length) (m.figs || []).forEach(function (f) { if (f) pics.push(f); });
+    if (m.qimg) pics.push(m.qimg);
+    if (!pics.length && m.pimg) pics.push(m.pimg);
+    var urls = pics.slice(0, 4).map(function (pc) {
+      var src = String((pc && pc.src) || '');
+      if (/^(?:https:\/\/|data:image\/|blob:)/i.test(src)) return src;
+      return lpPicUrl(src).then(function (u) { return u || (pc && pc.alt) || ''; });
+    });
+    return CerMcq.imagesFrom(document, urls);
+  };
+}
+/* lo-practice's try box, drawn as the portal's MCQ. `spec` is
+   lo-practice's own ({ opts, correct, ans, why, pictureOpts, letters,
+   m, p }); returns null to keep its plain buttons. */
+function lpMcqNode(doc, spec) {
+  if (!cmqReady() || !spec) return null;
+  var m = spec.m || null, p = spec.p || null;
+  var opts = (spec.opts || []).map(function (o) { return { label: o && o.label, text: o && o.text }; });
+  var cfg = {
+    options: opts,
+    count: spec.pictureOpts || 0,
+    letters: !!spec.letters,
+    correct: typeof spec.correct === 'number' ? spec.correct : -1,
+    option: p ? '' : ((m && m.opt) || ''),
+    key: spec.ans || '',
+    question: cmqPlainQ(p ? p.question : (m && m.q)),
+    subject: (m && m.sub) || '',
+    level: '',
+    explanation: p ? '' : ((m && m.expl) || ''),
+    working: p ? (p.working || []) : [],
+    images: cmqLpImages(m),
+    ask: lpAsk,
+    parse: lpParse,
+    aiOn: cmqAiOn,
+    retry: true,
+    onChecked: function (r) { if (r && r.ok) usageAdd('practiceRight', 1); usageNote('practice', (m && m.ws) || ''); }
+  };
+  if (!CerMcq.isMcq(cfg)) return null;
+  return CerMcq.mount(doc || document, cfg).el;
+}
+if (typeof LoPractice !== 'undefined' && LoPractice && typeof LoPractice.setMcq === 'function') LoPractice.setMcq(lpMcqNode);
+
 /* The mistake book of ONE subject, in lo-practice's shape. */
 function lpBook(subject) {
   if (!lpReady()) return [];
@@ -21904,7 +21983,7 @@ function questionNodes(m, kind, opts) {
   /* `wordOpts`, not `opts`: a `var` of the same name as the parameter is the
      SAME binding, so it would quietly overwrite the caller's `{ noPic: true }`
      — and anything added below that read it would get `undefined`. */
-  var wordOpts = mistakeOptions(m);
+  var wordOpts = opts.noOpts ? [] : mistakeOptions(m);
   if (wordOpts.length) {
     var wrap = document.createElement('div');
     wrap.className = skin.opts;
@@ -22667,6 +22746,44 @@ async function pracCheck() {
   pracRender();
 }
 
+/* The rest of ▶ Practise for an MCQ: the portal's question, with its own
+   ✓ Check answer inside it; the foot keeps "Show me the answer" and, once
+   it is marked, Next. The authored "Why" follows the colours, and the gap
+   it was filed under comes after (`pracGapNode(m, true)`, drawn above). */
+function pracRenderMcq(m, body, foot) {
+  var lab = document.createElement('div');
+  lab.className = 'boxLabel';
+  lab.textContent = 'Choose your answer';
+  body.appendChild(lab);
+  var ui = pracMcqUi(m);
+  body.appendChild(ui.el);
+  if (!prac.revealed) {
+    var skip = document.createElement('button');
+    skip.className = 'btn';
+    skip.textContent = 'Show me the answer';
+    skip.addEventListener('click', function () { ui.reveal(); });
+    foot.appendChild(skip);
+    return;
+  }
+  var r = prac.result || {};
+  if (r.verdict === 'correct') {
+    var yay = document.createElement('div');
+    yay.className = 'rungText';
+    yay.textContent = 'That’s it — and it has moved to Sorted. Hover the ⓘ beside the others to see why each of them is wrong.';
+    body.appendChild(chungSays(yay, true, 'happy'));
+  } else if (r.verdict === 'wrong') {
+    var nope = document.createElement('div');
+    nope.className = 'rungText';
+    nope.textContent = 'Not this time. The green one is right — tap the ⓘ beside your choice to see exactly why it is wrong.';
+    body.appendChild(chungSays(nope, true, ''));
+  }
+  var next = document.createElement('button');
+  next.className = 'btn btnPrimary';
+  next.textContent = prac.i >= prac.ids.length - 1 ? 'Finish' : 'Next question';
+  next.addEventListener('click', pracNext);
+  foot.appendChild(next);
+}
+
 function pracNext() {
   if (!prac) return;
   if (prac.i >= prac.ids.length - 1) { pracRender(true); return; }
@@ -22675,6 +22792,87 @@ function pracNext() {
   prac.result = null;
   prac.typed = '';
   pracRender();
+}
+
+/* 🔘 THE BOOK'S ▶ PRACTISE TRIES A WRONG MCQ AS AN MCQ (v1.82.0) — see
+   `🔘 A WRONG MCQ IS TRIED AGAIN AS AN MCQ` for cer-mcq.js. */
+function cmqReady() {
+  return typeof CerMcq !== 'undefined' && CerMcq && typeof CerMcq.mount === 'function';
+}
+function cmqAiOn() { return !!(window.askGemini && window.aiReady && window.aiReady()); }
+/* ---- the book's ▶ Practise ---- */
+function pracIsMcq(m) {
+  if (!m || m.type !== 'mcq' || !cmqReady()) return false;
+  return mistakeOptions(m).length >= 2 || mistakeHasPictureOptions(m);
+}
+/* The book's pictures for the call: the block figures (with the picture of
+   the options) or the whole-question crop / page. */
+function pracMcqImages(m) {
+  return function () {
+    if (!m || !cmqReady()) return Promise.resolve([]);
+    var urls = mistakeTier(m) === 'blocks'
+      ? mistakeBlocks(m).filter(function (b) { return b.type === 'image'; }).slice(0, 4).map(mistakeBlockUrl)
+      : (m.imagePath ? [mistakeImageUrl(m)] : []);
+    return CerMcq.imagesFrom(document, urls);
+  };
+}
+function pracMcqSpec(m, onChecked, onRevealed) {
+  var word = mistakeOptions(m);
+  var pictureOnly = !word.length && mistakeHasPictureOptions(m);
+  var labels = Array.isArray(m.options) ? m.options : [];
+  return {
+    options: pictureOnly ? [] : word.map(function (o) { return { label: o.label, text: o.text }; }),
+    count: pictureOnly ? Math.max(4, Math.min(8, labels.length || 4)) : 0,
+    letters: pictureOnly && labels.length > 0 && /^[A-Ha-h]$/.test(String(labels[0] && labels[0].label || '').replace(/[()\s.]/g, '')),
+    option: m.option || '',
+    key: m.answer || '',
+    question: m.question || '',
+    subject: m.subject || '',
+    level: m.level ? levelLabel(m.level) : '',
+    explanation: m.explanation || '',
+    working: [],
+    images: pracMcqImages(m),
+    ask: lpAsk,
+    parse: lpParse,
+    aiOn: cmqAiOn,
+    retry: false,          // the first ✓ Check is the one that counts
+    onChecked: onChecked,
+    onRevealed: onRevealed
+  };
+}
+/* The node is kept on `prac` for the question on screen: pracRender
+   redraws the whole body, and a redraw must not throw the student's pick,
+   the colours and the ⓘ away. */
+function pracMcqUi(m) {
+  if (prac.mcq && prac.mcq.id === m.id) return prac.mcq.ui;
+  var adventureContext = typeof StudyAdventure !== 'undefined' ? StudyAdventure.capture(m.subject) : null;
+  var ui = CerMcq.mount(document, pracMcqSpec(m, function (r) {
+    if (!prac || pracCurrent() !== m) return;
+    var mine = '(' + r.label + ')' + (function () {
+      var o = mistakeOptions(m)[parseInt(r.chosen, 10) - 1];
+      return o && o.text ? ' ' + o.text : '';
+    })();
+    prac.revealed = true;
+    prac.result = { verdict: r.ok ? 'correct' : 'wrong', feedback: '', mine: mine, mcq: true };
+    prac.done++;
+    usageNote('practice', m.docName || '');
+    if (r.ok) usageAdd('practiceRight', 1);
+    if (typeof StudyAdventure !== 'undefined') StudyAdventure.practice(m, mine, adventureContext);
+    if (r.ok) {
+      prac.right++;
+      // A correct retry files it under Sorted, as the written retry does.
+      if (!m.cleared) setMistakeCleared(m.id, true);
+    }
+    pracRender();
+  }, function () {
+    if (!prac || pracCurrent() !== m || prac.revealed) return;
+    prac.revealed = true;
+    prac.result = { verdict: '', feedback: '', mine: '', mcq: true };
+    prac.done++;
+    pracRender();
+  }));
+  prac.mcq = { id: m.id, ui: ui };
+  return ui;
 }
 
 function pracRender(finished) {
@@ -22726,8 +22924,12 @@ function pracRender(finished) {
   });
   body.appendChild(meta);
 
+  /* 🔘 A multiple-choice question is tried AS one, in the Science portal's
+     format (v1.82.0): its options are the rows to choose between, so they
+     are not printed under the question as well. */
+  var asMcq = pracIsMcq(m);
   // The same question the card shows and the sheet prints — one renderer.
-  questionNodes(m, 'prac').forEach(function (n) { body.appendChild(n); });
+  questionNodes(m, 'prac', asMcq ? { noOpts: true } : null).forEach(function (n) { body.appendChild(n); });
 
   /* 🎯 THE NUDGE AIMED AT THE GAP (v1.76.0). Before they answer, the slip
      this question was filed under — its name and what to do about it, NEVER
@@ -22735,6 +22937,8 @@ function pracRender(finished) {
      answer, near enough). After they answer, the reason comes too. */
   var watch = pracGapNode(m, !!prac.revealed);
   if (watch) body.appendChild(watch);
+
+  if (asMcq) { pracRenderMcq(m, body, foot); return; }
 
   var lab = document.createElement('div');
   lab.className = 'boxLabel';
