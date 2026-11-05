@@ -276,6 +276,8 @@
       at: stamp(m.createdAt) || num(m.at),
       mcq: m.type === 'mcq' || opts.length > 1,
       opts: opts,
+      /* the RIGHT option's number or letter, as the marking read it off the key */
+      opt: str(m.option, 8),
       expl: str(m.explanation, 600),
       done: !!m.cleared,
       blocks: blocks,
@@ -313,6 +315,7 @@
       at: num(r.at),
       mcq: false,
       opts: [],
+      opt: '',
       expl: '',
       done: !!r.done,
       blocks: [],
@@ -1102,7 +1105,22 @@
   /* spec: { opts: [{ label, text }], correct: index or -1, ans, why: [lines], pictureOpts: n }
      The options to tap, or a box to type in, and a Check. The answer is
      one more tap — after a try, or for a pupil who is stuck. */
+  /* 🔘 THE HOST'S OWN MCQ (v3). An app that draws a multiple-choice
+     question its own way — Study Buddy draws it the way the Science portal
+     does, with ✓ Check, green and red, and an ⓘ on every wrong option —
+     hands that drawer in through `setMcq`. It gets the spec plus the
+     mistake (`spec.m`) and, for a practice question, the question
+     (`spec.p`), and returns a node, or nothing to keep these buttons. An
+     app that sets none (Ans Key) keeps exactly what it had. */
+  var _mcqHook = null;
+  function setMcq(fn) { _mcqHook = typeof fn === 'function' ? fn : null; }
   function tryNode(doc, spec) {
+    if (_mcqHook && spec && (((spec.opts || []).length > 1) || num(spec.pictureOpts) > 1)) {
+      try {
+        var own = _mcqHook(doc, spec);
+        if (own) return own;
+      } catch (e) { /* the plain buttons below, then */ }
+    }
     var wrap = mkIn(doc, 'div', 'lpTry');
     var res = mkIn(doc, 'div', 'lpTryRes');
     res.setAttribute('aria-live', 'polite');
@@ -1172,12 +1190,12 @@
   }
   function trySpecOfMistake(m) {
     return { opts: m.popts ? [] : (m.opts || []), correct: -1, ans: m.ans,
-             why: m.expl ? [m.expl] : [], pictureOpts: m.popts ? 4 : 0 };
+             why: m.expl ? [m.expl] : [], pictureOpts: m.popts ? 4 : 0, m: m };
   }
-  function trySpecOfPractice(p) {
+  function trySpecOfPractice(p, m) {
     return { opts: (p.options || []).map(function (t, i) { return { label: LETTERS[i], text: t }; }),
              correct: p.correct, ans: (p.correct >= 0 ? '(' + LETTERS[p.correct] + ') ' : '') + p.answer,
-             why: p.working || [], letters: true };
+             why: p.working || [], letters: true, p: p, m: m || null };
   }
   function btn(cls, text, title, on) {
     var b = mk('button', cls, text);
@@ -1451,17 +1469,27 @@
       m.v === 'skipped' ? '– left blank' : (m.v === 'partial' ? '~ partly right' : '✗ wrong')));
     el.appendChild(top);
 
+    /* 🔘 With the host's own MCQ, the question they got wrong can be TRIED
+       again right here: its options become the ones to tap, so they are not
+       printed twice, and the key is not printed above them — ✓ Check
+       answer says it. */
+    var ownMcq = !!_mcqHook && ((m.opts || []).length > 1 || !!m.popts);
     var orig = mk('details', 'lpOrig');
-    orig.appendChild(mk('summary', null, 'The question I got wrong'));
-    var oq = questionNode(S.doc, m, S.opts.picUrl);
+    orig.appendChild(mk('summary', null, ownMcq ? 'The question I got wrong — try it again' : 'The question I got wrong'));
+    var oq = questionNode(S.doc, m, S.opts.picUrl, ownMcq);
     oq.classList.add('lpOrigQ');
     orig.appendChild(oq);
     if (S.rebuilding[key]) orig.appendChild(mk('div', 'lpWait', '✂️ Cutting the figure out of the page and redrawing it clean…'));
     var mine = mk('div', 'lpOrigLine');
-    mine.appendChild(mk('b', null, 'My answer: '));
+    mine.appendChild(mk('b', null, ownMcq ? 'Last time: ' : 'My answer: '));
     mine.appendChild(S.doc.createTextNode(m.mine || (m.v === 'skipped' ? '(left blank)' : '—')));
     orig.appendChild(mine);
-    if (m.ans) {
+    if (ownMcq) {
+      var again = c.again || (c.again = tryNode(S.doc, trySpecOfMistake(m)));
+      orig.appendChild(again);
+      if (c.origOpen) orig.open = true;
+      orig.addEventListener('toggle', function () { c.origOpen = orig.open; });
+    } else if (m.ans) {
       var right = mk('div', 'lpOrigLine');
       right.appendChild(mk('b', null, 'Correct answer: '));
       right.appendChild(S.doc.createTextNode(m.ans));
@@ -1474,15 +1502,24 @@
     if (p) {
       box.appendChild(mk('div', 'lpPracLabel', '✏️ Practice question' + (p.method ? ' · ' + p.method : '')));
       box.appendChild(practiceNode(S.doc, p, m, S.opts.picUrl));
-      if (p.options.length) {
+      /* With the host's own MCQ the options ARE the try: tapped, not listed. */
+      var ownPrac = !!_mcqHook && p.options.length > 1;
+      if (p.options.length && !ownPrac) {
         var ol = mk('ol', 'lpOpts');
         p.options.forEach(function (x, i) { ol.appendChild(mk('li', null, '(' + LETTERS[i] + ') ' + x)); });
         box.appendChild(ol);
       }
       /* ✍️ Somewhere to answer it before the key is opened. */
       var tryBox = mk('details', 'lpTryWrap');
-      tryBox.appendChild(mk('summary', null, '✍️ Try it'));
-      tryBox.appendChild(tryNode(S.doc, trySpecOfPractice(p)));
+      tryBox.appendChild(mk('summary', null, ownPrac ? '✍️ Choose your answer' : '✍️ Try it'));
+      if (ownPrac) {
+        tryBox.open = c.tryOpen !== false;
+        tryBox.addEventListener('toggle', function () { c.tryOpen = tryBox.open; });
+        if (!c.tryNode || c.tryFor !== p) { c.tryNode = tryNode(S.doc, trySpecOfPractice(p, m)); c.tryFor = p; }
+        tryBox.appendChild(c.tryNode);
+      } else {
+        tryBox.appendChild(tryNode(S.doc, trySpecOfPractice(p, m)));
+      }
       box.appendChild(tryBox);
       var reveal = mk('details', 'lpKey');
       reveal.open = !!c.open;
@@ -1840,6 +1877,10 @@
     questionHtml: questionHtml,
     answerMatches: answerMatches,
     optionIsKey: optionIsKey,
+    setMcq: setMcq,
+    tryNode: tryNode,
+    trySpecOfMistake: trySpecOfMistake,
+    trySpecOfPractice: trySpecOfPractice,
     pure: { pct: pct, band: band, fmt: fmt, hash: hash, esc: esc, lostOf: lostOf, subjectWord: subjectWord, isMath: isMath }
   };
 });

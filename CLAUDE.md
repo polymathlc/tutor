@@ -2,6 +2,21 @@
 
 Guidance for Claude when working in this repo.
 
+## 🔘 A WRONG MCQ IS TRIED AGAIN AS AN MCQ, IN CER'S FORMAT (v1.82.0)
+
+Search `🔘 A WRONG MCQ IS TRIED AGAIN AS AN MCQ`. `cer-mcq.js` / `.css` (`window.CerMcq`) port polymathlc/cer's practice MCQ:
+rows `<b>1.</b> words` with a radio, a neutral blue pick, 💡 Hint + ✓ Check answer, right green / chosen wrong red,
+"✗ Incorrect (you chose 3)" + "Correct answer: 2) …", and the 🔎 Why-not ⓘ on every wrong option (one JSON vision call for
+the whole list, placed by the option's own number — `normItems`, cached `cmq1:` in localStorage; armed ONLY from `paint()`).
+`correctIndex` reads the right option from the mistake's `option`, then its key; when neither names one, the same call is
+asked for `"correct"`. It never names a model: the host passes `ask: lpAsk` (grounded) and `parse: lpParse`.
+- Book ▶ Practise: `pracIsMcq` → `pracRenderMcq` (no textarea, `questionNodes(..., { noOpts: true })`), node kept on
+  `prac.mcq`, first ✓ Check counts (`retry: false`), right → `setMistakeCleared`.
+- lo-practice.js gained `setMcq(fn)` (tryNode uses the host's MCQ for 2+ options), `trySpecOf*` carry `m`/`p`, `fromMistake`
+  keeps `opt`, and a mistake card lets the original MCQ be tried. **Copy lo-practice.js to Ans Key** (it sets no hook).
+- Escape over the ⓘ card closes the card only (capture listener). Checks: `node --test tools/cer-mcq-tests.mjs`,
+  `PW=… node tools/cer-mcq-browser-check.mjs` (real app, fixtures only).
+
 ## 🧹 START FRESH (v1.81.0)
 
 Search `🧹 START FRESH`. `#progFresh` (My progress foot) and `#mistFresh` (mistake book head) → `freshOpen()` reads

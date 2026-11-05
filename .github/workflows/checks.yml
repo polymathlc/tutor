@@ -73,3 +73,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/snip-browser-check.mjs
+      - name: Check a wrong MCQ is tried again in the Science portal's format
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/cer-mcq-browser-check.mjs
