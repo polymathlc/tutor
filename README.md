@@ -17,6 +17,15 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.81.0 — 🧹 Start fresh: a student clears their own slate
+
+A **🧹 Start fresh…** button in 📈 My progress and in the 📕 mistake book lets a student delete their own uploaded
+worksheets (with the marks, hints and working on them), their whole mistake book and their learning objective
+progress, so they can begin again. A red window warns that it is permanent and cannot be undone, lists exactly what
+goes, and the delete button stays off until the student ticks "I understand". Only the signed-in student's own data
+is touched; on a login shared by several students only the active student's level and subjects go. A paper the
+teacher set keeps the class's PDF and comes back as not started. The teacher's own account never sees the button.
+
 ## v1.80.1 — 🐛 The subject tabs on My progress are visible again
 
 The subject chips and sort buttons above *Progress by topic and learning objective* were clipped to a thin strip: the toolbar wore the class `progBar`, which is also the 7px marking meter (`overflow: hidden`). It has its own class now, `progTools`.

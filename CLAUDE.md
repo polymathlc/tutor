@@ -2,6 +2,16 @@
 
 Guidance for Claude when working in this repo.
 
+## 🧹 START FRESH (v1.81.0)
+
+Search `🧹 START FRESH`. `#progFresh` (My progress foot) and `#mistFresh` (mistake book head) → `freshOpen()` reads
+every paper (`ownerUid == uid`) and every mistake (`users/{uid}/mistakes`, no limit), `freshPick` (pure) chooses the
+active student's when `myStudents.length > 1` (level + subject; untagged papers are kept), `freshPaint` draws the red
+warning + counts + an "I understand" box that gates `#freshGo`. `freshRun` deletes mistakes (with pictures), papers
+(`freshDropSheet` = `deleteWorksheet`'s file rules, a set paper keeps the class PDF), then the roster patch
+(`freshRosterPatch`: whole maps on a one-student account, else the cleared ids) and the `lp1:`/`lp2:` caches.
+`freshAllowed()` = signed in and not admin. `#freshModal.freshBusy` is skipped by the Escape sweep.
+
 ## 🐛 The My progress toolbar is `.progTools` (v1.80.1)
 
 Never give it `progBar`: that is the 7px marking meter (`overflow: hidden`), and the tabs were clipped to a strip.
