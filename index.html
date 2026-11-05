@@ -11,8 +11,8 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.80.1">
-<link rel="stylesheet" href="lo-practice.css?v=1.80.1">
+<link rel="stylesheet" href="lo-marks.css?v=1.81.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.81.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -1545,6 +1545,35 @@
   .progPractise { border-color: #C9A227; background: #FFF6D8; font-weight: 600; }
   .progTip { margin: 2px 0 8px; }
   @media print { .progTools, .progTip, .lpGoMark { display: none !important; } }
+  /* 🧹 Start fresh (v1.81.0). The button sits at the far left of its row,
+     away from Done, so it is never the thing a hurried thumb lands on. */
+  .modalFoot .freshBtn { margin-right: auto; }
+  .freshBtn { border-color: #F3C4C2; }
+  .freshBtn.hidden { display: none !important; }
+  .freshWarn {
+    display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; margin-bottom: 16px;
+    border: 1px solid #F3C4C2; border-left: 4px solid var(--danger, #E53935); border-radius: var(--radius-sm, 10px);
+    background: #FFF1F0; color: #8A1C1A; font-size: 0.9rem; line-height: 1.55;
+  }
+  .freshWarn b { display: block; font-size: 0.98rem; margin-bottom: 2px; color: #B3261E; }
+  .freshWarnIcon { font-size: 1.5rem; line-height: 1; }
+  .freshList { margin: 0 0 14px; padding: 0; list-style: none; display: grid; gap: 8px; }
+  .freshList li {
+    display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+    padding: 10px 12px; border: 1px solid var(--line, #E2E2DD); border-radius: var(--radius-sm, 10px); font-size: 0.9rem;
+  }
+  .freshList li span { color: var(--ink-soft, #55554F); font-size: 0.8rem; text-align: right; }
+  .freshList li b.freshN { font-variant-numeric: tabular-nums; }
+  .freshKeep { font-size: 0.84rem; color: var(--ink-soft, #55554F); line-height: 1.6; margin: 0 0 14px; }
+  .freshAgree {
+    display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; cursor: pointer;
+    border: 1px dashed #E8A9A6; border-radius: var(--radius-sm, 10px); font-size: 0.9rem; line-height: 1.5;
+  }
+  .freshAgree input { width: 20px; height: 20px; margin-top: 1px; flex: none; accent-color: #B3261E; }
+  .freshGo { background: #B3261E; border-color: #B3261E; color: #fff; font-weight: 700; }
+  .freshGo:disabled { background: #E9B4B1; border-color: #E9B4B1; color: #fff; cursor: not-allowed; }
+  .freshProgress { font-size: 0.9rem; color: var(--ink-soft, #55554F); padding: 6px 0; }
+  .freshProgress .progBar { margin-top: 10px; }
   .repTable th {
     text-align: left; font-weight: 700; font-size: 0.72rem; color: var(--ink-faint);
     padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
@@ -2553,6 +2582,8 @@
         <div class="sectionHead">
           <h2>📕 My mistake book</h2>
           <span class="spacer"></span>
+          <button class="btn btnDanger freshBtn hidden" id="mistFresh" type="button"
+                  title="Delete your own worksheets, mistake book and learning objective progress, and start again">🧹 Start fresh…</button>
           <button class="btn" id="mistBackBtn">← My worksheets</button>
         </div>
         <p class="sub" style="margin:0 4px 18px">
@@ -2940,9 +2971,31 @@
     </div>
     <div class="modalBody" id="progressBody"></div>
     <div class="modalFoot">
+      <!-- 🧹 Start fresh (v1.81.0): the student's own slate, behind a warning. Left of the row, away from Done. -->
+      <button class="btn btnDanger freshBtn hidden" id="progFresh" type="button"
+              title="Delete your own worksheets, mistake book and learning objective progress, and start again">🧹 Start fresh…</button>
       <button class="btn" id="progCopy">📋 Copy</button>
       <button class="btn" id="progPrint">🖨 Print</button>
       <button class="btn btnPrimary" id="progClose">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 🧹 Start fresh (v1.81.0) ============
+     A student wipes THEIR OWN slate: their uploaded worksheets (with the
+     marks, hints and working on them), their mistake book, and the learning
+     objective progress those worksheets add up to. Permanent, so the window
+     says so in red, lists exactly what goes, and the delete button stays
+     off until they tick "I understand". Painted by freshOpen(). -->
+<div class="modalBack" id="freshModal" role="dialog" aria-modal="true" aria-labelledby="freshTitle">
+  <div class="modalCard freshCard">
+    <div class="modalHead">
+      <h2 id="freshTitle">🧹 Start fresh?</h2>
+    </div>
+    <div class="modalBody" id="freshBody"></div>
+    <div class="modalFoot">
+      <button class="btn" id="freshCancel" type="button">Keep my work</button>
+      <button class="btn freshGo" id="freshGo" type="button" disabled>Delete everything for ever</button>
     </div>
   </div>
 </div>
@@ -3138,9 +3191,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.80.1"></script>
-<script src="lo-marks.js?v=1.80.1"></script>
-<script src="lo-practice.js?v=1.80.1"></script>
+<script src="concept-tags.js?v=1.81.0"></script>
+<script src="lo-marks.js?v=1.81.0"></script>
+<script src="lo-practice.js?v=1.81.0"></script>
 <script>
 'use strict';
 
@@ -3237,7 +3290,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.80.1';
+var APP_VERSION = 'v1.81.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -26505,6 +26558,409 @@ async function deleteWorksheet(id) {
   } catch (e) { toast('Could not delete it: ' + ((e && e.message) || e), 6000); }
 }
 
+/* =====================================================================
+   🧹 START FRESH — a student clears their OWN slate (v1.81.0)
+   ---------------------------------------------------------------------
+   A student who wants a new beginning (a new term, a new tuition centre,
+   a shelf full of practice papers they never meant to keep) can delete,
+   in one go:
+     • every worksheet they uploaded or started — the document, its body
+       (marks, hints, chat, ink) and its own files in Storage;
+     • every question in their 📕 mistake book, with its pictures;
+     • their learning objective progress — which is ADDED UP off those
+       worksheets (`progressRows`, `loLocalSheets`), plus the copies of it
+       on the centre's roster row that the teacher's Ans Key reads
+       (`tutorLos`, `tutorGaps`, `tutorMistakes`).
+
+   WHOSE SLATE. Everything here is under the signed-in uid and nothing else:
+   the worksheets are `ownerUid == uid`, the book is
+   `users/{uid}/mistakes`, the roster row is `studentProfiles/{uid}`. No
+   other account is ever read or written, so another student's work cannot
+   be touched by construction. One login can still carry SEVERAL students
+   (a parent with two children — see WHO IS WORKING RIGHT NOW), and there
+   the only line between them is the level and subject each paper carries.
+   So with more than one student on the account the sweep takes only what
+   is plainly the ACTIVE student's (`freshPick`): a paper at their level in
+   a subject they take, a mistake from one of those papers, or a mistake
+   whose paper is already gone and that sits at their level. Anything
+   untagged is LEFT, because deleting a sibling's work is the worse way to
+   be wrong and the window says how many papers it is leaving.
+
+   A PAPER THE TEACHER SET is the teacher's file. The student's copy goes
+   (their marks and working on it) but the class's PDF and its videos
+   stay, exactly as `deleteWorksheet` already does it — the paper comes
+   back as "not started" in 📌 Set for you.
+
+   PERMANENT. There is no bin. So the window is red, lists the counts, says
+   in words that it cannot be undone, and its button is off until the
+   student ticks "I understand". The teacher's own account never sees the
+   button: their worksheets are the class's papers, not a slate.
+   ===================================================================== */
+var _freshBusy = false;
+var _freshPlan = null;      // { uid, sheets, book, left, many, at } — what the window promised to delete
+var FRESH_CHUNK = 8;        // deletes in flight at once: quick, and gentle on a phone's connection
+
+/* The button is a student's: signed in, never the teacher. */
+function freshAllowed() {
+  return !!(currentUser && db && !isAdmin(currentUser));
+}
+function freshButtonsShow() {
+  var on = freshAllowed();
+  ['progFresh', 'mistFresh'].forEach(function (id) {
+    var b = $(id);
+    if (b) b.classList.toggle('hidden', !on);
+  });
+}
+
+/* PURE: which papers and which mistakes are this student's to clear.
+   `sheets` — every worksheet document the uid owns (unfiltered);
+   `book`   — every mistake under the uid;
+   `st`     — the active student { level, subject } or null;
+   `subs`   — the subjects that student takes (`studentSubjectList`);
+   `many`   — true when the account carries more than one student;
+   `uid`    — the signed-in uid, checked on every paper as a belt.
+   Returns { sheets, book, left } where `left` counts the papers kept back. */
+function freshPick(sheets, book, st, subs, many, uid) {
+  sheets = Array.isArray(sheets) ? sheets : [];
+  book = Array.isArray(book) ? book : [];
+  subs = Array.isArray(subs) ? subs : [];
+  var own = sheets.filter(function (w) {
+    return w && w.id && (!uid || !w.ownerUid || w.ownerUid === uid);
+  });
+  var mine;
+  if (!many || !st || !st.level) {
+    mine = own;
+  } else {
+    mine = own.filter(function (w) {
+      if (!w.level || w.level !== st.level) return false;
+      return !w.subject || subs.indexOf(w.subject) !== -1;
+    });
+  }
+  var ids = {};
+  mine.forEach(function (w) { ids[w.id] = true; });
+  var ownIds = {};
+  own.forEach(function (w) { ownIds[w.id] = true; });
+  var mistakesMine;
+  if (!many || !st || !st.level) {
+    mistakesMine = book.filter(function (m) { return m && m.id; });
+  } else {
+    mistakesMine = book.filter(function (m) {
+      if (!m || !m.id) return false;
+      if (m.docId && ids[m.docId]) return true;
+      if (m.docId && ownIds[m.docId]) return false;       // a sibling's paper, still on the shelf
+      if (!m.level || m.level !== st.level) return false;  // paper gone: the level is all that is left
+      return !m.subject || subs.indexOf(m.subject) !== -1;
+    });
+  }
+  return { sheets: mine, book: mistakesMine, left: own.length - mine.length };
+}
+
+/* PURE: the roster-row patch that takes the cleared papers' progress off
+   `studentProfiles/{uid}`. With the whole account cleared the maps go
+   whole (old ids left over from papers deleted before the maps existed go
+   with them); otherwise only the cleared papers' keys. `del` is
+   FieldValue.delete (passed in, so the harness can see the shape). */
+function freshRosterPatch(sheetIds, whole, del, stamp) {
+  var patch = {};
+  if (whole) {
+    patch.tutorLos = del();
+    patch.tutorGaps = del();
+  } else {
+    var los = {}, gaps = {};
+    (sheetIds || []).forEach(function (id) {
+      if (!id) return;
+      los[id] = del();
+      gaps[id] = del();
+    });
+    if (Object.keys(los).length) { patch.tutorLos = los; patch.tutorGaps = gaps; }
+  }
+  if (Object.keys(patch).length) {
+    patch.tutorLosAt = stamp();
+    patch.tutorGapsAt = stamp();
+  }
+  return patch;
+}
+
+/* Every file a mistake owns — the card's picture and each block figure. */
+function freshMistakePaths(m) {
+  var out = [];
+  if (m && m.imagePath) out.push(m.imagePath);
+  (typeof mistakeBlocks === 'function' ? mistakeBlocks(m) : []).forEach(function (b) {
+    if (b && b.path && out.indexOf(b.path) === -1) out.push(b.path);
+  });
+  return out;
+}
+
+/* Every mistake, not just the 300 the book shows. */
+async function freshReadBook(uid) {
+  var snap = await db.collection('users').doc(uid).collection('mistakes').get();
+  var out = [];
+  snap.forEach(function (d) { var m = d.data() || {}; m.id = d.id; out.push(m); });
+  return out;
+}
+/* Every paper the uid owns, not just the ones the shelf shows. */
+async function freshReadSheets(uid) {
+  var snap = await db.collection(COLLECTION).where('ownerUid', '==', uid).get();
+  var out = [];
+  snap.forEach(function (d) { var w = d.data() || {}; w.id = d.id; out.push(w); });
+  return out;
+}
+
+/* Run `jobs` (functions returning promises) a few at a time; each one's
+   failure is counted, never thrown, so one stubborn file never strands the
+   rest of the slate half cleared. `tick(done)` after each. */
+async function freshInChunks(jobs, tick) {
+  var failed = 0, done = 0;
+  for (var i = 0; i < jobs.length; i += FRESH_CHUNK) {
+    var part = jobs.slice(i, i + FRESH_CHUNK).map(function (job) {
+      return Promise.resolve().then(job).catch(function (e) {
+        failed++;
+        console.warn('start fresh: one item could not be deleted', e);
+      }).then(function () { done++; if (tick) tick(done); });
+    });
+    await Promise.all(part);
+  }
+  return failed;
+}
+
+/* One paper: its own files, then the document — the same rules as
+   `deleteWorksheet`, without its own confirm (the window was the confirm). */
+async function freshDropSheet(w) {
+  var classReads = await worksheetReadByClass(w);
+  var own = !w.sharedPdf && !classReads;
+  if (w.storagePath && own) { try { await storage.ref(w.storagePath).delete(); } catch (e) {} }
+  if (w.keyPath && own) { try { await storage.ref(w.keyPath).delete(); } catch (e) {} }
+  if (w.bodyPath) { try { await storage.ref(w.bodyPath).delete(); } catch (e) {} }
+  if (own && typeof lessonDeleteFiles === 'function' && typeof lessonVideosClean === 'function') {
+    try { await lessonDeleteFiles(lessonVideosClean(w.videos)); } catch (e) {}
+  }
+  await db.collection(COLLECTION).doc(w.id).delete();
+  localBackupClear(w.id);
+}
+async function freshDropMistake(uid, m) {
+  var paths = freshMistakePaths(m);
+  for (var i = 0; i < paths.length; i++) {
+    try { await storage.ref(paths[i]).delete(); } catch (e) { /* may be gone */ }
+  }
+  await db.collection('users').doc(uid).collection('mistakes').doc(m.id).delete();
+}
+
+/* The practice questions cached on this device (`lp1:` / `lp2:`) were
+   written from the book that is about to go. Only on a whole-account
+   clear: a sibling's cache is theirs. */
+function freshClearDeviceCaches(whole, sheetIds) {
+  try {
+    var drop = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (!k) continue;
+      if (whole && (k.indexOf('lp1:') === 0 || k.indexOf('lp2:') === 0)) drop.push(k);
+    }
+    (sheetIds || []).forEach(function (id) { drop.push(localBackupKey(id)); });
+    drop.forEach(function (k) { try { localStorage.removeItem(k); } catch (e) {} });
+  } catch (e) { /* a private window: nothing was cached */ }
+}
+
+function freshRow(list, what, n, note) {
+  var li = document.createElement('li');
+  var left = document.createElement('div');
+  var b = document.createElement('b');
+  b.className = 'freshN';
+  b.textContent = String(n);
+  left.appendChild(b);
+  left.appendChild(document.createTextNode(' ' + what));
+  li.appendChild(left);
+  var sp = document.createElement('span');
+  sp.textContent = note;
+  li.appendChild(sp);
+  list.appendChild(li);
+}
+
+async function freshOpen() {
+  if (!freshAllowed()) return;
+  if (_freshBusy) { $('freshModal').classList.add('open'); return; }
+  var body = $('freshBody');
+  var go = $('freshGo');
+  body.innerHTML = '<div class="freshProgress">Counting what is yours…</div>';
+  go.disabled = true;
+  go.textContent = 'Delete everything for ever';
+  $('freshCancel').disabled = false;
+  $('freshModal').classList.add('open');
+  var uid = currentUser.uid;
+  var plan;
+  try {
+    var sheets = await freshReadSheets(uid);
+    var book = await freshReadBook(uid);
+    var st = activeStudent();
+    var many = myStudents.length > 1;
+    var pick = freshPick(sheets, book, st, st ? studentSubjectList(st) : [], many, uid);
+    plan = { uid: uid, sheets: pick.sheets, book: pick.book, left: pick.left, many: many,
+             whole: !many || !st || !st.level, name: st && st.name ? st.name : '', at: Date.now() };
+  } catch (e) {
+    body.innerHTML = '';
+    var err = document.createElement('div');
+    err.className = 'freshWarn';
+    err.textContent = 'Your work could not be counted just now, so nothing has been deleted. Check your connection and try again.';
+    body.appendChild(err);
+    return;
+  }
+  if (!currentUser || currentUser.uid !== uid) { freshClose(); return; }
+  _freshPlan = plan;
+  freshPaint(plan);
+}
+
+function freshPaint(plan) {
+  var body = $('freshBody');
+  var go = $('freshGo');
+  body.innerHTML = '';
+  var marked = plan.sheets.filter(function (w) {
+    return w.diagnostic && Array.isArray(w.diagnostic.rows) && w.diagnostic.rows.length;
+  }).length;
+  var set = plan.sheets.filter(function (w) { return w.sharedPdf; }).length;
+
+  var warn = document.createElement('div');
+  warn.className = 'freshWarn';
+  warn.setAttribute('role', 'alert');
+  warn.innerHTML = '<span class="freshWarnIcon" aria-hidden="true">⚠️</span><div><b>This is permanent. It cannot be undone.</b>' +
+    'Everything below is deleted for ever. Not you, not your teacher, and not Study Buddy can bring it back afterwards.</div>';
+  body.appendChild(warn);
+
+  var who = document.createElement('p');
+  who.className = 'freshKeep';
+  who.textContent = (plan.name ? plan.name + ', this' : 'This') + ' clears your own work only. Nobody else\'s worksheets or mistakes are touched.';
+  body.appendChild(who);
+
+  var list = document.createElement('ul');
+  list.className = 'freshList';
+  freshRow(list, plan.sheets.length === 1 ? 'worksheet' : 'worksheets', plan.sheets.length,
+    'with the marks, hints, chat and working on ' + (plan.sheets.length === 1 ? 'it' : 'them'));
+  freshRow(list, plan.book.length === 1 ? 'question in your mistake book' : 'questions in your mistake book', plan.book.length,
+    plan.book.length === 1 ? 'with its pictures' : 'with their pictures');
+  freshRow(list, (marked === 1 ? 'marked paper' : 'marked papers') + ' of learning objective progress', marked,
+    '📈 My progress and the objective table start empty');
+  body.appendChild(list);
+
+  var keep = document.createElement('p');
+  keep.className = 'freshKeep';
+  var bits = [];
+  if (set) bits.push(set + (set === 1 ? ' of them was' : ' of them were') + ' set by your teacher: your copy and your marks go, ' +
+    'but the paper stays in 📌 Set for you to start again.');
+  if (plan.left) bits.push(plan.left + (plan.left === 1 ? ' worksheet' : ' worksheets') + ' on this account ' +
+    (plan.left === 1 ? 'belongs' : 'belong') + ' to another student or has no level, so ' + (plan.left === 1 ? 'it is' : 'they are') + ' kept.');
+  bits.push('Your name, level, subjects, ✦ Adventure and consults are kept.');
+  keep.textContent = bits.join(' ');
+  body.appendChild(keep);
+
+  if (!plan.sheets.length && !plan.book.length) {
+    var none = document.createElement('div');
+    none.className = 'freshProgress';
+    none.textContent = 'Your slate is already clean — there is nothing to delete.';
+    body.appendChild(none);
+    go.disabled = true;
+    return;
+  }
+
+  var agree = document.createElement('label');
+  agree.className = 'freshAgree';
+  var box = document.createElement('input');
+  box.type = 'checkbox';
+  box.id = 'freshAgreeBox';
+  agree.appendChild(box);
+  var t = document.createElement('span');
+  t.textContent = 'I understand my worksheets, mistake book and progress will be deleted for ever and cannot be brought back.';
+  agree.appendChild(t);
+  body.appendChild(agree);
+  box.addEventListener('change', function () { go.disabled = !box.checked || _freshBusy; });
+  go.disabled = true;
+}
+
+function freshClose() {
+  if (_freshBusy) return;          // a sweep half done is never hidden
+  _freshPlan = null;
+  $('freshModal').classList.remove('open');
+}
+
+async function freshRun() {
+  var plan = _freshPlan;
+  var box = $('freshAgreeBox');
+  if (!plan || _freshBusy || !box || !box.checked) return;
+  if (!currentUser || currentUser.uid !== plan.uid || !freshAllowed()) { freshClose(); return; }
+  _freshBusy = true;
+  $('freshModal').classList.add('freshBusy');
+  var go = $('freshGo');
+  go.disabled = true;
+  $('freshCancel').disabled = true;
+  var body = $('freshBody');
+  body.innerHTML = '';
+  var prog = document.createElement('div');
+  prog.className = 'freshProgress';
+  prog.setAttribute('aria-live', 'polite');
+  var txt = document.createElement('div');
+  var meter = document.createElement('div');
+  meter.className = 'progBar';
+  var fill = document.createElement('div');
+  fill.className = 'progFill';
+  meter.appendChild(fill);
+  prog.appendChild(txt);
+  prog.appendChild(meter);
+  body.appendChild(prog);
+  var total = plan.sheets.length + plan.book.length || 1;
+  var doneBase = 0;
+  var show = function (label, n) {
+    txt.textContent = label;
+    fill.style.width = Math.round(100 * Math.min(1, (doneBase + n) / total)) + '%';
+  };
+  var failed = 0;
+  try {
+    // If the paper being cleared is the one open, close it first so no save
+    // writes it back the moment it is gone.
+    var ids = plan.sheets.map(function (w) { return w.id; });
+    if (currentDocId && ids.indexOf(currentDocId) !== -1) { currentDocId = null; showView('home'); }
+
+    show('Deleting your mistake book…', 0);
+    failed += await freshInChunks(plan.book.map(function (m) {
+      return function () { return freshDropMistake(plan.uid, m); };
+    }), function (n) { show('Deleting your mistake book… ' + n + ' of ' + plan.book.length, n); });
+    doneBase += plan.book.length;
+
+    show('Deleting your worksheets…', 0);
+    failed += await freshInChunks(plan.sheets.map(function (w) {
+      return function () { return freshDropSheet(w); };
+    }), function (n) { show('Deleting your worksheets… ' + n + ' of ' + plan.sheets.length, n); });
+    doneBase += plan.sheets.length;
+
+    show('Clearing your progress…', 0);
+    try {
+      var patch = freshRosterPatch(ids, plan.whole,
+        function () { return firebase.firestore.FieldValue.delete(); },
+        function () { return firebase.firestore.FieldValue.serverTimestamp(); });
+      if (plan.whole) {
+        patch.tutorMistakes = [];
+        patch.tutorMistakeCount = 0;
+        patch.tutorMistakesAt = firebase.firestore.FieldValue.serverTimestamp();
+      }
+      // A MERGE, ALWAYS — this is the centre's roster row (see the mistake mirror).
+      if (Object.keys(patch).length) await peopleRef(plan.uid).set(patch, { merge: true });
+    } catch (e) { failed++; console.warn('start fresh: roster row not cleared', e); }
+    _loSeen = null;
+    _gapSeen = null;
+    freshClearDeviceCaches(plan.whole, ids);
+  } finally {
+    _freshBusy = false;
+    $('freshModal').classList.remove('freshBusy');
+    $('freshCancel').disabled = false;
+  }
+  if (!currentUser || currentUser.uid !== plan.uid) { freshClose(); return; }
+  try { await loadMistakes(true); } catch (e) {}
+  if (!plan.whole) { try { mistakeMirrorSync(); } catch (e) {} }
+  try { await loadWorksheets(); } catch (e) {}
+  if ($('progressModal').classList.contains('open')) { try { renderProgress(); } catch (e) {} }
+  freshClose();
+  if (failed) toast('Most of it is cleared, but ' + failed + ' item' + (failed === 1 ? '' : 's') +
+    ' could not be deleted. Press 🧹 Start fresh again to finish.', 7000);
+  else toast('All clear — a fresh start. 🌱', 5000);
+}
+
 /* ---- Uploading ---- */
 var upGrade = HINT_DEFAULT;
 
@@ -29076,6 +29532,7 @@ function renderAuth() {
   $('signedOutCard').classList.toggle('hidden', signedIn);
   $('homeSignedIn').classList.toggle('hidden', !signedIn);
   $('mistakesBtn').classList.toggle('hidden', !signedIn);
+  freshButtonsShow();
   $('peopleBtn').classList.toggle('hidden', !isAdmin(currentUser));
   // A student's level and subject are on screen, not buried in a menu: they
   // decide which worksheets reach them, so being wrong about it is something
@@ -33192,6 +33649,10 @@ $('progressBtn').addEventListener('click', openProgress);
 $('progClose').addEventListener('click', closeProgress);
 $('progPrint').addEventListener('click', function () { printThis($('progressModal')); });
 $('progCopy').addEventListener('click', function () { copyText(progressAsText(), 'Progress copied'); });
+$('progFresh').addEventListener('click', freshOpen);
+$('mistFresh').addEventListener('click', freshOpen);
+$('freshCancel').addEventListener('click', freshClose);
+$('freshGo').addEventListener('click', freshRun);
 $('qnCancel').addEventListener('click', function () { $('quickNoteModal').classList.remove('open'); });
 $('qnSave').addEventListener('click', quickNoteSave);
 
@@ -33386,7 +33847,7 @@ document.addEventListener('keydown', function (e) {
     lessonPillMenuClose();
     lessonPlaylistClosePanel();
     // Every dialog but the first-sign-in gate. That one has to be answered.
-    document.querySelectorAll('.modalBack.open:not(#onboardModal)').forEach(function (m) {
+    document.querySelectorAll('.modalBack.open:not(#onboardModal):not(.freshBusy)').forEach(function (m) {
       m.classList.remove('open');
     });
     commitActiveTextEdit();

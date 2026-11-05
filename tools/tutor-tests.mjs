@@ -1708,9 +1708,10 @@ ok('the class-wide panel refuses anyone but the admin IN THE HANDLER',
 ok('the mirror is written after the book is reloaded',
    /await loadMistakes\(true\);[\s\S]{0,500}mistakeMirrorSync\(\);/.test(FILING));
 ok('…and again whenever the book CHANGES',
-   (html.match(/mistakeMirrorSync\(\);/g) || []).length === 4,
+   (html.match(/mistakeMirrorSync\(\);/g) || []).length === 5,
    'filed, sorted and removed — or the teacher reads a book that no longer exists — ' +
-   'plus 🖼 the catch-up that mints the picture links for a book filed before they were kept');
+   'plus 🖼 the catch-up that mints the picture links for a book filed before they were kept, ' +
+   'plus 🧹 Start fresh clearing one student of several');
 /* 🖼 …and the catch-up ASKS FIRST. A sync on every sign-in whether or not it
    had anything to do is a write a hundred students make every morning for
    nothing. */
@@ -8894,8 +8895,8 @@ section('🔑 Key-first marking and 🎯 concept tags');
      /Number\(had\.at\) === Number\(x\.entry\.at\)/.test(loSrc));
   ok('the catch-up runs once the shelf has loaded', /loadWorksheets\(\)\.then\(function \(x\) \{[\s\S]{0,300}loSheetCatchUp\(\);/.test(html));
   ok('My progress draws the dense table', /LoMarks\.mount\(host, \{\s*sheets: loSheets/.test(html));
-  ok('lo-marks.js and its CSS are loaded, versioned', /<script src="lo-marks\.js\?v=1\.80\.1"><\/script>/.test(html) &&
-     /<link rel="stylesheet" href="lo-marks\.css\?v=1\.80\.1">/.test(html));
+  ok('lo-marks.js and its CSS are loaded, versioned', /<script src="lo-marks\.js\?v=1\.81\.0"><\/script>/.test(html) &&
+     /<link rel="stylesheet" href="lo-marks\.css\?v=1\.81\.0">/.test(html));
   ok('💰 no new model call: lo-marks.js never asks one', !/askGemini|aiAsk|fetch\(/.test(readFileSync(join(here, '..', 'lo-marks.js'), 'utf8')));
   /* The roster row entry, end to end through the module. */
   const LM = (await import('node:module')).createRequire(import.meta.url)('../lo-marks.js');
@@ -8911,9 +8912,9 @@ section('🔑 Key-first marking and 🎯 concept tags');
   section('✏️ Objectives and topics open their mistakes as practice');
   const lpSrc = readFileSync(join(here, '..', 'lo-practice.js'), 'utf8');
   ok('lo-practice.js and its CSS are loaded, versioned with the app',
-     /<script src="lo-practice\.js\?v=1\.80\.1"><\/script>/.test(html) &&
-     /<link rel="stylesheet" href="lo-practice\.css\?v=1\.80\.1">/.test(html) &&
-     /var APP_VERSION = 'v1\.80\.1'/.test(html));
+     /<script src="lo-practice\.js\?v=1\.81\.0"><\/script>/.test(html) &&
+     /<link rel="stylesheet" href="lo-practice\.css\?v=1\.81\.0">/.test(html) &&
+     /var APP_VERSION = 'v1\.81\.0'/.test(html));
   ok('💰 lo-practice.js never reaches a model by itself — the app hands it askGemini',
      !/askGemini|fetch\(|XMLHttpRequest/.test(lpSrc));
   ok('the one ask is grounded like every other', /function lpAsk\(prompt, opts\) \{[\s\S]{0,400}aiGrounding\('teach'/.test(html));
@@ -8980,6 +8981,60 @@ section('🔑 Key-first marking and 🎯 concept tags');
   ok('renderProgress gives the toolbar its own class', /bar\.className = 'progTools';/.test(html));
   ok('.progTools is declared', /\.progTools \{/.test(html));
   ok('…and the toolbar never wears the 7px meter class', !/bar\.className = 'progBar'/.test(html));
+}
+
+{
+  section('🧹 Start fresh — a student clears their own slate (v1.81.0)');
+  const src = between('/* =====================================================================\n   🧹 START FRESH', '/* ---- Uploading ---- */', 'start fresh');
+  const ctx = { console, mistakeBlocks: (m) => (m && Array.isArray(m.blocks) ? m.blocks : []) };
+  vm.createContext(ctx);
+  vm.runInContext(src, ctx);
+  const sheets = [
+    { id: 'a', ownerUid: 'u1', level: 'P5', subject: 'math', diagnostic: { rows: [{}] } },
+    { id: 'b', ownerUid: 'u1', level: 'P5', subject: 'science' },
+    { id: 'c', ownerUid: 'u1', level: 'P3', subject: 'science' },
+    { id: 'd', ownerUid: 'u1' },
+    { id: 'x', ownerUid: 'someoneElse', level: 'P5', subject: 'math' }
+  ];
+  const book = [
+    { id: 'm1', docId: 'a', level: 'P5', subject: 'math' },
+    { id: 'm2', docId: 'c', level: 'P3', subject: 'science' },
+    { id: 'm3', docId: 'gone', level: 'P5', subject: 'math' },
+    { id: 'm4', docId: 'gone', level: 'P3', subject: 'science' },
+    { id: 'm5', docId: 'gone' }
+  ];
+  const ids = (l) => l.map((x) => x.id).sort();
+  let p = ctx.freshPick(sheets, book, { level: 'P5', subject: 'math' }, ['math'], false, 'u1');
+  eq('one student on the account: every paper the uid owns goes', ids(p.sheets), ['a', 'b', 'c', 'd']);
+  eq('…never a paper another uid owns', p.sheets.some((w) => w.ownerUid !== 'u1'), false);
+  eq('…and the whole mistake book', ids(p.book), ['m1', 'm2', 'm3', 'm4', 'm5']);
+  p = ctx.freshPick(sheets, book, { level: 'P5', subject: 'both' }, ['math', 'science'], true, 'u1');
+  eq('two students: only the active student\'s level and subjects', ids(p.sheets), ['a', 'b']);
+  eq('…a sibling\'s P3 paper and an untagged one are kept', p.left, 2);
+  eq('…their mistakes: from their papers, or a gone paper at their level', ids(p.book), ['m1', 'm3']);
+  p = ctx.freshPick(sheets, book, { level: 'P5', subject: 'math' }, ['math'], true, 'u1');
+  eq('…a subject they do not take stays', ids(p.sheets), ['a']);
+  eq('nothing in, nothing out', JSON.parse(JSON.stringify(ctx.freshPick(null, null, null, null, false, 'u1'))), { sheets: [], book: [], left: 0 });
+
+  const del = () => '<del>', stamp = () => '<now>';
+  eq('roster: a whole clear drops both maps', JSON.parse(JSON.stringify(ctx.freshRosterPatch(['a'], true, del, stamp))),
+     { tutorLos: '<del>', tutorGaps: '<del>', tutorLosAt: '<now>', tutorGapsAt: '<now>' });
+  eq('roster: a sibling clear drops only the cleared papers\' keys', JSON.parse(JSON.stringify(ctx.freshRosterPatch(['a', 'b'], false, del, stamp))),
+     { tutorLos: { a: '<del>', b: '<del>' }, tutorGaps: { a: '<del>', b: '<del>' }, tutorLosAt: '<now>', tutorGapsAt: '<now>' });
+  eq('roster: nothing cleared, nothing written', JSON.parse(JSON.stringify(ctx.freshRosterPatch([], false, del, stamp))), {});
+  eq('a mistake\'s files: the card picture and each block figure, once each',
+     JSON.parse(JSON.stringify(ctx.freshMistakePaths({ imagePath: 'p/1', blocks: [{ path: 'p/2' }, { path: 'p/1' }, { text: 'x' }] }))), ['p/1', 'p/2']);
+
+  ok('the teacher never gets the button', /function freshAllowed\(\) \{\s*return !!\(currentUser && db && !isAdmin\(currentUser\)\);/.test(src));
+  ok('the window says it is permanent', /This is permanent\. It cannot be undone\./.test(src));
+  ok('the delete button starts off and waits for "I understand"', /id="freshGo" type="button" disabled/.test(html) &&
+     /go\.disabled = !box\.checked/.test(src) && /if \(!plan \|\| _freshBusy \|\| !box \|\| !box\.checked\) return;/.test(src));
+  ok('every read and write is under the signed-in uid', !/collection\('users'\)\.doc\((?!uid\))/.test(src) &&
+     /where\('ownerUid', '==', uid\)/.test(src) && /peopleRef\(plan\.uid\)\.set\(patch, \{ merge: true \}\)/.test(src));
+  ok('a set paper keeps the class\'s PDF (the same rule as deleteWorksheet)', /var own = !w\.sharedPdf && !classReads;/.test(src));
+  ok('Escape never hides a sweep half done', /:not\(#onboardModal\):not\(\.freshBusy\)/.test(html));
+  ok('both doors are wired', /\$\('progFresh'\)\.addEventListener\('click', freshOpen\)/.test(html) &&
+     /\$\('mistFresh'\)\.addEventListener\('click', freshOpen\)/.test(html));
 }
 
 console.log('\n' + (failures
