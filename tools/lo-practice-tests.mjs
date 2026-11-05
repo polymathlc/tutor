@@ -195,6 +195,14 @@ test('the printed sheet: questions first, then the key and working on a page of 
   assert.doesNotMatch(noKey, /Answer key and working/);
   const empty = LP.sheetHtml({ title: 'P', groups: [{ title: 't', items: [] }], withKey: true });
   assert.match(empty, /nothing to practise/);
+  // An MCQ is answered in a bracket, as on a printed paper — no ruled line, no working box.
+  assert.match(noKey, /lpSheetBracket">\(/);
+  assert.doesNotMatch(noKey, /lpSheetWork|Answer: ____/);
+  const open = LP.cleanPractice({ question: 'How many marbles had Tom?', answer: '20', working: ['4 units = 40'] });
+  const written = LP.sheetHtml({ title: 'P', groups: [{ title: 't', items: [{ m, p: open }] }] });
+  assert.match(written, /lpSheetWork/);
+  assert.match(written, /Answer: ____/);
+  assert.doesNotMatch(written, /lpSheetBracket/);
 });
 
 test('a practice question is remembered per mistake', () => {

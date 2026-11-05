@@ -11,9 +11,9 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.82.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.82.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.82.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.83.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.83.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.83.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -1501,6 +1501,7 @@
   .mwsShot { display: block; max-width: 100%; max-height: 95mm; margin: 0 0 8pt; }
   .mwsRules { margin-top: 4pt; }
   .mwsRule { border-bottom: 1px solid #999; height: 22pt; }
+  .mwsBracket { text-align: right; font-size: 13pt; letter-spacing: 1pt; padding-right: 4pt; }
   .mwsKey { page-break-before: always; break-before: page; padding-top: 6pt; }
   .mwsKeyTitle { font-size: 13pt; font-weight: 700; border-bottom: 2px solid #000; padding-bottom: 6pt; margin-bottom: 12pt; }
   .mwsKeyRow { display: flex; gap: 8pt; font-size: 10.5pt; line-height: 1.6; margin-bottom: 7pt; page-break-inside: avoid; }
@@ -3192,10 +3193,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.82.0"></script>
-<script src="lo-marks.js?v=1.82.0"></script>
-<script src="lo-practice.js?v=1.82.0"></script>
-<script src="cer-mcq.js?v=1.82.0"></script>
+<script src="concept-tags.js?v=1.83.0"></script>
+<script src="lo-marks.js?v=1.83.0"></script>
+<script src="lo-practice.js?v=1.83.0"></script>
+<script src="cer-mcq.js?v=1.83.0"></script>
 <script>
 'use strict';
 
@@ -3292,7 +3293,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.82.0';
+var APP_VERSION = 'v1.83.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -23030,6 +23031,17 @@ function mwsLines(m) {
   var n = pair ? Math.ceil(pair.total) : 2;
   return Math.max(2, Math.min(6, n));
 }
+/* A multiple-choice question is answered with ONE number in a bracket at
+   the end of the line, the way every printed paper sets it — ruled lines
+   under it invite a written answer nobody asked for. */
+function mwsIsMcq(m) {
+  if (!m) return false;
+  if (m.type === 'mcq') return true;
+  try { return mistakeOptions(m).length >= 2; } catch (e) { return false; }
+}
+function mwsBracket() {
+  return '<div class="mwsBracket">(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div>';
+}
 function mwsRules(n) {
   var out = '';
   for (var i = 0; i < n; i++) out += '<div class="mwsRule"></div>';
@@ -23067,7 +23079,7 @@ function mwsBuild(list, withKey) {
     questionNodes(m, 'sheet').forEach(function (node) { q.appendChild(node); });
     var rules = document.createElement('div');
     rules.className = 'mwsRules';
-    rules.innerHTML = mwsRules(mwsLines(m));
+    rules.innerHTML = mwsIsMcq(m) ? mwsBracket() : mwsRules(mwsLines(m));
     q.appendChild(rules);
     sheet.appendChild(q);
   });
