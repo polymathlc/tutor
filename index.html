@@ -11,8 +11,8 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.80.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.80.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.80.1">
+<link rel="stylesheet" href="lo-practice.css?v=1.80.1">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -1531,7 +1531,7 @@
   .repScroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: var(--radius-sm); }
   .repTable { width: 100%; border-collapse: collapse; font-size: 0.8rem; min-width: 720px; }
   /* ✏️ 📈 My progress, one subject at a time (v1.79.0). */
-  .progBar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 6px 0 10px; }
+  .progTools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 6px 0 10px; }
   .progChips { display: flex; flex-wrap: wrap; gap: 6px; }
   .progChip {
     font: inherit; font-size: 0.82rem; padding: 5px 12px; border-radius: 999px; cursor: pointer;
@@ -1544,7 +1544,7 @@
   }
   .progPractise { border-color: #C9A227; background: #FFF6D8; font-weight: 600; }
   .progTip { margin: 2px 0 8px; }
-  @media print { .progBar, .progTip, .lpGoMark { display: none !important; } }
+  @media print { .progTools, .progTip, .lpGoMark { display: none !important; } }
   .repTable th {
     text-align: left; font-weight: 700; font-size: 0.72rem; color: var(--ink-faint);
     padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
@@ -3138,9 +3138,9 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.80.0"></script>
-<script src="lo-marks.js?v=1.80.0"></script>
-<script src="lo-practice.js?v=1.80.0"></script>
+<script src="concept-tags.js?v=1.80.1"></script>
+<script src="lo-marks.js?v=1.80.1"></script>
+<script src="lo-practice.js?v=1.80.1"></script>
 <script>
 'use strict';
 
@@ -3237,7 +3237,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.80.0';
+var APP_VERSION = 'v1.80.1';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -21326,7 +21326,7 @@ function renderProgress() {
 
   /* ONE SUBJECT AT A TIME — a chip per subject, never two on one page. */
   var bar = document.createElement('div');
-  bar.className = 'progBar';
+  bar.className = 'progTools';
   if (subs.length > 1) {
     var chips = document.createElement('div');
     chips.className = 'progChips';
