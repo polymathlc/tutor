@@ -17,6 +17,10 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.80.1 — 🐛 The subject tabs on My progress are visible again
+
+The subject chips and sort buttons above *Progress by topic and learning objective* were clipped to a thin strip: the toolbar wore the class `progBar`, which is also the 7px marking meter (`overflow: hidden`). It has its own class now, `progTools`.
+
 ## v1.79.0 — ✏️ Every objective and topic opens its mistakes as practice
 
 - **Tap any topic or learning objective** in 📈 My progress, 📊 My report or the 📐 objective × paper table and

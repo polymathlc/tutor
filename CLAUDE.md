@@ -2,6 +2,10 @@
 
 Guidance for Claude when working in this repo.
 
+## 🐛 The My progress toolbar is `.progTools` (v1.80.1)
+
+Never give it `progBar`: that is the 7px marking meter (`overflow: hidden`), and the tabs were clipped to a strip.
+
 ## 🖼 THE QUESTION WITH ITS FIGURE, and 👆 THE CELLS OPEN (v1.80.0)
 
 Search `🖼 v2 — THE QUESTION IS SHOWN THE WAY ⚡ RAPID ADD STORES IT` (lo-practice.js) and `🖼 THE PICTURES (v1.80.0)`.
