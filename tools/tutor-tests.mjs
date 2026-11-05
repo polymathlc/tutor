@@ -4498,6 +4498,14 @@ eq('a question with no marks recorded falls back to two', S.mwsLines({ marks: ''
 eq('a huge allocation is capped rather than filling a page with rules',
    S.mwsLines({ marks: '0/40' }), 6);
 
+/* A multiple-choice question is answered with a number in a bracket, the
+   way a printed paper sets it — never on ruled lines. */
+eq('an MCQ on the printed sheet is an MCQ', S.mwsIsMcq({ type: 'mcq' }), true);
+eq('a written question is not', S.mwsIsMcq({ type: 'open', question: 'Explain why.' }), false);
+eq('nothing is not an MCQ', S.mwsIsMcq(null), false);
+eq('the MCQ answer space is a bracket, not rules',
+   /\(/.test(S.mwsBracket()) && /\)/.test(S.mwsBracket()) && !/mwsRule/.test(S.mwsBracket()), true);
+
 /* "Export as a PDF" is the browser's own Save as PDF. There is no PDF
    WRITER in this app — pdf.js reads them — so a print stylesheet is the
    whole mechanism, and the ONE element being printed is the one carrying
@@ -8895,8 +8903,8 @@ section('🔑 Key-first marking and 🎯 concept tags');
      /Number\(had\.at\) === Number\(x\.entry\.at\)/.test(loSrc));
   ok('the catch-up runs once the shelf has loaded', /loadWorksheets\(\)\.then\(function \(x\) \{[\s\S]{0,300}loSheetCatchUp\(\);/.test(html));
   ok('My progress draws the dense table', /LoMarks\.mount\(host, \{\s*sheets: loSheets/.test(html));
-  ok('lo-marks.js and its CSS are loaded, versioned', /<script src="lo-marks\.js\?v=1\.82\.0"><\/script>/.test(html) &&
-     /<link rel="stylesheet" href="lo-marks\.css\?v=1\.82\.0">/.test(html));
+  ok('lo-marks.js and its CSS are loaded, versioned', /<script src="lo-marks\.js\?v=1\.83\.0"><\/script>/.test(html) &&
+     /<link rel="stylesheet" href="lo-marks\.css\?v=1\.83\.0">/.test(html));
   ok('💰 no new model call: lo-marks.js never asks one', !/askGemini|aiAsk|fetch\(/.test(readFileSync(join(here, '..', 'lo-marks.js'), 'utf8')));
   /* The roster row entry, end to end through the module. */
   const LM = (await import('node:module')).createRequire(import.meta.url)('../lo-marks.js');
@@ -8912,9 +8920,9 @@ section('🔑 Key-first marking and 🎯 concept tags');
   section('✏️ Objectives and topics open their mistakes as practice');
   const lpSrc = readFileSync(join(here, '..', 'lo-practice.js'), 'utf8');
   ok('lo-practice.js and its CSS are loaded, versioned with the app',
-     /<script src="lo-practice\.js\?v=1\.82\.0"><\/script>/.test(html) &&
-     /<link rel="stylesheet" href="lo-practice\.css\?v=1\.82\.0">/.test(html) &&
-     /var APP_VERSION = 'v1\.82\.0'/.test(html));
+     /<script src="lo-practice\.js\?v=1\.83\.0"><\/script>/.test(html) &&
+     /<link rel="stylesheet" href="lo-practice\.css\?v=1\.83\.0">/.test(html) &&
+     /var APP_VERSION = 'v1\.83\.0'/.test(html));
   ok('💰 lo-practice.js never reaches a model by itself — the app hands it askGemini',
      !/askGemini|fetch\(|XMLHttpRequest/.test(lpSrc));
   ok('the one ask is grounded like every other', /function lpAsk\(prompt, opts\) \{[\s\S]{0,400}aiGrounding\('teach'/.test(html));

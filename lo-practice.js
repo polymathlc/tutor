@@ -763,7 +763,12 @@
             h.push(questionHtml(it.m, sheet.pic) + '<div class="lpSheetNote">The question from your paper' +
               (it.m.ws ? ', ' + esc(it.m.ws) + (it.m.n ? ' Q' + esc(it.m.n) : '') : '') + ' — a fresh one was not written yet.</div>');
           }
-          h.push('<div class="lpSheetWork"></div><div class="lpSheetAns">Answer: ______________________</div></div></div>');
+          /* A multiple-choice question takes a bracket for the option number,
+             as on a printed paper — no working box, no ruled answer line. */
+          var mcq = p ? !!(p.options && p.options.length) : !!(it.m && it.m.mcq);
+          h.push(mcq
+            ? '<div class="lpSheetAns lpSheetBracket">(&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)</div></div></div>'
+            : '<div class="lpSheetWork"></div><div class="lpSheetAns">Answer: ______________________</div></div></div>');
         });
       });
     } else {
