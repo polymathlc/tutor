@@ -2,6 +2,17 @@
 
 Guidance for Claude when working in this repo.
 
+
+## 🖼 Picture clean-up draws with ChatGPT Images 2.6 first (v1.85.0)
+
+`window.askGeminiImage` (the one door `mbEnhance` uses; name kept) now asks the **`openAiImage`** callable in
+`polymathlc/math` FIRST, with **`gpt-image-2.6-sunburst`** (OpenAI's Images 2.6 model for precise edits), through
+`_aiCallable` — the server's OPENAI_API_KEY, so there is still **no key box** in this app. Gemini's image models
+(`AI_IMAGE_MODELS`) stay behind it. A route fault (no key, not deployed, capped, signed out) marks ChatGPT down for
+`OPENAI_IMAGE_DOWN_MS` (10 min). Figures go up one at a time, `OPENAI_IMAGE_GAP_MS` apart, because the server lets a
+student start one picture every 1.2 s. `window.imageLastModel()` names the model that drew the last picture.
+Tests: `tools/picture-engine-tests.mjs`.
+
 ## ▦ MCQ OPTIONS THAT WERE A TABLE ARE DRAWN AS ONE (v1.84.0)
 
 Search `▦ OPTIONS THAT ARE A TABLE`. `CerMcq.optionTable(options, letters)` (pure) reads options like
