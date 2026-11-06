@@ -11,9 +11,9 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.83.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.83.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.83.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.84.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.84.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.84.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -3193,10 +3193,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.83.0"></script>
-<script src="lo-marks.js?v=1.83.0"></script>
-<script src="lo-practice.js?v=1.83.0"></script>
-<script src="cer-mcq.js?v=1.83.0"></script>
+<script src="concept-tags.js?v=1.84.0"></script>
+<script src="lo-marks.js?v=1.84.0"></script>
+<script src="lo-practice.js?v=1.84.0"></script>
+<script src="cer-mcq.js?v=1.84.0"></script>
 <script>
 'use strict';
 
@@ -3293,7 +3293,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.83.0';
+var APP_VERSION = 'v1.84.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -21941,6 +21941,13 @@ function _mqImg(cls, urlOrPromise, onClick) {
 
 /* `opts.noPic` is the card, which draws the tier picture full-bleed across
    its own top and would otherwise fetch and show it twice. */
+/* ▦ The options as a table, or null when they are plain words (or the
+   table drawer is not loaded). */
+function mqOptionTable(wordOpts) {
+  if (typeof CerMcq === 'undefined' || !CerMcq || typeof CerMcq.optionTable !== 'function') return null;
+  var letters = wordOpts.length > 0 && /^[A-Ha-h]$/.test(String(wordOpts[0].label || '').replace(/[()\s.]/g, ''));
+  try { return CerMcq.optionTable(wordOpts, letters); } catch (e) { return null; }
+}
 function questionNodes(m, kind, opts) {
   var skin = MQ_SKIN[kind] || MQ_SKIN.card;
   opts = opts || {};
@@ -21985,6 +21992,15 @@ function questionNodes(m, kind, opts) {
      SAME binding, so it would quietly overwrite the caller's `{ noPic: true }`
      — and anything added below that read it would get `undefined`. */
   var wordOpts = opts.noOpts ? [] : mistakeOptions(m);
+  /* ▦ OPTIONS THAT WERE A TABLE ON THE PAPER (v1.84.0) — "None: F; lower
+     only: H; …" four times over is read back into the table it was
+     (`CerMcq.optionTable`) and drawn as one, with the option's number in
+     the first column, on the card, in ▶ Practise and on the printed sheet. */
+  var optTable = wordOpts.length ? mqOptionTable(wordOpts) : null;
+  if (optTable) {
+    var tnode = CerMcq.tableNode(document, optTable, kind === 'sheet' ? 'mwsTable' : 'mqTable');
+    if (tnode) { out.push(tnode); wordOpts = []; }
+  }
   if (wordOpts.length) {
     var wrap = document.createElement('div');
     wrap.className = skin.opts;

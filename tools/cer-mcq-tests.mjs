@@ -179,3 +179,104 @@ test('lo-practice’s try box takes the host’s MCQ, and keeps its buttons with
   assert.equal(p.m, m);
   assert.equal(p.correct, 2);
 });
+
+/* ▦ OPTIONS THAT WERE A TABLE ON THE PAPER (v1.84.0) */
+const leafOpts = [
+  { label: '1', text: 'None: F; lower only: H; upper only: G; both: J.' },
+  { label: '2', text: 'None: J; lower only: H; upper only: G; both: F.' },
+  { label: '3', text: 'None: F; lower only: G; upper only: H; both: J.' },
+  { label: '4', text: 'None: J; lower only: G; upper only: H; both: F.' }
+];
+
+test('keyed options are read back into the table they were', () => {
+  const t = P.optionTable(leafOpts);
+  assert.ok(t, 'a table');
+  assert.deepEqual(t.cols, ['None', 'Lower only', 'Upper only', 'Both']);
+  assert.equal(t.keyed, true);
+  assert.deepEqual(t.rows.map(r => r.label), ['1', '2', '3', '4']);
+  assert.deepEqual(t.rows[0].cells, ['F', 'H', 'G', 'J']);
+  assert.deepEqual(t.rows[3].cells, ['J', 'G', 'H', 'F']);
+  assert.equal(P.rowWords(t, 1), 'None J · Lower only H · Upper only G · Both F');
+  assert.equal(CM.optionTable, P.optionTable);
+});
+
+test('the keys may come in any order, with | or = or commas, and still line up', () => {
+  const t = P.optionTable([
+    { text: 'Mass = 20 g | Volume = 5 cm3' },
+    { text: 'volume = 8 cm3 | mass = 30 g' }
+  ]);
+  assert.deepEqual(t.cols, ['Mass', 'Volume']);
+  assert.deepEqual(t.rows[1].cells, ['30 g', '8 cm3']);
+  const c = P.optionTable([
+    { text: 'Conductor: copper, Insulator: wood' },
+    { text: 'Conductor: iron, Insulator: plastic' }
+  ]);
+  assert.deepEqual(c.cols, ['Conductor', 'Insulator']);
+  assert.deepEqual(c.rows[1].cells, ['iron', 'plastic']);
+});
+
+test('bare cells of the same count make a table with no header', () => {
+  const t = P.optionTable([{ text: 'Yes; No; Yes' }, { text: 'No; No; Yes' }, { text: 'Yes; Yes; No' }, { text: 'No; Yes; No' }]);
+  assert.ok(t);
+  assert.deepEqual(t.cols, ['', '', '']);
+  assert.deepEqual(t.rows[2].cells, ['Yes', 'Yes', 'No']);
+});
+
+test('plain options, prose and lists that do not agree are NOT tables', () => {
+  assert.equal(P.optionTable(four), null);
+  assert.equal(P.optionTable([{ text: 'A only' }, { text: 'B only' }]), null);
+  assert.equal(P.optionTable([leafOpts[0], { text: 'None: F; lower only: H; upper only: G' }]), null, 'a key missing');
+  assert.equal(P.optionTable([leafOpts[0], { text: 'None: F; lower: H; upper only: G; both: J' }]), null, 'a key renamed');
+  assert.equal(P.optionTable([
+    { text: 'The plant grows taller because it gets more light; it also makes more food for itself' },
+    { text: 'The plant grows shorter because it gets less light; it also makes less food for itself' }
+  ]), null, 'sentences with a semicolon are prose');
+  assert.equal(P.optionTable([{ text: 'Yes; No' }, { text: 'Yes; No; Yes' }]), null, 'cell counts differ');
+  assert.equal(P.optionTable([{ text: 'a: 1; a: 2' }, { text: 'a: 3; a: 4' }]), null, 'a key twice');
+  assert.equal(P.optionTable([leafOpts[0]]), null, 'one option is not a list');
+});
+
+function fakeDom() {
+  const mkEl = tag => ({
+    tag, className: '', children: [], attrs: {}, style: {}, textContent: '', hidden: false,
+    classList: { toggle() {}, add() {}, remove() {}, contains() { return false; } },
+    setAttribute(k, v) { this.attrs[k] = v; }, appendChild(c) { this.children.push(c); return c; },
+    addEventListener() {}, querySelector() { return null; }
+  });
+  return { createElement: mkEl, createTextNode: t => ({ tag: '#text', textContent: t }) };
+}
+const walk = (n, f) => { f(n); (n.children || []).forEach(c => walk(c, f)); };
+
+test('the table is drawn with a numbered first column, every cell as text', () => {
+  const doc = fakeDom();
+  const node = CM.tableNode(doc, P.optionTable(leafOpts), 'mwsTable');
+  assert.equal(node.className, 'cmq-tableWrap mwsTable');
+  const ths = [], tds = [];
+  walk(node, n => { if (n.tag === 'th') ths.push(n.textContent); if (n.tag === 'td') tds.push(n.textContent); });
+  assert.deepEqual(ths.slice(0, 5), ['Option', 'None', 'Lower only', 'Upper only', 'Both']);
+  assert.deepEqual(ths.slice(5), ['(1)', '(2)', '(3)', '(4)']);
+  assert.equal(tds.length, 16);
+  assert.ok(!/innerHTML\s*=\s*[^'"]/.test(SRC.slice(SRC.indexOf('function tableNode'), SRC.indexOf('function rowWords'))),
+    'no markup is built from the paper’s words');
+});
+
+test('an MCQ whose options are a table shows the table and the choices as 1, 2, 3, 4', () => {
+  const doc = fakeDom();
+  const ui = CM.mount(doc, { options: leafOpts, option: '3', ask: null });
+  assert.match(ui.el.className, /cmq-hasTable/);
+  assert.equal(ui.el.children[0].className, 'cmq-tableWrap');
+  const optTexts = [];
+  walk(ui.el, n => { if (n.className === 'cmq-optText') optTexts.push(n.children.map(c => c.textContent).join('')); });
+  assert.deepEqual(optTexts, ['1.', '2.', '3.', '4.'], 'no flattened words beside the numbers');
+  // The words stay on the options for the hint and the why-not call.
+  assert.match(ui.state().options[0].text, /None: F; lower only: H/);
+  const plain = CM.mount(doc, { options: leafOpts, option: '3', table: false });
+  assert.doesNotMatch(plain.el.className, /cmq-hasTable/);
+});
+
+test('the card, ▶ Practise and the printed sheet draw the same table', () => {
+  assert.match(HTML, /function mqOptionTable\(wordOpts\)/);
+  assert.match(HTML, /CerMcq\.tableNode\(document, optTable, kind === 'sheet' \? 'mwsTable' : 'mqTable'\)/);
+  assert.match(CSS, /\.cmq-hasTable \.cmq-block \{ display: flex;/);
+  assert.match(CSS, /\.mwsTable \.cmq-table/);
+});

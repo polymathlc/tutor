@@ -2,6 +2,16 @@
 
 Guidance for Claude when working in this repo.
 
+## ▦ MCQ OPTIONS THAT WERE A TABLE ARE DRAWN AS ONE (v1.84.0)
+
+Search `▦ OPTIONS THAT ARE A TABLE`. `CerMcq.optionTable(options, letters)` (pure) reads options like
+"None: F; lower only: H; …" (keyed cells split on `;` `|` or `, key:`; `:` or `=`) or "Yes; No; Yes" (bare short cells)
+back into `{ cols, rows: [{ label, cells }] }`, or null when they do not all agree. `CerMcq.tableNode(doc, tbl, cls)` draws it
+(first column = the option number). `mount` puts the table above the choices and draws the choices as `1.`…`4.` only
+(`cmq-hasTable`); the words stay on `opts` for the hint / why-not prompts; `table: false` turns it off. index.html
+`mqOptionTable` makes `questionNodes` draw the same table on the card, ▶ Practise and the printed sheet (`mwsTable`).
+Checks: `node --test tools/cer-mcq-tests.mjs`.
+
 ## 🔘 A WRONG MCQ IS TRIED AGAIN AS AN MCQ, IN CER'S FORMAT (v1.82.0)
 
 Search `🔘 A WRONG MCQ IS TRIED AGAIN AS AN MCQ`. `cer-mcq.js` / `.css` (`window.CerMcq`) port polymathlc/cer's practice MCQ:

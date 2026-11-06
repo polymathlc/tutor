@@ -61,7 +61,7 @@
 })(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this), function (root) {
   'use strict';
 
-  var VERSION = 1;
+  var VERSION = 2;
   var WNY_HOVER_MS = 160;      // hover intent — a cursor crossing the list must not fire four cards
   var WNY_HIDE_MS = 160;       // grace on the way out, so moving INTO the card doesn't close it
   var WNY_WHY_MAX = 320;       // characters kept: the card is a glance, not an essay
@@ -128,6 +128,155 @@
     }
     return out;
   }
+  /* ---------------------------------------------------------------
+     ▦ OPTIONS THAT ARE A TABLE (v1.84.0)
+
+     Many papers print the four choices as the rows of a TABLE: a header
+     ("None | Lower only | Upper only | Both") and one row per option. The
+     reader turns each row into words, so the options came back flattened
+     ("None: F; lower only: H; upper only: G; both: J."), and four of those
+     stacked up are a wall a child cannot compare across.
+
+     `optionTable` reads such a list back INTO a table, and `tableNode`
+     draws it. The options themselves are then drawn as 1, 2, 3, 4 only,
+     with the table embedded in the question above them — the way the
+     paper set it. The words are kept on the option for the hint and the
+     why-not call, which read the table's meaning, not its layout.
+
+     Recognised shapes (all options must agree, or it is NOT a table):
+       · keyed cells   "None: F; lower only: H; upper only: G; both: J"
+                       (";" or "|" between cells, or "," before each "key:";
+                       ":" or "=" between key and value) — the keys become
+                       the header, in the first option's order, and every
+                       option must carry the SAME keys (any order);
+       · bare cells    "F | H | G | J" / "Yes; No; Yes" — the same number
+                       of short cells in every option, no header.
+     A cell is at most CELL_MAX characters and a table at most COLS_MAX
+     columns: a long sentence with a semicolon in it is prose, not a cell.
+     --------------------------------------------------------------- */
+  var CELL_MAX = 48;
+  var COLS_MAX = 8;
+  var KEYED_RE = /^([^:=]{1,40}?)\s*[:=]\s*(\S[\s\S]*)$/;
+  function tableText(o) {
+    var t = typeof o === 'string' ? o : (o && o.text);
+    return str(t, 400).replace(/[.\s]+$/, '');
+  }
+  function splitCells(t) {
+    var parts = t.split(/\s*[;|]\s*/).filter(function (x) { return x !== ''; });
+    if (parts.length >= 2) return parts;
+    /* "None: F, lower only: H, …" — a comma is a cell break ONLY when the
+       next thing is another "key:"; a comma inside a value stays. */
+    parts = t.split(/\s*,\s*(?=[^,:=]{1,40}[:=])/).filter(function (x) { return x !== ''; });
+    return parts.length >= 2 && parts.every(function (p) { return KEYED_RE.test(p); }) ? parts : [t];
+  }
+  function keyNorm(k) { return str(k, 40).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
+  function headWord(k) {
+    var s = str(k, 40);
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+  }
+  function optionTable(options, letters) {
+    var list = Array.isArray(options) ? options.slice(0, OPTS_MAX) : [];
+    if (list.length < 2) return null;
+    var texts = list.map(tableText);
+    if (texts.some(function (t) { return !t; })) return null;
+    var split = texts.map(splitCells);
+    if (split.some(function (p) { return p.length < 2 || p.length > COLS_MAX; })) return null;
+    if (split.some(function (p) { return p.some(function (c) { return c.length > CELL_MAX * 2; }); })) return null;
+    var labels = list.map(function (o, i) { return labelOf(typeof o === 'string' ? null : o, i, letters); });
+
+    var keyed = split.every(function (p) { return p.every(function (c) { return KEYED_RE.test(c); }); });
+    if (keyed) {
+      var first = split[0].map(function (c) { return c.match(KEYED_RE)[1]; });
+      var order = first.map(keyNorm);
+      if (order.some(function (k) { return !k; })) return null;
+      // Each key once, or the "table" is two cells fighting over a column.
+      if (order.some(function (k, i) { return order.indexOf(k) !== i; })) return null;
+      var rows = [];
+      for (var r = 0; r < split.length; r++) {
+        var byKey = {};
+        var cells = split[r];
+        if (cells.length !== order.length) return null;
+        for (var c = 0; c < cells.length; c++) {
+          var m = cells[c].match(KEYED_RE);
+          var k = keyNorm(m[1]);
+          if (byKey[k] != null || order.indexOf(k) < 0) return null;
+          var v = str(m[2], CELL_MAX * 2);
+          if (!v || v.length > CELL_MAX) return null;
+          byKey[k] = v;
+        }
+        rows.push({ label: labels[r], cells: order.map(function (k) { return byKey[k]; }) });
+      }
+      return { cols: first.map(headWord), rows: rows, keyed: true };
+    }
+
+    /* Bare cells: the same count everywhere, every one short, and NO cell
+       keyed (half-keyed lists are prose that happens to have a colon). */
+    var n = split[0].length;
+    if (split.some(function (p) { return p.length !== n; })) return null;
+    if (split.some(function (p) { return p.some(function (c) { return KEYED_RE.test(c) || c.length > CELL_MAX; }); })) return null;
+    // Sentences are prose: a cell of more than six words is not a table cell.
+    if (split.some(function (p) { return p.some(function (c) { return c.split(/\s+/).length > 6; }); })) return null;
+    var cols = [];
+    for (var i = 0; i < n; i++) cols.push('');
+    return {
+      cols: cols,
+      rows: split.map(function (p, r) { return { label: labels[r], cells: p.map(function (c) { return str(c, CELL_MAX); }) }; }),
+      keyed: false
+    };
+  }
+  /* The table, drawn. `cls` lets a host give it its own skin (the printed
+     sheet). The first column is the option's number, as on the paper. */
+  function tableNode(doc, tbl, cls) {
+    doc = doc || (root && root.document);
+    if (!doc || !tbl || !tbl.rows || !tbl.rows.length) return null;
+    var wrap = doc.createElement('div');
+    wrap.className = 'cmq-tableWrap' + (cls ? ' ' + cls : '');
+    var t = doc.createElement('table');
+    t.className = 'cmq-table';
+    var headed = tbl.cols.some(function (c) { return !!c; });
+    if (headed) {
+      var thead = doc.createElement('thead');
+      var hr = doc.createElement('tr');
+      var corner = doc.createElement('th');
+      corner.className = 'cmq-tableNum';
+      corner.setAttribute('scope', 'col');
+      corner.textContent = 'Option';
+      hr.appendChild(corner);
+      tbl.cols.forEach(function (c) {
+        var th = doc.createElement('th');
+        th.setAttribute('scope', 'col');
+        th.textContent = c;
+        hr.appendChild(th);
+      });
+      thead.appendChild(hr);
+      t.appendChild(thead);
+    }
+    var tb = doc.createElement('tbody');
+    tbl.rows.forEach(function (row) {
+      var tr = doc.createElement('tr');
+      var th = doc.createElement('th');
+      th.className = 'cmq-tableNum';
+      th.setAttribute('scope', 'row');
+      th.textContent = '(' + row.label + ')';
+      tr.appendChild(th);
+      row.cells.forEach(function (c) {
+        var td = doc.createElement('td');
+        td.textContent = c;
+        tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    wrap.appendChild(t);
+    return wrap;
+  }
+  /* One option row as words, for a card or a prompt: "None F · Lower only H". */
+  function rowWords(tbl, i) {
+    var row = tbl && tbl.rows && tbl.rows[i];
+    if (!row) return '';
+    return row.cells.map(function (c, k) { return tbl.cols[k] ? tbl.cols[k] + ' ' + c : c; }).join(' · ');
+  }
+
   function wordsOf(s) {
     return String(s == null ? '' : s).toLowerCase().replace(/[’']/g, '')
       .replace(/[^a-z0-9.½\/%]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -498,7 +647,7 @@
     head.appendChild(num);
     var word = doc.createElement('span');
     word.className = 'cmq-word';
-    word.textContent = opt.text || 'Option ' + opt.label;
+    word.textContent = opt.rowText || opt.text || 'Option ' + opt.label;
     head.appendChild(word);
     if (chosen && String(chosen) === String(opt.n)) {
       var y = doc.createElement('span');
@@ -566,6 +715,12 @@
     spec = spec || {};
     doc = doc || (root && root.document);
     var opts = optionsOf(spec);
+    /* ▦ Options that were a table on the paper are drawn as that table,
+       above the choices, and the choices as their numbers alone. The words
+       stay on `opts` for the hint and the why-not call. `table: false`
+       keeps the old rows of words. */
+    var tbl = spec.table === false ? null : optionTable(spec.options, !!spec.letters);
+    if (tbl && tbl.rows.length !== opts.length) tbl = null;
     var id = 'cmq' + (++_uid);
     var st = {
       correct: typeof spec.correct === 'number' && spec.correct >= 0 && spec.correct < opts.length
@@ -585,8 +740,12 @@
     };
     var aiOn = function () { try { return typeof spec.aiOn === 'function' ? !!spec.aiOn() : typeof spec.ask === 'function'; } catch (e) { return false; } };
 
-    var wrap = mk('div', 'cmq');
+    var wrap = mk('div', 'cmq' + (tbl ? ' cmq-hasTable' : ''));
     wrap.setAttribute('data-cmq', id);
+    if (tbl) {
+      var tnode = tableNode(doc, tbl);
+      if (tnode) wrap.appendChild(tnode);
+    }
     var block = mk('div', 'mcq-block cmq-block');
     block.setAttribute('data-block', id);
     var labs = [];
@@ -600,7 +759,8 @@
       lab.appendChild(r);
       var sp = mk('span', 'cmq-optText');
       sp.appendChild(mk('b', null, o.label + '.'));
-      if (o.text) sp.appendChild(doc.createTextNode(' ' + o.text));
+      if (o.text && !tbl) sp.appendChild(doc.createTextNode(' ' + o.text));
+      if (tbl) lab.setAttribute('aria-label', 'Option ' + o.label + ': ' + rowWords(tbl, i));
       lab.appendChild(sp);
       lab.setAttribute('data-n', o.n);
       block.appendChild(lab);
@@ -677,7 +837,7 @@
         var c = opts[st.correct];
         var line = mk('div', 'cmq-fbKey');
         line.appendChild(mk('strong', null, 'Correct answer: '));
-        line.appendChild(doc.createTextNode(c.label + ')' + (c.text ? ' ' + c.text : '')));
+        line.appendChild(doc.createTextNode(c.label + ')' + (tbl ? ' ' + rowWords(tbl, st.correct) : (c.text ? ' ' + c.text : ''))));
         fb.appendChild(line);
       }
       if (st.correct < 0) {
@@ -879,7 +1039,7 @@
       var on = aiOn();
       var draw = function (why, state) {
         c.el.innerHTML = '';
-        c.el.appendChild(cardBody(doc, o, idx === st.correct, why, state, st.chosen, c.pinned));
+        c.el.appendChild(cardBody(doc, tbl ? Object.assign({}, o, { rowText: rowWords(tbl, idx) }) : o, idx === st.correct, why, state, st.chosen, c.pinned));
         c.el.style.display = 'block';
         c.el.scrollTop = 0;
         place(c, lab);
@@ -923,7 +1083,11 @@
     isMcq: isMcq,
     imageData: imageData,
     imagesFrom: imagesFrom,
+    optionTable: optionTable,
+    tableNode: tableNode,
     pure: {
+      optionTable: optionTable,
+      rowWords: rowWords,
       normChoice: normChoice,
       optionsOf: optionsOf,
       correctIndex: correctIndex,
