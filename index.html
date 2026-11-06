@@ -11,9 +11,9 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.84.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.84.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.84.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.85.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.85.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.85.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -3193,10 +3193,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.84.0"></script>
-<script src="lo-marks.js?v=1.84.0"></script>
-<script src="lo-practice.js?v=1.84.0"></script>
-<script src="cer-mcq.js?v=1.84.0"></script>
+<script src="concept-tags.js?v=1.85.0"></script>
+<script src="lo-marks.js?v=1.85.0"></script>
+<script src="lo-practice.js?v=1.85.0"></script>
+<script src="cer-mcq.js?v=1.85.0"></script>
 <script>
 'use strict';
 
@@ -3293,7 +3293,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.84.0';
+var APP_VERSION = 'v1.85.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -34220,10 +34220,73 @@ try {
   geminiImageModels = AI_IMAGE_MODELS.map(m => getGenerativeModel(_imgAi, { model: m }));
 } catch (e) { console.warn("Firebase AI image init failed (picture clean-up off):", e); }
 
-window.imageAiReady = () => geminiImageModels.length > 0;
-window.imageRouteNote = () => (geminiImageModels.length
-  ? "Pictures are redrawn by " + AI_IMAGE_MODELS[0] + "."
-  : "Picture clean-up is not available in this project.");
+/* 🖼 CHATGPT IMAGES 2.6 LEADS, BY THE SERVER'S KEY (v1.85.0)
+
+   OpenAI's Images 2.6 (November 2026) redraws a figure more faithfully
+   than the Gemini image models, and it reaches this app with NO key box:
+   `openAiImage` is the callable in polymathlc/math (the same Firebase
+   project, the same OPENAI_API_KEY secret `askOpenAi` uses). So every
+   clean-up asks it FIRST, with `gpt-image-2.6-sunburst` — the 2.6 model
+   OpenAI built for precise edits, and a redrawn exam figure is exactly a
+   "keep this thing, change how it looks" edit — and Gemini's image models
+   stay BEHIND it, so an OpenAI account out of credit is a Gemini picture
+   rather than no picture. A refusal that is about the ROUTE (not deployed,
+   no key, capped, signed out) marks it down for OPENAI_IMAGE_DOWN_MS rather
+   than being paid for again on every figure of a worksheet. */
+const OPENAI_IMAGE_MODEL = "gpt-image-2.6-sunburst";
+const OPENAI_IMAGE_DOWN_MS = 10 * 60 * 1000;
+let _openAiImageDownUntil = 0;
+let _imageLastModel = "";
+function _openAiImagePossible() {
+  return typeof firebase !== "undefined" && !!firebase.functions && Date.now() >= _openAiImageDownUntil;
+}
+/* The server lets a student START one picture every 1.2 s
+   (`MIN_OPENAI_IMAGE_INTERVAL_MS` in polymathlc/math) and refuses a second
+   inside that gap, so the figures of one worksheet go up ONE AT A TIME with
+   the gap kept here, rather than the second one marking the route down. */
+const OPENAI_IMAGE_GAP_MS = 1300;
+let _openAiImageQueue = Promise.resolve();
+let _openAiImageLastAt = 0;
+function _askOpenAiImage(prompt, ref) {
+  const run = _openAiImageQueue.then(async () => {
+    const wait = _openAiImageLastAt + OPENAI_IMAGE_GAP_MS - Date.now();
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    try { return await _askOpenAiImageOnce(prompt, ref); }
+    finally { _openAiImageLastAt = Date.now(); }
+  });
+  _openAiImageQueue = run.catch(() => {});
+  return run;
+}
+async function _askOpenAiImageOnce(prompt, ref) {
+  const m = /^data:(image\/[a-z0-9.+-]+);base64,/i.exec(String(ref || ""));
+  const call = _aiCallable("openAiImage", 240000);
+  const res = await call({
+    prompt: String(prompt == null ? "" : prompt),
+    model: OPENAI_IMAGE_MODEL,
+    images: m ? [{ mimeType: m[1], data: String(ref).split(",")[1] || "" }] : [],
+    // An edit keeps the crop's own shape; a picture from nothing is square.
+    size: m ? "auto" : "1024x1024",
+    quality: "high",
+    outputFormat: "png"
+  });
+  const d = res && res.data;
+  if (!d || typeof d.b64 !== "string" || !d.b64) throw new Error("the server image route returned no picture");
+  _imageLastModel = (typeof d.model === "string" && d.model) || OPENAI_IMAGE_MODEL;
+  return "data:" + (d.mimeType || "image/png") + ";base64," + d.b64;
+}
+function _openAiImageRouteFault(e) {
+  const code = String((e && e.code) || "");
+  return /not-found|failed-precondition|unauthenticated|permission-denied|resource-exhausted|unavailable|internal/.test(code) ||
+    /functions SDK|not configured|credit|billing|quota/i.test(String((e && e.message) || ""));
+}
+
+window.imageAiReady = () => _openAiImagePossible() || geminiImageModels.length > 0;
+window.imageRouteNote = () => (_openAiImagePossible()
+  ? "Pictures are redrawn by ChatGPT Images 2.6 (" + OPENAI_IMAGE_MODEL + "), with " + (geminiImageModels.length ? AI_IMAGE_MODELS[0] : "no Gemini model") + " behind it."
+  : geminiImageModels.length
+    ? "Pictures are redrawn by " + AI_IMAGE_MODELS[0] + "."
+    : "Picture clean-up is not available in this project.");
+window.imageLastModel = () => _imageLastModel;
 
 /* The inline picture out of a reply, whichever shape the SDK hands back.
    The 11.10.0 SDK has `inlineDataParts()`; older and snake_case shapes are
@@ -34251,16 +34314,24 @@ function _inlineImage(result) {
    caller in this app decides it costs the clean-up and never the
    question. */
 window.askGeminiImage = async function askGeminiImage(prompt, ref) {
-  if (!geminiImageModels.length) throw new Error("no image model is available in this project");
+  let last = null;
+  if (_openAiImagePossible()) {
+    try { return await _askOpenAiImage(prompt, ref); }
+    catch (e) {
+      last = e;
+      console.warn("ChatGPT Images (" + OPENAI_IMAGE_MODEL + ") refused", e);
+      if (_openAiImageRouteFault(e)) _openAiImageDownUntil = Date.now() + OPENAI_IMAGE_DOWN_MS;
+    }
+  }
+  if (!geminiImageModels.length) throw last || new Error("no image model is available in this project");
   const parts = [prompt];
   const m = /^data:(image\/[a-z0-9.+-]+);base64,/i.exec(String(ref || ""));
   if (m) parts.push({ inlineData: { mimeType: m[1], data: String(ref).split(",")[1] || "" } });
-  let last = null;
   for (let i = 0; i < geminiImageModels.length; i++) {
     try {
       const out = await geminiImageModels[i].generateContent(parts);
       const img = _inlineImage(out);
-      if (img) return "data:" + (img.mimeType || "image/png") + ";base64," + img.data;
+      if (img) { _imageLastModel = AI_IMAGE_MODELS[i]; return "data:" + (img.mimeType || "image/png") + ";base64," + img.data; }
       const said = out?.response?.text ? out.response.text() : "";
       throw new Error(said || "the model did not return a picture");
     } catch (e) { last = e; console.warn("image model " + AI_IMAGE_MODELS[i] + " refused", e); }
