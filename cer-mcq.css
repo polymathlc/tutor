@@ -125,3 +125,32 @@
 @keyframes cmqDot { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .cmq-dots i { animation: none; opacity: .6; } }
 @media print { .cmq-pop, .cmq-actions, .cmq-badge { display: none !important; } }
+
+/* ▦ Options that were a TABLE on the paper (v1.84.0): drawn as the table,
+   embedded in the question, with the choices under it as 1, 2, 3, 4.
+   Not scoped under .cmq — the mistake card and the printed sheet draw the
+   same table through `CerMcq.tableNode`. */
+.cmq-tableWrap { margin: 10px 0 12px; overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
+.cmq-table {
+  border-collapse: collapse; min-width: 60%; font-size: 0.92rem; line-height: 1.4;
+  background: #ffffff; color: #14161a;
+}
+.cmq-table th, .cmq-table td {
+  border: 1px solid #c9cfcc; padding: 6px 12px; text-align: center; vertical-align: middle;
+}
+.cmq-table thead th { background: #f1f4f2; font-weight: 700; }
+.cmq-table .cmq-tableNum { font-weight: 700; background: #f7f9f8; white-space: nowrap; }
+.cmq-table tbody tr:nth-child(even) td { background: #fbfcfb; }
+/* The choices under a table are just their numbers, so they sit in a row. */
+.cmq-hasTable .cmq-block { display: flex; flex-wrap: wrap; gap: 8px; }
+.cmq-hasTable .cmq-opt { margin-bottom: 0; min-width: 74px; justify-content: center; align-items: center; }
+.cmq-hasTable .cmq-opt input[type="radio"] { margin: 0; }
+/* The printed worksheet's copy: plain ink, no shading. */
+.cmq-tableWrap.mwsTable { overflow: visible; }
+.mwsTable .cmq-table { font-size: 10.5pt; background: none; }
+.mwsTable .cmq-table th, .mwsTable .cmq-table td { border-color: #333; padding: 3pt 9pt; }
+.mwsTable .cmq-table thead th, .mwsTable .cmq-table .cmq-tableNum,
+.mwsTable .cmq-table tbody tr:nth-child(even) td { background: none; }
+@media print {
+  .cmq-table th, .cmq-table td { border-color: #333 !important; }
+}
