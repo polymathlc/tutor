@@ -77,3 +77,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/cer-mcq-browser-check.mjs
+      - name: Check the toolbar scroll and zoom buttons, and a broad fingertip still scrolls
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/nudge-browser-check.mjs

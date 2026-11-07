@@ -264,8 +264,12 @@ test('the short pen-up guard rejects new palm contacts between letters', () => {
   assert.equal(h.S.nav.mode, null); assert(h.S.rejectedTouches.has(7));
 });
 
+/* A palm only rests on the glass because something is writing — a pencil
+   (`pencilSeen`) or a finger with pencil-only mode off. The palm tests below
+   are set in such a session; the v1.86.0 tests after them are the other side:
+   with no pencil about, a broad fingertip is a finger. */
 test('growing touch patch cancels navigation before the palm moves the page', () => {
-  const h = setup(); h.pointer('pointerdown', { pointerType: 'touch', pointerId: 7, width: 30 });
+  const h = setup(); h.S.pencilSeen = true; h.pointer('pointerdown', { pointerType: 'touch', pointerId: 7, width: 30 });
   h.pointer('pointermove', { pointerType: 'touch', pointerId: 7, width: 80, clientY: 90 });
   assert.equal(h.area.scrollTop, 200); assert.equal(h.S.nav.mode, null);
   assert.equal(h.S.nav.pts.size, 0);
@@ -286,11 +290,37 @@ test('a growing palm removes its accidental ink, and rolls back an unfinished er
 
 test('large palms cannot start hint, voice, selection or text actions', () => {
   for (const tool of ['hint', 'speak', 'select', 'text']) {
-    const h = setup(); h.S.tool = tool;
+    const h = setup(); h.S.pencilSeen = true; h.S.tool = tool;
     const e = h.pointer('pointerdown', { pointerType: 'touch', pointerId: 7, width: 80 });
     assert(e.defaultPrevented); assert(e.stopped);
     assert.equal(h.S.hints + h.S.voices + h.S.texts, 0); assert.equal(h.S.activePointerId, null);
   }
+});
+
+test('v1.86.0: with no pencil about, a broad fingertip still scrolls the page', () => {
+  // An adult fingertip through a screen protector reports a patch well over
+  // 55px. Before a stylus has been used it is a finger, not a palm.
+  const h = setup(); assert.equal(h.S.pencilSeen, false); assert.equal(h.S.stylusOnly, true);
+  h.pointer('pointerdown', { pointerType: 'touch', pointerId: 7, width: 80, height: 80 });
+  assert(!h.S.rejectedTouches.has(7));
+  h.pointer('pointermove', { pointerType: 'touch', pointerId: 7, width: 80, height: 80, clientY: 90 });
+  assert.notEqual(h.area.scrollTop, 200);
+});
+
+test('v1.86.0: with no pencil about, a whole hand is still a palm', () => {
+  const h = setup();
+  h.pointer('pointerdown', { pointerType: 'touch', pointerId: 7, width: 30 });
+  h.pointer('pointermove', { pointerType: 'touch', pointerId: 7, width: 180, clientY: 90 });
+  assert.equal(h.area.scrollTop, 200); assert.equal(h.S.nav.mode, null);
+});
+
+test('v1.86.0: a broad fingertip can ask for a hint when no pencil is about, not once one is', () => {
+  const h = setup(); h.S.tool = 'hint';
+  assert.equal(h.S.palmContactLimit(), h.S.PALM_CONTACT_NO_PEN);
+  h.S.pencilSeen = true;
+  assert.equal(h.S.palmContactLimit(), h.S.PALM_CONTACT);
+  const g = setup(false);   // finger-writing: a hand rests, so the strict line stays
+  assert.equal(g.S.palmContactLimit(), g.S.PALM_CONTACT);
 });
 
 test('deliberate two-finger double-tap still undoes, but palm taps during writing do not', () => {

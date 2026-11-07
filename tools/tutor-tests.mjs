@@ -7055,8 +7055,14 @@ ok('the palm threshold sits above a fingertip',
    /var PALM_CONTACT = (5[5-9]|[6-9]\d);/.test(PALM),
    'iPads report ordinary fingers at up to ~45px — below that, finger scrolling gets eaten');
 ok('a palm is a CONTACT PATCH, and only a touch can be one',
-   /e\.pointerType === 'touch' && \(e\.width > PALM_CONTACT \|\| e\.height > PALM_CONTACT\)/.test(PALM),
+   /e\.pointerType === 'touch' && \(e\.width > lim \|\| e\.height > lim\)/.test(PALM) &&
+   /var lim = palmContactLimit\(\);/.test(PALM),
    'a stylus reports a tiny patch; testing size alone would reject nothing and testing kind alone everything');
+
+ok('a broad fingertip is not a palm until a pencil is about (v1.86.0)',
+   /function palmContactLimit\(\) \{ return \(pencilSeen \|\| !stylusOnly\) \? PALM_CONTACT : PALM_CONTACT_NO_PEN; \}/.test(PALM) &&
+   /var PALM_CONTACT_NO_PEN = (1[0-9]\d|2\d\d);/.test(PALM),
+   'with no stylus used, a 55px line threw away adult fingertips through a screen protector — no scroll, no pinch');
 
 const DOWN = between("svg.addEventListener('pointerdown', function (e) {", "if (tool === 'hint')", 'the pointerdown gate');
 ok('a palm starts nothing at all', /if \(isPalmTouch\(e\)\) \{ e\.preventDefault\(\); return; \}/.test(DOWN));
@@ -8903,8 +8909,8 @@ section('🔑 Key-first marking and 🎯 concept tags');
      /Number\(had\.at\) === Number\(x\.entry\.at\)/.test(loSrc));
   ok('the catch-up runs once the shelf has loaded', /loadWorksheets\(\)\.then\(function \(x\) \{[\s\S]{0,300}loSheetCatchUp\(\);/.test(html));
   ok('My progress draws the dense table', /LoMarks\.mount\(host, \{\s*sheets: loSheets/.test(html));
-  ok('lo-marks.js and its CSS are loaded, versioned', /<script src="lo-marks\.js\?v=1\.85\.0"><\/script>/.test(html) &&
-     /<link rel="stylesheet" href="lo-marks\.css\?v=1\.85\.0">/.test(html));
+  ok('lo-marks.js and its CSS are loaded, versioned', /<script src="lo-marks\.js\?v=1\.86\.0"><\/script>/.test(html) &&
+     /<link rel="stylesheet" href="lo-marks\.css\?v=1\.86\.0">/.test(html));
   ok('💰 no new model call: lo-marks.js never asks one', !/askGemini|aiAsk|fetch\(/.test(readFileSync(join(here, '..', 'lo-marks.js'), 'utf8')));
   /* The roster row entry, end to end through the module. */
   const LM = (await import('node:module')).createRequire(import.meta.url)('../lo-marks.js');
@@ -8920,9 +8926,9 @@ section('🔑 Key-first marking and 🎯 concept tags');
   section('✏️ Objectives and topics open their mistakes as practice');
   const lpSrc = readFileSync(join(here, '..', 'lo-practice.js'), 'utf8');
   ok('lo-practice.js and its CSS are loaded, versioned with the app',
-     /<script src="lo-practice\.js\?v=1\.85\.0"><\/script>/.test(html) &&
-     /<link rel="stylesheet" href="lo-practice\.css\?v=1\.85\.0">/.test(html) &&
-     /var APP_VERSION = 'v1\.85\.0'/.test(html));
+     /<script src="lo-practice\.js\?v=1\.86\.0"><\/script>/.test(html) &&
+     /<link rel="stylesheet" href="lo-practice\.css\?v=1\.86\.0">/.test(html) &&
+     /var APP_VERSION = 'v1\.86\.0'/.test(html));
   ok('💰 lo-practice.js never reaches a model by itself — the app hands it askGemini',
      !/askGemini|fetch\(|XMLHttpRequest/.test(lpSrc));
   ok('the one ask is grounded like every other', /function lpAsk\(prompt, opts\) \{[\s\S]{0,400}aiGrounding\('teach'/.test(html));

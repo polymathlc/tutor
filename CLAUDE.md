@@ -2,6 +2,22 @@
 
 Guidance for Claude when working in this repo.
 
+## ⬆⬇ THE PAGE MOVES FROM THE TOOLBAR, and a broad fingertip is not a palm (v1.86.0)
+
+Search `⬆⬇ THE PAGE MOVES FROM THE TOOLBAR`. For a parent whose fingertip the iPad would not take a scroll or pinch from.
+- `#nudgeTools` ▲ ▼ (◀ ▶ only while the page is wider than the viewer) and the − + zoom buttons are all `.nudgeBtn[data-nudge]`,
+  wired ONCE by `nudgeBind()` (there is no `click` listener on zoomIn/OutBtn any more — one would zoom twice per tap).
+  pointerdown → a hold after `NUDGE_HOLD_MS`; release before = a tap (`nudgeTap`: `nudgeStep` = ¾ of the viewer, glided,
+  a second quick tap adds to the first's target); held = `nudgeHoldFrame` at `nudgeSpeed(ms)` (eases 480 → 2200 px/s),
+  letting go stops dead; cancel/blur/hidden is never a tap. Keyboard = click with `detail === 0`. Stands down while a
+  video solution plays. `nudgeSync` (from scroll and `applyScale`) dims the way the page cannot go and shows ◀ ▶.
+- `zoomBy` now zooms about the middle of the viewer through `zoomAt` (it used to keep only the vertical ratio).
+- `#pagesContainer` is `width: max-content; min-width: 100%`: a zoomed page used to overflow left of zero, out of reach.
+- **Palm rule:** `palmContactLimit()` = `PALM_CONTACT` (55) once a pencil has been used or pencil-only mode is OFF, else
+  `PALM_CONTACT_NO_PEN` (140). The 55px line was eating broad fingertips / fingers through a screen protector. Palm tests
+  in tools/writing-tests.mjs set `pencilSeen = true` for that reason.
+- Checks: `node --test tools/nudge-tests.mjs tools/writing-tests.mjs`, `node tools/nudge-browser-check.mjs` (in CI).
+
 
 ## 🖼 Picture clean-up draws with ChatGPT Images 2.6 first (v1.85.0)
 
