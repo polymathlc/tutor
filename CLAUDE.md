@@ -2,6 +2,15 @@
 
 Guidance for Claude when working in this repo.
 
+## ↔ THE MISTAKE BOOK USES THE SCREEN (v1.87.0)
+
+Search `↔ THE BOOK USES THE SCREEN` / `↔ THE CARD USES THE WIDTH`. `.mistGrid` is `auto-fit` (never `auto-fill`: it kept empty
+300px tracks, so a topic with one mistake was a strip down the left of an iPad). `mistakeCard` builds `.mistBody` as
+`.mistSide` (picture, chips, tags, question, options) + `.mistNotes` (what you wrote, Chung GPT says, gap, answer, why);
+`.mistTwo` only when the notes side has something. `.mistCard` is a size container (`mistCard`): at ≥ 680px the halves sit
+side by side, ≥ 1100px the notes column caps at 480px. The `.mistShot` picture lives in `.mistSide` (full-bleed on a narrow
+card by negative margins). Cards carry `data-mid`. Check: `node tools/mistake-layout-browser-check.mjs` (in CI).
+
 ## ⬆⬇ THE PAGE MOVES FROM THE TOOLBAR, and a broad fingertip is not a palm (v1.86.0)
 
 Search `⬆⬇ THE PAGE MOVES FROM THE TOOLBAR`. For a parent whose fingertip the iPad would not take a scroll or pinch from.

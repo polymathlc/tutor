@@ -81,3 +81,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/nudge-browser-check.mjs
+      - name: Check the mistake book uses the width of an iPad
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/mistake-layout-browser-check.mjs

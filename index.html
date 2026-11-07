@@ -11,9 +11,9 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.86.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.86.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.86.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.87.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.87.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.87.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -1213,11 +1213,21 @@
   .bubble .snipTag { display: block; font-size: 0.74rem; opacity: .8; margin-bottom: 4px; }
 
   /* ---------- The mistake book ---------- */
-  .mistGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+  /* ↔ THE BOOK USES THE SCREEN (v1.87.0). `auto-fit`, not `auto-fill`:
+     auto-fill kept a 300px track for every card that WASN'T there, so a
+     topic with one mistake was a strip down the left of an iPad and the
+     rest of the screen was empty. auto-fit folds the empty tracks away, so
+     one card takes the row, two take half each, and a long topic is three
+     or four columns. `min(100%, …)` keeps a phone at one full-width column. */
+  .mistGrid {
+    display: grid; gap: 16px; align-items: start;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  }
   .mistCard {
     background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
     box-shadow: var(--shadow-card); overflow: hidden; display: flex; flex-direction: column;
     border-left: 4px solid var(--line);
+    container: mistCard / inline-size;
   }
   .mistCard.mWrong { border-left-color: #E53935; }
   .mistCard.mPartial { border-left-color: #E8A54B; }
@@ -1261,6 +1271,33 @@
     background: var(--bg-soft); border-bottom: 1px solid var(--line); cursor: zoom-in;
   }
   .mistBody { padding: 18px 20px; display: flex; flex-direction: column; gap: 9px; }
+  .mistSide, .mistNotes { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+  /* Each box's own margin-top is the gap to whatever sits above it; at the
+     top of the notes side it would only drop the notes below the chips. */
+  .mistNotes > :first-child { margin-top: 0; }
+  /* The question's picture now lives inside the question side. On a narrow
+     card it still runs edge to edge across the top, as it always did. */
+  .mistSide > .mistShot {
+    margin: -18px -20px 4px; width: calc(100% + 40px); max-width: none;
+  }
+  /* A WIDE CARD: the notes stand beside the question. The question gets the
+     larger share — it carries the picture — and both halves start at the top.
+     The picture becomes a framed figure with room to be read (360px, not 240). */
+  @container mistCard (min-width: 680px) {
+    .mistBody.mistTwo {
+      display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+      gap: 14px 26px; align-items: start;
+    }
+    .mistSide > .mistShot {
+      margin: 0 0 4px; width: 100%; max-height: 360px;
+      border: 1px solid var(--line); border-radius: var(--radius-sm);
+    }
+  }
+  /* A VERY wide card (a lone card on a big monitor) keeps its lines readable:
+     the notes column stops growing and the question side takes the rest. */
+  @container mistCard (min-width: 1100px) {
+    .mistBody.mistTwo { grid-template-columns: minmax(0, 1fr) minmax(0, 480px); }
+  }
   .mistMeta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
   /* `pre-line`, because a text block that lists labelled statements is one
      line each and run together it stops being a list. The rebuild keeps
@@ -3233,10 +3270,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.86.0"></script>
-<script src="lo-marks.js?v=1.86.0"></script>
-<script src="lo-practice.js?v=1.86.0"></script>
-<script src="cer-mcq.js?v=1.86.0"></script>
+<script src="concept-tags.js?v=1.87.0"></script>
+<script src="lo-marks.js?v=1.87.0"></script>
+<script src="lo-practice.js?v=1.87.0"></script>
+<script src="cer-mcq.js?v=1.87.0"></script>
 <script>
 'use strict';
 
@@ -3333,7 +3370,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.86.0';
+var APP_VERSION = 'v1.87.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -22344,6 +22381,7 @@ function mistakeCard(m) {
   card.className = 'mistCard' + (mistSkipped(m) ? ' mSkip' : m.verdict === 'partial' ? ' mPartial' : ' mWrong') +
     (pracSel[m.id] ? ' picked' : '');
   if (m.cleared) card.style.opacity = '.62';
+  card.dataset.mid = m.id || '';
 
   /* The tick is a LABEL round the box, not a bare checkbox: on a phone a
      19px square is a target nobody hits, and the words beside it are what
@@ -22364,13 +22402,29 @@ function mistakeCard(m) {
      PICTURE tiers only. A question set out in blocks draws them in the body
      instead, in among its own wording — where they were printed. */
   var tier = mistakeTier(m);
+  var shot = null;
   if (tier === 'question' || tier === 'page') {
-    var img = _mqImg('mistShot', mistakeImageUrl(m), function () { openCrop(m.id); });
-    if (img) { img.alt = 'The question this mistake came from'; card.appendChild(img); }
+    shot = _mqImg('mistShot', mistakeImageUrl(m), function () { openCrop(m.id); });
+    if (shot) shot.alt = 'The question this mistake came from';
   }
 
+  /* ↔ THE CARD USES THE WIDTH IT IS GIVEN (v1.87.0). The body is two
+     halves: the QUESTION side (picture, chips, tags, wording, options) and
+     the NOTES side (what you wrote, Chung GPT says, the idea, the answer,
+     why). On a narrow card the halves simply stack, exactly as before; once
+     the card itself is wide — a lone card on an iPad in landscape, which
+     used to sit in a 300px strip with the rest of the screen empty — the
+     notes stand BESIDE the question (`@container mistCard`), so the answer
+     is read next to the question it answers instead of a scroll below it.
+     The picture moved into the question side for the same reason: across
+     the top of a wide card it would push both halves down a screen. */
   var body = document.createElement('div');
   body.className = 'mistBody';
+  var side = document.createElement('div');
+  side.className = 'mistSide';
+  var notes = document.createElement('div');
+  notes.className = 'mistNotes';
+  if (shot) side.appendChild(shot);
   var meta = document.createElement('div');
   meta.className = 'mistMeta';
   [[m.number ? 'Q' + m.number : '', 'chip'],
@@ -22393,7 +22447,7 @@ function mistakeCard(m) {
     v.textContent = m.verdict === 'partial' ? '🟡 Almost' : '❌ Not quite';
   }
   meta.appendChild(v);
-  body.appendChild(meta);
+  side.appendChild(meta);
 
   /* WHERE IT FILES, on the card. The topic and the objective are what the
      book is now sorted by, so a card that did not say which would leave a
@@ -22424,30 +22478,34 @@ function mistakeCard(m) {
       lb.addEventListener('click', function () { mistFilterLo(place.lo); });
       tags.appendChild(lb);
     }
-    body.appendChild(tags);
+    side.appendChild(tags);
   }
 
   /* The QUESTION, whichever tier it is — but never the picture the card
      already carries above, which `questionNodes` knows not to repeat. */
-  questionNodes(m, 'card', { noPic: true }).forEach(function (n) { body.appendChild(n); });
+  questionNodes(m, 'card', { noPic: true }).forEach(function (n) { side.appendChild(n); });
   /* A SKIPPED CARD HAS NOTHING IN THE TWO BOXES A MARKED ONE FILLS — no
      answer to show back, no feedback, because nothing was attempted. So
      without a word here it is a bare question sitting in a book of marked
      ones with nothing anywhere saying how it got in. */
   if (mistSkipped(m)) {
-    body.appendChild(boxNode('You went past this one',
+    notes.appendChild(boxNode('You went past this one',
       'You left this blank and answered questions after it, so it is here to try again.', 'youBox'));
   }
-  if (m.studentAnswer) body.appendChild(boxNode('What you wrote', m.studentAnswer, 'youBox'));
-  if (m.feedback) body.appendChild(boxNode('Chung GPT says', m.feedback, 'whyBox'));
+  if (m.studentAnswer) notes.appendChild(boxNode('What you wrote', m.studentAnswer, 'youBox'));
+  if (m.feedback) notes.appendChild(boxNode('Chung GPT says', m.feedback, 'whyBox'));
   var mGap = gapNode(m.tag, m.tagWhy, function () { mistFilterGap(m.tag); });
-  if (mGap) body.appendChild(mGap);
-  if (m.answer) body.appendChild(boxNode('The answer', m.answer, 'ansBox'));
+  if (mGap) notes.appendChild(mGap);
+  if (m.answer) notes.appendChild(boxNode('The answer', m.answer, 'ansBox'));
   /* A blank below the top help level came back with a place to START where
      its answer would be (`markBlankRule`), so "Why" would be a heading over
      an answer that is not there — the rule the marking card already carries,
      and one a skipped question meets far more often than a wrong one. */
-  if (m.explanation) body.appendChild(boxNode(m.answer ? 'Why' : 'Where to start', m.explanation, 'whyBox'));
+  if (m.explanation) notes.appendChild(boxNode(m.answer ? 'Why' : 'Where to start', m.explanation, 'whyBox'));
+  body.appendChild(side);
+  /* A card with nothing on its notes side keeps one column: an empty right
+     half would be the wasted screen this layout exists to get rid of. */
+  if (notes.childNodes.length) { body.appendChild(notes); body.classList.add('mistTwo'); }
   card.appendChild(body);
 
   var foot = document.createElement('div');
