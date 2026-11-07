@@ -11,9 +11,9 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.85.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.85.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.85.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.86.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.86.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.86.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -396,7 +396,13 @@
        the worksheet. */
     touch-action: pan-x pan-y;
   }
-  #pagesContainer { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+  /* `width: max-content; min-width: 100%` (v1.86.0): a zoomed page wider than
+     the viewer used to overflow BOTH ways from the centre, and a scroller
+     cannot scroll left of zero — so the left edge of every page past fit
+     width was out of reach of any finger or button. The container now grows
+     to the widest page and the pages centre inside it. */
+  #pagesContainer { display: flex; flex-direction: column; align-items: center; gap: 20px;
+                    width: max-content; min-width: 100%; }
   .pageWrap {
     position: relative; background: #fff; box-shadow: var(--shadow-card);
     border-radius: 4px; overflow: hidden; flex: none;
@@ -413,6 +419,21 @@
     padding-left: 4px; letter-spacing: .01em;
   }
   @media (max-width: 900px) { .zoomTip { display: none; } }
+  /* ⬆⬇ THE PAGE MOVES FROM THE TOOLBAR (v1.86.0). A press-and-hold button
+     must not open iOS's callout or start selecting the toolbar's text, and
+     the one being held says so — a press that keeps scrolling needs to look
+     pressed, or a child lets go to check whether it did anything. */
+  .nudgeBtn { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  #zoomOutBtn, #zoomInBtn { font-size: 20px; font-weight: 600; }
+  .nudgeBtn.nudgeHeld { background: var(--accent); border-color: var(--accent-strong); }
+  /* At the top there is nowhere further up to go. Dimmed, not disabled, so a
+     press is never swallowed by a button that is about to have room again. */
+  .nudgeBtn.nudgeEnd { opacity: .38; }
+  /* Fingers that are big for the screen are exactly who these are for, so
+     on a touchscreen they are a size such a finger hits first time. */
+  @media (pointer: coarse) and (min-width: 641px) {
+    #nudgeTools .toolBtn { width: 44px; height: 44px; }
+  }
   .pageWrap svg.overlay.selectMode { cursor: default; }
   .pageWrap svg.overlay.textMode { cursor: text; }
   .pageWrap svg.overlay.eraserMode { cursor: cell; }
@@ -2479,10 +2500,29 @@
           <button class="toolBtn" id="redoBtn" title="Redo (Ctrl+Shift+Z, or a three-finger double tap)">↷</button>
         </div>
 
+        <!-- ⬆⬇ THE PAGE MOVES FROM THE TOOLBAR (v1.86.0). For a finger the
+             screen will not take a scroll from (a big fingertip through a
+             screen protector), and for anyone who would rather tap than
+             drag. Tap = a step, press and HOLD = keeps going, faster the
+             longer it is held. ◀ ▶ appear only while the page is wider than
+             the screen. Wired by `nudgeBind` — search `⬆⬇ THE PAGE MOVES`. -->
+        <div class="toolGroup" id="nudgeTools" role="group" aria-label="Move the page">
+          <button class="toolBtn nudgeBtn" id="nudgeUpBtn" type="button" data-nudge="up" aria-label="Scroll up"
+                  title="Scroll up — tap for a step, hold to keep going"><svg class="toolIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 15.5 12 8.5l7 7"/></svg></button>
+          <button class="toolBtn nudgeBtn" id="nudgeDownBtn" type="button" data-nudge="down" aria-label="Scroll down"
+                  title="Scroll down — tap for a step, hold to keep going"><svg class="toolIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 8.5 12 15.5l7-7"/></svg></button>
+          <button class="toolBtn nudgeBtn" id="nudgeLeftBtn" type="button" data-nudge="left" aria-label="Scroll left" hidden
+                  title="Scroll left — tap for a step, hold to keep going"><svg class="toolIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M15.5 5 8.5 12l7 7"/></svg></button>
+          <button class="toolBtn nudgeBtn" id="nudgeRightBtn" type="button" data-nudge="right" aria-label="Scroll right" hidden
+                  title="Scroll right — tap for a step, hold to keep going"><svg class="toolIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8.5 5 15.5 12l-7 7"/></svg></button>
+        </div>
+
         <div class="toolGroup">
-          <button class="toolBtn" id="zoomOutBtn" title="Zoom out">−</button>
+          <button class="toolBtn nudgeBtn" id="zoomOutBtn" type="button" data-nudge="out" aria-label="Zoom out"
+                  title="Zoom out — tap for a step, hold to keep going">−</button>
           <span id="zoomLabel">100%</span>
-          <button class="toolBtn" id="zoomInBtn" title="Zoom in">+</button>
+          <button class="toolBtn nudgeBtn" id="zoomInBtn" type="button" data-nudge="in" aria-label="Zoom in"
+                  title="Zoom in — tap for a step, hold to keep going">+</button>
           <button class="toolBtn" id="fitBtn" title="Fit the page width">⤢</button>
           <span class="zoomTip">pinch to zoom · two fingers to move</span>
         </div>
@@ -3193,10 +3233,10 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.85.0"></script>
-<script src="lo-marks.js?v=1.85.0"></script>
-<script src="lo-practice.js?v=1.85.0"></script>
-<script src="cer-mcq.js?v=1.85.0"></script>
+<script src="concept-tags.js?v=1.86.0"></script>
+<script src="lo-marks.js?v=1.86.0"></script>
+<script src="lo-practice.js?v=1.86.0"></script>
+<script src="cer-mcq.js?v=1.86.0"></script>
 <script>
 'use strict';
 
@@ -3293,7 +3333,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.85.0';
+var APP_VERSION = 'v1.86.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -5387,6 +5427,7 @@ function applyScale() {
     syncHintPinSizes();
     syncMarkPins();
   }
+  if (typeof nudgeSync === 'function') nudgeSync();   // ◀ ▶ appear once the page is wider than the screen
   scheduleRaster();
 }
 var rasterWaits = 0;
@@ -5474,13 +5515,17 @@ async function ensurePageRaster(p) {
    that undone by the keyboard opening, so only a fit is re-fitted. */
 var fittedWidth = false;
 
+/* The − and + buttons zoom about the MIDDLE OF THE SCREEN, the way a pinch
+   zooms about the point between the fingers. Until v1.86.0 this kept only
+   the vertical ratio and left the sideways scroll where it was, so a zoom in
+   from the toolbar slid the part being read off to the left — fine while the
+   page fitted, wrong from the first step past it, and the toolbar is now
+   the ONLY way some fingers can zoom (see ⬆⬇ THE PAGE MOVES). */
 function zoomBy(factor) {
   var area = $('viewerArea');
-  var ratio = area.scrollTop / Math.max(1, area.scrollHeight);
-  scale = Math.min(4, Math.max(0.25, scale * factor));
-  fittedWidth = false;
-  applyScale();
-  area.scrollTop = ratio * area.scrollHeight;
+  if (!area) return;
+  var r = area.getBoundingClientRect();
+  zoomAt(r.left + area.clientWidth / 2, r.top + area.clientHeight / 2, factor);
 }
 function fitWidth() {
   if (!pages.length) return;
@@ -5488,6 +5533,270 @@ function fitWidth() {
   scale = Math.min(4, Math.max(0.25, avail / pages[0].baseW));
   fittedWidth = true;
   applyScale();
+}
+
+/* =====================================================================
+   ⬆⬇ THE PAGE MOVES FROM THE TOOLBAR (v1.86.0)
+   ---------------------------------------------------------------------
+   Asked for by a parent whose fingertip the iPad will not take a scroll or a
+   pinch from (through a screen protector) while a child's smaller finger
+   works fine. Two things answer it, and each stands without the other:
+
+   • THE BUTTONS. ▲ ▼ (and ◀ ▶ once the page is wider than the screen) move
+     the worksheet, − and + zoom it, and none of them needs anything but a
+     TAP to land — which every finger can do. A tap is one step (`nudgeStep`:
+     most of a screen up or down, so the line read last is still in view);
+     PRESS AND HOLD keeps going and speeds up the longer it is held
+     (`nudgeSpeed`), and letting go stops dead. The same for zoom: a tap is
+     ×1.2, a hold zooms smoothly about the middle of the screen.
+
+   • A BIG FINGERTIP IS NOT A PALM UNTIL A PENCIL IS ABOUT. Palm rejection
+     reads the contact patch, and `PALM_CONTACT` (55px) sits just above an
+     ordinary fingertip — so a broad one, or one a protector spreads, was
+     thrown away as a palm: no scroll, no pinch, nothing. A palm only rests
+     on the screen because a pencil is writing, so until a stylus has been
+     used this session the line is `PALM_CONTACT_NO_PEN` (a whole hand's
+     width) instead. See `palmContactLimit`.
+
+   The pure arithmetic (`nudgeStep`, `nudgeSpeed`, `nudgeClamp`, `nudgeEase`,
+   `nudgeRoom`) is between the markers below so tools/nudge-tests.mjs can run
+   it in node; tools/nudge-browser-check.mjs presses the real buttons.
+   ===================================================================== */
+/* ⬆⬇ NUDGE MATHS START */
+var NUDGE_STEP = 0.75;          // a tap moves this much of the visible height (or width)
+var NUDGE_HOLD_MS = 280;        // held this long, a press becomes a hold
+var NUDGE_SPEED_MIN = 480;      // px per second as a hold begins…
+var NUDGE_SPEED_MAX = 2200;     // …and the most it reaches,
+var NUDGE_RAMP_MS = 1600;       // this long after the hold began
+var NUDGE_GLIDE_MS = 240;       // how long a tap's step takes to land
+var NUDGE_ZOOM_TAP = 1.2;       // a tap on − or +
+var NUDGE_ZOOM_RATE = 1.9;      // zoom per second while − or + is held
+
+/* How far one tap moves, in screen pixels. Most of a screen, never all of
+   it: the bottom line before the tap is near the top after it, so the
+   reader never loses their place. Never under 40px, so a tiny viewer still
+   moves visibly. */
+function nudgeStep(visible) {
+  var v = Number(visible) || 0;
+  return Math.max(40, Math.round(v * NUDGE_STEP));
+}
+/* Pixels per second, `heldMs` after the hold began. Eased in, so the first
+   moment of a hold is slow enough to stop on a particular question and a
+   long hold still crosses a twenty-page worksheet in seconds. */
+function nudgeSpeed(heldMs) {
+  var t = Math.min(1, Math.max(0, (Number(heldMs) || 0) / NUDGE_RAMP_MS));
+  var e = t * t * (3 - 2 * t);   // smoothstep
+  return NUDGE_SPEED_MIN + (NUDGE_SPEED_MAX - NUDGE_SPEED_MIN) * e;
+}
+/* A scroll position that the scroller can actually reach. */
+function nudgeClamp(pos, max) {
+  var m = Math.max(0, Number(max) || 0);
+  var p = Number(pos) || 0;
+  return Math.min(m, Math.max(0, p));
+}
+/* Ease-out for a tap's glide: quick to leave, gentle to land. */
+function nudgeEase(t) {
+  var x = Math.min(1, Math.max(0, Number(t) || 0));
+  return 1 - Math.pow(1 - x, 3);
+}
+/* Which ways the page can still move, from the scroller's own numbers.
+   `wide` is whether ◀ ▶ are worth showing at all. One pixel of slack,
+   because a zoomed page's scroll positions are fractional on an iPad and
+   "1199.5 of 1200" is the bottom. */
+function nudgeRoom(top, left, scrollH, scrollW, clientH, clientW) {
+  var maxY = Math.max(0, scrollH - clientH), maxX = Math.max(0, scrollW - clientW);
+  return {
+    up: top > 1, down: top < maxY - 1,
+    left: left > 1, right: left < maxX - 1,
+    wide: maxX > 2, maxY: maxY, maxX: maxX
+  };
+}
+/* ⬆⬇ NUDGE MATHS END */
+
+var nudge = { dir: null, btn: null, pointerId: null, holdTimer: null, raf: 0,
+              held: false, t0: 0, last: 0, glide: null, syncRaf: 0 };
+
+function nudgeArea() { return $('viewerArea'); }
+function nudgeReduced() {
+  try { return window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches; }
+  catch (e) { return false; }
+}
+function nudgeAxis(dir) { return dir === 'left' || dir === 'right' ? 'x' : 'y'; }
+function nudgeSign(dir) { return dir === 'up' || dir === 'left' || dir === 'out' ? -1 : 1; }
+function nudgeIsZoom(dir) { return dir === 'in' || dir === 'out'; }
+
+/* A playing video solution owns the page (it is an inert view), and so does
+   a ✂️ box being drawn — the buttons stand down rather than fight either. */
+function nudgeBlocked() {
+  if (typeof lessonPlayback !== 'undefined' && lessonPlayback) return true;
+  if (typeof lessonOpening !== 'undefined' && lessonOpening) return true;
+  return !pages || !pages.length;
+}
+
+function nudgeStopGlide() {
+  if (nudge.glide && nudge.glide.raf) cancelAnimationFrame(nudge.glide.raf);
+  nudge.glide = null;
+}
+
+/* ONE TAP = ONE STEP, landed with a short glide. A second tap while the
+   first is still landing adds to where the first was GOING, not to where it
+   has got to — otherwise two quick taps travel less than two slow ones. */
+function nudgeTap(dir) {
+  var area = nudgeArea();
+  if (!area || nudgeBlocked()) return;
+  if (nudgeIsZoom(dir)) { zoomBy(dir === 'in' ? NUDGE_ZOOM_TAP : 1 / NUDGE_ZOOM_TAP); nudgeSync(); return; }
+  if (typeof stopNavMomentum === 'function') stopNavMomentum();
+  var axis = nudgeAxis(dir);
+  var room = nudgeRoom(area.scrollTop, area.scrollLeft, area.scrollHeight, area.scrollWidth,
+                       area.clientHeight, area.clientWidth);
+  var max = axis === 'y' ? room.maxY : room.maxX;
+  var now = axis === 'y' ? area.scrollTop : area.scrollLeft;
+  var from = nudge.glide && nudge.glide.axis === axis ? nudge.glide.to : now;
+  var step = nudgeStep(axis === 'y' ? area.clientHeight : area.clientWidth);
+  var to = nudgeClamp(from + nudgeSign(dir) * step, max);
+  nudgeStopGlide();
+  if (Math.abs(to - now) < 0.5) { nudgeSync(); return; }
+  if (nudgeReduced()) { nudgeSet(area, axis, to); nudgeSync(); return; }
+  var g = { axis: axis, from: now, to: to, t0: performance.now(), raf: 0 };
+  nudge.glide = g;
+  var frame = function (ts) {
+    if (nudge.glide !== g) return;
+    var k = nudgeEase((ts - g.t0) / NUDGE_GLIDE_MS);
+    nudgeSet(area, axis, g.from + (g.to - g.from) * k);
+    if (k < 1) g.raf = requestAnimationFrame(frame);
+    else { nudge.glide = null; nudgeSync(); }
+  };
+  g.raf = requestAnimationFrame(frame);
+}
+function nudgeSet(area, axis, v) {
+  if (axis === 'y') area.scrollTop = v; else area.scrollLeft = v;
+}
+
+/* PRESS AND HOLD. Every frame moves by speed × the time since the last
+   frame, so a hold covers the same ground on a 60Hz and a 120Hz iPad. A
+   scroll position is fractional only on paper — the browser rounds it — so
+   the position is carried in `nudge.pos` and written whole, or a slow first
+   moment of a hold (8px a frame or less) could round to nothing at all. */
+function nudgeHoldFrame(ts) {
+  nudge.raf = 0;
+  var area = nudgeArea();
+  if (!nudge.held || !area || nudgeBlocked()) { nudgeEnd(); return; }
+  var dt = Math.min(64, Math.max(0, ts - (nudge.last || ts)));
+  nudge.last = ts;
+  if (nudgeIsZoom(nudge.dir)) {
+    var f = Math.pow(NUDGE_ZOOM_RATE, nudgeSign(nudge.dir) * dt / 1000);
+    if (dt > 0) zoomBy(f);
+  } else {
+    var axis = nudgeAxis(nudge.dir);
+    var room = nudgeRoom(area.scrollTop, area.scrollLeft, area.scrollHeight, area.scrollWidth,
+                         area.clientHeight, area.clientWidth);
+    var max = axis === 'y' ? room.maxY : room.maxX;
+    var at = axis === 'y' ? area.scrollTop : area.scrollLeft;
+    // Something else moved the page (a resize, a zoom): start from where it is.
+    if (nudge.pos == null || Math.abs(nudge.pos - at) > 2) nudge.pos = at;
+    nudge.pos = nudgeClamp(nudge.pos + nudgeSign(nudge.dir) * nudgeSpeed(ts - nudge.t0) * dt / 1000, max);
+    nudgeSet(area, axis, nudge.pos);
+  }
+  nudgeSync();
+  nudge.raf = requestAnimationFrame(nudgeHoldFrame);
+}
+
+function nudgeBegin(btn, e) {
+  var dir = btn.getAttribute('data-nudge');
+  if (!dir || nudgeBlocked()) return;
+  nudgeEnd();
+  nudge.dir = dir; nudge.btn = btn; nudge.pointerId = e.pointerId;
+  nudge.held = false; nudge.pos = null;
+  try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+  nudge.holdTimer = setTimeout(function () {
+    nudge.holdTimer = null;
+    if (nudge.btn !== btn) return;
+    nudgeStopGlide();
+    if (typeof stopNavMomentum === 'function') stopNavMomentum();
+    nudge.held = true;
+    btn.classList.add('nudgeHeld');
+    nudge.t0 = performance.now(); nudge.last = 0;
+    nudge.raf = requestAnimationFrame(nudgeHoldFrame);
+  }, NUDGE_HOLD_MS);
+}
+/* The press is over. Let go BEFORE it became a hold = it was a tap, and the
+   tap happens now; let go after = the hold simply stops where it is. A
+   cancelled press (iPadOS took the touch for a system gesture, the app went
+   to the background) never counts as a tap. */
+function nudgeRelease(e, cancelled) {
+  if (!nudge.btn || (e && nudge.pointerId != null && e.pointerId !== nudge.pointerId)) return;
+  var wasTap = !nudge.held && !cancelled;
+  var dir = nudge.dir;
+  nudgeEnd();
+  if (wasTap) nudgeTap(dir);
+}
+function nudgeEnd() {
+  if (nudge.holdTimer) { clearTimeout(nudge.holdTimer); nudge.holdTimer = null; }
+  if (nudge.raf) { cancelAnimationFrame(nudge.raf); nudge.raf = 0; }
+  if (nudge.btn) {
+    nudge.btn.classList.remove('nudgeHeld');
+    try { if (nudge.pointerId != null) nudge.btn.releasePointerCapture(nudge.pointerId); } catch (err) {}
+  }
+  var wasHeld = nudge.held;
+  nudge.dir = null; nudge.btn = null; nudge.pointerId = null; nudge.held = false; nudge.pos = null;
+  if (wasHeld) { if (typeof scheduleRaster === 'function') scheduleRaster(); nudgeSync(); }
+}
+
+/* Dim the way the page cannot go, and show ◀ ▶ only while there is a
+   sideways to go to. Read once a frame at most — a scroll fires far more
+   often than the screen can show a change. */
+function nudgeSync() {
+  if (nudge.syncRaf) return;
+  nudge.syncRaf = requestAnimationFrame(function () {
+    nudge.syncRaf = 0;
+    var area = nudgeArea();
+    if (!area) return;
+    var room = nudgeRoom(area.scrollTop, area.scrollLeft, area.scrollHeight, area.scrollWidth,
+                         area.clientHeight, area.clientWidth);
+    var mark = function (id, can) { var b = $(id); if (b) b.classList.toggle('nudgeEnd', !can); };
+    mark('nudgeUpBtn', room.up); mark('nudgeDownBtn', room.down);
+    mark('nudgeLeftBtn', room.left); mark('nudgeRightBtn', room.right);
+    mark('zoomInBtn', scale < 4 - 1e-6); mark('zoomOutBtn', scale > 0.25 + 1e-6);
+    var l = $('nudgeLeftBtn'), r = $('nudgeRightBtn');
+    // A held ◀ must not vanish from under the finger as it reaches the edge.
+    var keep = nudge.btn === l || nudge.btn === r;
+    if (l && r && !keep) { l.hidden = !room.wide; r.hidden = !room.wide; }
+  });
+}
+
+function nudgeBind() {
+  var btns = document.querySelectorAll('.nudgeBtn[data-nudge]');
+  Array.prototype.forEach.call(btns, function (btn) {
+    if (btn._nudgeBound) return;
+    btn._nudgeBound = true;
+    btn.addEventListener('pointerdown', function (e) {
+      if (e.button > 0) return;
+      e.preventDefault();          // no focus ring flash, no text selection
+      nudgeBegin(btn, e);
+    });
+    btn.addEventListener('pointerup', function (e) { nudgeRelease(e, false); });
+    btn.addEventListener('pointercancel', function (e) { nudgeRelease(e, true); });
+    btn.addEventListener('lostpointercapture', function (e) {
+      if (nudge.btn === btn && e.pointerId === nudge.pointerId) nudgeRelease(e, !nudge.held);
+    });
+    // A long press on iOS opens a callout; on a desktop, a right-click menu.
+    btn.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    // The keyboard (Enter / Space on a focused button) arrives as a click
+    // with no pointer before it — `detail` 0. A pointer's own click is
+    // ignored: the pointerup above has already acted on it.
+    btn.addEventListener('click', function (e) {
+      if (e.detail === 0) nudgeTap(btn.getAttribute('data-nudge'));
+    });
+  });
+  var area = nudgeArea();
+  if (area && !area._nudgeSyncBound) {
+    area._nudgeSyncBound = true;
+    area.addEventListener('scroll', nudgeSync, { passive: true });
+  }
+  window.addEventListener('resize', nudgeSync);
+  window.addEventListener('blur', function () { nudgeRelease(null, true); });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) nudgeRelease(null, true); });
+  nudgeSync();
 }
 
 /* ================= Annotation rendering ================= */
@@ -6555,8 +6864,19 @@ function dragStarted(g, e) {
 // iPads report ordinary fingertips at contact sizes up to ~45px, so the palm
 // threshold must sit above that or normal finger scrolling gets eaten.
 var PALM_CONTACT = 55;
+/* …BUT ONLY ONCE A PENCIL IS ABOUT (v1.86.0). A palm rests on the screen
+   because a pencil is writing; with no stylus used this session there is no
+   palm to reject, and the 55px line was throwing away broad fingertips (and
+   ones a screen protector spreads) as palms — no scroll and no pinch for an
+   adult's finger while a child's worked. Until a pen touches down (and
+   while fingers pan rather than draw) the line is a whole hand's width. See ⬆⬇ THE PAGE MOVES FROM THE TOOLBAR. */
+var PALM_CONTACT_NO_PEN = 140;
+/* Finger-writing (pencil-only mode OFF) rests a hand too, so that keeps the
+   strict line as well — and there a finger draws rather than scrolls anyway. */
+function palmContactLimit() { return (pencilSeen || !stylusOnly) ? PALM_CONTACT : PALM_CONTACT_NO_PEN; }
 function isPalmTouch(e) {
-  return e.pointerType === 'touch' && (e.width > PALM_CONTACT || e.height > PALM_CONTACT);
+  var lim = palmContactLimit();
+  return e.pointerType === 'touch' && (e.width > lim || e.height > lim);
 }
 
 /* WHICH TOOLS A FINGER MUST NOT DRIVE in pencil-only mode — the ones that
@@ -6880,9 +7200,9 @@ function navBind() {
   var lastMultiTap = { count: 0, t: 0 };
   function rejectMultiTap(e) {
     var palm = Array.prototype.some.call(e.touches || [], function (t) {
-      return t.touchType === 'stylus' || t.radiusX * 2 > PALM_CONTACT || t.radiusY * 2 > PALM_CONTACT;
+      return t.touchType === 'stylus' || t.radiusX * 2 > palmContactLimit() || t.radiusY * 2 > palmContactLimit();
     }) || Array.prototype.some.call(e.changedTouches || [], function (t) {
-      return t.touchType === 'stylus' || t.radiusX * 2 > PALM_CONTACT || t.radiusY * 2 > PALM_CONTACT;
+      return t.touchType === 'stylus' || t.radiusX * 2 > palmContactLimit() || t.radiusY * 2 > palmContactLimit();
     });
     if (!penBlocksTouch() && !rejectedTouches.size && !palm) return false;
     mtap.moved = true; lastMultiTap = { count: 0, t: 0 };
@@ -33991,8 +34311,10 @@ setStylusOnly(stylusOnly, true);   // paints the button from the first frame
 navBind();
 $('undoBtn').addEventListener('click', undo);
 $('redoBtn').addEventListener('click', redo);
-$('zoomInBtn').addEventListener('click', function () { zoomBy(1.2); });
-$('zoomOutBtn').addEventListener('click', function () { zoomBy(1 / 1.2); });
+// − and + are nudge buttons now: a tap zooms a step, a hold keeps zooming
+// (⬆⬇ THE PAGE MOVES FROM THE TOOLBAR). A click listener here as well would
+// zoom twice for every tap.
+nudgeBind();
 $('fitBtn').addEventListener('click', fitWidth);
 $('saveBtn').addEventListener('click', function () { performSave().catch(saveCrashed); });
 $('printBtn').addEventListener('click', openPrintModal);
