@@ -8909,8 +8909,11 @@ section('🔑 Key-first marking and 🎯 concept tags');
      /Number\(had\.at\) === Number\(x\.entry\.at\)/.test(loSrc));
   ok('the catch-up runs once the shelf has loaded', /loadWorksheets\(\)\.then\(function \(x\) \{[\s\S]{0,300}loSheetCatchUp\(\);/.test(html));
   ok('My progress draws the dense table', /LoMarks\.mount\(host, \{\s*sheets: loSheets/.test(html));
-  ok('lo-marks.js and its CSS are loaded, versioned', /<script src="lo-marks\.js\?v=1\.87\.0"><\/script>/.test(html) &&
-     /<link rel="stylesheet" href="lo-marks\.css\?v=1\.87\.0">/.test(html));
+  ok('lo-marks.js and its CSS are loaded, versioned with the app', (function () {
+    var v = (html.match(/var APP_VERSION = 'v([0-9.]+)';/) || [])[1];
+    return !!v && html.includes('<script src="lo-marks.js?v=' + v + '"></script>') &&
+      html.includes('<link rel="stylesheet" href="lo-marks.css?v=' + v + '">');
+  })());
   ok('💰 no new model call: lo-marks.js never asks one', !/askGemini|aiAsk|fetch\(/.test(readFileSync(join(here, '..', 'lo-marks.js'), 'utf8')));
   /* The roster row entry, end to end through the module. */
   const LM = (await import('node:module')).createRequire(import.meta.url)('../lo-marks.js');
@@ -8926,9 +8929,11 @@ section('🔑 Key-first marking and 🎯 concept tags');
   section('✏️ Objectives and topics open their mistakes as practice');
   const lpSrc = readFileSync(join(here, '..', 'lo-practice.js'), 'utf8');
   ok('lo-practice.js and its CSS are loaded, versioned with the app',
-     /<script src="lo-practice\.js\?v=1\.87\.0"><\/script>/.test(html) &&
-     /<link rel="stylesheet" href="lo-practice\.css\?v=1\.87\.0">/.test(html) &&
-     /var APP_VERSION = 'v1\.87\.0'/.test(html));
+     (function () {
+       var v = (html.match(/var APP_VERSION = 'v([0-9.]+)';/) || [])[1];
+       return !!v && html.includes('<script src="lo-practice.js?v=' + v + '"></script>') &&
+         html.includes('<link rel="stylesheet" href="lo-practice.css?v=' + v + '">');
+     })());
   ok('💰 lo-practice.js never reaches a model by itself — the app hands it askGemini',
      !/askGemini|fetch\(|XMLHttpRequest/.test(lpSrc));
   ok('the one ask is grounded like every other', /function lpAsk\(prompt, opts\) \{[\s\S]{0,400}aiGrounding\('teach'/.test(html));
