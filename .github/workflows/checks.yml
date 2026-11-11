@@ -85,3 +85,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/mistake-layout-browser-check.mjs
+      - name: Check the model suite draws, pins and edits a bar model
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/model-studio-browser-check.mjs

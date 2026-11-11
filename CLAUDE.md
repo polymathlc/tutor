@@ -2,6 +2,26 @@
 
 Guidance for Claude when working in this repo.
 
+## ✏️ THE MODEL SUITE — Ans Key's bar-model drawing board (v1.88.0)
+
+Search `✏️ Model suite — the model studio's glue` (just after the 📋 picture drop handler). `model-studio.js` /
+`model-studio.css` are **polymathlc/anskey's files, byte for byte** (which are polymathlc/model's drawing engine);
+`tools/model-studio-tests.mjs` compares them whenever Ans Key is checked out beside this repo. Port a fix to both.
+- **Drawing only**: no question, scenario, model answer or AI call — the tests fail if one appears in the engine or glue.
+- `#barModelBtn` (in `#toolButtons`, no `data-tool`) → `#msModal` = `.msFloat` (its own float, z 120, NOT `.modalBack`:
+  the Escape sweep and `pasteGoesToWorksheet` read `.modalBack.open`). Window box in `polymath.tutorMsWin`, scratch board in
+  `polymath.msBoard` (Ans Key's key). API `window.ModelStudio` (`load`, `elements`, `isEmpty`, `picture`, `settle`, `clear`, `onChange`, `onEscape`, `refresh`).
+- **📌 A pinned model is an ordinary `image` annotation with `a.ms = {v:1, el}`**, a transparent PNG `src` and `ratio` —
+  never a new type. `renderPicChromeOn` adds ✎ (`msEditAttached`) when `annModelStudio(a)`. It is the STUDENT's working,
+  so `drawAnnsOnCtx` draws it into the page the marking reads.
+- `msCanPin()` = a worksheet in view and no video solution playing/opening — any student, on their own page.
+- A model opened from a picture writes back to THAT picture (`msAttachedId`) and the picture redraws itself
+  `MS_REDRAW_MS` after the board rests (`msRefreshSoon`, epoch-checked). `loadPdf` → `msWorksheetClosing()` lets go
+  (no writes); `showView` away from ws → `closeModelStudio()`.
+- Usage events `modelsuite` / `modelpin`. Checks: `node --test tools/model-studio-tests.mjs`,
+  `PW=… node tools/model-studio-browser-check.mjs` (in CI; `MS_SCREENSHOTS=dir`).
+- The lo-marks / lo-practice / cer-mcq / concept-tags `?v=` follow `APP_VERSION`; the tests read it, so bump them together.
+
 ## ↔ THE MISTAKE BOOK USES THE SCREEN (v1.87.0)
 
 Search `↔ THE BOOK USES THE SCREEN` / `↔ THE CARD USES THE WIDTH`. `.mistGrid` is `auto-fit` (never `auto-fill`: it kept empty

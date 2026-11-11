@@ -17,6 +17,16 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.88.0 — ✏️ The model suite: draw a bar model and put it on the page
+
+The **Model suite** button on the worksheet toolbar (the three coloured bars, beside 🖱️) opens Ans Key's bar-model
+drawing board in a floating window over the page. Draw bars, split them into equal units, cut them with the razor,
+shade units, add labels, braces with a value or "?", transfer arrows, a before/after divider, dotted "equal" lines,
+alignment guides or a freehand sketch. **📌 Put on page** drops the model onto the page you are looking at as a
+picture you can move, resize and 🔒 lock; tap it and **✎** opens the same model back up, every bar still a bar, and the
+picture on the page follows as you change it. It saves, prints and is marked with your worksheet like the rest of
+your working. It is a drawing board only: nothing in it asks Chung GPT or hands over an answer.
+
 ## v1.81.0 — 🧹 Start fresh: a student clears their own slate
 
 A **🧹 Start fresh…** button in 📈 My progress and in the 📕 mistake book lets a student delete their own uploaded
