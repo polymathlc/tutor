@@ -1,0 +1,77 @@
+/* =====================================================================
+   📝 THE SUMMARY WINDOW (lesson-summary.js, v1.89.0)
+
+   A `.modalBack` like every other dialog here, so the one Escape sweep
+   closes it and nothing new has to be taught to it. The card is the wide
+   one (`tnWide`). Every measurement leans on the app's own tokens with a
+   fallback, the way consult-answer.css does. It never prints.
+   ===================================================================== */
+
+.lsCard { max-height: 92vh; }
+.lsHead h2 { flex: 1; }
+.lsClose {
+  width: 34px; height: 34px; border: none; border-radius: 8px; background: transparent;
+  font: inherit; font-size: 1.05rem; color: var(--ink-soft, #55554F); cursor: pointer;
+}
+.lsClose:hover { background: var(--bg-soft, #F7F6F4); color: var(--ink, #1A1A1A); }
+.lsBody { padding: 18px 22px 22px; }
+
+.lsIntro { margin: 0 0 12px; color: var(--ink-soft, #55554F); line-height: 1.5; }
+.lsBar { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+
+.lsList { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 10px; }
+.lsRow {
+  border: 1px solid var(--line, #ECECEA); border-radius: var(--radius-sm, 11px);
+  padding: 12px 14px; background: var(--bg, #FFFFFF);
+}
+.lsRowHead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.lsQ { font-size: 1rem; }
+.lsMeta { color: var(--ink-faint, #8A8A84); font-size: .82rem; }
+
+.lsText {
+  line-height: 1.55; padding: 8px 12px; margin: 4px 0 8px;
+  background: var(--bg-soft, #F7F6F4); border-left: 4px solid #5E35B1; border-radius: 6px;
+}
+.lsLine { white-space: pre-wrap; overflow-wrap: anywhere; }
+.lsGap { height: .55em; }
+.lsNone { margin: 4px 0 8px; color: var(--ink-faint, #8A8A84); font-style: italic; }
+.lsBusy { margin: 4px 0 8px; color: #5E35B1; font-weight: 600; }
+.lsBusy::before {
+  content: ''; display: inline-block; width: .8em; height: .8em; margin-right: .5em; vertical-align: -1px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: lsSpin .8s linear infinite;
+}
+@keyframes lsSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lsBusy::before { animation: none; } }
+.lsWarn { margin: 4px 0 8px; color: var(--v-half, #B26A00); font-size: .9rem; }
+
+.lsRaw { margin: 0 0 8px; font-size: .88rem; color: var(--ink-soft, #55554F); }
+.lsRaw summary { cursor: pointer; color: var(--ink-faint, #8A8A84); }
+.lsRaw p { margin: 6px 0 0; line-height: 1.5; max-height: 12em; overflow-y: auto; overflow-wrap: anywhere; }
+
+.lsBtns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.lsBtns .btn { padding: 7px 12px; font-size: .9rem; }
+.lsLink { text-decoration: none; color: inherit; display: inline-flex; align-items: center; }
+.lsDrop { min-width: 0; }
+
+.lsEditBox, .lsMsg, .lsTo, .lsPlain {
+  width: 100%; box-sizing: border-box; font: inherit; color: inherit;
+  border: 1px solid var(--line, #ECECEA); border-radius: 10px; padding: 9px 11px;
+  background: var(--bg, #FFFFFF);
+}
+.lsEditBox { margin: 4px 0 8px; line-height: 1.5; resize: vertical; }
+.lsPlain { margin-top: 10px; font-size: .85rem; resize: vertical; }
+
+.lsMail { border-top: 1px solid var(--line, #ECECEA); padding-top: 14px; }
+.lsMail h3 { margin: 0 0 10px; font-size: 1rem; }
+.lsLabel { display: block; margin: 0 0 10px; font-size: .86rem; color: var(--ink-soft, #55554F); }
+.lsLabel .lsTo, .lsLabel .lsMsg { margin-top: 4px; font-size: 1rem; color: var(--ink, #1A1A1A); }
+.lsMail .btn.lsSend { background: var(--accent, #FFE0B2); border-color: var(--accent-strong, #FFCC80); font-weight: 700; }
+.lsSendMsg { margin: 10px 0 0; color: var(--v-ok, #2E7D32); overflow-wrap: anywhere; }
+.lsSendMsg.lsBad { color: var(--v-no, #C62828); }
+
+@media (max-width: 640px) {
+  .lsBody { padding: 14px; }
+  .lsBtns .btn { flex: 1 1 auto; }
+}
+@media print { .lsBack { display: none !important; } }

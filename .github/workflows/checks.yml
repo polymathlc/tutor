@@ -89,3 +89,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/model-studio-browser-check.mjs
+      - name: Check the video summary turns a recording into words and emails it
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/lesson-summary-browser-check.mjs

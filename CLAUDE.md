@@ -2,6 +2,26 @@
 
 Guidance for Claude when working in this repo.
 
+## 📝 THE SUMMARY — every video solution in words, with links, emailed (v1.89.0)
+
+`lesson-summary.js` / `.css` (`window.LessonSummary` {open, close, isOpen, refresh, pure, writeOne}) and the glue after
+`End video solutions` in index.html (search `📝 THE SUMMARY`). `functions/lesson-summary-service.js` → `studyBuddySummary`.
+- **What a summary is**: each lesson video TRANSCRIBED and turned into written lines, with ▶ `?ws=<shared id>&video=<id>`
+  (opens + plays, `OPEN_LINK_VIDEO` → `summaryPlayWhenReady`) and 🎬 the media file itself (`mediaUrlOk`: lesson folders only).
+- **Speech**: `writeOne` fetches the media, `decodeToMono` (decodeAudioData + OfflineAudioContext to 16 kHz mono), `chunkRanges`
+  (`CHUNK_SEC` 150, silent pieces skipped), `wavEncode` → `window.transcribeAudio` (the one speech door). Then ONE `ask` with
+  `WRITE_SYS` (only what was said; stop where the teacher stopped; no algebra; transcript as JSON data). Host passes `lsAsk`
+  (aiGrounding('teach') + tutorMethodRule()). The module never names a model or writes Firestore.
+- **Saved**: `videoNotes` map {id: {v, text ≤ 2400, at, ms, edited?}} on the teacher's worksheet AND the assignment, via the
+  ONE writer `lessonNotesCommit` (re-read, `update` only, teacher only). Read by `lessonNotesOf` (a copy reads the assignment),
+  cleaned by `lessonNotesClean` = `LessonSummary.pure.cleanNotes`; followed live in `lessonVideosWatch`. Never in `worksheetBody`.
+  The raw transcript stays in this device's localStorage (`ls1:<videoId>`).
+- **Email**: body is `{ worksheetId, to, message? }` ONLY; the server reads the videos + `videoNotes` off the documents and builds
+  the mail (`buildSummaryMail`, escaped), into the consult's `MAIL_COLLECTION` (the extension watches ONE collection),
+  `replyTo` the teacher. Teacher: 10 addresses, a message, 60/day. Student: own worksheet, 3 addresses, no message, 6/day, 30 s gap.
+- Checks: `node --test tools/lesson-summary-tests.mjs functions/test/lesson-summary-service.test.js`,
+  `PW=… node tools/lesson-summary-browser-check.mjs` (real decode of a stereo 44.1 kHz WAV; `LS_SCREENSHOTS=dir`).
+
 ## ✏️ THE MODEL SUITE — Ans Key's bar-model drawing board (v1.88.0)
 
 Search `✏️ Model suite — the model studio's glue` (just after the 📋 picture drop handler). `model-studio.js` /

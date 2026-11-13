@@ -24,6 +24,7 @@ const { createCentreRepository } = require('./centre-admin-repository');
 const { createSampleRepository, createSampleService, BUCKET } = require('./sample-materials-service');
 const { createSampleQuestionService } = require('./sample-questions');
 const { createConsultService, createConsultRepository } = require('./consult-service');
+const { createSummaryService, createSummaryRepository } = require('./lesson-summary-service');
 
 initializeApp();
 const openaiKey = defineSecret('OPENAI_API_KEY');
@@ -90,6 +91,19 @@ exports.studyBuddyConsult = onRequest({
   region: 'us-central1', timeoutSeconds: 30,
   maxInstances: 3, concurrency: 20, memory: '256MiB', invoker: 'public'
 }, consultService.handler);
+
+// 📝 Summary: emails every question's video solution, in words, with a link to
+// each video. The words are read off the worksheet's own documents; the
+// browser sends the worksheet's id and the addresses. Same mail queue as the
+// consult email, because the Trigger Email extension watches one collection.
+const summaryService = createSummaryService({
+  auth: getAuth(), appCheck: getAppCheck(), repository: createSummaryRepository(getFirestore()),
+  report: code => logger.warn(code)
+});
+exports.studyBuddySummary = onRequest({
+  region: 'us-central1', timeoutSeconds: 30,
+  maxInstances: 3, concurrency: 20, memory: '256MiB', invoker: 'public'
+}, summaryService.handler);
 
 // Public trials have their own short-lived sessions and finite budget. The
 // existing signed-in worksheet services retain their authentication policies.
