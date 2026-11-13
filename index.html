@@ -11,10 +11,11 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.88.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.88.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.88.0">
-<link rel="stylesheet" href="model-studio.css?v=1.88.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.89.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.89.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.89.0">
+<link rel="stylesheet" href="model-studio.css?v=1.89.0">
+<link rel="stylesheet" href="whiteboard.css?v=1.89.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -1772,6 +1773,71 @@
     padding: 16px 24px; border-top: 1px solid var(--line);
   }
 
+  /* ---------- 🗒 THE WHITEBOARD (v1.89.0) ----------
+     The board's own look is whiteboard.css (all `.wb*`, under `.wbHost`).
+     These are the app's frames round it: the list, the full-screen editor
+     (under every dialog, so ▶ Practise and the pickers open over it), the
+     two pickers, and 👁 Workings on the worksheet. */
+  #wbEditor {
+    position: fixed; inset: 0; z-index: 110; display: none; flex-direction: column;
+    background: #fff; padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+  }
+  #wbEditor.open { display: flex; }
+  body.wbBoardOpen { overflow: hidden; }
+  .wbHead { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: #fff; flex: none; }
+  .wbTitle {
+    flex: 1 1 200px; min-width: 0; max-width: 460px; height: 36px; padding: 0 12px; border-radius: 10px;
+    border: 1px solid transparent; font: inherit; font-weight: 700; font-size: 1.02rem; background: transparent; color: var(--ink);
+  }
+  .wbTitle:hover, .wbTitle:focus { border-color: var(--line); background: var(--bg-soft); outline: none; }
+  .wbSaved { font-size: 0.8rem; color: var(--ink-faint); white-space: nowrap; margin-left: auto; }
+  #wbHost { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .wbListCard {
+    background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow-card); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .wbListCard h3 { font-size: 1rem; font-weight: 700; line-height: 1.4; margin: 0; }
+  .wbListFace {
+    display: block; width: 100%; aspect-ratio: 16 / 10; border-radius: var(--radius-sm); overflow: hidden;
+    border: 1px solid var(--line); background: #FBFBFE; padding: 0; cursor: pointer;
+    background-image: radial-gradient(circle, rgba(94,53,177,.14) 1px, transparent 1.3px); background-size: 16px 16px;
+  }
+  .wbListFace img { display: block; width: 100%; height: 100%; object-fit: contain; background: #fff; }
+  .wbListNone { display: grid; place-items: center; height: 100%; font-size: 40px; opacity: .4; }
+  @supports not (aspect-ratio: 1 / 1) { .wbListFace { height: 160px; } }
+  .wbListNew {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 230px;
+    border: 2px dashed #CBBFE6; border-radius: var(--radius); background: #FBF9FF; color: #5E35B1; cursor: pointer;
+    font: inherit; padding: 20px; text-align: center;
+  }
+  .wbListNew span { font-size: 40px; line-height: 1; }
+  .wbListNew small { color: var(--ink-soft); font-size: 0.8rem; line-height: 1.5; max-width: 240px; }
+  .wbListNew:hover { background: #F3EEFF; }
+  .wbTargetList, .wbPickList { display: flex; flex-direction: column; gap: 8px; }
+  .wbTargetRow, .wbPickRow {
+    display: flex; gap: 12px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line);
+    border-radius: 12px; cursor: pointer; background: #fff;
+  }
+  .wbTargetRow:hover, .wbPickRow:hover { background: var(--bg-soft); }
+  .wbTargetRow input, .wbPickRow input { margin-top: 3px; flex: none; width: 18px; height: 18px; }
+  .wbTargetRow span, .wbPickRow span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .wbTargetRow small, .wbPickRow small { color: var(--ink-soft); font-size: 0.8rem; line-height: 1.45; }
+  .wbPickRow.on { opacity: .55; cursor: default; }
+  .wbSnipTip { flex-wrap: wrap; gap: 8px; justify-content: center; max-width: min(640px, calc(100vw - 24px)); }
+  .wbKinds { display: inline-flex; gap: 4px; }
+  .wbKind.on { background: var(--accent); border-color: var(--accent-deep); }
+  .wbInkChoice { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; white-space: nowrap; }
+  /* 👁 WORKINGS OFF ON THE WORKSHEET. The page's overlay holds the ink, the
+     typed answers, the hint pins, the marks and the tutor's own marks, so
+     hiding it leaves exactly the printed paper. `visibility`, never
+     `display`: the overlay keeps its size, so nothing on the page moves,
+     and it takes no pointer while it is hidden, so nothing can be written
+     on blind. The video pills and a consult's ink go with it. */
+  body.wsInkHidden .pageWrap > svg.overlay,
+  body.wsInkHidden .pageWrap .vidPills,
+  body.wsInkHidden .pageWrap svg.consultInk { visibility: hidden !important; }
+  #inkToggleBtn.inkOff { background: #FFF3E0; border-color: #EF6C00; color: #8A3C00; }
+
   /* ---------- ✏️ The model suite's floating window (v1.88.0) ----------
      Ans Key's `.modalBack.floatWin`, under its own name: no backdrop, the
      page stays live under it (clicks fall through the transparent layer),
@@ -2492,6 +2558,7 @@
             <h2>My worksheets</h2>
             <span class="spacer"></span>
             <button class="btn hidden" id="setAllBtn" title="Give your students every paper of yours that is not on their shelves yet">📌 Set all for my class</button>
+            <button class="btn" id="boardBtn" title="Your whiteboards — endless boards for pictures cut from worksheets, notes and questions to try again">🗒 Whiteboard</button>
             <button class="btn" id="progressBtn" title="Every topic and learning objective, with your marks on it, added up across every worksheet you have marked">📈 My progress</button>
             <button class="btn btnPrimary" id="uploadBtn">⬆️ Upload a worksheet</button>
           </div>
@@ -2608,6 +2675,13 @@
 
         <button class="btn btnSm keyChip hidden" id="keyChip" title="This worksheet's answer key">🔑 Answer key</button>
         <button class="btn btnSm" id="snipBtn" title="Drag a box around part of the page and ask Chung GPT about it">✂️ Ask about this</button>
+        <!-- 🗒 THE WHITEBOARD (v1.89.0). 📸 cuts a part of the page onto a
+             whiteboard; 👁 hides every stroke, typed answer, pin and mark on
+             the page at once (nothing deleted) so a screenshot is the clean
+             paper. Both wired by `wbBind` — search `🗒 THE WHITEBOARD`. -->
+        <button class="btn btnSm" id="wsBoardBtn" title="Drag a box around part of the page and put it on one of your whiteboards">📸 To whiteboard</button>
+        <button class="btn btnSm" id="inkToggleBtn" type="button" aria-pressed="false"
+                title="Hide your workings — every stroke, typed answer and mark — for a clean screenshot of the page">👁 Workings</button>
         <button class="btn btnSm" id="consultBtn" title="Ask Mr Chung to join you on this page" hidden>🙋 Consult</button>
         <button class="btn btnSm" id="printBtn" title="Print this worksheet">🖨 Print</button>
         <button class="btn btnSm" id="saveBtn" title="Saves by itself as you work — tap to save now">Save</button>
@@ -2705,6 +2779,7 @@
           <span class="spacer"></span>
           <button class="btn btnDanger freshBtn hidden" id="mistFresh" type="button"
                   title="Delete your own worksheets, mistake book and learning objective progress, and start again">🧹 Start fresh…</button>
+          <button class="btn" id="mistBoardBtn" title="Your whiteboards — put questions from this book on one to try again">🗒 Whiteboard</button>
           <button class="btn" id="mistBackBtn">← My worksheets</button>
         </div>
         <p class="sub" style="margin:0 4px 18px">
@@ -2716,6 +2791,36 @@
         <div class="mistTools" id="mistTools"></div>
         <div id="mistList"></div>
       </main>
+    </div>
+
+    <!-- ============ 🗒 THE WHITEBOARD (v1.89.0) ============
+         The list of this account's boards, and a board full screen
+         (`#wbEditor`, fixed over the whole app). whiteboard.js draws the
+         board into `#wbHost`; everything else is the glue — search
+         `🗒 THE WHITEBOARD — the glue`. -->
+    <div class="view" id="boardView">
+      <main>
+        <div class="sectionHead">
+          <h2>🗒 My whiteboards</h2>
+          <span class="spacer"></span>
+          <button class="btn" id="wbBackBtn">← My worksheets</button>
+        </div>
+        <p class="sub" style="margin:0 4px 18px">
+          A whiteboard goes on for ever in every direction. Put pictures cut from your worksheets on it
+          (📸 To whiteboard on any worksheet), questions from your mistake book to try again, sticky notes and
+          your own writing — it is saved to your account, so it is the same board on every device.
+          Press <b>👁 Workings</b> to hide your writing for a clean screenshot.
+        </p>
+        <div id="wbList"></div>
+      </main>
+      <div id="wbEditor" aria-hidden="true" role="dialog" aria-label="Whiteboard">
+        <div class="wbHead">
+          <button class="btn btnSm btnGhost" id="wbCloseBtn" title="Back to my whiteboards — it is saved">← Boards</button>
+          <input id="wbTitle" class="wbTitle" maxlength="80" aria-label="The whiteboard's name" placeholder="Name this whiteboard">
+          <span class="wbSaved" id="wbStatus" role="status" aria-live="polite"></span>
+        </div>
+        <div id="wbHost"></div>
+      </div>
     </div>
 
   </div>
@@ -3294,6 +3399,39 @@
   </div>
 </div>
 
+<!-- 🗒 Which whiteboard? — asked when a cut from a worksheet or a question
+     from the mistake book is put on a board (`wbChooseBoard`). -->
+<div class="modalBack" id="wbTargetModal">
+  <div class="modalCard">
+    <div class="modalHead"><h2>🗒 Put it on which whiteboard?</h2></div>
+    <div class="modalBody">
+      <p class="sub" id="wbTargetWhat" style="margin:0 0 12px"></p>
+      <div class="wbTargetList" id="wbTargetList"></div>
+    </div>
+    <div class="modalFoot">
+      <button class="btn" id="wbTargetCancel">Cancel</button>
+      <button class="btn" id="wbTargetAdd">Put it there</button>
+      <button class="btn btnPrimary" id="wbTargetOpen">Put it there and open it</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🗒 📕 From my mistakes — inside a board (`wbPickOpen`). -->
+<div class="modalBack" id="wbPickModal">
+  <div class="modalCard tnWide">
+    <div class="modalHead"><h2>📕 Questions to try again</h2></div>
+    <div class="modalBody">
+      <p class="sub" style="margin:0 0 12px">Tick the questions to put on this board. Each one comes with a space to try it,
+        a box to type your answer, the answer behind a button, and “I can do this now”.</p>
+      <div class="wbPickList" id="wbPickList"></div>
+    </div>
+    <div class="modalFoot">
+      <button class="btn" id="wbPickCancel">Cancel</button>
+      <button class="btn btnPrimary" id="wbPickAdd">Put them on the board</button>
+    </div>
+  </div>
+</div>
+
 <!-- ✏️ THE MODEL SUITE (v1.88.0) — polymathlc/anskey's model studio, which is
      polymathlc/model's drawing board, for DRAWING models only. A floating
      window, never a modal: the worksheet stays live under it. Its own class
@@ -3432,11 +3570,12 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.88.0"></script>
-<script src="lo-marks.js?v=1.88.0"></script>
-<script src="lo-practice.js?v=1.88.0"></script>
-<script src="cer-mcq.js?v=1.88.0"></script>
-<script src="model-studio.js?v=1.88.0"></script>
+<script src="concept-tags.js?v=1.89.0"></script>
+<script src="lo-marks.js?v=1.89.0"></script>
+<script src="lo-practice.js?v=1.89.0"></script>
+<script src="cer-mcq.js?v=1.89.0"></script>
+<script src="model-studio.js?v=1.89.0"></script>
+<script src="whiteboard.js?v=1.89.0"></script>
 <script>
 'use strict';
 
@@ -3533,7 +3672,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.88.0';
+var APP_VERSION = 'v1.89.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -5550,6 +5689,7 @@ async function loadPdf(bytes, name) {
   mthClose();                         // …and nor must a working line about its questions
   tutorMarksClear();                  // …and nor must a finger or a line of working on one of its questions
   if (typeof msWorksheetClosing === 'function') msWorksheetClosing();   // ✏️ a model open from this worksheet's picture lets go of it
+  if (typeof wsInkSet === 'function' && wsInkHidden) wsInkSet(false);    // 🗒 a new worksheet always opens with its workings showing
   pdfBytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   docName = name || 'Untitled';
   currentDocId = null;
@@ -18763,6 +18903,1012 @@ function snipPromptLines(snip, imagePages) {
 }
 /* ================= End ✂️ ask about a part of the page ================= */
 
+/* =====================================================================
+   🗒 THE WHITEBOARD — the glue (v1.89.0)
+   ---------------------------------------------------------------------
+   whiteboard.js is the board (`window.Whiteboard`): the endless sheet, the
+   pen, the pictures, the cards, undo, the picture of the board. It knows
+   nothing about Firebase, the mistake book or the worksheet. Everything
+   here is what Study Buddy hands it, and the four ways in:
+
+   ① 🗒 Whiteboard on the home screen and in the mistake book → the list of
+      this account's boards (`wbShowList`), and a board full screen
+      (`wbOpen`, `#wbEditor`).
+   ② 📸 To whiteboard on the worksheet (`wbSnipStart`): drag a box, it is
+      cut off the page — WITH the student's workings or WITHOUT, as they
+      choose — and goes on a board as a picture or as ❓ a question to try
+      again (`wbChooseBoard` asks which board).
+   ③ 🗒 Whiteboard on a mistake card and "Put on a whiteboard" over the
+      book (`wbSendMistakes`), and 📕 From my mistakes inside a board
+      (`wbPickOpen`): questions to try again, the mistake book's own.
+   ④ 👁 Workings on the worksheet (`wsInkSet`): every stroke, typed answer,
+      pin and mark on the page is hidden at once, so a screenshot of the
+      page is the clean paper. Nothing is deleted; tapping it again brings
+      the lot back, and a new worksheet always opens with it on.
+
+   WHERE A BOARD LIVES. Storage, beside the mistake book's own pictures:
+   `tutor-mistakes/{uid}/boards/{id}.json` (the board), `{id}/{item}.jpg`
+   (each picture on it), `{id}.thumb.jpg` (the card in the list) and
+   `index.json` (the list). That folder is one every student already writes
+   (`_mbUpload`), so a board saves under the rules that are live today —
+   a Firestore collection the rules have never heard of fails closed and
+   says nothing (the 📌 tutorAssignments lesson in README). A board is one
+   JSON file, so it can never outgrow a Firestore document either.
+
+   SAVING. Every change marks the board dirty and saves `WB_SAVE_MS` after
+   the last one; one save is in flight at a time and a change made during
+   it saves again straight after (`wbSaveNow`). Pictures go up FIRST and
+   the board names them by path, never by URL (`forSave`). Until a save
+   lands the board is also kept on the device (`wbDraftWrite`), without its
+   pictures, so a tab closed mid-save loses no writing; `wbOpen` brings a
+   draft newer than the cloud's copy back and says so.
+   ===================================================================== */
+var WB_INDEX = 'index.json';
+var WB_SAVE_MS = 1500;
+var WB_RETRY_MS = 8000;
+var WB_THUMB_MS = 15000;
+var WB_DRAFT_MS = 700;
+var WB_IMG_PX = 1800;          // the long side of a picture put on a board
+var WB_CUT_PX = 2000;          // the long side a page is rendered at to cut from
+var WB_TARGET_KEY = 'polymath.tutorWbTarget';
+var WB_DRAFT_PREFIX = 'wbDraft:';
+var wb = {
+  inst: null, id: '', uid: '', list: null, listError: '', epoch: 0,
+  saving: null, again: false, timer: null, retry: null, draftTimer: null,
+  rev: 0, savedRev: 0, lastThumb: 0, thumbUrls: {}, status: ''
+};
+
+function wbReady() { return typeof Whiteboard !== 'undefined' && !!Whiteboard.create; }
+function wbDir(uid) { return MISTAKE_DIR + '/' + (uid || (currentUser && currentUser.uid) || 'nobody') + '/boards'; }
+function wbBodyPath(id, uid) { return wbDir(uid) + '/' + id + '.json'; }
+function wbThumbPath(id, uid) { return wbDir(uid) + '/' + id + '.thumb.jpg'; }
+function wbPicPath(boardId, itemId, dataUrl, uid) {
+  var ext = /^data:image\/png/i.test(String(dataUrl)) ? '.png' : '.jpg';
+  return wbDir(uid) + '/' + boardId + '/' + itemId + ext;
+}
+function wbIsMine(path) {
+  return !!(currentUser && typeof path === 'string' && path.indexOf(wbDir() + '/') === 0);
+}
+
+/* ---- Storage: JSON in, JSON out ---- */
+async function wbReadJson(path) {
+  var url;
+  try { url = await storage.ref(path).getDownloadURL(); }
+  catch (e) {
+    if (e && (e.code === 'storage/object-not-found' || /not.?found/i.test(String(e.message || '')))) return null;
+    throw e;
+  }
+  var resp = await fetch(url, { cache: 'no-store' });
+  if (resp.status === 404) return null;
+  if (!resp.ok) throw new Error('HTTP ' + resp.status);
+  return JSON.parse(await resp.text());
+}
+async function wbWriteJson(path, obj) {
+  var json = JSON.stringify(obj);
+  await storage.ref(path).put(new Blob([json], { type: 'application/json' }),
+    { contentType: 'application/json', cacheControl: 'no-store' });
+  return json.length;
+}
+async function wbDeletePath(path) {
+  if (!path || !wbIsMine(path)) return;
+  try { await storage.ref(path).delete(); } catch (e) { /* already gone */ }
+}
+
+/* ---- The list ---- */
+async function wbLoadList(force) {
+  if (!currentUser || !storage) { wb.list = []; return wb.list; }
+  if (wb.list && !force) return wb.list;
+  try {
+    wb.list = Whiteboard.pure.cleanIndex(await wbReadJson(wbDir() + '/' + WB_INDEX));
+    wb.listError = '';
+  } catch (e) {
+    console.warn('🗒 The list of whiteboards could not be read', e);
+    wb.listError = 'Your whiteboards could not be read just now — check the connection and try again.';
+    wb.list = wb.list || [];
+  }
+  return wb.list;
+}
+/* Read, change, write — the list is read FRESH every time, so a board
+   saved on the iPad is not dropped from the list by the laptop. */
+async function wbIndexChange(fn) {
+  var fresh = null;
+  try { fresh = Whiteboard.pure.cleanIndex(await wbReadJson(wbDir() + '/' + WB_INDEX)); }
+  catch (e) { fresh = wb.list || []; }
+  var next = fn(fresh) || fresh;
+  await wbWriteJson(wbDir() + '/' + WB_INDEX, { v: 1, boards: next });
+  wb.list = next;
+  return next;
+}
+
+/* ---- The draft kept on the device ---- */
+function wbDraftKey(id) { return WB_DRAFT_PREFIX + (currentUser ? currentUser.uid : '') + ':' + id; }
+function wbDraftWrite() {
+  clearTimeout(wb.draftTimer);
+  wb.draftTimer = setTimeout(function () {
+    if (!wb.inst || !wb.id || !currentUser) return;
+    try {
+      var b = Whiteboard.pure.forSave(wb.inst.board());
+      // A picture not uploaded yet is a data: URL a few hundred KB long,
+      // and localStorage holds about five MB for every app on the origin.
+      b.items = b.items.filter(function (it) { return !(it.src && !it.path && /^data:/i.test(it.src)) || it.t !== 'img'; })
+        .map(function (it) { if (it.src && /^data:/i.test(it.src)) { var c = Object.assign({}, it); delete c.src; return c; } return it; });
+      localStorage.setItem(wbDraftKey(wb.id), JSON.stringify(b));
+    } catch (e) { /* storage full or refused — the cloud save still runs */ }
+  }, WB_DRAFT_MS);
+}
+function wbDraftRead(id) {
+  try { var s = localStorage.getItem(wbDraftKey(id)); return s ? JSON.parse(s) : null; } catch (e) { return null; }
+}
+function wbDraftDrop(id) { try { localStorage.removeItem(wbDraftKey(id)); } catch (e) {} }
+
+/* ---- Pictures ---- */
+/* A picture of any size, as a JPEG no longer than WB_IMG_PX on its long
+   side, on white. A phone photo is twelve megapixels; a board of those is
+   a board nobody's iPad can open. */
+function wbShrinkSrc(src, maxPx) {
+  maxPx = maxPx || WB_IMG_PX;
+  return new Promise(function (resolve) {
+    var im = new Image();
+    im.onload = function () {
+      var w = im.naturalWidth || 1, h = im.naturalHeight || 1;
+      var k = Math.min(1, maxPx / Math.max(w, h));
+      var c = document.createElement('canvas');
+      try {
+        c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+        var ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(im, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', 0.86));
+      } catch (e) { resolve(String(src).indexOf('data:image/') === 0 ? src : ''); }
+      finally { c.width = 0; c.height = 0; }
+    };
+    im.onerror = function () { resolve(''); };
+    im.src = src;
+  });
+}
+function wbShrinkFile(file) {
+  return new Promise(function (resolve) {
+    var r = new FileReader();
+    r.onload = function () { wbShrinkSrc(String(r.result || '')).then(resolve); };
+    r.onerror = function () { resolve(''); };
+    r.readAsDataURL(file);
+  });
+}
+async function wbImageUrl(path) {
+  if (!path || !storage) return '';
+  try { return await storage.ref(path).getDownloadURL(); } catch (e) { return ''; }
+}
+async function wbUploadPic(uid, boardId, it) {
+  var path = wbPicPath(boardId, it.id, it.src, uid);
+  await storage.ref(path).putString(it.src, 'data_url');
+  return path;
+}
+
+/* ---- Saving ---- */
+function wbStatus(s) {
+  wb.status = s;
+  var n = $('wbStatus');
+  if (n) n.textContent = s;
+}
+function wbChanged() {
+  wb.rev++;
+  wbStatus('Saving…');
+  wbDraftWrite();
+  clearTimeout(wb.timer);
+  wb.timer = setTimeout(function () { wbSaveNow(); }, WB_SAVE_MS);
+}
+function wbDirty() { return wb.rev !== wb.savedRev; }
+
+async function wbSaveNow(opts) {
+  opts = opts || {};
+  clearTimeout(wb.timer);
+  clearTimeout(wb.retry);
+  if (!wb.inst || !wb.id || !currentUser || !storage) return;
+  if (wb.saving) { wb.again = true; return wb.saving; }
+  if (!wbDirty() && !opts.force) return;
+  var inst = wb.inst, id = wb.id, uid = currentUser.uid, rev = wb.rev;
+  var failedPics = 0;
+  wb.saving = (async function () {
+    var b = inst.board();
+    // ① Pictures first, so the board never names a file that is not there.
+    var paths = {};
+    for (var i = 0; i < b.items.length; i++) {
+      var it = b.items[i];
+      if (it.path || !it.src || !/^data:image\//i.test(it.src)) continue;
+      try {
+        var p = await wbUploadPic(uid, id, it);
+        paths[it.id] = p;
+        if (wb.inst === inst && wb.id === id) inst.setItemPath(it.id, p);
+      } catch (e) { failedPics++; console.warn('🗒 A picture could not be uploaded', e); }
+    }
+    b.items = b.items.map(function (x) { return paths[x.id] ? Object.assign({}, x, { path: paths[x.id] }) : x; });
+    var body = Whiteboard.pure.forSave(b);
+    body.updated = Date.now();
+    await wbWriteJson(wbBodyPath(id, uid), body);
+    // ② The card's picture, now and then — never on every stroke.
+    var thumb = '';
+    if (opts.thumb || Date.now() - wb.lastThumb > WB_THUMB_MS) {
+      try {
+        var url = await inst.thumb();
+        if (url) {
+          await storage.ref(wbThumbPath(id, uid)).putString(url, 'data_url');
+          thumb = wbThumbPath(id, uid);
+          wb.lastThumb = Date.now();
+        }
+      } catch (e) { console.warn('🗒 The board\'s picture could not be saved', e); }
+    }
+    // ③ The list.
+    var entry = Whiteboard.pure.indexEntry(body, { thumb: thumb, thumbAt: Date.now() });
+    try { await wbIndexChange(function (list) { return Whiteboard.pure.indexUpsert(list, entry); }); }
+    catch (e) { console.warn('🗒 The list of whiteboards could not be updated', e); }
+  })();
+  try {
+    await wb.saving;
+    if (wb.inst === inst && wb.id === id) {
+      wb.savedRev = rev;
+      if (!wbDirty()) { inst.markSaved(); wbDraftDrop(id); }
+      wbStatus(failedPics ? 'Saved — ' + failedPics + ' picture' + (failedPics === 1 ? '' : 's') + ' still to upload' : 'Saved ✓');
+      if (failedPics) { wb.savedRev = -1; wb.retry = setTimeout(function () { wbSaveNow(); }, WB_RETRY_MS); }
+    }
+  } catch (e) {
+    console.warn('🗒 The whiteboard could not be saved', e);
+    if (wb.inst === inst && wb.id === id) {
+      wbStatus('Not saved yet — trying again…');
+      wb.retry = setTimeout(function () { wbSaveNow(); }, WB_RETRY_MS);
+    }
+  } finally {
+    wb.saving = null;
+    if (wb.again) { wb.again = false; if (wbDirty()) wbSaveNow(); }
+  }
+}
+
+/* ---- The board, full screen ---- */
+function wbOptions() {
+  return {
+    imageUrl: wbImageUrl,
+    readImage: wbShrinkFile,
+    toast: function (m) { toast(m, 3800); },
+    onChange: wbChanged,
+    renderQuestion: wbRenderQuestion,
+    checkAnswer: function (it, text) {
+      if (!it.answer || typeof LoPractice === 'undefined' || !LoPractice.answerMatches) return null;
+      return LoPractice.answerMatches(it.answer, text);
+    },
+    canPractise: function (it) { return !!(it.mid && mistakeById(it.mid)); },
+    onAction: wbCardAction,
+    extraTools: [
+      { id: 'wbFromMistakes', label: '📕 From my mistakes', title: 'Put questions from your mistake book on the board to try again', onClick: function () { wbPickOpen(); } },
+      { id: 'wbFromWorksheet', label: '📄 From a worksheet', title: 'Open a worksheet and cut a part of it onto this board', onClick: function () { wbFromWorksheetHelp(); } }
+    ]
+  };
+}
+/* A card from the mistake book is drawn BY the mistake book, so it carries
+   the question set out in blocks, its figure and its options exactly as the
+   book does — while the book has it. A card whose mistake has since been
+   removed falls back to what was kept on the card. */
+function wbRenderQuestion(it, el) {
+  var m = it.mid ? mistakeById(it.mid) : null;
+  if (!m || typeof questionNodes !== 'function') return false;
+  questionNodes(m, 'card', {}).forEach(function (n) { el.appendChild(n); });
+  return el.childNodes.length > 0;
+}
+function wbCardAction(kind, it) {
+  var m = it && it.mid ? mistakeById(it.mid) : null;
+  if (kind === 'practise') {
+    if (m) pracStart([m.id]);
+    else toast('That question is no longer in your mistake book.');
+    return;
+  }
+  if (kind === 'done') {
+    usageNote('boarddone', it.doc || '');
+    if (m && !m.cleared) { setMistakeCleared(m.id, true); toast('✓ Ticked off in your mistake book too.'); }
+    return;
+  }
+  if (kind === 'undone') {
+    if (m && m.cleared) setMistakeCleared(m.id, false);
+    return;
+  }
+  if (kind === 'checked' && it.verdict === 'right') toast('✅ Right! Tap “✓ I can do this now” when you are sure.', 4200);
+}
+
+function wbEditorShow(on) {
+  $('wbEditor').classList.toggle('open', !!on);
+  $('wbEditor').setAttribute('aria-hidden', on ? 'false' : 'true');
+  document.body.classList.toggle('wbBoardOpen', !!on);
+}
+function wbMount(board) {
+  if (!wbReady()) { toast('The whiteboard did not load — please reload the page.'); return; }
+  if (!wb.inst) wb.inst = Whiteboard.create($('wbHost'), wbOptions());
+  wbEditorShow(true);
+  wb.id = board.id;
+  wb.rev = 0; wb.savedRev = 0; wb.lastThumb = 0;
+  wb.inst.load(board);
+  $('wbTitle').value = board.title;
+  wbStatus('Saved ✓');
+  try { localStorage.setItem(WB_TARGET_KEY, board.id); } catch (e) {}
+}
+async function wbOpen(id) {
+  if (!currentUser || !wbReady()) return;
+  var ep = ++wb.epoch;
+  if (view !== 'board') showView('board');
+  await wbLoadList();
+  var entry = (wb.list || []).find(function (e) { return e.id === id; }) || null;
+  wbEditorShow(true);
+  wbStatus('Opening…');
+  var raw = null;
+  try { raw = await wbReadJson(wbBodyPath(id)); }
+  catch (e) {
+    if (ep !== wb.epoch) return;
+    console.warn('🗒 The whiteboard could not be opened', e);
+    toast('That whiteboard could not be opened — check the connection and try again.', 5000);
+    wbEditorShow(false);
+    return;
+  }
+  if (ep !== wb.epoch) return;
+  var b = Whiteboard.pure.cleanBoard(raw || { id: id, title: entry ? entry.title : '' });
+  b.id = id;
+  var draft = wbDraftRead(id);
+  var fromDraft = false;
+  if (draft && Number(draft.updated) > (raw ? Number(b.updated) || 0 : 0) + 1000) {
+    b = Whiteboard.pure.cleanBoard(draft); b.id = id; fromDraft = true;
+  }
+  wbMount(b);
+  usageNote('board', b.title);
+  if (fromDraft) {
+    toast('Brought back changes that had not reached the cloud yet — saving them now.', 5000);
+    wbChanged();
+  }
+}
+async function wbNew(title) {
+  if (!currentUser || !wbReady()) return null;
+  var st = typeof activeStudent === 'function' ? activeStudent() : null;
+  var b = Whiteboard.pure.newBoard(title || Whiteboard.pure.defaultTitle(), { who: st && st.name });
+  try {
+    await wbWriteJson(wbBodyPath(b.id), Whiteboard.pure.forSave(b));
+    await wbIndexChange(function (list) { return Whiteboard.pure.indexUpsert(list, Whiteboard.pure.indexEntry(b)); });
+  } catch (e) {
+    console.warn('🗒 A new whiteboard could not be saved', e);
+    toast('A new whiteboard could not be saved — check the connection and try again.', 5000);
+    return null;
+  }
+  return b;
+}
+async function wbCreateAndOpen() {
+  var b = await wbNew();
+  if (!b) return;
+  if (view !== 'board') showView('board');
+  wbMount(b);
+  usageNote('board', b.title);
+}
+/* Leaving a board saves it and puts its picture on the card. */
+async function wbCloseEditor() {
+  if (!$('wbEditor').classList.contains('open')) return;
+  wb.epoch++;
+  if (wb.inst && wb.id) {
+    if (wbDirty()) await wbSaveNow({ thumb: true });
+    else if (!wb.lastThumb && wb.inst.board().items.length) await wbSaveNow({ force: true, thumb: true });
+  }
+  wb.id = '';
+  if (wb.inst) { wb.inst.setClean(false); wb.inst.load(Whiteboard.pure.newBoard('')); }
+  wbEditorShow(false);
+  wbRenderList();
+}
+/* Called when the app leaves the 🗒 view: the board is saved, never lost. */
+function wbLeaveView() {
+  if (wb.inst && wb.id && wbDirty()) wbSaveNow({ thumb: true });
+  if ($('wbEditor').classList.contains('open')) {
+    wb.epoch++;
+    wb.id = '';
+    wbEditorShow(false);
+  }
+}
+
+/* ---- The list screen ---- */
+async function wbShowList() {
+  if (!currentUser) { toast('Sign in first — your whiteboards are kept with your account.'); return; }
+  if (!wbReady()) { toast('The whiteboard did not load — please reload the page.'); return; }
+  showView('board');
+  wbRenderList();
+  await wbLoadList(true);
+  wbRenderList();
+}
+function wbThumbUrl(e, img) {
+  var key = e.thumb + '@' + (e.thumbAt || 0);
+  if (wb.thumbUrls[key]) { img.src = wb.thumbUrls[key]; return; }
+  wbImageUrl(e.thumb).then(function (u) {
+    if (!u) { img.hidden = true; return; }
+    wb.thumbUrls[key] = u;
+    img.src = u;
+  });
+}
+function wbCardNode(e) {
+  var card = document.createElement('div');
+  card.className = 'wbListCard';
+  card.dataset.board = e.id;
+  var face = document.createElement('button');
+  face.type = 'button';
+  face.className = 'wbListFace';
+  face.setAttribute('aria-label', 'Open ' + e.title);
+  if (e.thumb) {
+    var img = document.createElement('img');
+    img.alt = '';
+    img.loading = 'lazy';
+    wbThumbUrl(e, img);
+    face.appendChild(img);
+  } else {
+    var none = document.createElement('span');
+    none.className = 'wbListNone';
+    none.textContent = '🗒';
+    face.appendChild(none);
+  }
+  face.addEventListener('click', function () { wbOpen(e.id); });
+  card.appendChild(face);
+  var h = document.createElement('h3');
+  h.textContent = e.title;
+  card.appendChild(h);
+  var meta = document.createElement('div');
+  meta.className = 'wsMeta';
+  [ [e.q ? (e.d ? e.d + ' of ' + e.q : e.q) + ' question' + (e.q === 1 ? '' : 's') + (e.d ? ' done' : ' to try') : '', 'chip chipGrade'],
+   [e.p ? e.p + ' picture' + (e.p === 1 ? '' : 's') : '', 'chip'],
+   [e.who || '', 'chip chipLevel'],
+   [e.updated ? 'Saved ' + prettyDate(e.updated) : '', 'chip'] ].forEach(function (r) {
+    if (!r[0]) return;
+    var c = document.createElement('span');
+    c.className = r[1];
+    c.textContent = r[0];
+    meta.appendChild(c);
+  });
+  card.appendChild(meta);
+  var foot = document.createElement('div');
+  foot.className = 'wsCardFoot';
+  var open = document.createElement('button');
+  open.className = 'btn btnSm btnPrimary';
+  open.textContent = 'Open';
+  open.addEventListener('click', function () { wbOpen(e.id); });
+  var ren = document.createElement('button');
+  ren.className = 'btn btnSm';
+  ren.textContent = '✎ Rename';
+  ren.addEventListener('click', function () { wbRename(e.id); });
+  var del = document.createElement('button');
+  del.className = 'btn btnSm btnDanger';
+  del.textContent = 'Delete';
+  del.addEventListener('click', function () { wbDelete(e.id); });
+  [open, ren, del].forEach(function (b) { foot.appendChild(b); });
+  card.appendChild(foot);
+  return card;
+}
+function wbRenderList() {
+  var host = $('wbList');
+  if (!host) return;
+  host.innerHTML = '';
+  if (wb.listError) {
+    var err = document.createElement('div');
+    err.className = 'assignWarn';
+    err.textContent = wb.listError;
+    host.appendChild(err);
+  }
+  var grid = document.createElement('div');
+  grid.className = 'wsGrid wbListGrid';
+  var add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'wbListNew';
+  add.innerHTML = '<span aria-hidden="true">＋</span><b>New whiteboard</b><small>An endless board for pictures, notes and questions to try again</small>';
+  add.addEventListener('click', wbCreateAndOpen);
+  grid.appendChild(add);
+  if (wb.list === null) {
+    var wait = document.createElement('div');
+    wait.className = 'emptyPad';
+    wait.textContent = 'Fetching your whiteboards…';
+    grid.appendChild(wait);
+  } else {
+    wb.list.forEach(function (e) { grid.appendChild(wbCardNode(e)); });
+  }
+  host.appendChild(grid);
+}
+async function wbRename(id) {
+  var e = (wb.list || []).find(function (x) { return x.id === id; });
+  var t = prompt('Call this whiteboard:', e ? e.title : '');
+  if (t == null) return;
+  t = t.replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (!t) return;
+  if (wb.inst && wb.id === id) { wb.inst.setTitle(t); $('wbTitle').value = t; return; }
+  try {
+    await wbEditStored(id, function (b) { b.title = t; });
+    wbRenderList();
+  } catch (err) { toast('Could not rename it — please try again.'); }
+}
+async function wbDelete(id) {
+  var e = (wb.list || []).find(function (x) { return x.id === id; });
+  if (!confirm('Delete the whiteboard “' + (e ? e.title : 'this board') + '” and everything on it? This cannot be undone.')) return;
+  var raw = null;
+  try { raw = await wbReadJson(wbBodyPath(id)); } catch (err) { raw = null; }
+  try {
+    await wbIndexChange(function (list) { return Whiteboard.pure.indexRemove(list, id); });
+  } catch (err) { toast('Could not delete it — check the connection and try again.'); return; }
+  wbRenderList();
+  var b = raw ? Whiteboard.pure.cleanBoard(raw) : null;
+  var paths = [wbBodyPath(id), wbThumbPath(id)];
+  if (b) b.items.forEach(function (it) { if (it.t === 'img' || (it.t === 'q' && !it.mid)) paths.push(it.path); });
+  for (var i = 0; i < paths.length; i++) await wbDeletePath(paths[i]);
+  wbDraftDrop(id);
+  toast('Whiteboard deleted.');
+}
+
+/* A board that is not open, changed in the cloud: read it, change it,
+   upload any new pictures, write it, update the list. The open board is
+   never changed this way — it is changed on screen and saves itself. */
+async function wbEditStored(id, fn) {
+  var raw = await wbReadJson(wbBodyPath(id));
+  var entry = (wb.list || []).find(function (x) { return x.id === id; });
+  var b = Whiteboard.pure.cleanBoard(raw || { id: id, title: entry ? entry.title : '' });
+  b.id = id;
+  var r = fn(b);
+  if (r && typeof r.then === 'function') await r;
+  var uid = currentUser.uid;
+  for (var i = 0; i < b.items.length; i++) {
+    var it = b.items[i];
+    if (it.path || !it.src || !/^data:image\//i.test(it.src)) continue;
+    try { it.path = await wbUploadPic(uid, id, it); } catch (e) { console.warn('🗒 A picture could not be uploaded', e); }
+  }
+  var body = Whiteboard.pure.forSave(b);
+  body.updated = Date.now();
+  await wbWriteJson(wbBodyPath(id), body);
+  await wbIndexChange(function (list) { return Whiteboard.pure.indexUpsert(list, Whiteboard.pure.indexEntry(body)); });
+  return body;
+}
+/* Put things on a board — the open one on screen, or a stored one. */
+async function wbAppend(id, items) {
+  items = (items || []).filter(Boolean);
+  if (!items.length) return 0;
+  if (wb.inst && wb.id === id && $('wbEditor').classList.contains('open')) {
+    var qs = items.filter(function (x) { return x.t === 'q'; });
+    var rest = items.filter(function (x) { return x.t !== 'q'; });
+    if (qs.length) wb.inst.addQuestions(qs);
+    for (var i = 0; i < rest.length; i++) {
+      if (rest[i].t === 'img') await wb.inst.addImage(rest[i].src, rest[i]);
+    }
+    return items.length;
+  }
+  var added = 0;
+  await wbEditStored(id, function (b) {
+    var sizes = items.map(function (x) {
+      return x.t === 'q' ? { w: Whiteboard.pure.Q_W, h: Whiteboard.pure.Q_H + 60 } : { w: x.w || 320, h: x.h || 240 };
+    });
+    var spots = Whiteboard.pure.placeBatch(b, sizes, { cols: items.length > 2 ? 2 : items.length });
+    items.forEach(function (x, i) {
+      var c = Whiteboard.pure.cleanItem(Object.assign({}, x, { x: spots[i].x, y: spots[i].y,
+        w: x.t === 'q' ? Whiteboard.pure.Q_W : x.w, h: x.t === 'q' ? Whiteboard.pure.Q_H : x.h }));
+      if (c && b.items.length < Whiteboard.pure.ITEMS_MAX) { b.items.push(c); added++; }
+    });
+  });
+  return added;
+}
+
+/* ---- "Which whiteboard?" ---- */
+var wbTargetDone = null;
+async function wbChooseBoard(what) {
+  if (!currentUser) { toast('Sign in first — your whiteboards are kept with your account.'); return null; }
+  await wbLoadList();
+  var modal = $('wbTargetModal'), list = $('wbTargetList');
+  $('wbTargetWhat').textContent = what || '';
+  list.innerHTML = '';
+  var last = '';
+  try { last = localStorage.getItem(WB_TARGET_KEY) || ''; } catch (e) {}
+  var boards = wb.list || [];
+  if (!boards.some(function (e) { return e.id === last; })) last = boards[0] ? boards[0].id : '';
+  function row(id, label, sub) {
+    var l = document.createElement('label');
+    l.className = 'wbTargetRow';
+    var r = document.createElement('input');
+    r.type = 'radio'; r.name = 'wbTarget'; r.value = id;
+    r.checked = id === (last || '__new');
+    l.appendChild(r);
+    var t = document.createElement('span');
+    var b = document.createElement('b');
+    b.textContent = label;
+    t.appendChild(b);
+    if (sub) { var s = document.createElement('small'); s.textContent = sub; t.appendChild(s); }
+    l.appendChild(t);
+    list.appendChild(l);
+  }
+  boards.forEach(function (e) {
+    row(e.id, e.title, [e.q ? e.q + ' question' + (e.q === 1 ? '' : 's') : '', e.p ? e.p + ' picture' + (e.p === 1 ? '' : 's') : '',
+      e.updated ? 'saved ' + prettyDate(e.updated) : ''].filter(Boolean).join(' · '));
+  });
+  row('__new', '➕ A new whiteboard', Whiteboard.pure.defaultTitle());
+  modal.classList.add('open');
+  return new Promise(function (resolve) {
+    wbTargetDone = function (how) {
+      wbTargetDone = null;
+      var pick = list.querySelector('input[name="wbTarget"]:checked');
+      modal.classList.remove('open');
+      resolve(how && pick ? { id: pick.value, open: how === 'open' } : null);
+    };
+  });
+}
+/* The board chosen, made if it is a new one. */
+async function wbResolveTarget(choice) {
+  if (!choice) return null;
+  if (choice.id !== '__new') return choice.id;
+  var b = await wbNew();
+  return b ? b.id : null;
+}
+async function wbSendItems(items, what, kindNote) {
+  var choice = await wbChooseBoard(what);
+  if (!choice) return;
+  toast('Putting it on the whiteboard…', 6000);
+  try {
+    var id = await wbResolveTarget(choice);
+    if (!id) return;
+    var n = await wbAppend(id, items);
+    try { localStorage.setItem(WB_TARGET_KEY, id); } catch (e) {}
+    if (kindNote) usageNote(kindNote, items[0] && (items[0].doc || (items[0].from && items[0].from.doc)) || '');
+    var e = (wb.list || []).find(function (x) { return x.id === id; });
+    if (choice.open) {
+      if (view === 'ws') { commitActiveTextEdit(); if (dirty && currentDocId) performSave(true); }
+      await wbOpen(id);
+    } else {
+      toast('✓ Put ' + (n === 1 ? 'it' : n + ' things') + ' on “' + (e ? e.title : 'your whiteboard') + '”.', 4200);
+    }
+  } catch (err) {
+    console.warn('🗒 Could not add to the whiteboard', err);
+    toast('Could not put that on the whiteboard — check the connection and try again.', 5000);
+  }
+}
+
+/* ---- ③ Questions from the mistake book ---- */
+function wbQuestionFromMistake(m) {
+  if (!m) return null;
+  var tier = typeof mistakeTier === 'function' ? mistakeTier(m) : '';
+  var q = {
+    t: 'q', mid: m.id, num: m.number || '', doc: m.docName || '', text: m.question || '',
+    answer: m.answer || '', why: m.explanation || '', from: { doc: m.docName || '' }
+  };
+  if (m.imagePath && (tier === 'question' || tier === 'page')) q.path = m.imagePath;
+  return q;
+}
+function wbSendMistakes(ids) {
+  var items = (ids || []).map(mistakeById).filter(Boolean).map(wbQuestionFromMistake).filter(Boolean);
+  if (!items.length) { toast('Pick at least one question first.'); return; }
+  wbSendItems(items, items.length === 1 ? 'One question to try again' : items.length + ' questions to try again', 'boardq');
+}
+async function wbPickOpen() {
+  if (!wb.inst) return;
+  if (!mistakes.length) await loadMistakes(true);
+  var onBoard = {};
+  wb.inst.board().items.forEach(function (it) { if (it.mid) onBoard[it.mid] = 1; });
+  var list = $('wbPickList');
+  list.innerHTML = '';
+  var rows = mistakes.slice().sort(function (a, b) { return (a.cleared ? 1 : 0) - (b.cleared ? 1 : 0); });
+  if (!rows.length) {
+    var none = document.createElement('div');
+    none.className = 'emptyPad';
+    none.textContent = 'Your mistake book is empty — mark a worksheet and the questions you did not get right land here.';
+    list.appendChild(none);
+  }
+  rows.forEach(function (m) {
+    var l = document.createElement('label');
+    l.className = 'wbPickRow' + (onBoard[m.id] ? ' on' : '');
+    var cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = m.id;
+    cb.disabled = !!onBoard[m.id];
+    l.appendChild(cb);
+    var t = document.createElement('span');
+    var b = document.createElement('b');
+    b.textContent = (m.number ? 'Q' + m.number + ' · ' : '') + (m.docName || 'A worksheet') +
+      (onBoard[m.id] ? ' — already on this board' : m.cleared ? ' — sorted' : '');
+    t.appendChild(b);
+    var s = document.createElement('small');
+    s.textContent = String(m.question || 'A question with a picture').replace(/\s+/g, ' ').slice(0, 140);
+    t.appendChild(s);
+    l.appendChild(t);
+    list.appendChild(l);
+  });
+  $('wbPickModal').classList.add('open');
+}
+function wbPickAdd() {
+  var ids = Array.prototype.slice.call($('wbPickList').querySelectorAll('input:checked')).map(function (c) { return c.value; });
+  $('wbPickModal').classList.remove('open');
+  if (!ids.length || !wb.inst) return;
+  var items = ids.map(mistakeById).map(wbQuestionFromMistake).filter(Boolean);
+  wb.inst.addQuestions(items);
+  usageNote('boardq', items[0] && items[0].doc || '');
+}
+function wbFromWorksheetHelp() {
+  wbCloseEditor().then(function () {
+    showView('home');
+    toast('Open a worksheet, then press 📸 To whiteboard and drag a box around what you want.', 6500);
+  });
+}
+
+/* ---- ② Cut a part of a worksheet onto a board ---- */
+/* The page rendered FRESH from the PDF at WB_CUT_PX — the screen's own
+   canvas is only as sharp as the zoom the student happens to be at — with
+   the ink drawn on it only when they asked for their workings. */
+async function wbRenderPage(p, withInk) {
+  var c = document.createElement('canvas');
+  var px = WB_CUT_PX;
+  if (p.page && typeof p.page.getViewport === 'function' && typeof p.page.render === 'function') {
+    var vp = p.page.getViewport({ scale: px / Math.max(p.baseW, p.baseH) });
+    c.width = Math.max(1, Math.floor(vp.width)); c.height = Math.max(1, Math.floor(vp.height));
+    var ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    var task = p.page.render({ canvasContext: ctx, viewport: vp });
+    await task.promise;
+  } else {
+    await ensurePageRaster(p);
+    var src = p.canvas;
+    c.width = src.width; c.height = src.height;
+    c.getContext('2d').drawImage(src, 0, 0);
+  }
+  if (withInk) {
+    if (typeof annPicsReady === 'function') { try { await annPicsReady(); } catch (e) {} }
+    syncActiveTextEditValue();
+    drawAnnsOnCtx(c.getContext('2d'), c.width / p.baseW, c.height / p.baseH, annotations, p.num);
+  }
+  return c;
+}
+function wbCutFrom(full, part) {
+  var p = part.page;
+  var kx = full.width / p.baseW, ky = full.height / p.baseH;
+  var sx = Math.max(0, Math.floor(part.x0 * kx)), sy = Math.max(0, Math.floor(part.y0 * ky));
+  var sw = Math.min(full.width - sx, Math.ceil((part.x1 - part.x0) * kx));
+  var sh = Math.min(full.height - sy, Math.ceil((part.y1 - part.y0) * ky));
+  if (sw < 2 || sh < 2) return null;
+  var out = document.createElement('canvas');
+  out.width = sw; out.height = sh;
+  var ctx = out.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, sw, sh);
+  ctx.drawImage(full, sx, sy, sw, sh, 0, 0, sw, sh);
+  return out;
+}
+async function wbCapture(parts, withInk, epoch) {
+  var cuts = [];
+  try {
+    for (var i = 0; i < parts.length; i++) {
+      var full = await wbRenderPage(parts[i].page, withInk);
+      if (epoch !== wsEpoch) { full.width = 0; full.height = 0; return null; }
+      var cut = wbCutFrom(full, parts[i]);
+      full.width = 0; full.height = 0;
+      if (cut) cuts.push(cut);
+    }
+    if (!cuts.length) return null;
+    var big = snipStack(cuts, WB_IMG_PX);
+    var src = big.toDataURL('image/jpeg', 0.9);
+    var w = big.width, h = big.height;
+    big.width = 0; big.height = 0;
+    return { src: src, w: w, h: h };
+  } finally {
+    cuts.forEach(function (c) { c.width = 0; c.height = 0; });
+  }
+}
+
+var wbSnipUi = null;
+function wbSnipStart() {
+  if (wbSnipUi || (typeof snipUi !== 'undefined' && snipUi)) return;
+  if (view !== 'ws' || !pages.length || !studentPages().length) {
+    toast('Open a worksheet first, then drag a box around what you want on your whiteboard.', 4500);
+    return;
+  }
+  if (!currentUser) { toast('Sign in first — your whiteboards are kept with your account.'); return; }
+  var narrow = window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
+  var buddyWasOpen = !$('buddy').classList.contains('closed');
+  var hideBuddy = narrow && buddyWasOpen;
+  if (hideBuddy) $('buddy').classList.add('closed');
+
+  var veil = document.createElement('div');
+  veil.className = 'snipVeil wbSnipVeil';
+  veil.setAttribute('role', 'application');
+  veil.setAttribute('aria-label', 'Drag a box around what you want on your whiteboard');
+  var box = document.createElement('div');
+  box.className = 'snipBox';
+  veil.appendChild(box);
+  var tip = document.createElement('div');
+  tip.className = 'snipTip wbSnipTip';
+  var words = document.createElement('span');
+  words.textContent = '📸 Drag a box around what you want on your whiteboard';
+  tip.appendChild(words);
+  var kinds = document.createElement('div');
+  kinds.className = 'wbKinds';
+  kinds.setAttribute('role', 'radiogroup');
+  kinds.setAttribute('aria-label', 'Put it on as');
+  var ui = wbSnipUi = { veil: veil, box: box, start: null, rect: null, pointer: null, epoch: wsEpoch,
+    hideBuddy: hideBuddy, buddyWasOpen: buddyWasOpen, kind: 'img', ink: !wsInkHidden };
+  [ ['img', '🖼 Picture'], ['q', '❓ Question to try again'] ].forEach(function (k) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'btn btnSm wbKind' + (k[0] === ui.kind ? ' on' : '');
+    b.textContent = k[1];
+    b.setAttribute('role', 'radio');
+    b.setAttribute('aria-checked', k[0] === ui.kind ? 'true' : 'false');
+    b.addEventListener('click', function () {
+      ui.kind = k[0];
+      Array.prototype.forEach.call(kinds.children, function (x) {
+        var on = x === b;
+        x.classList.toggle('on', on);
+        x.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+    });
+    kinds.appendChild(b);
+  });
+  tip.appendChild(kinds);
+  var inkLab = document.createElement('label');
+  inkLab.className = 'wbInkChoice';
+  var inkCb = document.createElement('input');
+  inkCb.type = 'checkbox';
+  inkCb.checked = ui.ink;
+  inkCb.addEventListener('change', function () { ui.ink = inkCb.checked; });
+  inkLab.appendChild(inkCb);
+  var inkWords = document.createElement('span');
+  inkWords.textContent = 'with my workings';
+  inkLab.appendChild(inkWords);
+  tip.appendChild(inkLab);
+  var cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn btnSm';
+  cancel.textContent = 'Cancel';
+  tip.appendChild(cancel);
+  veil.appendChild(tip);
+  document.body.appendChild(veil);
+
+  function place(x0, y0, x1, y1) {
+    var r = { left: Math.min(x0, x1), top: Math.min(y0, y1), right: Math.max(x0, x1), bottom: Math.max(y0, y1) };
+    box.style.left = r.left + 'px';
+    box.style.top = r.top + 'px';
+    box.style.width = (r.right - r.left) + 'px';
+    box.style.height = (r.bottom - r.top) + 'px';
+    box.classList.add('on');
+    ui.rect = r;
+  }
+  function down(e) {
+    if (tip.contains(e.target)) return;
+    if (ui.pointer !== null || (e.button != null && e.button > 0)) return;
+    e.preventDefault();
+    ui.pointer = e.pointerId;
+    ui.start = { x: e.clientX, y: e.clientY };
+    try { veil.setPointerCapture(e.pointerId); } catch (x) {}
+    tip.style.visibility = 'hidden';
+    place(e.clientX, e.clientY, e.clientX, e.clientY);
+  }
+  function move(e) {
+    if (e.pointerId !== ui.pointer || !ui.start) return;
+    e.preventDefault();
+    place(ui.start.x, ui.start.y, e.clientX, e.clientY);
+  }
+  function up(e) {
+    if (e.pointerId !== ui.pointer) return;
+    e.preventDefault();
+    ui.pointer = null;
+    var r = ui.rect;
+    if (!r || r.right - r.left < SNIP_MIN_PX || r.bottom - r.top < SNIP_MIN_PX) {
+      box.classList.remove('on');
+      ui.rect = null; ui.start = null;
+      tip.style.visibility = '';
+      words.textContent = '📸 Drag a bigger box — press and pull across what you want';
+      return;
+    }
+    wbSnipFinish(r);
+  }
+  function lost(e) {
+    if (e.pointerId !== ui.pointer) return;
+    ui.pointer = null; ui.start = null; ui.rect = null;
+    box.classList.remove('on');
+    tip.style.visibility = '';
+  }
+  function key(e) {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); wbSnipEnd(true); }
+    else e.stopPropagation();
+  }
+  veil.addEventListener('pointerdown', down);
+  veil.addEventListener('pointermove', move);
+  veil.addEventListener('pointerup', up);
+  veil.addEventListener('pointercancel', lost);
+  veil.addEventListener('touchmove', function (e) { e.preventDefault(); }, { passive: false });
+  cancel.addEventListener('click', function () { wbSnipEnd(true); });
+  window.addEventListener('keydown', key, true);
+  ui.unbind = function () { window.removeEventListener('keydown', key, true); };
+}
+function wbSnipEnd(cancelled) {
+  var ui = wbSnipUi;
+  if (!ui) return;
+  wbSnipUi = null;
+  if (ui.unbind) ui.unbind();
+  if (ui.veil && ui.veil.parentNode) ui.veil.parentNode.removeChild(ui.veil);
+  if (ui.hideBuddy && ui.buddyWasOpen && view === 'ws') $('buddy').classList.remove('closed');
+}
+async function wbSnipFinish(rect) {
+  var ui = wbSnipUi;
+  var epoch = ui ? ui.epoch : wsEpoch, kind = ui ? ui.kind : 'img', withInk = ui ? ui.ink : true;
+  wbSnipEnd(false);
+  var parts = snipPartsUnder(rect);
+  if (!parts.length) { toast('That box is not over the worksheet — drag it over the page itself.', 4500); return; }
+  var cap;
+  try { cap = await wbCapture(parts, withInk, epoch); }
+  catch (e) { console.warn('🗒 The cut could not be made', e); cap = null; }
+  if (!cap || epoch !== wsEpoch) { if (epoch === wsEpoch) toast('Could not cut that part of the page — try the box again.', 5000); return; }
+  var nums = parts.map(function (p) { return p.page.num; });
+  var from = { doc: docName || '', ws: currentDocId || '', pages: nums, ink: !!withInk };
+  var label = (docName || 'Worksheet') + ' · ' + snipLabel(nums);
+  var item;
+  if (kind === 'q') {
+    item = { t: 'q', src: cap.src, text: '', doc: docName || '', from: from };
+  } else {
+    var size = Whiteboard.pure.fitImageSize(cap.w, cap.h, Whiteboard.pure.IMG_MAX_W);
+    item = { t: 'img', src: cap.src, cap: label, from: from, w: size.w, h: size.h };
+  }
+  wbSendItems([item], kind === 'q' ? '❓ A question to try again, cut from ' + label : '🖼 A picture of ' + label +
+    (withInk ? ', with your workings' : ', without your workings'), 'boardsnip');
+}
+
+/* ---- ④ 👁 Workings on the worksheet ---- */
+var wsInkHidden = false;
+var wsInkToldOnce = false;
+function wsInkSet(hidden) {
+  hidden = !!hidden;
+  if (hidden && typeof commitActiveTextEdit === 'function') commitActiveTextEdit();
+  wsInkHidden = hidden;
+  document.body.classList.toggle('wsInkHidden', hidden);
+  var b = $('inkToggleBtn');
+  if (b) {
+    b.setAttribute('aria-pressed', hidden ? 'true' : 'false');
+    b.textContent = hidden ? '🙈 Workings off' : '👁 Workings';
+    b.title = hidden ? 'Your workings are hidden (nothing is deleted) — tap to show them again'
+      : 'Hide your workings — every stroke, typed answer and mark — for a clean screenshot of the page';
+    b.classList.toggle('inkOff', hidden);
+  }
+  if (hidden && !wsInkToldOnce) {
+    wsInkToldOnce = true;
+    toast('Workings hidden for a clean screenshot — nothing is deleted. Tap 🙈 to bring them back.', 4800);
+  }
+}
+
+/* ---- Accounts ---- */
+function wbAuthChanged() {
+  var uid = currentUser ? currentUser.uid : '';
+  if (uid === wb.uid) return;
+  wb.uid = uid;
+  wb.list = null; wb.listError = ''; wb.thumbUrls = {};
+  wb.epoch++;
+  clearTimeout(wb.timer); clearTimeout(wb.retry);
+  wb.id = ''; wb.rev = 0; wb.savedRev = 0;
+  if (wb.inst) wb.inst.load(Whiteboard.pure.newBoard(''));
+  if ($('wbEditor')) wbEditorShow(false);
+  if (!uid && view === 'board') showView('home');
+}
+
+function wbBind() {
+  if (!$('wbEditor')) return;
+  $('boardBtn').addEventListener('click', wbShowList);
+  $('mistBoardBtn').addEventListener('click', wbShowList);
+  $('wbBackBtn').addEventListener('click', function () { showView('home'); loadWorksheets(); });
+  $('wbCloseBtn').addEventListener('click', function () { wbCloseEditor(); });
+  $('wbTitle').addEventListener('change', function () {
+    if (wb.inst && wb.id) wb.inst.setTitle($('wbTitle').value);
+  });
+  $('wbTitle').addEventListener('keydown', function (e) { e.stopPropagation(); if (e.key === 'Enter') $('wbTitle').blur(); });
+  $('wbPickAdd').addEventListener('click', wbPickAdd);
+  $('wbPickCancel').addEventListener('click', function () { $('wbPickModal').classList.remove('open'); });
+  $('wbTargetAdd').addEventListener('click', function () { if (wbTargetDone) wbTargetDone('add'); });
+  $('wbTargetOpen').addEventListener('click', function () { if (wbTargetDone) wbTargetDone('open'); });
+  $('wbTargetCancel').addEventListener('click', function () { if (wbTargetDone) wbTargetDone(null); });
+  // The Escape sweep takes `open` off without asking; a promise left
+  // waiting on a window that has gone would never settle.
+  new MutationObserver(function () {
+    if (!$('wbTargetModal').classList.contains('open') && wbTargetDone) wbTargetDone(null);
+  }).observe($('wbTargetModal'), { attributes: true, attributeFilter: ['class'] });
+  $('wsBoardBtn').addEventListener('click', function () { wbSnipStart(); });
+  $('inkToggleBtn').addEventListener('click', function () { wsInkSet(!wsInkHidden); });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden' && wb.inst && wb.id && wbDirty()) wbSaveNow();
+  });
+  window.addEventListener('pagehide', function () { if (wb.inst && wb.id && wbDirty()) wbSaveNow(); });
+}
+/* ================= End 🗒 the whiteboard ================= */
+
+
 /* ================= Live tutoring ================= */
 // Audio travels over WebRTC. Only our authenticated server sees the OpenAI key.
 var LIVE_ENDPOINT = 'https://us-central1-mathgen--app.cloudfunctions.net/studyBuddyLive';
@@ -20529,8 +21675,10 @@ function showView(v) {
   if (v !== 'ws') { stopLiveTutor(); liveTutor.transcript = []; kwQuizClose(); mthClose(); tutorMarksClear(); }
   if (v !== 'ws') fastTutorReset();
   if (v !== 'ws' && typeof closeModelStudio === 'function') closeModelStudio();   // ✏️ the model suite is the worksheet's
+  if (v !== 'board' && typeof wbLeaveView === 'function') wbLeaveView();          // 🗒 a board left is saved, never lost
+  if (v !== 'ws' && typeof wbSnipEnd === 'function') wbSnipEnd(true);
   view = v;
-  ['home', 'ws', 'mistake'].forEach(function (k) {
+  ['home', 'ws', 'mistake', 'board'].forEach(function (k) {
     $(k + 'View').classList.toggle('on', k === v);
   });
   // The reopen button is fixed to the viewport on phones, so it would otherwise
@@ -22849,6 +23997,16 @@ function renderMistTools(show) {
     bar.appendChild(redoAll);
   }
 
+  /* 🗒 The picked questions (or every one on screen) on a whiteboard. */
+  var board = document.createElement('button');
+  board.className = 'btn';
+  board.textContent = n ? '🗒 Put the ' + n + ' picked on a whiteboard' : '🗒 Put all ' + Math.min(show.length, 24) + ' on a whiteboard';
+  board.title = 'Each one becomes a question card to try again, with a space to work it out';
+  board.addEventListener('click', function () {
+    wbSendMistakes(n ? picked : show.slice(0, 24).map(function (m) { return m.id; }));
+  });
+  bar.appendChild(board);
+
   var sheet = document.createElement('button');
   sheet.className = 'btn';
   sheet.textContent = n ? '🖨 Worksheet from the ' + n + ' picked' : '🖨 Worksheet from all ' + show.length;
@@ -23158,6 +24316,13 @@ function mistakeCard(m) {
     redo.addEventListener('click', function () { mbRedo([m.id]); });
     foot.appendChild(redo);
   }
+  /* 🗒 On a whiteboard, as a question to try again (v1.89.0). */
+  var toBoard = document.createElement('button');
+  toBoard.className = 'btn btnSm';
+  toBoard.textContent = '🗒 Whiteboard';
+  toBoard.title = 'Put this question on one of your whiteboards to try again';
+  toBoard.addEventListener('click', function () { wbSendMistakes([m.id]); });
+  foot.appendChild(toBoard);
   var done = document.createElement('button');
   done.className = 'btn btnSm';
   done.textContent = m.cleared ? '↩︎ Still to redo' : '✓ I can do this now';
@@ -29985,6 +31150,11 @@ var USAGE_EVENTS = {
   // ✏️ The model suite (Ans Key's bar-model drawing board).
   modelsuite: { label: 'Opened the model suite', count: 'modelsuite' },
   modelpin: { label: 'Put a drawn model on the page', count: 'modelpins' },
+  // 🗒 The whiteboard (whiteboard.js and its glue).
+  board:     { label: 'Opened a whiteboard', count: 'boards' },
+  boardsnip: { label: 'Put part of a worksheet on a whiteboard', count: 'boardsnips' },
+  boardq:    { label: 'Put a question on a whiteboard to try again', count: 'boardqs' },
+  boarddone: { label: 'Ticked off a question on a whiteboard', count: 'boarddone' },
   redo:     { label: 'Set a mistake out again', count: 'redone' },
   // 🎬 Watched one of the teacher's video solutions.
   video:    { label: 'Watched a video solution', count: 'videos' },
@@ -30772,6 +31942,7 @@ function renderAuth() {
   $('signedOutCard').classList.toggle('hidden', signedIn);
   $('homeSignedIn').classList.toggle('hidden', !signedIn);
   $('mistakesBtn').classList.toggle('hidden', !signedIn);
+  if (typeof wbAuthChanged === 'function') wbAuthChanged();   // 🗒 one account's boards are never another's
   freshButtonsShow();
   $('peopleBtn').classList.toggle('hidden', !isAdmin(currentUser));
   // A student's level and subject are on screen, not buried in a menu: they
@@ -35007,6 +36178,7 @@ $('fitBtn').addEventListener('click', fitWidth);
 $('saveBtn').addEventListener('click', function () { performSave().catch(saveCrashed); });
 $('printBtn').addEventListener('click', openPrintModal);
 $('snipBtn').addEventListener('click', function () { snipStart(); });   // ✂️ v1.74.0
+wbBind();   // 🗒 the whiteboard, 📸 To whiteboard and 👁 Workings (v1.89.0)
 $('printCancel').addEventListener('click', function () { $('printModal').classList.remove('open'); });
 $('printPlain').addEventListener('click', function () { printWorksheet(false); });
 $('printWithKey').addEventListener('click', function () { printWorksheet(true); });
@@ -35068,6 +36240,13 @@ document.addEventListener('keydown', function (e) {
   var t = e.target;
   var typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' ||
                      t.isContentEditable);
+  /* 🗒 On the whiteboard, Ctrl+Z / Ctrl+S are the BOARD's (whiteboard.js
+     listens for its own undo). Undoing the worksheet that is still loaded
+     behind it would change a paper nobody is looking at, and save it. */
+  if (view === 'board' && (e.ctrlKey || e.metaKey) && /^[zys]$/i.test(e.key)) {
+    if (e.key.toLowerCase() === 's') { e.preventDefault(); if (typeof wbSaveNow === 'function') wbSaveNow({ force: true }); }
+    return;
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     if (typing) return;
     e.preventDefault();

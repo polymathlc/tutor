@@ -89,3 +89,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/model-studio-browser-check.mjs
+      - name: Check the whiteboard draws, saves, and takes cuts and questions to try again
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/whiteboard-browser-check.mjs
