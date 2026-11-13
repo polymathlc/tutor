@@ -11,10 +11,11 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.88.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.88.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.88.0">
-<link rel="stylesheet" href="model-studio.css?v=1.88.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.89.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.89.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.89.0">
+<link rel="stylesheet" href="model-studio.css?v=1.89.0">
+<link rel="stylesheet" href="lesson-summary.css?v=1.89.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -2558,6 +2559,10 @@
                   title="⏺ Record a video solution — you on camera, your voice and your writing, played back together (Shift+R)"><svg class="toolIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><circle class="recGlyphDot" cx="12" cy="12" r="4.2" stroke="none"/></svg></button>
           <button class="toolBtn" id="playlistBtn" hidden aria-haspopup="dialog" aria-expanded="false" aria-label="The video solutions on this worksheet"
                   title="🎬 The video solutions on this worksheet"><svg class="toolIco" viewBox="0 0 24 24" fill="none" stroke="#5E35B1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="2.5" y="5" width="13" height="14" rx="3"/><path d="M15.5 10.5 21.5 7v10l-6-3.5z"/><path d="M7 9.5v5l4-2.5z" fill="#5E35B1" stroke="none"/></svg><span class="plCount"></span></button>
+          <!-- 📝 THE SUMMARY (v1.89.0): every video on this worksheet in words,
+               with a link to each, to email. Drawn by `summarySync`, beside 🎬. -->
+          <button class="toolBtn" id="summaryBtn" hidden aria-haspopup="dialog" aria-label="Summary of the video solutions, in words, to email"
+                  title="📝 Summary — every video solution in words, with a link to each, to email"><svg class="toolIco" viewBox="0 0 24 24" fill="none" stroke="#5E35B1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4"/><path d="M9 11h7M9 14.5h7M9 18h4"/></svg></button>
         </div>
 
         <div class="toolGroup" id="colorGroup"></div>
@@ -3432,11 +3437,12 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.88.0"></script>
-<script src="lo-marks.js?v=1.88.0"></script>
-<script src="lo-practice.js?v=1.88.0"></script>
-<script src="cer-mcq.js?v=1.88.0"></script>
-<script src="model-studio.js?v=1.88.0"></script>
+<script src="concept-tags.js?v=1.89.0"></script>
+<script src="lo-marks.js?v=1.89.0"></script>
+<script src="lo-practice.js?v=1.89.0"></script>
+<script src="cer-mcq.js?v=1.89.0"></script>
+<script src="model-studio.js?v=1.89.0"></script>
+<script src="lesson-summary.js?v=1.89.0"></script>
 <script>
 'use strict';
 
@@ -3533,7 +3539,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.88.0';
+var APP_VERSION = 'v1.89.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -3643,16 +3649,32 @@ function appsMenuOpen(open) {
    again over whatever the student moved on to.
    ===================================================================== */
 var OPEN_LINK_ID = '';
-try { OPEN_LINK_ID = new URLSearchParams(location.search).get('ws') || ''; } catch (e) { OPEN_LINK_ID = ''; }
+// 📝 `&video=<id>` (v1.89.0): a link from a summary email plays that video
+// on the page once the worksheet is open (`summaryPlayWhenReady`).
+var OPEN_LINK_VIDEO = '';
+try {
+  var _openQs = new URLSearchParams(location.search);
+  OPEN_LINK_ID = _openQs.get('ws') || '';
+  OPEN_LINK_VIDEO = /^[A-Za-z0-9_-]{1,128}$/.test(_openQs.get('video') || '') ? _openQs.get('video') : '';
+} catch (e) { OPEN_LINK_ID = ''; OPEN_LINK_VIDEO = ''; }
 async function openFromLink() {
   var id = OPEN_LINK_ID;
   if (!id || !currentUser) return;
   OPEN_LINK_ID = '';
+  var videoId = OPEN_LINK_VIDEO;
+  OPEN_LINK_VIDEO = '';
   try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) { /* not ours to change */ }
+  var before = wsEpoch;
   try {
-    if (worksheets.some(function (w) { return w.id === id; })) { await openWorksheet(id); return; }
+    if (worksheets.some(function (w) { return w.id === id; })) {
+      if (videoId) summaryPlayWhenReady(videoId, before);
+      await openWorksheet(id); return;
+    }
     var a = assignments.find(function (x) { return x.id === id; });
-    if (a) { await startAssignment(id); return; }
+    if (a) {
+      if (videoId) summaryPlayWhenReady(videoId, before);
+      await startAssignment(id); return;
+    }
     toast('That worksheet is not in your list — it may not have been set for you yet.', 6000);
   } catch (e) {
     console.warn('open from link', e);
@@ -29988,6 +30010,9 @@ var USAGE_EVENTS = {
   redo:     { label: 'Set a mistake out again', count: 'redone' },
   // 🎬 Watched one of the teacher's video solutions.
   video:    { label: 'Watched a video solution', count: 'videos' },
+  // 📝 The summary of the video solutions, in words (lesson-summary.js).
+  summary:  { label: 'Opened the video summary', count: 'summaries' },
+  summarymail: { label: 'Emailed the video summary', count: 'summarymails' },
   // 🙋 Asked the teacher to join them on the page (consult.js).
   consult:  { label: 'Asked for a consult', count: 'consults' },
   // 📝 Left the teacher a question instead of a call, and watched the
@@ -33103,6 +33128,9 @@ function lessonVisibleVideos() {
 function lessonVideosOpen(w) {
   lessonVideosUnwatch();
   wsVideos = lessonVideosOf(w);
+  // 📝 The written summary rides beside the videos, read the same way.
+  // (Guarded: the harnesses lift this block out alone.)
+  wsVideoNotes = typeof lessonNotesOf === 'function' ? lessonNotesOf(w) : {};
   renderVideoPills(true);
   if (w && w.assignmentId && db) lessonVideosWatch(w.assignmentId, wsEpoch);
 }
@@ -33116,6 +33144,13 @@ function lessonVideosWatch(id, epoch) {
       var list = data && data.active !== false ? lessonVideosClean(data.videos) : [];
       var a = assignments.find(function (x) { return x.id === id; });
       if (a && data) a.videos = Array.isArray(data.videos) ? data.videos : [];
+      // 📝 The teacher's summary follows live too, and on its own: a summary
+      // written with no new video is still news for an open window.
+      if (typeof lessonNotesClean === 'function') {
+        var notes = data && data.active !== false ? lessonNotesClean(data.videoNotes) : {};
+        if (a && data) a.videoNotes = notes;
+        if (JSON.stringify(notes) !== JSON.stringify(wsVideoNotes)) { wsVideoNotes = notes; summaryRefresh(); }
+      }
       if (JSON.stringify(list) === JSON.stringify(wsVideos)) return;
       var added = list.filter(function (v) { return !wsVideos.some(function (o) { return o.id === v.id; }); }).length;
       wsVideos = list;
@@ -33165,6 +33200,7 @@ async function lessonVideosCommit(docId, mutate) {
   if (view === 'home') renderWorksheets();
   return out;
 }
+
 function lessonCommitTold(r, done) {
   if (r && r.classError) toast(done + ' Your students’ copies could not be updated: ' + r.classError, 9000);
   else toast(done, 3200);
@@ -33423,7 +33459,9 @@ function lessonToolsSync() {
   var rec = $('lessonRecordBtn'), pl = $('playlistBtn'), grp = $('lessonTools');
   if (!rec || !pl || !grp) return;
   rec.hidden = !(lessonTeacher() && view === 'ws' && pages.length);
-  grp.hidden = rec.hidden && pl.hidden;
+  if (typeof summarySync === 'function') summarySync();
+  var sum = $('summaryBtn');
+  grp.hidden = rec.hidden && pl.hidden && (!sum || sum.hidden);
 }
 // Another worksheet is being opened: nothing of this one's may stay up.
 function lessonWorksheetClosing() {
@@ -33433,6 +33471,8 @@ function lessonWorksheetClosing() {
   lessonPillMenuClose();
   lessonVideosUnwatch();
   wsVideos = [];
+  wsVideoNotes = {};
+  if (typeof summaryReady === 'function' && summaryReady() && LessonSummary.isOpen()) LessonSummary.close();
   lessonPlaylistSync();
 }
 // The worksheet view is being left for the shelf or the mistake book. A
@@ -34481,6 +34521,7 @@ function lessonPlaylistSync() {
   }
   if (!n && !$('playlistPanel').hidden) lessonPlaylistClosePanel();
   lessonToolsSync();
+  if (typeof summaryRefresh === 'function') summaryRefresh();
 }
 
 /* ---- The list ---- */
@@ -34720,6 +34761,197 @@ $('playlistStop').addEventListener('click', lessonPlaylistStopAll);
 });
 /* ================= End worksheet playlist ================= */
 /* ================= End video solutions ================= */
+/* =====================================================================
+   📝 THE SUMMARY — every question's video in words, emailed (v1.89.0)
+
+   `lesson-summary.js` (window.LessonSummary) is the window and the pure
+   rules; this is the glue that hands it the worksheet. What it is handed:
+
+   - THE VIDEOS a reader can reach (`lessonVisibleVideos`, so a video on a
+     key page this copy hides never reaches a summary either).
+   - THE WRITTEN LINES, `videoNotes`, read the way the videos are read
+     (`lessonNotesOf`): the teacher's own worksheet holds them, and a copy
+     reads the ASSIGNMENT, so a summary written today reaches the copy begun
+     yesterday. `lessonNotesClean` is the one door a map comes in by.
+   - ONE WRITER (`lessonNotesCommit`), the teacher's, which re-reads before
+     it writes and writes `update` on both documents — the rules
+     `lessonVideosCommit` keeps, for the same reasons. `performSave` and
+     `worksheetBody` never name the field, so an auto-save can never write
+     a stale map over a fresh one.
+   - THE AI through `lsAsk`, which grounds the write-up like every other
+     call (`aiGrounding('teach')` + `tutorMethodRule()`), and the speech
+     through `window.transcribeAudio`, the app's one speech door.
+   - THE EMAIL through `summarySend`, which asks the `studyBuddySummary`
+     function with the worksheet's id and the addresses. The words of the
+     email are built on the server, off the documents.
+   - THE LINK BACK: `?ws=<id>&video=<id>` opens the worksheet and plays
+     that video on the page (`OPEN_LINK_VIDEO`, `summaryPlayWhenReady`).
+   ===================================================================== */
+var SUMMARY_ENDPOINT = 'https://us-central1-mathgen--app.cloudfunctions.net/studyBuddySummary';
+var SUMMARY_SEND_MS = 20000;
+var SUMMARY_PLAY_WAIT_MS = 15000;
+var wsVideoNotes = {};
+
+function lessonNotesClean(map) {
+  if (typeof LessonSummary === 'undefined' || !LessonSummary || !LessonSummary.pure) return {};
+  return LessonSummary.pure.cleanNotes(map, null);
+}
+function lessonNotesOf(w) {
+  if (!w) return {};
+  if (w.set) return lessonNotesClean(w.set.videoNotes);
+  if (w.assignmentId) {
+    var a = assignmentFor(w);
+    return lessonNotesClean(a ? a.videoNotes : null);
+  }
+  return lessonNotesClean(w.videoNotes);
+}
+/* The one writer. `mutate` is handed the DOCUMENT's map, never what this tab
+   holds, so a summary written on a second device is never written over. */
+async function lessonNotesCommit(docId, mutate) {
+  if (!lessonAdmin()) throw new Error('only the teacher can write the summary');
+  var ref = db.collection(COLLECTION).doc(docId);
+  var snap = await ref.get();
+  if (!snap.exists) throw new Error('that worksheet is no longer there');
+  var data = snap.data() || {};
+  if (data.assignmentId) throw new Error('that is a copy of a set worksheet, not your own');
+  var map = lessonNotesClean(mutate(lessonNotesClean(data.videoNotes)));
+  await ref.update({ videoNotes: map });
+  var out = { notes: map, classToo: false, classError: '' };
+  try {
+    await db.collection(ASSIGN_COLLECTION).doc(docId).update({ videoNotes: map });
+    out.classToo = true;
+  } catch (e) {
+    if (!docMissingError(e)) {
+      console.warn('The class copy of the summary could not be written', e);
+      out.classError = /permission|insufficient|PERMISSION_DENIED/i.test(String((e && e.message) || e))
+        ? 'the rules do not allow it yet.' : ((e && e.message) || String(e));
+    }
+  }
+  var w = worksheets.find(function (x) { return x.id === docId; });
+  if (w) w.videoNotes = map;
+  var a = assignments.find(function (x) { return x.id === docId; });
+  if (a) a.videoNotes = map;
+  if (currentDocId === docId) wsVideoNotes = map;
+  return out;
+}
+
+function lsAsk(prompt, opts) {
+  var o = Object.assign({}, opts || {});
+  return window.askGemini(prompt, Object.assign(o, {
+    system: String(o.system || '') + aiGrounding('teach', { q: String(prompt || '').slice(0, 1200) }) + tutorMethodRule()
+  }));
+}
+function summaryReady() {
+  return typeof LessonSummary !== 'undefined' && LessonSummary && typeof LessonSummary.open === 'function';
+}
+// The id the class shares: the teacher's own worksheet id IS the assignment's.
+function summaryLinkWs() {
+  return wsMeta && wsMeta.assignmentId ? wsMeta.assignmentId : currentDocId;
+}
+// The app's one speech door, if the module script that defines it loaded.
+function summaryTranscriber() {
+  var door = window.transcribeAudio;
+  return typeof door === 'function' ? function (b64, mime, hint) { return door(b64, mime, hint); } : null;
+}
+function summaryOptions() {
+  return {
+    docId: currentDocId,
+    sendWs: currentDocId,
+    linkWs: summaryLinkWs(),
+    base: LessonSummary.pure.appBase(location),
+    videos: lessonVisibleVideos(),
+    notes: wsVideoNotes,
+    name: wsMeta.name || '',
+    level: wsMeta.paperLevel || wsMeta.level || '',
+    subject: wsMeta.subject || '',
+    teacherName: setterName(),
+    // A function, so a role change while the window is open is seen at once.
+    teacher: function () { return lessonTeacher(); },
+    transcribe: summaryTranscriber(),
+    ask: lsAsk,
+    save: lessonNotesCommit,
+    send: summarySend,
+    watch: function (id) {
+      var v = lessonVisibleVideos().find(function (x) { return x.id === id; });
+      if (v) lessonPlay(v);
+    },
+    toast: toast
+  };
+}
+function summaryOpen() {
+  if (!summaryReady()) { toast('The summary could not load — refresh the page.', 5000); return; }
+  if (view !== 'ws' || !pages.length) return;
+  if (!lessonVisibleVideos().length) { toast('This worksheet has no video solutions yet.'); return; }
+  lessonPlaylistClosePanel();
+  LessonSummary.open(summaryOptions());
+  usageNote('summary', wsMeta.name || '');
+}
+// The list or the notes moved under an open window (a live snapshot, a save).
+function summaryRefresh() {
+  if (!summaryReady() || !LessonSummary.isOpen()) return;
+  LessonSummary.refresh({ videos: lessonVisibleVideos(), notes: wsVideoNotes });
+}
+function summarySync() {
+  var btn = $('summaryBtn');
+  if (!btn) return;
+  btn.hidden = !(summaryReady() && view === 'ws' && pages.length && lessonVisibleVideos().length);
+}
+
+/* 📧 The email. The body is the worksheet's id and the addresses (and, from
+   the teacher, one line of their own) — the server reads every other word
+   off the documents. */
+async function summarySend(req) {
+  var u = currentUser;
+  if (!u) return { ok: false, message: 'Sign in first.' };
+  if (typeof window.liveAppCheckToken !== 'function') return { ok: false, message: 'This device could not be verified — refresh the page.' };
+  var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  var timer = setTimeout(function () { if (controller) controller.abort(); }, SUMMARY_SEND_MS);
+  try {
+    var tokens = await Promise.all([u.getIdToken(), window.liveAppCheckToken()]);
+    var body = { worksheetId: String(req.worksheetId || ''), to: (req.to || []).slice(0, 10) };
+    if (lessonAdmin() && req.message) body.message = String(req.message).slice(0, 500);
+    var res = await fetch(SUMMARY_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokens[0], 'X-Firebase-AppCheck': tokens[1] },
+      body: JSON.stringify(body),
+      signal: controller ? controller.signal : undefined
+    });
+    var out = null;
+    try { out = await res.json(); } catch (e) { out = null; }
+    if (res.ok) {
+      usageNote('summarymail', wsMeta.name || '');
+      return { ok: true, skipped: (out && out.skipped) || 0 };
+    }
+    return { ok: false, code: (out && out.error && out.error.code) || ('http_' + res.status),
+      message: (out && out.error && out.error.message) || ('The email could not be sent (HTTP ' + res.status + ').') };
+  } catch (e) {
+    return { ok: false, code: 'network', message: (e && e.name === 'AbortError') ? 'The server took too long — try again, or use ✉️ Mail app.' : 'No connection to the server — try again, or use ✉️ Mail app.' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* ▶ A link from the email: the worksheet opens (`openFromLink`) and the
+   video plays once the page and its list are in. Bounded by
+   `SUMMARY_PLAY_WAIT_MS`, and dropped the moment another worksheet is
+   opened (the epoch), so an old link never starts a video over new work. */
+function summaryPlayWhenReady(videoId, startEpoch) {
+  var t0 = Date.now();
+  (function tick() {
+    if (Date.now() - t0 > SUMMARY_PLAY_WAIT_MS) { toast('That video could not be found on the worksheet — it may have been taken off.', 6000); return; }
+    if (view === 'ws' && pages.length && wsEpoch !== startEpoch) {
+      var v = lessonVisibleVideos().find(function (x) { return x.id === videoId; });
+      if (v) {
+        var epoch = wsEpoch;
+        setTimeout(function () { if (wsEpoch === epoch) lessonPlay(v); }, 400);
+        return;
+      }
+    }
+    setTimeout(tick, 250);
+  })();
+}
+$('summaryBtn').addEventListener('click', summaryOpen);
+/* ================= End the summary ================= */
 
 /* Nothing below here can run without the Firebase SDK, so the whole
    listener is skipped rather than throwing on `auth.` and taking the

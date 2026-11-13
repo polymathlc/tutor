@@ -17,6 +17,27 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.89.0 — 📝 The video solutions in words, emailed with a link to each video
+
+A new **📝 Summary** button sits beside 🎬 on any worksheet that has video solutions. It opens one window with every
+question's video in paper order. For the teacher, **✍️ Write** (or **✍️ Write all missing**) listens to the recording,
+writes down word for word what was said, and turns it into a few plain written lines (numbered steps where the
+explanation was step by step, the teacher's own numbers and method, nothing added, and no answer the teacher did not
+give). The teacher can **✎ Edit** the words or take them off with 🗑. The words are saved on the worksheet and on the
+class's assignment, so every student with the paper sees the same summary.
+
+Each question carries two links: **▶ Watch**, which opens the worksheet in Study Buddy and plays that video on the
+page, and **🎬 Recording**, the camera-and-voice file on its own, which plays in any browser with no sign-in, so a
+parent can always open it.
+
+**📧 Email the summary**: type up to ten addresses (a student: three), add a line of your own if you are the teacher,
+and press **📧 Send**. The email is built on the server from the worksheet itself, with every question's words and both
+links, and replies go to Mr Chung. **✉️ Mail app** opens your own email with the summary filled in, and **📋 Copy**
+copies it as text, both with no server at all.
+
+The server half is a new function, `studyBuddySummary`, deployed with the others when this merges. It sends through
+the same Trigger Email extension the consult emails use.
+
 ## v1.88.0 — ✏️ The model suite: draw a bar model and put it on the page
 
 The **Model suite** button on the worksheet toolbar (the three coloured bars, beside 🖱️) opens Ans Key's bar-model
