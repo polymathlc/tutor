@@ -2,6 +2,25 @@
 
 Guidance for Claude when working in this repo.
 
+## 📂 MY WORKSHEETS BESIDE THE PAGE, and 🗑 EVERY DELETE ASKS (v1.90.0)
+
+Search `🗑 DELETING A WORKSHEET`, `🗑 ASK BEFORE ANYTHING IS DELETED` and `📂 MY WORKSHEETS, BESIDE THE PAGE` (all just
+after `worksheetReadByClass`, before 🧹 START FRESH).
+- **`askDelete(spec)` → Promise<boolean> is THE confirmation box** (`#delModal`, alertdialog, z 200). spec: `title, name,
+  cover, facts, warn, goes, keeps, note, open, yes, no, busy, done, work`. `work` runs INSIDE the box (`.delBusy`, buttons
+  off, Escape ignored). `#delYes` starts disabled and is armed after `DEL_ARM_MS`; Keep it is focused; Escape (capture
+  listener in `askDeleteBind`), Keep it and the backdrop are a no. The global Escape sweep skips `#delModal`/`.delBusy`.
+  Never `confirm()` for a delete — the whiteboard's `wbDelete` is meant to swap to `askDelete` too.
+- **`deleteWorksheet(id)` always goes through it** (no skip argument; the tests pin it): `filesCanDelete` → `worksheetReadByClass`
+  → `wsDeleteSpec` (pure, every sentence) → `deleteWorksheetNow`. File rules unchanged (a set paper keeps the class PDF and videos).
+- **The open paper lets go first** (`wsDeleteLetGo`): clear `autoSaveTimer`, `currentDocId = null`, wait out `savingNow`,
+  THEN delete — `writeBody` is `set(…, {merge:true})`, so a late auto-save would recreate the document.
+- **📂 `#filesBtn` (beside ←) → `#filesPanel`** (absolute in `#wsMain`, z 110, scrim 109). Rows from `shelfEntries(worksheets,
+  assignmentsForMe())` through pure `filesRows` (search `filesMatch`, order `filesSortRows`, sort kept in `polymath.tutor.filesSort`).
+  Set-not-started rows have Start, never 🗑 (`filesCanDelete`). `renderWorksheets` → `filesSync`; `showView` away closes it.
+  `filesGo` saves the open paper first, then `openWorksheet` / `startAssignment`.
+- Checks: `node --test tools/files-panel-tests.mjs`, `node tools/files-panel-browser-check.mjs` (in CI; `SHOTS=dir`).
+
 ## ✏️ THE MODEL SUITE — Ans Key's bar-model drawing board (v1.88.0)
 
 Search `✏️ Model suite — the model studio's glue` (just after the 📋 picture drop handler). `model-studio.js` /
