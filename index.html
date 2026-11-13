@@ -35923,5 +35923,8 @@ async function askGeminiDirect(prompt, { maxOutputTokens = 512, temperature = 0.
 <!-- 📲 The Polymath install kit (v2.0.0): byte for byte the file every Polymath app carries. Its ?v= is
      the KIT's version, not APP_VERSION, so a kit update reaches phones at once. Classic + defer, never a module. -->
 <script defer src="pwa-install.js?v=2.0.0" data-app-name="Polymath Study Buddy" data-app-key="tutor" data-app-icon="assets/app-icons/icon-192.png" data-accent="#5E35B1" data-sw="sw.js" data-floating="auto"></script>
+<!-- 🔐 Polymath student access (v1.0.0): the enrolment pop-up every Polymath app shares. A signed-in student is
+     blocked here until an admin approves them at polymathlc.com.sg/student/#admin. Source: polymathlc/cer student/access-gate.js -->
+<script defer src="https://polymathlc.github.io/cer/student/access-gate.js?v=1.0.0" data-app="tutor"></script>
 </body>
 </html>
