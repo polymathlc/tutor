@@ -2,6 +2,38 @@
 
 Guidance for Claude when working in this repo.
 
+## 🗒 THE WHITEBOARD and 👁 WORKINGS ON AND OFF (v1.89.0)
+
+Search `🗒 THE WHITEBOARD — the glue`. `whiteboard.js` (`window.Whiteboard` = `{ pure, create }`) / `whiteboard.css`
+are this repo's own (not a copy of another app's). The file knows NOTHING of Firebase, the mistake book or AI — the
+harness fails if one appears; everything comes in through `create(host, opts)` (`imageUrl`, `renderQuestion`,
+`checkAnswer`, `canPractise`, `onAction`, `onChange`, `readImage`, `toast`, `extraTools`).
+- **`Whiteboard.pure.cleanBoard` is the ONE door** (cloud, draft, host items). Items: `img` (path|src, cap, from),
+  `note` (text, color, fs), `q` (mid, num, doc, text, answer, why, path|src, tried, verdict, done, shown). Strokes are
+  their own list `{c, w, hl, p:[x,y,…]}` in an SVG layer ABOVE the items — so `.wbInkOff .wbInk` hides ink alone.
+- **Undo = shallow snapshots.** Never mutate a stroke's `p` in place (`moveStroke` makes a new array) or an item object
+  after commit (`updateItem` replaces it) — snapshots share them. `measureHeights` writing `it.h` is the one exception.
+- **Saved in Storage, not Firestore**: `tutor-mistakes/{uid}/boards/{id}.json`, `{id}/{item}.jpg`, `{id}.thumb.jpg`,
+  `index.json` (`{v:1, boards:[indexEntry]}`, read fresh before every write — `wbIndexChange`). That folder is already
+  writable by students (`_mbUpload`); a new Firestore collection would fail closed. `wbSaveNow`: pictures FIRST, then
+  `forSave` (an uploaded picture keeps only its PATH), thumbnail at most every `WB_THUMB_MS`, then the list; one save in
+  flight (`wb.again`). `wbDraftWrite` keeps the board (without un-uploaded pictures) in localStorage until a save lands.
+  Delete goes only through `wbDeletePath` (inside the student's own boards folder).
+- `#boardView` is a fourth view (`showView('board')`; leaving it → `wbLeaveView` saves). `#wbEditor` is fixed, z 110 —
+  UNDER `.modalBack` (200) so ▶ Practise (`pracStart`) and the two pickers open over it. Body class while open is
+  `wbBoardOpen` (never `wbEditing`: whiteboard.js's `closest('.wbItem.wbEditing')` is the note being typed in).
+- 📸 `#wsBoardBtn` → `wbSnipStart` (own veil, reuses `snipPartsUnder`/`snipStack`/`SNIP_MIN_PX`) → `wbCapture` renders
+  the page FRESH at `WB_CUT_PX`, ink drawn only when "with my workings" is ticked (defaults to what the page shows) →
+  `wbChooseBoard` (`#wbTargetModal`) → `wbAppend` (open board on screen, else `wbEditStored`).
+- Mistake book: 🗒 on each card and in `#mistTools` → `wbSendMistakes`; inside a board `📕 From my mistakes` →
+  `#wbPickModal`. Cards drawn by `questionNodes` while the mistake exists; "✓ I can do this now" → `setMistakeCleared`.
+- **👁 Workings on the worksheet** = `wsInkSet` → `body.wsInkHidden` hides `.pageWrap > svg.overlay` (ink, typed
+  answers, pins, marks, tutor marks), `.vidPills` and consult ink by `visibility`. A look, never an edit; `loadPdf`
+  resets it.
+- Usage events `board`, `boardsnip`, `boardq`, `boarddone`. Checks: `node --test tools/whiteboard-tests.mjs`,
+  `node tools/whiteboard-browser-check.mjs` (in CI; `WB_SCREENSHOTS=dir`). Avoid `[[` in the glue (a tutor-tests check
+  reads the region it sits in for live-marker syntax).
+
 ## ✏️ THE MODEL SUITE — Ans Key's bar-model drawing board (v1.88.0)
 
 Search `✏️ Model suite — the model studio's glue` (just after the 📋 picture drop handler). `model-studio.js` /

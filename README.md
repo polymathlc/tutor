@@ -17,6 +17,30 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.89.0 — 🗒 The whiteboard, and 👁 Workings on and off
+
+**🗒 Whiteboard** (on the home screen beside 📈 My progress, and in the 📕 mistake book) opens your whiteboards. A
+whiteboard goes on for ever in every direction: pinch, scroll or use ✋ to move round it, and − + ⤢ to zoom. Write on it
+with the ✏️ pen or 🖍️ highlighter (six colours, three sizes), rub out with 🧽, add 📝 sticky notes, paste or pick
+🖼️ pictures, and 🖱️ select things to move, resize, duplicate, bring forward or delete. ↶ ↷ undo and redo. Every board
+is **saved to your account in the cloud** a moment after each change, so it is the same board on the iPad and at home;
+the list shows each board's picture, how many questions are on it and how many are done.
+
+- **📸 To whiteboard** on any worksheet: drag a box round part of the page and it goes on the whiteboard of your choice
+  (or a new one) — as a 🖼 picture or as a ❓ question to try again, **with or without your workings**.
+- **Questions to try again**: 🗒 Whiteboard on a mistake card, "Put … on a whiteboard" over the book, or
+  📕 From my mistakes inside a board. Each question becomes a card with a dashed space to try it with the pen, a box to
+  type your answer and ✓ Check it against the key, 👁 Answer behind a button, ▶ Practise, and **✓ I can do this now**,
+  which ticks the question off in your mistake book too.
+- **👁 Workings** hides every stroke on the board (pictures and cards stay) and **📷 Clean view** hides the toolbar and
+  grid, for a clean screenshot; **⬇️ Save picture** saves the board, or just what is selected, as a picture.
+- **👁 Workings on the worksheet toolbar** hides everything you have written on the page — ink, typed answers, hint pins
+  and marks — so a screenshot shows the clean worksheet. Nothing is deleted: tap 🙈 to bring it all back, and every
+  worksheet opens with it showing.
+
+Boards live in Storage beside your mistake-book pictures (`tutor-mistakes/{uid}/boards/`), so no new Firebase rule is
+needed. Nothing on a board asks Chung GPT anything.
+
 ## v1.88.0 — ✏️ The model suite: draw a bar model and put it on the page
 
 The **Model suite** button on the worksheet toolbar (the three coloured bars, beside 🖱️) opens Ans Key's bar-model

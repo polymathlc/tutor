@@ -1,0 +1,173 @@
+/* =====================================================================
+   🗒 THE WHITEBOARD (v1.89.0) — the look of whiteboard.js.
+   Everything is scoped under .wbHost (the board) or .wb* names, so none
+   of it can reach the worksheet, the mistake book or the model suite.
+   ===================================================================== */
+.wbHost {
+  --wb-accent: #5E35B1;
+  --wb-accent-soft: #EDE7F6;
+  --wb-line: #E4E2EC;
+  --wb-ink: #1A1A1A;
+  --wb-dot: rgba(94, 53, 177, .16);
+  position: relative; display: flex; flex-direction: column; min-height: 0; height: 100%;
+  font-family: var(--font, 'Segoe UI', sans-serif); color: var(--wb-ink);
+}
+
+/* ---- The bar ---- */
+.wbBar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  padding: 8px 10px; background: #fff; border-bottom: 1px solid var(--wb-line);
+  position: relative; z-index: 3;
+}
+.wbGroup { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.wbGroup + .wbGroup { padding-left: 10px; border-left: 1px solid var(--wb-line); }
+.wbGroup[hidden] { display: none; }
+.wbBtn {
+  min-width: 36px; height: 36px; padding: 0 8px; border-radius: 10px;
+  border: 1px solid var(--wb-line); background: #fff; color: inherit;
+  font: inherit; font-size: 15px; line-height: 1; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+  transition: background .12s, border-color .12s;
+}
+.wbBtn:hover { background: var(--wb-accent-soft); }
+.wbBtn:focus-visible { outline: 3px solid rgba(94, 53, 177, .35); outline-offset: 1px; }
+.wbBtn:disabled { opacity: .4; cursor: default; background: #fff; }
+.wbBtn.on, .wbTool.on { background: var(--wb-accent-soft); border-color: var(--wb-accent); }
+.wbWide { font-size: 13.5px; white-space: nowrap; }
+.wbInkBtn.on { background: #FFF3E0; border-color: #EF6C00; }
+.wbZoom { min-width: 44px; text-align: center; font-size: 12.5px; color: #555; font-variant-numeric: tabular-nums; }
+.wbSwatch { min-width: 28px; width: 28px; height: 28px; padding: 0; border-radius: 50%; background: var(--sw); }
+.wbSwatch:hover { background: var(--sw); filter: brightness(.95); }
+.wbSwatch.on { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--wb-accent); background: var(--sw); }
+.wbSize { min-width: 32px; width: 32px; }
+.wbDot { display: block; border-radius: 50%; background: currentColor; }
+
+/* ---- The stage: an endless dotted sheet ---- */
+.wbStage {
+  position: relative; flex: 1 1 auto; min-height: 260px; overflow: hidden;
+  touch-action: none; outline: none; cursor: crosshair;
+  background-color: #FBFBFE;
+  background-image: radial-gradient(circle, var(--wb-dot) 1.2px, transparent 1.4px);
+  -webkit-user-select: none; user-select: none;
+}
+.wbStage.wbFarOut { background-image: none; }
+.wbStage[data-tool="hand"], .wbStage.wbSpace { cursor: grab; }
+.wbStage.wbPanning { cursor: grabbing; }
+.wbStage[data-tool="select"] { cursor: default; }
+.wbStage[data-tool="eraser"] { cursor: cell; }
+.wbStage[data-tool="note"] { cursor: copy; }
+.wbWorld { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.wbItems { position: absolute; left: 0; top: 0; }
+.wbInk { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.wbInk .wbHl { opacity: .38; mix-blend-mode: multiply; }
+.wbLive { pointer-events: none; }
+.wbHl.wbLive, .wbLive.wbHl { opacity: .38; }
+/* 👁 WORKINGS OFF: every stroke goes, the pictures and cards stay. */
+.wbInkOff .wbInk { visibility: hidden; }
+
+/* ---- Items ---- */
+.wbItem {
+  position: absolute; box-sizing: border-box; pointer-events: none;
+  border-radius: 6px;
+}
+.wbItem button, .wbItem input { pointer-events: auto; }
+.wbItem.wbSel { outline: 2px solid var(--wb-accent); outline-offset: 2px; }
+.wb_img { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 6px 18px rgba(0,0,0,.08); }
+.wbPic { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 6px; -webkit-user-drag: none; }
+.wbCap { position: absolute; left: 0; top: 100%; margin-top: 4px; font-size: 13px; color: #666; white-space: nowrap; }
+
+.wb_note {
+  padding: 14px; border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,.12);
+  font-family: 'Comic Sans MS', 'Chalkboard SE', var(--font, sans-serif);
+}
+.wbNoteText { white-space: pre-wrap; word-break: break-word; line-height: 1.25; min-height: 1.25em; outline: none; }
+.wbNoteEmpty .wbNoteText::before { content: 'Tap twice to type'; color: rgba(0,0,0,.35); }
+.wb_note.wbEditing { pointer-events: auto; box-shadow: 0 0 0 3px var(--wb-accent), 0 4px 16px rgba(0,0,0,.18); cursor: text; }
+.wb_note.wbEditing .wbNoteText { -webkit-user-select: text; user-select: text; }
+
+/* ❓ A QUESTION TO TRY AGAIN */
+.wb_q {
+  background: #fff; border: 2px solid #B39DDB; border-radius: 14px; padding: 12px 14px 12px;
+  box-shadow: 0 2px 6px rgba(94,53,177,.08), 0 10px 24px rgba(0,0,0,.06);
+  font-size: 15px; line-height: 1.4;
+}
+.wb_q.wbQDone { border-color: #66BB6A; background: #F6FBF6; }
+.wbQHead { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; margin-bottom: 8px; }
+.wbQTag { font-weight: 700; color: var(--wb-accent); }
+.wbQDone .wbQTag { color: #2E7D32; }
+.wbQFrom { font-size: 12.5px; color: #777; }
+.wbQBody { overflow: hidden; }
+.wbQBody img { max-width: 100%; height: auto; display: block; border-radius: 6px; }
+.wbQPic { margin-bottom: 8px; }
+.wbQText { white-space: pre-line; }
+.wbQTry {
+  margin-top: 10px; height: 150px; border: 2px dashed #D1C4E9; border-radius: 10px;
+  display: flex; align-items: flex-start; justify-content: flex-start; padding: 8px 10px;
+  color: #9E92B8; font-size: 12.5px;
+}
+.wbQDone .wbQTry { border-color: #C8E6C9; color: #81A784; }
+.wbQType { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.wbQInput {
+  flex: 1 1 140px; min-width: 0; height: 34px; padding: 0 10px; border-radius: 9px;
+  border: 1px solid #CFCAE0; font: inherit; font-size: 15px;
+}
+.wbQVerdict { font-size: 13.5px; font-weight: 600; }
+.wbQVerdict.right { color: #2E7D32; }
+.wbQVerdict.wrong { color: #C62828; }
+.wbQFoot { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.wbQFoot .wbBtn, .wbQType .wbBtn { height: 32px; font-size: 13px; }
+.wbQAns { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #FFF8E1; font-size: 14px; }
+.wbQAns b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #8D6E00; margin-top: 4px; }
+.wbQAns b:first-child { margin-top: 0; }
+/* The host's own question drawing (the mistake book's) — keep it tidy on a card. */
+.wbQBody .mqText, .wbQBody .mistQ { margin: 4px 0; }
+
+/* ---- Selection ---- */
+.wbSelBox { position: absolute; border: 1.5px dashed var(--wb-accent); border-radius: 6px; pointer-events: none; z-index: 2; }
+.wbHandle {
+  position: absolute; right: -9px; bottom: -9px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; border: 2px solid var(--wb-accent); pointer-events: auto; cursor: nwse-resize;
+  touch-action: none;
+}
+.wbHandle[hidden] { display: none; }
+.wbSelBar {
+  position: absolute; z-index: 4; display: flex; gap: 4px; padding: 4px; border-radius: 12px;
+  background: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.16);
+}
+.wbSelBar[hidden], .wbSelBox[hidden], .wbMarquee[hidden] { display: none; }
+.wbMarquee { position: absolute; border: 1px solid var(--wb-accent); background: rgba(94,53,177,.07); pointer-events: none; z-index: 2; }
+
+.wbEmpty {
+  position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); text-align: center;
+  max-width: 360px; color: #8A84A0; pointer-events: none; display: flex; flex-direction: column; gap: 6px;
+  font-size: 14px; line-height: 1.45;
+}
+.wbEmpty b { font-size: 17px; color: #5E5577; }
+.wbEmpty[hidden] { display: none; }
+
+/* 📷 CLEAN VIEW: nothing but the board — no bar, no grid, no selection. */
+.wbExitClean { position: absolute; right: 12px; top: 12px; z-index: 5; display: none; box-shadow: 0 2px 10px rgba(0,0,0,.15); }
+.wbClean .wbBar { display: none; }
+.wbClean .wbStage { background-image: none; background-color: #fff; }
+.wbClean .wbExitClean { display: inline-flex; opacity: .55; }
+.wbClean .wbExitClean:hover, .wbClean .wbExitClean:focus-visible { opacity: 1; }
+.wbClean .wbQTry span { visibility: hidden; }
+
+@media (max-width: 760px) {
+  .wbBar { gap: 6px; padding: 6px 8px; }
+  .wbGroup + .wbGroup { padding-left: 6px; }
+  .wbWide { font-size: 12.5px; padding: 0 6px; }
+  /* On a phone the wide buttons keep their picture and lose their word —
+     the word is still the button's name (aria-label) and its tooltip. */
+  .wbWide .wbWord { display: none; }
+  .wbGroup + .wbGroup { border-left: 0; padding-left: 0; }
+  .wbBtn { min-width: 34px; height: 34px; }
+}
+@media (pointer: coarse) {
+  .wbBtn { min-width: 40px; height: 40px; }
+  .wbHandle { width: 26px; height: 26px; right: -13px; bottom: -13px; }
+}
+@media print {
+  .wbBar, .wbExitClean, .wbSelBar, .wbSelBox { display: none !important; }
+}
