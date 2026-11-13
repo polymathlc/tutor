@@ -89,3 +89,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/model-studio-browser-check.mjs
+      - name: Check the side bar opens worksheets and every delete asks first
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/files-panel-browser-check.mjs

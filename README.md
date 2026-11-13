@@ -17,6 +17,21 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.90.0 — 📂 My worksheets beside the page, and 🗑 delete always asks first
+
+**📂** beside ← on the worksheet toolbar slides out a side bar listing every worksheet you have: the one open now is
+marked, a tap opens another (the open one is saved first), you can search by name, topic, school, level or subject,
+and order the list by last worked on, name or newest upload. Papers set for the class that you have not started yet
+are listed under **📌 Set for you** with **Start**.
+
+Every one of your own papers has a **🗑**. Deleting **always asks first**, in the app's own box (never the browser's
+pop-up, which Safari lets a page switch off): the paper's cover and name, **what goes** (everything written on it, its
+hints, chat and marking, and the PDF if you uploaded it), **what stays** (your mistake book; on a paper your teacher set,
+the paper itself, so you can start it again) and that it **cannot be undone**. *Keep it* has the focus, the red button
+only works after a moment (so a double tap on 🗑 is never also the yes), and Escape, *Keep it* or a tap outside
+deletes nothing. The **Delete** button on the bookcase cards now uses the same box. Deleting the worksheet that is open
+closes it first, so an auto-save can never bring it back.
+
 ## v1.88.0 — ✏️ The model suite: draw a bar model and put it on the page
 
 The **Model suite** button on the worksheet toolbar (the three coloured bars, beside 🖱️) opens Ans Key's bar-model

@@ -11,10 +11,10 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.88.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.88.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.88.0">
-<link rel="stylesheet" href="model-studio.css?v=1.88.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.90.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.90.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.90.0">
+<link rel="stylesheet" href="model-studio.css?v=1.90.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -1635,6 +1635,118 @@
   .freshGo:disabled { background: #E9B4B1; border-color: #E9B4B1; color: #fff; cursor: not-allowed; }
   .freshProgress { font-size: 0.9rem; color: var(--ink-soft, #55554F); padding: 6px 0; }
   .freshProgress .progBar { margin-top: 10px; }
+  /* 🗑 ASK BEFORE DELETING (v1.90.0) — the one confirmation box. It wears
+     🧹 Start fresh's red warning and red button, so "this deletes" looks the
+     same wherever it is asked. */
+  .delCard { max-width: 480px; }
+  .delWho { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+  .delThumb {
+    flex: none; width: 56px; height: 72px; border-radius: 6px; overflow: hidden;
+    border: 1px solid var(--line); background: var(--bg-soft);
+    display: flex; align-items: center; justify-content: center; font-size: 1.6rem;
+  }
+  .delThumb img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+  .delWords { min-width: 0; }
+  .delName { font-weight: 800; font-size: 1rem; line-height: 1.35; overflow-wrap: anywhere; }
+  .delFacts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .delWarn span:not(.freshWarnIcon) { display: block; margin-top: 4px; }
+  .delList { margin: 0 0 12px; }
+  .delListHead { font-size: 0.78rem; font-weight: 800; letter-spacing: .02em; text-transform: uppercase; margin-bottom: 4px; }
+  .delGoes .delListHead { color: #B3261E; }
+  .delKeeps .delListHead { color: #1F5F23; }
+  .delList ul { margin: 0; padding-left: 20px; font-size: 0.9rem; line-height: 1.55; }
+  .delNote { margin-top: 4px; }
+  .delStatus { font-size: 0.9rem; color: var(--ink-soft); min-height: 1.2em; }
+  .delStatus:empty { display: none; }
+  #delModal .modalFoot .freshGo { min-width: 150px; }
+  #delModal.delBusy .modalFoot .btn { opacity: .6; }
+
+  /* 📂 MY WORKSHEETS, BESIDE THE PAGE (v1.90.0). It slides in from the left
+     over the page (the buddy is on the right), at z 110: over the page and
+     the floating boxes (90–97), under the model suite's window (120), the
+     video bars and every dialog (200) — the delete box it opens is above it. */
+  #filesBtn.active { background: var(--bg-soft); box-shadow: inset 0 0 0 1px var(--line); }
+  .filesScrim {
+    position: absolute; inset: 0; z-index: 109; background: rgba(26,26,26,.18);
+    opacity: 0; transition: opacity .18s ease-out;
+  }
+  .filesScrim.open { opacity: 1; }
+  .filesPanel {
+    position: absolute; left: 0; top: 0; bottom: 0; z-index: 110;
+    width: min(360px, 92vw); display: flex; flex-direction: column;
+    background: var(--bg); border-right: 1px solid var(--line);
+    box-shadow: 8px 0 28px rgba(20,18,16,.16);
+    transform: translateX(-104%); transition: transform .2s ease-out;
+  }
+  .filesPanel.open { transform: none; }
+  .filesPanel[hidden] { display: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .filesPanel, .filesScrim { transition: none; }
+  }
+  .filesHead {
+    display: flex; align-items: center; gap: 8px; padding: 14px 12px 10px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .filesHead h2 { margin: 0; font-size: 1rem; font-weight: 800; flex: 1; min-width: 0; }
+  .filesCount {
+    display: inline-block; margin-left: 4px; font-size: 0.74rem; font-weight: 700; color: var(--ink-faint);
+    padding: 2px 8px; border-radius: 999px; background: var(--bg-soft); vertical-align: 2px;
+  }
+  .filesCount:empty { display: none; }
+  .filesTools { display: flex; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .filesTools input {
+    flex: 1; min-width: 0; font: inherit; font-size: 0.9rem; padding: 8px 11px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink);
+  }
+  .filesTools select {
+    flex: none; max-width: 42%; font: inherit; font-size: 0.82rem; padding: 7px 8px;
+    border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink);
+  }
+  .filesList { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 6px 8px 12px; }
+  .filesGroup {
+    font-size: 0.74rem; font-weight: 800; color: var(--ink-faint); text-transform: uppercase;
+    letter-spacing: .03em; padding: 12px 8px 6px;
+  }
+  .filesRow { display: flex; align-items: stretch; gap: 4px; border-radius: 10px; }
+  .filesRow + .filesRow { margin-top: 2px; }
+  .filesRow:hover { background: var(--bg-soft); }
+  .filesRow.filesNow { background: #EEF5FF; box-shadow: inset 3px 0 0 #1F4E79; }
+  .filesGo {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; text-align: left;
+    font: inherit; color: inherit; background: none; border: 0; padding: 8px; border-radius: 10px; cursor: pointer;
+  }
+  .filesGo:focus-visible, .filesDel:focus-visible { outline: 2px solid #1F4E79; outline-offset: 1px; }
+  .filesThumb {
+    flex: none; width: 38px; height: 50px; border-radius: 4px; overflow: hidden;
+    border: 1px solid var(--line); background: var(--bg-soft);
+    display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+  }
+  .filesThumb img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+  .filesText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .filesName {
+    font-weight: 700; font-size: 0.9rem; line-height: 1.3; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere;
+  }
+  .filesMeta { font-size: 0.76rem; color: var(--ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .filesPill {
+    flex: none; font-size: 0.7rem; font-weight: 800; padding: 3px 8px; border-radius: 999px;
+    background: #1F4E79; color: #fff;
+  }
+  .filesPill.filesPillStart { background: #E3EEFB; color: #1F4E79; }
+  /* 🗑 is a 44px target — a finger on an iPad — and stays red only on
+     hover/focus, so a list of twenty is not twenty red buttons shouting. */
+  .filesDel {
+    flex: none; width: 44px; border: 0; border-radius: 10px; background: none; cursor: pointer;
+    font-size: 1.05rem; opacity: .55; touch-action: manipulation;
+  }
+  .filesDel:hover, .filesDel:focus-visible { opacity: 1; background: #FFF1F0; }
+  .filesEmpty { padding: 28px 16px; text-align: center; color: var(--ink-faint); font-size: 0.9rem; line-height: 1.5; }
+  .filesFoot {
+    display: flex; align-items: center; gap: 10px; justify-content: space-between; flex-wrap: wrap;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line);
+  }
+  .filesFootNote { font-size: 0.74rem; color: var(--ink-faint); }
+  @media print { .filesPanel, .filesScrim, #filesBtn { display: none !important; } }
   .repTable th {
     text-align: left; font-weight: 700; font-size: 0.72rem; color: var(--ink-faint);
     padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
@@ -2507,6 +2619,10 @@
 
       <div id="wsTop">
         <button class="btn btnSm btnGhost" id="backBtn" title="Back to my worksheets">←</button>
+        <!-- 📂 MY WORKSHEETS, BESIDE THE PAGE (v1.90.0): the side bar that opens
+             another worksheet or 🗑 deletes one — always behind askDelete. -->
+        <button class="btn btnSm btnGhost" id="filesBtn" type="button" aria-controls="filesPanel" aria-expanded="false"
+                aria-label="My worksheets" title="📂 My worksheets — open another one, or delete one">📂</button>
         <span id="wsTitle">Untitled</span>
 
         <div class="toolGroup" id="toolButtons">
@@ -2616,6 +2732,24 @@
       <div id="tutorFocus" class="tutorFocusCards" role="region" aria-label="Look here" hidden></div>
       <div id="wsMain">
         <div id="viewerArea"><div id="pagesContainer"></div></div>
+
+        <!-- 📂 THE SIDE BAR (v1.90.0). Painted by filesRender(); 🗑 asks first, always. -->
+        <div class="filesScrim" id="filesScrim" hidden></div>
+        <aside class="filesPanel" id="filesPanel" aria-labelledby="filesTitle" hidden>
+          <div class="filesHead">
+            <h2 id="filesTitle">📂 My worksheets <span class="filesCount" id="filesCount"></span></h2>
+            <button class="btn btnSm btnGhost" id="filesClose" type="button" aria-label="Close my worksheets">✕</button>
+          </div>
+          <div class="filesTools">
+            <input type="search" id="filesSearch" placeholder="Find a worksheet" aria-label="Find a worksheet" autocomplete="off">
+            <select id="filesSort" aria-label="Order the worksheets"></select>
+          </div>
+          <div class="filesList" id="filesList" role="list"></div>
+          <div class="filesFoot">
+            <button class="btn btnSm" id="filesHome" type="button">🏠 All worksheets</button>
+            <span class="filesFootNote">🗑 always asks before it deletes</span>
+          </div>
+        </aside>
 
         <!-- The study buddy -->
         <aside id="buddy" aria-label="Tutor control panel">
@@ -3121,6 +3255,20 @@
   </div>
 </div>
 
+<!-- ============ 🗑 Ask before deleting (v1.90.0) — askDelete() ============ -->
+<div class="modalBack" id="delModal" role="alertdialog" aria-modal="true" aria-labelledby="delTitle" aria-describedby="delBody">
+  <div class="modalCard delCard">
+    <div class="modalHead">
+      <h2 id="delTitle">🗑 Delete it?</h2>
+    </div>
+    <div class="modalBody" id="delBody"></div>
+    <div class="modalFoot">
+      <button class="btn" id="delNo" type="button">Keep it</button>
+      <button class="btn freshGo" id="delYes" type="button" disabled>🗑 Delete for ever</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ AI engine (admin only) ============ -->
 <div class="modalBack" id="engineModal">
   <div class="modalCard">
@@ -3432,11 +3580,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.88.0"></script>
-<script src="lo-marks.js?v=1.88.0"></script>
-<script src="lo-practice.js?v=1.88.0"></script>
-<script src="cer-mcq.js?v=1.88.0"></script>
-<script src="model-studio.js?v=1.88.0"></script>
+<script src="concept-tags.js?v=1.90.0"></script>
+<script src="lo-marks.js?v=1.90.0"></script>
+<script src="lo-practice.js?v=1.90.0"></script>
+<script src="cer-mcq.js?v=1.90.0"></script>
+<script src="model-studio.js?v=1.90.0"></script>
 <script>
 'use strict';
 
@@ -3533,7 +3681,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.88.0';
+var APP_VERSION = 'v1.90.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -20529,6 +20677,7 @@ function showView(v) {
   if (v !== 'ws') { stopLiveTutor(); liveTutor.transcript = []; kwQuizClose(); mthClose(); tutorMarksClear(); }
   if (v !== 'ws') fastTutorReset();
   if (v !== 'ws' && typeof closeModelStudio === 'function') closeModelStudio();   // ✏️ the model suite is the worksheet's
+  if (v !== 'ws' && typeof filesClose === 'function') filesClose(false);   // 📂 the side bar is the worksheet screen's
   view = v;
   ['home', 'ws', 'mistake'].forEach(function (k) {
     $(k + 'View').classList.toggle('on', k === v);
@@ -25822,6 +25971,8 @@ function renderWorksheets() {
   // Painted from here for `syncSetAllBtn`'s reason: this is the one
   // function every path that changes the list already goes through.
   renderShelfBar();
+  // 📂 The side bar beside the page is drawn from the same two lists.
+  if (typeof filesSync === 'function') filesSync();
   var entries = shelfEntries(worksheets, assignmentsForMe());
   if (!entries.length) {
     var pad = document.createElement('div');
@@ -27764,20 +27915,129 @@ async function worksheetReadByClass(w) {
   }
 }
 
+/* 🗑 DELETING A WORKSHEET, from the bookcase card or from 📂 the side bar
+   (v1.90.0). Both doors are THIS function, and this function ALWAYS asks —
+   through `askDelete`, the app's own confirmation box, never `confirm()`.
+   Safari lets a page's `confirm()` be switched off for good ("Don't allow
+   this page to show dialogs"), and a delete whose question can be switched
+   off is a delete that does not ask. There is no "don't ask again" here,
+   and nothing passed in can skip the box: the confirmation is the delete's
+   only way in.
+
+   WHO MAY DELETE WHAT is unchanged and is decided by what is ON the list:
+   `worksheets` is `ownerUid == uid`, so every paper here is the signed-in
+   account's own. A paper SET for the class and not yet started is the
+   class's and is never offered a 🗑 (`filesCanDelete`); a started copy of
+   one is the student's own and goes, while the class's PDF and videos stay
+   (`sharedPdf`); the teacher's own copy of a paper the class reads keeps
+   the file every copy reads (`worksheetReadByClass`). */
+var _wsDeleting = {};
 async function deleteWorksheet(id) {
   var w = worksheets.find(function (x) { return x.id === id; });
-  if (!w) return;
-  var classReads = await worksheetReadByClass(w);
-  var msg = 'Delete “' + worksheetName(w, assignments, assignmentsLoaded) + '”? Your marks and hints on it go too. ' +
-            'Anything already in your mistake book stays.';
-  if (classReads && !w.sharedPdf) {
-    msg = 'Delete your copy of “' + worksheetName(w, assignments, assignmentsLoaded) + '”? It is set for your students, ' +
-          'so its PDF stays where the class reads it and anyone who has started it keeps their copy. ' +
-          'Only your own marks and hints on it go. To withdraw it from the class, use ' +
-          '“Take off the list” in 📌 Set for you.';
+  if (!w) return false;
+  // A second 🗑 on a paper already going is not a second delete.
+  if (_wsDeleting[id]) return false;
+  if (!filesCanDelete(w, currentUser)) {
+    toast('That worksheet is not yours to delete.', 5000);
+    return false;
   }
-  if (!confirm(msg)) return;
+  var classReads = await worksheetReadByClass(w);
+  // The list can have moved on while the class was being asked about.
+  if (!worksheets.some(function (x) { return x.id === id; })) return false;
+  var spec = wsDeleteSpec(w, {
+    name: worksheetName(w, assignments, assignmentsLoaded),
+    classReads: classReads,
+    teacher: isAdmin(currentUser),
+    open: currentDocId === id,
+    setter: setterName(),
+    cover: coverOf(w),
+    when: filesWhen(w),
+    now: Date.now()
+  });
+  spec.work = function () { return deleteWorksheetNow(w, classReads); };
+  return askDelete(spec);
+}
+
+/* What the box says about ONE paper. Pure (no DOM, no clock of its own,
+   no globals), so the harness can read every sentence a student is shown
+   before anything goes. `o.name` is the paper's name as the shelf reads it.
+
+   It says three things, because those are what a child deciding has to
+   know: what GOES (everything they did on it), what STAYS (the mistake
+   book, and the class's paper when it is the teacher's), and that it
+   cannot be undone. The teacher's copy of a paper the class reads keeps
+   the sentence it always had, word for word, because that one is about a
+   different decision — withdrawing the paper is "Take off the list". */
+function wsDeleteSpec(w, o) {
+  w = w || {};
+  o = o || {};
+  var name = String(o.name || w.name || 'this worksheet');
+  var copy = !!w.sharedPdf || !!w.assignmentId;
+  var classKeeps = !!o.classReads && !w.sharedPdf;
+  var facts = [];
+  if (w.level) facts.push(levelLabel(w.level));
+  if (w.subject) facts.push(subjectLabel(w.subject));
+  if (w.topic) facts.push('📖 ' + w.topic);
+  if (w.pageCount) facts.push(w.pageCount + ' page' + (w.pageCount === 1 ? '' : 's'));
+  if (w.score && w.score.attempted) facts.push('✅ ' + w.score.correct + '/' + w.score.attempted);
+  var tries = Math.max(1, parseInt(w.attempts, 10) || 1);
+  if (tries > 1) facts.push('↻ Attempt ' + tries);
+  if (o.when && o.now) facts.push('🕒 ' + shelfAgo(o.when, o.now));
+  var goes = [
+    'Everything written, typed and drawn on it',
+    'Its 💡 hints, 💬 chat and ✅ marking'
+  ];
+  var keeps = ['Questions already in your 📕 mistake book'];
+  if (!copy && !classKeeps) goes.push('The PDF you uploaded');
+  if (o.teacher && !copy && !classKeeps && Array.isArray(w.videos) && w.videos.length) {
+    goes.push('Its 🎬 video solutions');
+  }
+  if (copy && !classKeeps) {
+    keeps.push('The paper ' + (o.setter || 'your teacher') + ' set — it stays in 📌 Set for you, so you can start it again from the beginning');
+  }
+  var note = '';
+  if (classKeeps) {
+    keeps.push('The PDF and its videos, where the class reads them');
+    keeps.push('Every student’s own copy');
+    note = 'It is set for your students, so its PDF stays where the class reads it and anyone who has ' +
+           'started it keeps their copy. Only your own marks and hints on it go. To withdraw it from the ' +
+           'class, use “Take off the list” in 📌 Set for you.';
+  }
+  var open = o.open
+    ? 'It is open now. It will close, and you will go back to your worksheets.'
+    : '';
+  return {
+    kind: 'worksheet',
+    id: w.id || '',
+    title: copy || classKeeps ? '🗑 Delete your copy?' : '🗑 Delete this worksheet?',
+    name: name,
+    cover: o.cover || '',
+    facts: facts,
+    warn: 'This cannot be undone. There is no bin to get it back from.',
+    goes: goes,
+    keeps: keeps,
+    note: note,
+    open: open,
+    yes: copy || classKeeps ? '🗑 Delete my copy' : '🗑 Delete for ever',
+    no: 'Keep it',
+    busy: 'Deleting “' + name + '”…',
+    done: classKeeps ? 'Deleted your copy. The class still has it.'
+        : (copy ? 'Deleted your copy. The paper is still in 📌 Set for you.' : 'Deleted.')
+  };
+}
+
+/* THE DELETE ITSELF, run from inside the box once the answer is yes. */
+async function deleteWorksheetNow(w, classReads) {
+  var id = w.id;
+  _wsDeleting[id] = true;
   try {
+    // 🧷 THE OPEN PAPER LETS GO FIRST. Auto-save writes with `set(…,
+    // { merge: true })`, so a save that fired a second after the delete
+    // would CREATE the document again — a stub with the last body in it,
+    // back on the shelf with nothing to say why. `wsDeleteLetGo` stops the
+    // timer, waits for a write already in flight and drops `currentDocId`
+    // (both savers return at once without it) BEFORE anything is deleted.
+    if (currentDocId === id) await wsDeleteLetGo(id);
     // A worksheet SET BY THE TEACHER shares the teacher's PDF rather than
     // holding a copy of it, so deleting a student's own copy must not delete
     // the file every other student in the class is reading — and neither
@@ -27790,9 +28050,576 @@ async function deleteWorksheet(id) {
     if (!w.sharedPdf && !classReads) await lessonDeleteFiles(lessonVideosClean(w.videos));
     await db.collection(COLLECTION).doc(id).delete();
     if (currentDocId === id) { currentDocId = null; showView('home'); }
-    await loadWorksheets();
-    toast(classReads && !w.sharedPdf ? 'Deleted your copy. The class still has it.' : 'Deleted.');
-  } catch (e) { toast('Could not delete it: ' + ((e && e.message) || e), 6000); }
+    // Gone from the screen NOW, before the list comes back from the server:
+    // a row that stays put after "Deleted." reads as a delete that failed.
+    worksheets = worksheets.filter(function (x) { return x.id !== id; });
+    try { localBackupClear(id); } catch (e) {}
+    renderWorksheets();
+    loadWorksheets().catch(function (e) { console.warn('the list could not be read again after a delete', e); });
+    return true;
+  } catch (e) {
+    toast('Could not delete it: ' + ((e && e.message) || e), 6000);
+    return false;
+  } finally {
+    delete _wsDeleting[id];
+  }
+}
+
+/* 🧷 The open worksheet stops being one, so nothing can write it back. */
+var WS_DELETE_SAVE_WAIT_MS = 8000;
+async function wsDeleteLetGo(id) {
+  if (currentDocId !== id) return;
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = null;
+  currentDocId = null;
+  dirty = false;
+  saveAgain = false;
+  // A write already on its way is let land (it is on a document that is
+  // about to go) rather than racing the delete and landing after it.
+  var until = Date.now() + WS_DELETE_SAVE_WAIT_MS;
+  while (savingNow && Date.now() < until) {
+    await new Promise(function (r) { setTimeout(r, 60); });
+  }
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer = null;
+  filesClose(false);
+  showView('home');
+}
+
+/* =====================================================================
+   🗑 ASK BEFORE ANYTHING IS DELETED — the one confirmation box (v1.90.0)
+   ---------------------------------------------------------------------
+   `askDelete(spec)` → Promise<boolean>. It shows `#delModal`: the paper's
+   cover and name, what goes, what stays, the red "cannot be undone", and
+   two buttons — Keep it (focused, so Enter keeps) and the red delete.
+
+   • THE RED BUTTON IS ARMED A MOMENT LATE (`DEL_ARM_MS`). The 🗑 that opened
+     the box and the red button can sit under the same thumb, and a double
+     tap must not be a question and its answer.
+   • ESCAPE, ✕-LESS BACKDROP TAP AND KEEP IT ALL MEAN NO. Only the red
+     button means yes.
+   • `spec.work` RUNS INSIDE THE BOX. While it runs the box says so, both
+     buttons are off and Escape is ignored (`.delBusy`, which the global
+     Escape sweep steps over, as it does `.freshBusy`), so a child cannot
+     close a delete that is half done and wonder whether it happened.
+   • A SECOND ASK WHILE ONE IS OPEN ANSWERS THE FIRST "no".
+   • EVERY WORD IS `textContent` — a worksheet's name is the student's.
+
+   It knows nothing about worksheets, so the whiteboard's boards (or any
+   later list) delete through the same box with a spec of their own. */
+var DEL_ARM_MS = 600;
+var _delAsk = null;          // { resolve, spec, armT, busy }
+function askDeleteIsOpen() { return !!_delAsk; }
+function askDelete(spec) {
+  spec = spec || {};
+  if (_delAsk) askDeleteAnswer(false);
+  var modal = $('delModal');
+  if (!modal) return Promise.resolve(false);
+  return new Promise(function (resolve) {
+    var ask = { resolve: resolve, spec: spec, armT: null, busy: false,
+                back: document.activeElement };
+    _delAsk = ask;
+    askDeletePaint(spec);
+    modal.classList.remove('delBusy');
+    modal.classList.add('open');
+    var yes = $('delYes');
+    var no = $('delNo');
+    yes.disabled = true;
+    no.disabled = false;
+    yes.textContent = spec.yes || '🗑 Delete for ever';
+    no.textContent = spec.no || 'Keep it';
+    try { no.focus({ preventScroll: true }); } catch (e) {}
+    ask.armT = setTimeout(function () {
+      if (_delAsk === ask && !ask.busy) yes.disabled = false;
+    }, DEL_ARM_MS);
+  });
+}
+
+function askDeletePaint(spec) {
+  var body = $('delBody');
+  var title = $('delTitle');
+  if (title) title.textContent = spec.title || '🗑 Delete it?';
+  if (!body) return;
+  body.innerHTML = '';
+
+  var who = document.createElement('div');
+  who.className = 'delWho';
+  var thumb = document.createElement('div');
+  thumb.className = 'delThumb';
+  if (spec.cover && filesSafeUrl(spec.cover)) {
+    var img = document.createElement('img');
+    img.alt = '';
+    img.src = spec.cover;
+    img.onerror = function () { img.remove(); thumb.textContent = '📄'; };
+    thumb.appendChild(img);
+  } else {
+    thumb.textContent = spec.icon || '📄';
+  }
+  who.appendChild(thumb);
+  var words = document.createElement('div');
+  words.className = 'delWords';
+  var nm = document.createElement('div');
+  nm.className = 'delName';
+  nm.textContent = spec.name || '';
+  words.appendChild(nm);
+  if (spec.facts && spec.facts.length) {
+    var facts = document.createElement('div');
+    facts.className = 'delFacts';
+    spec.facts.forEach(function (f) {
+      var c = document.createElement('span');
+      c.className = 'chip';
+      c.textContent = f;
+      facts.appendChild(c);
+    });
+    words.appendChild(facts);
+  }
+  who.appendChild(words);
+  body.appendChild(who);
+
+  var warn = document.createElement('div');
+  warn.className = 'freshWarn delWarn';
+  warn.setAttribute('role', 'alert');
+  var ic = document.createElement('span');
+  ic.className = 'freshWarnIcon';
+  ic.textContent = '⚠️';
+  warn.appendChild(ic);
+  var wt = document.createElement('div');
+  var wb = document.createElement('b');
+  wb.textContent = spec.warn || 'This cannot be undone.';
+  wt.appendChild(wb);
+  if (spec.open) {
+    var op = document.createElement('span');
+    op.textContent = spec.open;
+    wt.appendChild(op);
+  }
+  warn.appendChild(wt);
+  body.appendChild(warn);
+
+  function list(cls, head, rows) {
+    if (!rows || !rows.length) return;
+    var box = document.createElement('div');
+    box.className = 'delList ' + cls;
+    var h = document.createElement('div');
+    h.className = 'delListHead';
+    h.textContent = head;
+    box.appendChild(h);
+    var ul = document.createElement('ul');
+    rows.forEach(function (r) {
+      var li = document.createElement('li');
+      li.textContent = r;
+      ul.appendChild(li);
+    });
+    box.appendChild(ul);
+    body.appendChild(box);
+  }
+  list('delGoes', 'What goes', spec.goes);
+  list('delKeeps', 'What stays', spec.keeps);
+  if (spec.note) {
+    var note = document.createElement('p');
+    note.className = 'freshKeep delNote';
+    note.textContent = spec.note;
+    body.appendChild(note);
+  }
+  var status = document.createElement('div');
+  status.className = 'delStatus';
+  status.id = 'delStatus';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  body.appendChild(status);
+}
+
+/* The one place the box closes, whichever way it was answered. */
+function askDeleteClose() {
+  var ask = _delAsk;
+  _delAsk = null;
+  var modal = $('delModal');
+  if (modal) modal.classList.remove('open', 'delBusy');
+  if (ask) {
+    clearTimeout(ask.armT);
+    var back = ask.back;
+    if (back && back.focus && document.contains(back)) {
+      try { back.focus({ preventScroll: true }); } catch (e) {}
+    }
+  }
+}
+
+async function askDeleteAnswer(yes) {
+  var ask = _delAsk;
+  if (!ask || ask.busy) return;
+  if (!yes) { askDeleteClose(); ask.resolve(false); return; }
+  // Pressed before it was armed (a keyboard can reach a disabled-looking
+  // button through a stale focus): it is not an answer yet.
+  if ($('delYes') && $('delYes').disabled) return;
+  if (typeof ask.spec.work !== 'function') { askDeleteClose(); ask.resolve(true); return; }
+  ask.busy = true;
+  var modal = $('delModal');
+  modal.classList.add('delBusy');
+  $('delYes').disabled = true;
+  $('delNo').disabled = true;
+  var st = $('delStatus');
+  if (st) st.textContent = ask.spec.busy || 'Deleting…';
+  var ok = false;
+  try { ok = !!(await ask.spec.work()); }
+  catch (e) { ok = false; console.warn('delete failed', e); }
+  if (_delAsk === ask) askDeleteClose();
+  if (ok && ask.spec.done) toast(ask.spec.done);
+  ask.resolve(ok);
+}
+
+function askDeleteBind() {
+  var modal = $('delModal');
+  if (!modal || modal._bound) return;
+  modal._bound = true;
+  $('delNo').addEventListener('click', function () { askDeleteAnswer(false); });
+  $('delYes').addEventListener('click', function () { askDeleteAnswer(true); });
+  // A tap on the dim backdrop is a "no" — never a "yes".
+  modal.addEventListener('click', function (e) { if (e.target === modal) askDeleteAnswer(false); });
+  // Escape is answered HERE, in the capture phase, so the app's own
+  // Escape sweep never just takes the class away and leaves the question
+  // hanging with nobody to answer it.
+  document.addEventListener('keydown', function (e) {
+    if (!_delAsk || e.key !== 'Escape') return;
+    e.preventDefault();
+    e.stopPropagation();
+    askDeleteAnswer(false);
+  }, true);
+}
+
+/* =====================================================================
+   📂 MY WORKSHEETS, BESIDE THE PAGE (v1.90.0)
+   ---------------------------------------------------------------------
+   *"Add the ability to delete files, always ask for confirmation. Put it
+   at the side bar, same as the one used to open worksheets."* The
+   worksheet screen gets a side bar: 📂 in the toolbar (beside ←) slides
+   it in from the left, over the page. It lists every worksheet on the
+   account's shelf — tap one to open it (the open one says so), 🗑 to
+   delete it (which ALWAYS asks first, through `askDelete`) — and the
+   papers set for the class that have not been started yet, with Start
+   and no 🗑, because those are the class's and not this account's.
+
+   • IT IS DRAWN FROM `worksheets` AND `assignmentsForMe()`, the lists the
+     bookcase is drawn from, through `shelfEntries` — so the side bar and
+     the shelf cannot disagree about what a student has. `renderWorksheets`
+     (the one function every change to the list goes through) repaints it.
+   • `filesRows` IS PURE: the search, the order and who may delete what are
+     decided there and nowhere else, and the harness drives it with plain
+     objects.
+   • OPENING ANOTHER PAPER SAVES THIS ONE FIRST (the ← rule), and is
+     `openWorksheet` / `startAssignment` — the shelf's own doors.
+   • IT NEVER COVERS A DIALOG (z 110: over the page and the floating boxes,
+     under the model suite's window and every `.modalBack`), and it closes
+     on ✕, Escape, the scrim, opening a paper and leaving the worksheet. */
+var FILES_SORT_KEY = 'polymath.tutor.filesSort';
+var FILES_SORTS = [
+  ['recent', 'Last worked on'],
+  ['name', 'Name A–Z'],
+  ['made', 'Newest upload']
+];
+var filesState = { open: false, q: '', sort: 'recent', back: null };
+
+function filesSortPref() {
+  try {
+    var v = localStorage.getItem(FILES_SORT_KEY);
+    if (FILES_SORTS.some(function (s) { return s[0] === v; })) return v;
+  } catch (e) {}
+  return 'recent';
+}
+function filesSortSave(v) { try { localStorage.setItem(FILES_SORT_KEY, v); } catch (e) {} }
+
+/* When a paper was last worked on: opened, or written on, whichever is later. */
+function filesWhen(w) {
+  if (!w) return 0;
+  return Math.max(stampOf(w.lastOpenedAt), stampOf(w.updatedAt));
+}
+
+/* ONE rule for who may delete a paper, read by the side bar AND by
+   `deleteWorksheet` (a hidden button has never been the lock in this app).
+   A paper set for the class and not started (`w.set`) is the class's; a
+   paper whose owner is someone else is theirs. Everything on `worksheets`
+   was read `ownerUid == uid`, so a paper with no owner field is this
+   account's own (the oldest uploads carry none). */
+function filesCanDelete(w, user) {
+  if (!w || !user || !user.uid) return false;
+  if (w.set) return false;
+  if (String(w.id || '').indexOf('set:') === 0) return false;
+  if (w.ownerUid && w.ownerUid !== user.uid) return false;
+  return true;
+}
+
+/* Words a search may match: the name, topic, school, level and subject. */
+function filesNorm(s) {
+  var t = String(s == null ? '' : s).toLowerCase();
+  // "Fractión" is found by "fraction": accents are taken off both sides.
+  if (t.normalize) t = t.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  return t;
+}
+function filesMatch(row, q) {
+  var words = filesNorm(q).split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  var hay = filesNorm([row.name, row.topic, row.school, levelLabel(row.level), row.level,
+                       subjectLabel(row.subject)].join(' '));
+  return words.every(function (t) { return hay.indexOf(t) !== -1; });
+}
+
+/* THE ROWS. `entries` is `shelfEntries(worksheets, assignmentsForMe())`.
+   o: { q, sort, openId, user, nameOf(w) }. Returns { mine, set, total, shown }. */
+function filesRows(entries, o) {
+  o = o || {};
+  var nameOf = typeof o.nameOf === 'function' ? o.nameOf
+    : function (w) { return (w && w.name) || 'Untitled'; };
+  var mine = [];
+  var set = [];
+  (entries || []).forEach(function (w) {
+    if (!w) return;
+    var isSet = !!w.set;
+    var row = {
+      id: isSet ? w.set.id : w.id,
+      set: isSet,
+      w: w,
+      name: String((isSet ? (w.set.name || w.name) : nameOf(w)) || 'Untitled'),
+      level: w.level || '', subject: w.subject || '',
+      topic: w.topic || '', school: w.school || '',
+      pages: Number(w.pageCount) || 0,
+      score: (!isSet && w.score && w.score.attempted) ? w.score : null,
+      when: isSet ? stampOf(w.updatedAt) : filesWhen(w),
+      made: stampOf(isSet ? w.updatedAt : w.createdAt),
+      open: !isSet && !!o.openId && w.id === o.openId,
+      del: !isSet && filesCanDelete(w, o.user)
+    };
+    (isSet ? set : mine).push(row);
+  });
+  var total = mine.length + set.length;
+  mine = mine.filter(function (r) { return filesMatch(r, o.q); });
+  set = set.filter(function (r) { return filesMatch(r, o.q); });
+  filesSortRows(mine, o.sort);
+  filesSortRows(set, o.sort === 'name' ? 'name' : 'made');
+  return { mine: mine, set: set, total: total, shown: mine.length + set.length };
+}
+function filesSortRows(rows, sort) {
+  var byName = function (a, b) {
+    return a.name.localeCompare(b.name, 'en', { numeric: true, sensitivity: 'base' });
+  };
+  rows.sort(function (a, b) {
+    if (sort === 'name') return byName(a, b);
+    if (sort === 'made') return (b.made - a.made) || byName(a, b);
+    return (b.when - a.when) || (b.made - a.made) || byName(a, b);
+  });
+  return rows;
+}
+
+/* A cover is a Firebase download URL, a data: picture or nothing. */
+function filesSafeUrl(u) {
+  u = String(u || '');
+  return /^https:\/\//i.test(u) || /^data:image\//i.test(u) || /^blob:/i.test(u);
+}
+
+function filesMetaText(r, now) {
+  var bits = [];
+  if (r.level) bits.push(levelLabel(r.level));
+  if (r.subject) bits.push(subjectLabel(r.subject));
+  if (r.score) bits.push('✅ ' + r.score.correct + '/' + r.score.attempted);
+  if (r.set) bits.push('📌 Set by ' + setterName());
+  else if (r.when) bits.push('🕒 ' + shelfAgo(r.when, now || Date.now()));
+  else if (r.pages) bits.push(r.pages + ' page' + (r.pages === 1 ? '' : 's'));
+  return bits.join(' · ');
+}
+
+function filesRowNode(r, now) {
+  var row = document.createElement('div');
+  row.className = 'filesRow' + (r.open ? ' filesNow' : '') + (r.set ? ' filesSet' : '');
+  row.setAttribute('role', 'listitem');
+  row.dataset.id = r.id;
+
+  var go = document.createElement('button');
+  go.type = 'button';
+  go.className = 'filesGo';
+  go.title = r.open ? 'Open now' : (r.set ? 'Start “' + r.name + '”' : 'Open “' + r.name + '”');
+  var thumb = document.createElement('span');
+  thumb.className = 'filesThumb';
+  var url = r.set ? '' : coverOf(r.w);
+  if (url && filesSafeUrl(url)) {
+    var img = document.createElement('img');
+    img.alt = '';
+    img.loading = 'lazy';
+    img.src = url;
+    img.onerror = function () { img.remove(); thumb.textContent = '📄'; };
+    thumb.appendChild(img);
+  } else {
+    thumb.textContent = r.set ? '📌' : '📄';
+  }
+  go.appendChild(thumb);
+  var text = document.createElement('span');
+  text.className = 'filesText';
+  var nm = document.createElement('span');
+  nm.className = 'filesName';
+  nm.textContent = r.name;
+  text.appendChild(nm);
+  var meta = document.createElement('span');
+  meta.className = 'filesMeta';
+  meta.textContent = filesMetaText(r, now);
+  text.appendChild(meta);
+  go.appendChild(text);
+  if (r.open) {
+    var pill = document.createElement('span');
+    pill.className = 'filesPill';
+    pill.textContent = 'Open now';
+    go.appendChild(pill);
+  } else if (r.set) {
+    var start = document.createElement('span');
+    start.className = 'filesPill filesPillStart';
+    start.textContent = 'Start';
+    go.appendChild(start);
+  }
+  go.addEventListener('click', function () { filesGo(r); });
+  row.appendChild(go);
+
+  if (r.del) {
+    var del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'filesDel';
+    del.textContent = '🗑';
+    del.title = 'Delete “' + r.name + '” — asks first';
+    del.setAttribute('aria-label', 'Delete ' + r.name);
+    del.addEventListener('click', function (e) {
+      e.stopPropagation();
+      deleteWorksheet(r.id);
+    });
+    row.appendChild(del);
+  }
+  return row;
+}
+
+function filesRender() {
+  var list = $('filesList');
+  if (!list) return;
+  var entries = shelfEntries(worksheets, assignmentsForMe());
+  var rows = filesRows(entries, {
+    q: filesState.q, sort: filesState.sort, openId: view === 'ws' ? currentDocId : null,
+    user: currentUser,
+    nameOf: function (w) { return worksheetName(w, assignments, assignmentsLoaded); }
+  });
+  var cnt = $('filesCount');
+  if (cnt) cnt.textContent = !rows.total ? '' : (rows.shown === rows.total ? String(rows.total) : rows.shown + ' of ' + rows.total);
+  list.innerHTML = '';
+  var now = Date.now();
+  if (!rows.total) {
+    var none = document.createElement('div');
+    none.className = 'filesEmpty';
+    none.textContent = currentUser ? 'No worksheets yet. Upload one from the home screen.' : 'Sign in to see your worksheets.';
+    list.appendChild(none);
+    return;
+  }
+  if (!rows.shown) {
+    var miss = document.createElement('div');
+    miss.className = 'filesEmpty';
+    miss.textContent = 'Nothing matches “' + filesState.q + '”.';
+    list.appendChild(miss);
+    return;
+  }
+  function group(head, arr) {
+    if (!arr.length) return;
+    var h = document.createElement('div');
+    h.className = 'filesGroup';
+    h.textContent = head;
+    list.appendChild(h);
+    arr.forEach(function (r) { list.appendChild(filesRowNode(r, now)); });
+  }
+  group('My worksheets', rows.mine);
+  group('📌 Set for you — not started', rows.set);
+}
+
+/* Called from `renderWorksheets`: the one function every change goes through. */
+function filesSync() {
+  if (filesState.open) filesRender();
+}
+
+function filesOpen() {
+  if (view !== 'ws' || !$('filesPanel')) return;
+  filesState.open = true;
+  filesState.sort = filesSortPref();
+  filesState.back = document.activeElement;
+  var sel = $('filesSort');
+  if (sel) sel.value = filesState.sort;
+  $('filesPanel').hidden = false;
+  $('filesScrim').hidden = false;
+  // A frame later, so the slide-in is a transition and not a jump.
+  requestAnimationFrame(function () {
+    if (!filesState.open) return;
+    $('filesPanel').classList.add('open');
+    $('filesScrim').classList.add('open');
+  });
+  $('filesBtn').setAttribute('aria-expanded', 'true');
+  $('filesBtn').classList.add('active');
+  filesRender();
+  // The list in hand is shown at once; a quiet re-read brings anything
+  // another device added or deleted, and repaints through `filesSync`.
+  if (currentUser) loadWorksheets().catch(function () {});
+  setTimeout(function () {
+    if (!filesState.open) return;
+    var s = $('filesSearch');
+    // Not on a touchscreen: a keyboard sliding up over the list the moment
+    // it opens hides the very list that was asked for.
+    if (s && window.matchMedia && window.matchMedia('(pointer: fine)').matches) {
+      try { s.focus({ preventScroll: true }); } catch (e) {}
+    } else {
+      try { $('filesClose').focus({ preventScroll: true }); } catch (e) {}
+    }
+  }, 60);
+}
+function filesClose(giveBack) {
+  if (!filesState.open) return;
+  filesState.open = false;
+  var p = $('filesPanel');
+  var s = $('filesScrim');
+  if (p) { p.classList.remove('open'); p.hidden = true; }
+  if (s) { s.classList.remove('open'); s.hidden = true; }
+  var b = $('filesBtn');
+  if (b) { b.setAttribute('aria-expanded', 'false'); b.classList.remove('active'); }
+  if (giveBack !== false && b && view === 'ws') { try { b.focus({ preventScroll: true }); } catch (e) {} }
+}
+function filesToggle() { if (filesState.open) filesClose(); else filesOpen(); }
+
+/* Open a paper from the side bar: the ← rule first (save what is open),
+   then the shelf's own door. */
+async function filesGo(r) {
+  if (!r) return;
+  if (!r.set && r.id === currentDocId) { filesClose(); return; }
+  try { commitActiveTextEdit(); } catch (e) {}
+  if (dirty && currentDocId) { try { await performSave(true); } catch (e) {} }
+  filesClose(false);
+  if (r.set) await startAssignment(r.id);
+  else await openWorksheet(r.id);
+}
+
+function filesBind() {
+  var btn = $('filesBtn');
+  if (!btn || btn._bound) return;
+  btn._bound = true;
+  btn.addEventListener('click', filesToggle);
+  $('filesClose').addEventListener('click', function () { filesClose(); });
+  $('filesScrim').addEventListener('click', function () { filesClose(); });
+  $('filesHome').addEventListener('click', function () {
+    filesClose(false);
+    $('backBtn').click();
+  });
+  var sel = $('filesSort');
+  sel.innerHTML = '';
+  FILES_SORTS.forEach(function (s) {
+    var o = document.createElement('option');
+    o.value = s[0];
+    o.textContent = s[1];
+    sel.appendChild(o);
+  });
+  sel.value = filesSortPref();
+  sel.addEventListener('change', function () {
+    filesState.sort = sel.value;
+    filesSortSave(sel.value);
+    filesRender();
+  });
+  var q = $('filesSearch');
+  q.addEventListener('input', function () { filesState.q = q.value; filesRender(); });
+  // The page's tool shortcuts (p, h, t…) must not fire while typing a search.
+  q.addEventListener('keydown', function (e) { if (e.key !== 'Escape') e.stopPropagation(); });
 }
 
 /* =====================================================================
@@ -34861,6 +35688,8 @@ $('signInBtn').addEventListener('click', signIn);
 $('signInBtn2').addEventListener('click', signIn);
 $('signOutBtn').addEventListener('click', signOut);
 $('brandHome').addEventListener('click', function () { showView('home'); });
+askDeleteBind();
+filesBind();
 $('backBtn').addEventListener('click', function () {
   commitActiveTextEdit();   // before the `dirty` test — see flushSave
   if (dirty && currentDocId) performSave(true);
@@ -35089,7 +35918,10 @@ document.addEventListener('keydown', function (e) {
     lessonPillMenuClose();
     lessonPlaylistClosePanel();
     // Every dialog but the first-sign-in gate. That one has to be answered.
-    document.querySelectorAll('.modalBack.open:not(#onboardModal):not(.freshBusy)').forEach(function (m) {
+    // 📂 The side bar closes first when it is the top thing — a dialog
+    // over it is closed before it, by the sweep below.
+    if (filesState.open && !document.querySelector('.modalBack.open')) { filesClose(); return; }
+    document.querySelectorAll('.modalBack.open:not(#onboardModal):not(.freshBusy):not(.delBusy):not(#delModal)').forEach(function (m) {
       m.classList.remove('open');
     });
     commitActiveTextEdit();
