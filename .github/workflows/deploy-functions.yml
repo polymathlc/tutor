@@ -74,6 +74,33 @@ jobs:
         run: |
           echo '::warning title=Functions not deployed::Set the FIREBASE_SERVICE_ACCOUNT secret (Settings → Secrets and variables → Actions) to a mathgen--app service-account JSON, then re-run this workflow. Until then the live tutor runs whatever was last deployed by hand.'
 
+      # THE SHARED RULES GUARDS RUN ON THEIR OWN, BEFORE THE FUNCTIONS. They
+      # read the LIVE Firestore rules and refuse, changing nothing, when those
+      # rules are not in a shape they recognise. A refusal is a WARNING and
+      # does not hold the functions back (Zhi Kai's decision, Nov 15): the
+      # functions are this repo's own code and do not depend on this step,
+      # and holding them back left the paper fetch (v1.91.0) undeployed.
+      - name: Shared rules guards
+        id: rules
+        if: steps.key.outputs.ready == 'yes'
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npm install --prefix "$RUNNER_TEMP/firebase-cli" --no-audit --no-fund firebase-tools@14
+          node tools/gamification-rules.mjs \
+            --firebase-tools "$RUNNER_TEMP/firebase-cli/node_modules/firebase-tools" --apply
+          node tools/centre-admin-rules.mjs \
+            --firebase-tools "$RUNNER_TEMP/firebase-cli/node_modules/firebase-tools" --apply
+
+      - name: Say the rules were left alone
+        if: steps.rules.outcome == 'failure'
+        run: |
+          echo '::warning title=Shared rules not changed::A rules guard refused (see the step above). The live Firestore rules were left exactly as they were and need a look by hand. The functions still deploy.'
+
       - name: Deploy the study-buddy-live codebase
         if: steps.key.outputs.ready == 'yes'
         env:
@@ -88,11 +115,6 @@ jobs:
           # the functions this repo owns, and leaving `--force` off means
           # a run that wants to DELETE anything stops and says so rather than
           # quietly taking another app's function off the project.
-          npm install --prefix "$RUNNER_TEMP/firebase-cli" --no-audit --no-fund firebase-tools@14
-          node tools/gamification-rules.mjs \
-            --firebase-tools "$RUNNER_TEMP/firebase-cli/node_modules/firebase-tools" --apply
-          node tools/centre-admin-rules.mjs \
-            --firebase-tools "$RUNNER_TEMP/firebase-cli/node_modules/firebase-tools" --apply
           npx --yes firebase-tools@14 deploy \
             --only 'functions:study-buddy-live' \
             --project mathgen--app \
