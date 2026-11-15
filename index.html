@@ -11,10 +11,10 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.92.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.92.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.92.0">
-<link rel="stylesheet" href="model-studio.css?v=1.92.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.93.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.93.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.93.0">
+<link rel="stylesheet" href="model-studio.css?v=1.93.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -160,6 +160,15 @@
   @media (min-width: 1101px) {
     header:has(#peopleBtn:not(.hidden)):has(#installAppBtn:not([data-pwa-hidden])) .btn { padding-left: 13px; padding-right: 13px; }
   }
+  /* 🧭 Apps is one word and stays on one line (v1.93.0): on an iPad standing
+     up a student's row folded it into a two-line button, taller than the
+     rest of the row, while the brand beside it was squeezed to "S…". Up to
+     900px a signed-in row shows the logo alone — the logo is the way home,
+     the name was only a label, and it was not readable at that width anyway. */
+  #appsBtn { white-space: nowrap; }
+  @media (min-width: 721px) and (max-width: 900px) {
+    header:has(#signOutBtn:not(.hidden)) .brandText { display: none; }
+  }
   @media (max-width: 720px) {
     #whoAmI, .brandSub { display: none; }
     header { padding: 10px 12px; gap: 8px; }
@@ -188,7 +197,15 @@
      Header, then one row: the viewer and the buddy panel beside it. Nothing
      but the two panes scrolls, so the toolbar and the buddy dock stay put
      while a worksheet is worked through. */
-  #app { display: flex; flex-direction: column; height: 100%; }
+  /* `--app-h` is the part of the screen that can really be SEEN (📐 THE APP
+     FITS THE SCREEN, v1.93.0). iPad Safari does not shrink the page when the
+     on-screen keyboard comes up — it slides the keyboard over the bottom of
+     it — so a panel whose Ask box sat at the bottom was typed into blind.
+     Unset, it is the old 100%. */
+  #app { display: flex; flex-direction: column; height: 100%; height: var(--app-h, 100%); }
+  /* A scroll that reaches the end of a list stops there, rather than
+     dragging the whole app with it in iPad's rubber band. */
+  html, body { overscroll-behavior: none; }
   #views { flex: 1; min-height: 0; display: flex; }
   .view { flex: 1; min-height: 0; min-width: 0; display: none; }
   .view.on { display: flex; }
@@ -389,6 +406,7 @@
   #wsMain { flex: 1; min-height: 0; display: flex; position: relative; }
   #viewerArea {
     flex: 1; min-width: 0; overflow: auto; -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain; -webkit-touch-callout: none;
     background: var(--bg-soft); padding: 20px 0 60px;
     /* The fingers pan and pinch through the engine below, not through the
        browser: `pan-x pan-y` keeps the ordinary scroll in the margins either
@@ -419,7 +437,7 @@
     font-size: 11px; color: var(--ink-soft, #6B6B66); white-space: nowrap;
     padding-left: 4px; letter-spacing: .01em;
   }
-  @media (max-width: 900px) { .zoomTip { display: none; } }
+  @media (max-width: 1100px) { .zoomTip { display: none; } }
   /* ⬆⬇ THE PAGE MOVES FROM THE TOOLBAR (v1.86.0). A press-and-hold button
      must not open iOS's callout or start selecting the toolbar's text, and
      the one being held says so — a press that keeps scrolling needs to look
@@ -942,7 +960,20 @@
     padding: 9px 12px; cursor: pointer; margin-bottom: -1px;
   }
   .bTab.on { color: var(--ink); border-bottom-color: var(--accent-deep); }
-  .buddyBody { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 18px; }
+  .buddyBody { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch;
+               overscroll-behavior: contain; padding: 18px; }
+  /* The handle that makes the panel taller or shorter. Only the docked
+     panel and the phone sheet have one: beside the page there is nothing
+     to drag. */
+  .buddyGrip {
+    display: none; justify-content: center; align-items: center; flex: none;
+    height: 22px; margin-bottom: -6px; cursor: ns-resize; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  }
+  .buddyGrip span { width: 44px; height: 5px; border-radius: 3px; background: var(--line); transition: background .12s ease; }
+  .buddyGrip:hover span, .buddyGrip.dragging span, .buddyGrip:focus-visible span { background: var(--ink-faint); }
+  .buddyGrip:focus-visible { outline: none; }
+  .adventure-enabled .buddyGrip { background: #fffdf6; }
   .buddyPane { display: none; }
   .buddyPane.on { display: block; }
   .buddyFoot { border-top: 1px solid var(--line); padding: 12px 14px calc(12px + env(safe-area-inset-bottom, 0px)); }
@@ -1865,16 +1896,59 @@
   }
 
   @media (max-width: 900px) {
+    /* `--kb` is how much of the bottom of the screen the on-screen keyboard
+       covers, and `--app-h` how much can still be seen (📐 THE APP FITS THE
+       SCREEN). The sheet stands ON the keyboard and is never taller than
+       what is left, so its tabs and ✕ cannot be pushed off the top. */
     #buddy {
-      position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; z-index: 90;
-      height: 72vh; border-left: none; border-top: 1px solid var(--line);
-      border-radius: 20px 20px 0 0; box-shadow: 0 -4px 24px rgba(0,0,0,.14);
+      position: fixed; left: 0; right: 0; bottom: 0; bottom: var(--kb, 0px); top: auto; width: auto; z-index: 90;
+      height: 72vh; height: min(var(--buddy-h, 72vh), calc(var(--app-h, 100vh) - 40px));
+      border-left: none; border-top: 1px solid var(--line);
+      border-radius: 20px 20px 0 0; box-shadow: 0 -4px 24px rgba(0,0,0,.14); overflow: hidden;
     }
     #buddy.closed { display: none; }
+    .buddyGrip { display: flex; }
     #buddyFab {
       position: fixed; top: auto; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
     }
     #wsTitle { max-width: 34vw; }
+  }
+
+  /* ▤ AN iPAD STANDING UP — THE PANEL DOCKS UNDER THE PAGE (v1.93.0).
+     In portrait a tablet is too narrow for the 400px side panel (it left the
+     page a strip) and the phone's sheet covered 72% of the worksheet — the
+     question Chung GPT was talking about was hidden under the hint about it.
+     So between a phone and a landscape screen, standing up, the panel is
+     part of the layout: the page above, the panel below, both visible and
+     both scrolling, with a handle to share the height out differently.
+     `BUDDY_DOCK_Q` in the script is this same query, and the ONE place the
+     script asks whether the panel is docked (`buddyDocked`). */
+  @media (min-width: 641px) and (max-width: 1100px) and (orientation: portrait) {
+    #wsMain { flex-direction: column; }
+    #buddy {
+      position: relative; left: auto; right: auto; top: auto; bottom: auto; z-index: 5;
+      width: auto; height: auto; flex: 0 0 var(--buddy-h, 44%);
+      min-height: 0; max-height: calc(100% - 120px);
+      border-left: none; border-top: 1px solid var(--line);
+      border-radius: 18px 18px 0 0; box-shadow: 0 -4px 18px rgba(0,0,0,.07); overflow: hidden;
+    }
+    #buddy.closed { display: none; }
+    .buddyGrip { display: flex; }
+    #buddyFab { position: absolute; top: auto; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+    /* The page's own floating things stand ABOVE the panel, never on it.
+       `--dock-h` is the panel's height while it is open (0 when closed). */
+    /* `body` in front: each box's own phone rule comes later in the sheet. */
+    body #liveOrbFloat { bottom: calc(var(--dock-h, 0px) + 18px); }
+    body #liveSubs { bottom: calc(var(--dock-h, 0px) + 16px); }
+    body #workStep { right: 16px; bottom: calc(var(--dock-h, 0px) + 16px); }
+    body #voiceBar { bottom: calc(var(--dock-h, 0px) + 16px); }
+    body #kwQuiz, body #mthPad {
+      bottom: calc(var(--dock-h, 0px) + 16px);
+      max-height: min(560px, calc(var(--app-h, 100vh) - var(--dock-h, 0px) - 200px));
+    }
+    /* The pages have room to the bottom of their own pane now, not to a
+       sheet drawn over them. */
+    #viewerArea { padding-bottom: 28px; }
   }
   /* Live tutoring keeps controls separate from the scrolling captions. */
   .liveCard { padding: 20px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: var(--radius); }
@@ -2676,6 +2750,8 @@
 
         <!-- The study buddy -->
         <aside id="buddy" aria-label="Tutor control panel">
+          <div class="buddyGrip" id="buddyGrip" role="separator" aria-orientation="horizontal" tabindex="0"
+               aria-label="Drag to make the control panel taller or shorter" title="Drag to make this panel taller or shorter"><span></span></div>
           <div class="buddyHead">
             <div class="bWho" id="bWho"></div>
             <img class="adventureTutorAccent" data-adventure-companion="thinking" src="assets/companions/orbit-thinking.webp" width="43" height="43" alt="" onerror="this.hidden=true">
@@ -3530,11 +3606,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.92.0"></script>
-<script src="lo-marks.js?v=1.92.0"></script>
-<script src="lo-practice.js?v=1.92.0"></script>
-<script src="cer-mcq.js?v=1.92.0"></script>
-<script src="model-studio.js?v=1.92.0"></script>
+<script src="concept-tags.js?v=1.93.0"></script>
+<script src="lo-marks.js?v=1.93.0"></script>
+<script src="lo-practice.js?v=1.93.0"></script>
+<script src="cer-mcq.js?v=1.93.0"></script>
+<script src="model-studio.js?v=1.93.0"></script>
 <script>
 'use strict';
 
@@ -3631,7 +3707,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.92.0';
+var APP_VERSION = 'v1.93.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -10650,7 +10726,11 @@ function floatBoxLayout() {
     (mthPad.open && mp && mp.offsetHeight) ? mp.offsetHeight : 0
   );
   var phone = (window.innerWidth || 1200) <= 900;
-  var up = h ? 'calc(' + (h + (phone ? 90 : 36)) + 'px + env(safe-area-inset-bottom, 0px))' : '';
+  // 📐 Docked under the page (an iPad standing up), the boxes stand on the
+  // panel, so the subtitles go up from the panel's top, not the screen's foot.
+  var docked = typeof buddyDocked === 'function' && buddyDocked();
+  var up = !h ? '' : docked ? 'calc(var(--dock-h, 0px) + ' + (h + 28) + 'px)'
+    : 'calc(' + (h + (phone ? 90 : 36)) + 'px + env(safe-area-inset-bottom, 0px))';
   if (subs) subs.style.bottom = up;
   /* ✍️ THE STEP CHIP IS LIFTED WITH THE SUBTITLES, and only a phone needs
      it: on a wide screen the chip stands in the right-hand corner and both
@@ -18550,7 +18630,8 @@ function snipStart() {
   }
   // On a phone the panel sits over the page; it is put away while the box is
   // drawn and comes back with the part in it (or as it was, on Cancel).
-  var narrow = window.matchMedia && window.matchMedia('(max-width: 760px)').matches;
+  var narrow = window.matchMedia && window.matchMedia('(max-width: 760px)').matches &&
+    !(typeof buddyDocked === 'function' && buddyDocked());
   var buddyWasOpen = !$('buddy').classList.contains('closed');
   var hideBuddy = narrow && buddyWasOpen;
   if (hideBuddy) $('buddy').classList.add('closed');
@@ -19840,7 +19921,7 @@ function tutorFocusReveal(id) {
   if (!p || !p.wrap || !p.wrap.scrollIntoView) return;
   // The mobile buddy covers most of the worksheet. Minimise its panel without
   // ending the voice session; the floating Live tutor button reopens controls.
-  if (window.innerWidth <= 900 && liveActive()) {
+  if ((typeof buddyCoversPage === 'function' ? buddyCoversPage() : window.innerWidth <= 900) && liveActive()) {
     $('buddy').classList.add('closed'); $('buddyFab').classList.remove('hidden');
     $('buddyFab').setAttribute('aria-expanded', 'false'); renderLiveTutor();
   }
@@ -20641,9 +20722,211 @@ function showView(v) {
   if (v === 'ws') fastTutorPrepareSoon();
 }
 
+/* =====================================================================
+   📐 THE APP FITS THE SCREEN — the panel docks, the keyboard is room (v1.93.0)
+
+   "In portrait mode the side bar where the assistant lives is cut off."
+   Three things, one for each way it could be:
+
+   • ▤ AN iPAD STANDING UP DOCKS THE PANEL UNDER THE PAGE (the CSS block of
+     the same name). `BUDDY_DOCK_Q` is the stylesheet's query, word for word,
+     and `buddyDocked()` the ONE place the script asks it. `buddyCoversPage()`
+     is what every "on a phone the panel sits over the page" rule asks now:
+     the phone's sheet covers the page, the docked panel does not, so a
+     worksheet opened on an iPad standing up opens WITH Chung GPT, a video
+     solution no longer shuts it, and Show page no longer hides it.
+   • ⌨ THE ON-SCREEN KEYBOARD IS TAKEN OFF THE HEIGHT. iPad Safari slides
+     the keyboard over the page rather than shrinking it, so the Ask box at
+     the foot of the panel was under the keyboard and the panel's tabs were
+     scrolled off the top to make room. `appFitSync` reads `visualViewport`
+     and sets `--app-h` (what can be seen) and `--kb` (what the keyboard
+     covers) on the root; `#app` is `--app-h` tall and the phone sheet stands
+     on `--kb`. Where the browser shrinks the page itself (Chrome on Android,
+     a laptop) the two agree and nothing is set, and a page pinch-zoomed by
+     the browser is left alone — its visual viewport is small because it is
+     ZOOMED, not because anything covers it.
+   • ↕ THE HANDLE SHARES THE HEIGHT OUT. `.buddyGrip` on the docked panel and
+     the phone sheet: drag it, or arrow keys on it. The share is remembered
+     per device and per layout (`BUDDY_H_KEY`), as a FRACTION, so it means
+     the same on an iPad mini and an iPad Pro. `--dock-h` (the docked panel's
+     height, 0 when closed) is what lifts the orb, the subtitles, the step
+     chip, the mic bar and the 🧩 / ✏️ boxes clear of it.
+
+   Every DOM call here is defensive: the harnesses run slices of this file
+   in a vm with a mock document, and callers outside this block ask
+   `typeof buddyCoversPage === 'function'` first.
+   ===================================================================== */
+var BUDDY_DOCK_Q = '(min-width: 641px) and (max-width: 1100px) and (orientation: portrait)';
+var BUDDY_H_KEY = 'polymath.tutorPanelH';
+var BUDDY_H_MIN = 170;           // px — the head, the tabs and two lines of a hint
+var BUDDY_PAGE_MIN = 120;        // px of worksheet a docked panel always leaves
+var BUDDY_SHEET_TOP = 40;        // px of page a phone sheet always leaves above it
+
+function buddyDocked() {
+  try { return !!(window.matchMedia && window.matchMedia(BUDDY_DOCK_Q).matches); } catch (e) { return false; }
+}
+/* True when an open panel sits OVER the worksheet — a phone's sheet. */
+function buddyCoversPage() {
+  var w = (typeof window !== 'undefined' && window.innerWidth) || 1200;
+  if (w > 900) return false;
+  return !buddyDocked();
+}
+function buddyLayoutName() {
+  if (buddyDocked()) return 'dock';
+  return buddyCoversPage() ? 'sheet' : 'side';
+}
+
+/* The share remembered for this layout, as a fraction, or null. */
+function buddyShareRead(kind) {
+  try {
+    var all = JSON.parse(localStorage.getItem(BUDDY_H_KEY) || '{}');
+    var f = Number(all && all[kind]);
+    return (f > 0.1 && f < 0.95) ? f : null;
+  } catch (e) { return null; }
+}
+function buddyShareWrite(kind, f) {
+  try {
+    var all = JSON.parse(localStorage.getItem(BUDDY_H_KEY) || '{}') || {};
+    all[kind] = Math.round(f * 1000) / 1000;
+    localStorage.setItem(BUDDY_H_KEY, JSON.stringify(all));
+  } catch (e) { /* a device that refuses storage still gets the default */ }
+}
+/* The height the panel's share is measured against: the worksheet area
+   when docked, the visible screen for the phone's sheet. */
+function buddyShareBase(kind) {
+  if (kind === 'dock') { var m = $('wsMain'); return (m && m.clientHeight) || 0; }
+  return appVisibleHeight();
+}
+/* Clamp a height in px to what this layout allows (pure but for the base). */
+function buddyClampPx(px, kind, base) {
+  var max = kind === 'dock' ? base - BUDDY_PAGE_MIN : base - BUDDY_SHEET_TOP;
+  var min = Math.min(BUDDY_H_MIN, Math.max(0, max));
+  return Math.round(Math.max(min, Math.min(max, px)));
+}
+/* Put the remembered share on the panel, or take any old one off. */
+function buddyShareApply() {
+  var b = $('buddy');
+  if (!b || !b.style) return;
+  var kind = buddyLayoutName();
+  var f = kind === 'side' ? null : buddyShareRead(kind);
+  if (f == null) { b.style.removeProperty('--buddy-h'); }
+  else {
+    var base = buddyShareBase(kind);
+    if (base > 0) b.style.setProperty('--buddy-h', buddyClampPx(f * base, kind, base) + 'px');
+  }
+  buddyDockSync();
+}
+/* `--dock-h`: the docked panel's height while it is open, else 0. */
+function buddyDockSync() {
+  var root = document.documentElement, b = $('buddy');
+  if (!root || !root.style || !b) return;
+  var h = (buddyDocked() && !b.classList.contains('closed')) ? (b.offsetHeight || 0) : 0;
+  root.style.setProperty('--dock-h', h + 'px');
+  if (typeof floatBoxLayout === 'function') { try { floatBoxLayout(); } catch (e) { /* the boxes may not exist yet */ } }
+}
+
+function appVisibleHeight() {
+  var vv = window.visualViewport;
+  return Math.round((vv && vv.height) || window.innerHeight || 0);
+}
+var _appFitRaf = 0;
+function appFitSync() {
+  _appFitRaf = 0;
+  var root = document.documentElement, vv = window.visualViewport;
+  if (!root || !root.style) return;
+  var inner = window.innerHeight || 0;
+  var zoomed = vv && vv.scale && Math.abs(vv.scale - 1) > 0.01;
+  var seen = vv ? Math.round(vv.height) : inner;
+  if (!vv || zoomed || !inner || inner - seen < 2) {
+    root.style.removeProperty('--app-h');
+    root.style.removeProperty('--kb');
+  } else {
+    root.style.setProperty('--app-h', seen + 'px');
+    root.style.setProperty('--kb', Math.max(0, Math.round(inner - seen - (vv.offsetTop || 0))) + 'px');
+    // Safari scrolled the whole page up to show the box being typed in; the
+    // app now fits above the keyboard, so put the page back where it was —
+    // otherwise the header and the panel's tabs stay scrolled off the top.
+    if ((window.scrollY || vv.offsetTop) && typeof window.scrollTo === 'function') {
+      try { window.scrollTo(0, 0); } catch (e) { /* nothing to undo */ }
+    }
+  }
+  buddyShareApply();
+}
+function appFitSoon() {
+  if (_appFitRaf) return;
+  _appFitRaf = (window.requestAnimationFrame || function (f) { return setTimeout(f, 16); })(appFitSync);
+}
+
+/* ↕ The handle. A pointer drag, or the arrow keys. */
+function buddyGripBind() {
+  var grip = $('buddyGrip'), b = $('buddy');
+  if (!grip || !b || grip._bound) return;
+  grip._bound = true;
+  var drag = null;
+  function setPx(px, kind) {
+    var base = buddyShareBase(kind);
+    if (!(base > 0)) return null;
+    var h = buddyClampPx(px, kind, base);
+    b.style.setProperty('--buddy-h', h + 'px');
+    buddyDockSync();
+    return h / base;
+  }
+  grip.addEventListener('pointerdown', function (e) {
+    var kind = buddyLayoutName();
+    if (kind === 'side' || (e.button && e.button !== 0)) return;
+    e.preventDefault();
+    drag = { id: e.pointerId, y: e.clientY, h: b.offsetHeight, kind: kind, f: null };
+    grip.classList.add('dragging');
+    try { grip.setPointerCapture(e.pointerId); } catch (_) { /* fine without */ }
+  });
+  grip.addEventListener('pointermove', function (e) {
+    if (!drag || e.pointerId !== drag.id) return;
+    e.preventDefault();
+    var f = setPx(drag.h - (e.clientY - drag.y), drag.kind);
+    if (f != null) drag.f = f;
+  });
+  function end(e) {
+    if (!drag || (e && e.pointerId !== drag.id)) return;
+    if (drag.f != null) buddyShareWrite(drag.kind, drag.f);
+    drag = null;
+    grip.classList.remove('dragging');
+  }
+  grip.addEventListener('pointerup', end);
+  grip.addEventListener('pointercancel', end);
+  grip.addEventListener('lostpointercapture', end);
+  grip.addEventListener('keydown', function (e) {
+    var kind = buddyLayoutName();
+    if (kind === 'side') return;
+    var dir = e.key === 'ArrowUp' ? 1 : e.key === 'ArrowDown' ? -1 : 0;
+    if (!dir) return;
+    e.preventDefault();
+    var f = setPx(b.offsetHeight + dir * Math.round(buddyShareBase(kind) * 0.06), kind);
+    if (f != null) buddyShareWrite(kind, f);
+  });
+}
+
+(function () {
+  if (typeof document === 'undefined' || typeof document.getElementById !== 'function' || typeof window === 'undefined') return;
+  if (!document.getElementById('buddy')) return;
+  buddyGripBind();
+  window.addEventListener('resize', appFitSoon);
+  window.addEventListener('orientationchange', appFitSoon);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', appFitSoon);
+    window.visualViewport.addEventListener('scroll', appFitSoon);
+  }
+  // The panel opens, closes and is resized by things other than the handle
+  // (a tab with a taller foot, the keyboard); the floats follow it.
+  if (typeof ResizeObserver === 'function') {
+    try { new ResizeObserver(function () { buddyDockSync(); }).observe(document.getElementById('buddy')); } catch (e) { /* the share still applies */ }
+  }
+  appFitSync();
+})();
+
 /* ---- The buddy panel ---- */
 function openBuddy(pane) {
   $('buddy').classList.remove('closed');
+  if (typeof buddyShareApply === 'function') buddyShareApply();
   $('buddyFab').classList.add('hidden');
   $('buddyFab').setAttribute('aria-expanded', 'true');
   if (pane) showBuddyPane(pane);
@@ -20656,7 +20939,11 @@ function closeBuddy() {
   $('buddy').classList.add('closed');
   $('buddyFab').classList.remove('hidden');
   $('buddyFab').setAttribute('aria-expanded', 'false');
+  if (typeof buddyDockSync === 'function') buddyDockSync();
   if (returnFocus && view === 'ws') $('buddyFab').focus({ preventScroll: true });
+}
+function touchOnlyDevice() {
+  try { return !!(window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches); } catch (e) { return false; }
 }
 function showBuddyPane(pane) {
   if (pane !== 'live') stopLiveTutor();
@@ -20669,7 +20956,9 @@ function showBuddyPane(pane) {
     p.classList.toggle('on', p.id === 'pane-' + pane);
   });
   renderBuddyFoot();
-  if (pane === 'chat') setTimeout(function () { var t = $('chatInput'); if (t) t.focus(); }, 40);
+  // Not on a touchscreen with no mouse: there the focus brings the on-screen
+  // keyboard up over the panel just for looking at the Ask tab.
+  if (pane === 'chat' && !touchOnlyDevice()) setTimeout(function () { var t = $('chatInput'); if (t) t.focus(); }, 40);
 }
 
 /* The foot changes with the tab, because each tab has exactly one thing you
@@ -27763,7 +28052,7 @@ async function openWorksheet(id) {
     });
     // 🎬 Its video solutions — and, on a copy, the teacher's list followed live.
     lessonVideosOpen(w);
-    if (window.innerWidth > 900) openBuddy('hints'); else closeBuddy();
+    if (!buddyCoversPage()) openBuddy('hints'); else closeBuddy();
     // 🔬 An old Science-portal photograph says so — after the "Opening…" toast has had its turn.
     if (cerPhotoIsOld(w)) setTimeout(function () { if (currentDocId === id) toast(CER_PHOTO_OLD_MSG, 14000); }, 1800);
     // 🕒 WHEN IT WAS LAST OPENED, for the recently-opened shelf. `updatedAt`
@@ -28555,7 +28844,7 @@ async function uploadOne(file, s, keyFile, solo) {
   // nothing. The batch goes back to the shelf when the last one is done.
   showView('ws');
   if (solo) {
-    if (window.innerWidth > 900) openBuddy('hints'); else closeBuddy();
+    if (!buddyCoversPage()) openBuddy('hints'); else closeBuddy();
     loadWorksheets();
     toast('Ready — write your answers on it, and tap 💡 when you get stuck.', 5000);
   }
@@ -32958,7 +33247,7 @@ async function lessonPlay(a) {
     document.body.classList.add('lessonPlaying');
     // On a phone the buddy is a sheet OVER the page, and the page is what a
     // video solution is about.
-    if (window.innerWidth <= 900 && !$('buddy').classList.contains('closed')) closeBuddy();
+    if ((typeof buddyCoversPage === 'function' ? buddyCoversPage() : window.innerWidth <= 900) && !$('buddy').classList.contains('closed')) closeBuddy();
     // A video lesson plays in its own window over the page, and its video IS
     // the clock: the audio bar would be a second copy of the same sound.
     var media = lessonMedia(); media.src = mediaUrl;

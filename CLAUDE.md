@@ -2,6 +2,31 @@
 
 Guidance for Claude when working in this repo.
 
+## 📐 THE APP FITS THE SCREEN — the panel docks on an iPad standing up, and the keyboard is room (v1.93.0)
+
+Search `📐 THE APP FITS THE SCREEN` (script, just above `/* ---- The buddy panel ---- */`) and `▤ AN iPAD STANDING UP`
+(stylesheet, after the ≤900px `#buddy` sheet). Zhi Kai: "in portrait mode the side bar where the assistant lives is cut off".
+- **Three layouts, one name each** (`buddyLayoutName()`): `side` (wider than 900px, or 901–1100 lying down: the 400px panel
+  beside the page), `dock` (641–1100px AND portrait: the panel is IN the layout under the page, `#wsMain` a column) and
+  `sheet` (a phone: fixed over the page). `BUDDY_DOCK_Q` is the stylesheet's query word for word; `buddyDocked()` is the ONE
+  place the script asks it. **`buddyCoversPage()` replaced every `innerWidth <= 900` / `> 900`** that meant "the panel sits
+  over the page": opening a worksheet (both doors), a video solution, Show page (`tutorFocusReveal`). Callers in blocks the
+  harnesses lift alone ask `typeof buddyCoversPage === 'function'` first. Snip still closes a ≤760px panel, never a docked one.
+- **⌨ The keyboard:** iPad Safari slides the keyboard OVER the page and scrolls it up, so the Ask box was under the keyboard
+  and the tabs off the top. `appFitSync` (visualViewport resize/scroll, resize, orientationchange) sets `--app-h` (what can be
+  seen) and `--kb` (what the keyboard covers) on `<html>` and scrolls the window back to 0; `#app` is `--app-h` tall and the
+  sheet stands on `--kb`. Nothing is set where the browser shrinks the page itself, or when the visual viewport is ZOOMED
+  (`scale ≠ 1`). Untested on a real iPad at the time — the browser check fakes `visualViewport`.
+- **↕ `.buddyGrip`** (dock + sheet only): pointer drag or ↑/↓, clamped by `buddyClampPx` (`BUDDY_PAGE_MIN` of page always
+  left docked, `BUDDY_SHEET_TOP` above a sheet), remembered per layout as a FRACTION in `polymath.tutorPanelH` and put back
+  by `buddyShareApply` (on open, on fit). `--buddy-h` on `#buddy` is the height; `--dock-h` on `<html>` the docked panel's
+  open height (0 closed; `buddyDockSync`, a ResizeObserver) — the orb, subtitles, step chip, mic bar, 🧩 and ✏️ stand on it
+  (`body #id` rules, because each box's own phone rule comes later in the sheet; `floatBoxLayout` adds it when docked).
+- Also: html/body `overscroll-behavior: none` and the viewer + panel body `contain` (no rubber-banding the whole app), the
+  viewer `-webkit-touch-callout: none`, the Ask tab no longer focuses the box on a touch-only device (the keyboard popped up
+  just for looking), `.zoomTip` hidden up to 1100px, `#appsBtn` nowrap and a signed-in header shows the logo alone at 721–900.
+- Check: `node tools/panel-fit-browser-check.mjs` (in CI; `PANEL_SCREENSHOTS=dir`).
+
 ## 📚 PICK A PAPER FROM SG EXAM'S LIST (v1.92.0)
 
 Search `📚 PICK A PAPER FROM SG EXAM'S LIST`. `papers/sgexam.json` (`{source, fetchedAt, count, papers: [{t,u,y,l,s,sl,e,sc}]}`)
