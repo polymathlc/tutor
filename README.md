@@ -17,6 +17,18 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.93.0 — 📐 Chung GPT fits an iPad standing up, and the keyboard never hides the Ask box
+
+- **On an iPad in portrait, Chung GPT now sits under the worksheet instead of over it.** The page stays on top and the
+  panel below, both on screen at once, so you can read a hint and see the question it is about. A worksheet opens with
+  the panel already up. Drag the little bar at the top of the panel to make it taller or shorter; the iPad remembers.
+  Lying down, and on a laptop, it is beside the page as before; on a phone it is still the sheet from the bottom (which
+  now has the same bar to drag).
+- **The on-screen keyboard no longer covers the Ask box** or pushes the panel's tabs off the top of the screen: the app
+  now fits in the part of the screen the keyboard leaves.
+- Scrolling to the end of the page or of a hint list no longer drags the whole app with it, the Ask tab no longer pops
+  the keyboard up just for being opened on a tablet, and a student's top bar on an iPad in portrait is one tidy row again.
+
 ## v1.92.0 — 📚 Pick a paper from SG Exam's list, no copying links
 
 🔎 Find exam paper now lists SG Exam's papers inside Study Buddy: choose the level, subject and year

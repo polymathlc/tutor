@@ -330,7 +330,7 @@ ok('every paper is OPENED, batch or not',
    /\/\/ EVERY paper is opened, batch or not[\s\S]{0,320}showView\('ws'\);\n\s*if \(solo\) \{/.test(html),
    'the read rasterises the pages, and a hidden view fits them to a width of nothing');
 ok('the buddy and the "Ready" line are the single upload’s alone',
-   /if \(solo\) \{\n\s*if \(window\.innerWidth > 900\) openBuddy\('hints'\); else closeBuddy\(\);/.test(html));
+   /if \(solo\) \{\n\s*if \(!buddyCoversPage\(\)\) openBuddy\('hints'\); else closeBuddy\(\);/.test(html));
 
 ok('the dialog says a pile is fine',
    /hold Ctrl \(⌘ on a Mac\) and pick as many as you like/.test(html));
