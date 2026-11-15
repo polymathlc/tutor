@@ -110,6 +110,8 @@ async function run(label, opts) {
   ok('SG Exam opens in a new tab, inside the tap', !!popup && /sgexam\.com/.test(popup.url()), popup ? popup.url() : 'no new tab');
   ok('…and the upload dialog is open here', await page.locator('#uploadModal.open').count() === 1);
   ok('…with the 🔎 box showing', await page.locator('#upFind').isVisible());
+  ok('…with no list, the paste road stays up front and the rest is under Advanced options',
+    await page.locator('#upLink').isVisible() && !(await page.locator('#upName').isVisible()));
   ok('…and an Open SG Exam link that opens a new tab', await page.locator('#upFindSites a[target=_blank][href="https://sgexam.com/"]').count() === 1);
   ok('…and no error on the page', errors.length === 0, errors.join(' | '));
 
@@ -246,6 +248,16 @@ async function runList(label, opts) {
   ok('with the list in hand, 🔎 opens NO new tab', !popup, popup ? popup.url() : '');
   ok('…the dialog is open with the picker showing', await page.locator('#uploadModal.open').count() === 1 && await page.locator('#upPick').isVisible());
   ok('…and the paste road is folded away', !(await page.evaluate(() => document.getElementById('upPaste').open)));
+  // ⚙ (v1.94.0) The simple view: the list and nothing else.
+  ok('…titled Find an exam paper', /Find an exam paper/.test(await page.locator('#upTitle').textContent()));
+  ok('…everything else is folded under ⚙ Advanced options',
+    await page.locator('#upAdvHead').isVisible() && !(await page.evaluate(() => document.getElementById('upAdv').open)) &&
+    !(await page.locator('#upName').isVisible()) && !(await page.locator('#upLink').isVisible()) &&
+    !(await page.locator('#upPickYear').isVisible()) && !(await page.locator('#upGradeGrid').isVisible()));
+  ok('…and the upload button waits there too', !(await page.locator('#upGo').isVisible()) &&
+    (await page.locator('#upCancel').textContent()) === 'Close');
+  const advBox = await page.locator('#upAdvHead').boundingBox();
+  ok('…Advanced options is finger-sized', advBox && advBox.height >= 44, advBox && ('height ' + advBox.height));
   ok('it starts on the student’s own level and subject',
     (await page.inputValue('#upPickLevel')) === 'P5' && (await page.inputValue('#upPickSubject')) === 'Maths');
   const rows = await page.locator('#upPickList .upPickRow').count();
@@ -253,6 +265,14 @@ async function runList(label, opts) {
   ok('…newest first, under year headings',
     (await page.locator('#upPickList .upPickYear').first().textContent()) === '2026' &&
     (await page.locator('#upPickList .upPickYear').count()) === 3);
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, label.replace(/\W+/g, '-') + '-simple.png') });
+  await tap('#upAdvHead');
+  // The details' toggle event is a task of its own: wait for the foot to follow.
+  await page.waitForFunction(() => !document.getElementById('upGo').classList.contains('hidden'), null, { timeout: 2000 }).catch(() => {});
+  ok('opening Advanced options shows the year, the link box and the upload',
+    await page.locator('#upPickYear').isVisible() && await page.locator('#upPaste').isVisible() &&
+    await page.locator('#upName').isVisible() && await page.locator('#upGo').isVisible() &&
+    (await page.locator('#upCancel').textContent()) === 'Cancel');
   const sz = await page.evaluate(() => {
     const r = document.querySelector('#upPickList .upPickRow').getBoundingClientRect();
     const card = document.querySelector('#uploadModal .modalCard');
@@ -290,6 +310,11 @@ async function runList(label, opts) {
   ok('tapping a paper asks for THAT link, once', asked.length === 1 && JSON.parse(asked[0]).url === want, asked.join(' | '));
   const ups = await page.evaluate(() => window.__uploads);
   ok('…and it is uploaded as a named PDF', ups.length === 1 && ups[0].name === '2025 P5 Maths SA2 Ai Tong.pdf' && ups[0].type === 'application/pdf', JSON.stringify(ups));
+  // ⬆ Upload is the full dialog, as before: no Advanced heading, everything open.
+  await page.evaluate(() => openUploadModal());
+  ok('⬆ Upload still shows the whole dialog, with no Advanced heading',
+    !(await page.locator('#upAdvHead').isVisible()) && await page.locator('#upName').isVisible() &&
+    await page.locator('#upGo').isVisible() && /Upload a worksheet/.test(await page.locator('#upTitle').textContent()));
   ok('no page errors along the way', errors.length === 0, errors.join(' | '));
   await ctx.close();
 }

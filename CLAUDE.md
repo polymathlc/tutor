@@ -2,7 +2,7 @@
 
 Guidance for Claude when working in this repo.
 
-## ⚡ QUICK PRACTICE — a few questions from the mistake book, picked for you (v1.94.0)
+## ⚡ QUICK PRACTICE — a few questions from the mistake book, picked for you (v1.95.0)
 
 Search `⚡ QUICK PRACTICE` (script, just above `pracCurrent`; stylesheet after `.progTip`). Zhi Kai: "add a quick
 practice button to practice x number of questions from the students mistake list".
@@ -20,6 +20,17 @@ practice button to practice x number of questions from the students mistake list
   `polymath.tutorQuickPref`. Usage event `quickpractice`.
 - Checks: `node --test tools/quick-practice-tests.mjs`, `node tools/quick-practice-browser-check.mjs` (in CI;
   `QP_SCREENSHOTS=dir`).
+
+## ⚙ FIND EXAM PAPER IS THE LIST, AND EVERYTHING ELSE IS ADVANCED (v1.94.0)
+
+Search `⚙ ADVANCED OPTIONS`. `openUploadModal('find')` (only `openFindPaper` passes it; ⬆ Upload hands over its click
+event = `'upload'`) sets `upMode`, and `upModeApply()` draws the dialog: in Find with the list loaded it is titled
+🔎 Find an exam paper and shows `#upPick` (level, subject, search) only; `#upAdv` (a `<details>`, ⚙ Advanced options)
+holds the year (`#upPickYearWrap`), the paste road (`#upPaste`), the upload from this device and every setting, folded.
+`upGoSync` (on `#upAdv`'s `toggle`) hides ⬆ Choose the PDFs and says Close while it is folded. With NO list the paste
+road is moved back into `#upFind` (it is then the only way in) and Advanced stays folded; ⬆ Upload opens Advanced with
+no heading (`.upAdvPlain`), so that dialog is as before. `#upLinkMsg` lives in `#upFind`, so a picked row's words show
+without opening anything. The 📋 nudge stays `#upFind.nudge` (CSS also reaches `~ .upAdv`). Checks: the browser check.
 
 ## 📐 THE APP FITS THE SCREEN — the panel docks on an iPad standing up, and the keyboard is room (v1.93.0)
 

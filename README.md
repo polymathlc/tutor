@@ -17,7 +17,7 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
-## v1.94.0 — ⚡ Quick practice: a few questions from your mistake book, picked for you
+## v1.95.0 — ⚡ Quick practice: a few questions from your mistake book, picked for you
 
 - **A new gold ⚡ Quick practice button** sits on the home screen beside 📈 My progress, and first in the
   📕 mistake book's bar. Tap it, choose how many questions (5, 10, 15, 20, or type your own number) and,
@@ -30,6 +30,16 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
   question you get right moves to Sorted. At the end, **⚡ N more** starts another round of the same size
   with fresh questions.
 - The app remembers your number and subject for next time. What was practised when is kept on the device.
+
+## v1.94.0 — ⚙ Find exam paper is just the list
+
+- 🔎 **Find exam paper** now opens on the paper list alone: your level and subject are already chosen, there is a
+  search box, and you tap ⬇ Bring in on the paper you want.
+- Everything else is folded under **⚙ Advanced options**: the year filter, pasting a link from a website, uploading
+  a PDF from this device, and the settings (name, help level, answer key, shelf). The upload button appears when the
+  section is opened.
+- If the list could not load, the paste-a-link box stays up front, because it is then the only way in.
+- ⬆ **Upload a worksheet** is unchanged.
 
 ## v1.93.0 — 📐 Chung GPT fits an iPad standing up, and the keyboard never hides the Ask box
 

@@ -11,10 +11,10 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.94.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.94.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.94.0">
-<link rel="stylesheet" href="model-studio.css?v=1.94.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.95.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.95.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.95.0">
+<link rel="stylesheet" href="model-studio.css?v=1.95.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -1636,7 +1636,7 @@
   }
   .progPractise { border-color: #C9A227; background: #FFF6D8; font-weight: 600; }
   .progTip { margin: 2px 0 8px; }
-  /* ⚡ QUICK PRACTICE (v1.94.0). The button is gold, the colour the
+  /* ⚡ QUICK PRACTICE (v1.95.0). The button is gold, the colour the
      practise buttons already wear, so it reads as "practise" at a glance.
      Every target in the window is at least 44px tall: it is pressed with a
      finger on an iPad. */
@@ -2525,7 +2525,7 @@
   .upFindMsg { margin-top: 8px; font-size: 0.84rem; min-height: 1.2em; color: var(--ink-soft); line-height: 1.5; }
   .upFindMsg.bad { color: var(--danger); }
   .upFindMsg.good { color: #2E7D32; }
-  .upFind.nudge #upLinkPaste { animation: upFindNudge 1.2s ease 2; }
+  .upFind.nudge #upLinkPaste, .upFind.nudge ~ .upAdv #upLinkPaste { animation: upFindNudge 1.2s ease 2; }
   @keyframes upFindNudge { 0%, 100% { transform: none; } 30% { transform: scale(1.08); } 60% { transform: scale(0.98); } }
   .upOr { display: flex; align-items: center; gap: 12px; margin: 18px 0 2px; color: var(--ink-faint); font-size: 0.8rem; font-weight: 700; }
   .upOr::before, .upOr::after { content: ''; flex: 1; height: 1px; background: var(--line); }
@@ -2533,7 +2533,22 @@
   @media (max-width: 600px) {
     .upFindRow .btn { flex: 1 1 auto; }
   }
-  @media (prefers-reduced-motion: reduce) { .upFind.nudge #upLinkPaste { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .upFind.nudge #upLinkPaste, .upFind.nudge ~ .upAdv #upLinkPaste { animation: none; } }
+  /* ⚙ ADVANCED OPTIONS (v1.94.0). A heading only from 🔎 Find; from ⬆ Upload
+     the section is open with no heading (.upAdvPlain), as the dialog was. */
+  .upAdv { margin-top: 4px; }
+  .upAdv > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;
+    min-height: 48px; padding: 0 14px; border: 1px solid var(--line); border-radius: 12px;
+    font-weight: 600; font-size: 0.92rem; color: var(--ink-soft); background: #fff; }
+  .upAdv > summary::-webkit-details-marker { display: none; }
+  .upAdv > summary::after { content: '▾'; margin-left: auto; transition: transform .15s; }
+  .upAdv[open] > summary::after { transform: rotate(180deg); }
+  .upAdv[open] > summary { margin-bottom: 14px; }
+  .upAdv.upAdvPlain > summary { display: none; }
+  .upAdvBody > .upPickYearWrap { margin-bottom: 14px; }
+  .upPickYearWrap select { min-height: 44px; font-size: 16px; }
+  #uploadModal.upFindMode .upFind { margin-bottom: 14px; }
+  @media (prefers-reduced-motion: reduce) { .upAdv > summary::after { transition: none; } }
   /* 📚 PICK A PAPER FROM THE SG EXAM LIST (v1.92.0) */
   .upPick { margin: 6px 0 14px; }
   .upPickFilters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
@@ -2559,7 +2574,7 @@
   .upPickMore { margin-top: 8px; min-height: 44px; }
   .upPaste > summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; min-height: 44px; display: flex; align-items: center; }
   .upPaste[open] > summary { margin-bottom: 4px; }
-  .upPaste:not([open]) + .upFindMsg:empty { display: none; }
+  .upFindMsg:empty { display: none; }
 </style>
 <link rel="stylesheet" href="adventure.css?v=1.54.0">
 <link rel="stylesheet" href="adventure-shell.css?v=1.54.0">
@@ -2891,13 +2906,13 @@
 <!-- ============ Upload dialog ============ -->
 <div class="modalBack" id="uploadModal">
   <div class="modalCard">
-    <div class="modalHead"><h2>Upload a worksheet</h2></div>
+    <div class="modalHead"><h2 id="upTitle">Upload a worksheet</h2></div>
     <div class="modalBody">
       <!-- 🔎 FIND AN EXAM PAPER (v1.91.0): a paper from a website, by its
            link, with no download. The settings below (name, level,
            subject, help, key, shelf) apply to it exactly as to a file. -->
       <div class="upFind" id="upFind">
-        <h3>🔎 Bring in an exam paper from a website</h3>
+        <h3 id="upFindHead">🔎 Bring in an exam paper from a website</h3>
         <!-- 📚 (v1.92.0) SG Exam's papers, listed here: pick one and it comes in.
              Hidden until papers/sgexam.json has loaded; the paste road below
              is then folded away, and open again whenever the list is missing. -->
@@ -2906,13 +2921,25 @@
           <div class="upPickFilters">
             <select id="upPickLevel" aria-label="Level"></select>
             <select id="upPickSubject" aria-label="Subject"></select>
-            <select id="upPickYear" aria-label="Year"></select>
             <input type="search" id="upPickSearch" placeholder="Search a school or exam" aria-label="Search a school or exam"
                    autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
           </div>
           <div class="upPickCount" id="upPickCount" role="status" aria-live="polite"></div>
           <div class="upPickList" id="upPickList"></div>
           <button class="btn upPickMore hidden" id="upPickMore" type="button">Show more</button>
+        </div>
+        <div class="upFindMsg" id="upLinkMsg" role="status" aria-live="polite"></div>
+      </div>
+      <!-- ⚙ ADVANCED OPTIONS (v1.94.0): from 🔎 Find exam paper a student sees
+           the paper list and nothing else; the year, the paste road, the
+           upload from this device and every setting fold in here. From ⬆
+           Upload it is open with no heading, so that dialog is unchanged. -->
+      <details class="upAdv" id="upAdv" open>
+        <summary id="upAdvHead">⚙ Advanced options</summary>
+        <div class="upAdvBody">
+        <div class="field hidden upPickYearWrap" id="upPickYearWrap">
+          <label for="upPickYear">Year of the paper</label>
+          <select id="upPickYear"></select>
         </div>
         <details class="upPaste" id="upPaste" open>
         <summary id="upPasteHead">Or paste a link from a website</summary>
@@ -2931,8 +2958,6 @@
           <button class="btn btnPrimary" id="upLinkGo" type="button">⬇ Bring it in</button>
         </div>
         </details>
-        <div class="upFindMsg" id="upLinkMsg" role="status" aria-live="polite"></div>
-      </div>
       <div class="upOr">or upload a PDF from this device</div>
       <p class="sub">Pick the PDF — or <b>hold Ctrl (⌘ on a Mac) and pick as many as you like</b> — then say how much
         help you would like. You can change the help level any time.</p>
@@ -2998,6 +3023,8 @@
           </span>
         </label>
       </div>
+        </div>
+      </details>
     </div>
     <div class="modalFoot">
       <button class="btn" id="upCancel">Cancel</button>
@@ -3267,7 +3294,7 @@
   </div>
 </div>
 
-<!-- ⚡ QUICK PRACTICE (v1.94.0): how many questions, from which subject, then
+<!-- ⚡ QUICK PRACTICE (v1.95.0): how many questions, from which subject, then
      straight into ✏️ Practise with questions picked from the mistake book.
      Painted by qpRender(). -->
 <div class="modalBack" id="qpModal">
@@ -3655,11 +3682,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.94.0"></script>
-<script src="lo-marks.js?v=1.94.0"></script>
-<script src="lo-practice.js?v=1.94.0"></script>
-<script src="cer-mcq.js?v=1.94.0"></script>
-<script src="model-studio.js?v=1.94.0"></script>
+<script src="concept-tags.js?v=1.95.0"></script>
+<script src="lo-marks.js?v=1.95.0"></script>
+<script src="lo-practice.js?v=1.95.0"></script>
+<script src="cer-mcq.js?v=1.95.0"></script>
+<script src="model-studio.js?v=1.95.0"></script>
 <script>
 'use strict';
 
@@ -3756,7 +3783,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.94.0';
+var APP_VERSION = 'v1.95.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -24107,7 +24134,7 @@ function pracClose() {
   renderMistakes();
 }
 /* =====================================================================
-   ⚡ QUICK PRACTICE — a few questions from the book, picked for you (v1.94.0)
+   ⚡ QUICK PRACTICE — a few questions from the book, picked for you (v1.95.0)
    ---------------------------------------------------------------------
    Zhi Kai: "add a quick practice button to practice x number of questions
    from the students mistake list". ✏️ Practise all is every card on
@@ -29045,8 +29072,11 @@ function fillGradeGrid(gridId, current, onPick) {
    Storage path is the worksheet's own id. */
 var upKeyFile = null;
 
-function openUploadModal() {
+function openUploadModal(mode) {
   if (!currentUser) { signIn(); return; }
+  // ⚙ (v1.94.0) 'find' = opened from 🔎 Find exam paper; anything else (the
+  // ⬆ Upload button hands over its click event) is the full upload dialog.
+  upMode = mode === 'find' ? 'find' : 'upload';
   $('upName').value = '';
   // A worksheet tagged with a level the student is not is a worksheet that
   // vanishes from their own list the moment it is saved — so the level is
@@ -29103,7 +29133,45 @@ function openUploadModal() {
   $('upShelfWrap').classList.toggle('hidden', !canShelve);
   fillGradeGrid('upGradeGrid', upGrade, function (k) { upGrade = k; });
   if (typeof paperReset === 'function') paperReset();   // 🔎 v1.91.0
+  upModeApply();
   $('uploadModal').classList.add('open');
+}
+
+/* ⚙ ADVANCED OPTIONS (v1.94.0). From 🔎 Find exam paper the dialog is the
+   paper list (level, subject, search) and nothing else: the year, the
+   paste-a-link road, the upload from this device and every setting fold
+   under ⚙ Advanced options. With no list to show (it failed to load) the
+   section opens, because the paste road is then the only way in. From ⬆
+   Upload the section is open with no heading: that dialog is unchanged. */
+var upMode = 'upload';
+function upModeApply() {
+  var find = upMode === 'find';
+  var listed = typeof paperListReady === 'function' && paperListReady();
+  var modal = $('uploadModal'), adv = $('upAdv');
+  if (modal) modal.classList.toggle('upFindMode', find);
+  if ($('upTitle')) $('upTitle').textContent = find ? '🔎 Find an exam paper' : 'Upload a worksheet';
+  if ($('upFindHead')) {
+    $('upFindHead').textContent = (find && listed) ? 'Pick your paper' : '🔎 Bring in an exam paper from a website';
+  }
+  // The paste road stands up front, in the 🔎 box, only while there is no
+  // list: it is then the only way in. With the list it is an advanced option.
+  var paste = $('upPaste'), msg = $('upLinkMsg'), year = $('upPickYearWrap');
+  if (paste && adv && msg && year) {
+    if (listed) { if (paste.parentNode !== year.parentNode) year.parentNode.insertBefore(paste, year.nextSibling); }
+    else if (paste.parentNode !== msg.parentNode) msg.parentNode.insertBefore(paste, msg);
+  }
+  if (adv) {
+    adv.classList.toggle('upAdvPlain', !find);
+    adv.open = !find;
+  }
+  upGoSync();
+}
+/* ⬆ Choose the PDFs belongs to the upload half, so in Find it shows only
+   while ⚙ Advanced options is open. */
+function upGoSync() {
+  var adv = $('upAdv');
+  if ($('upGo')) $('upGo').classList.toggle('hidden', upMode === 'find' && !!adv && !adv.open);
+  if ($('upCancel')) $('upCancel').textContent = (upMode === 'find' && adv && !adv.open) ? 'Close' : 'Cancel';
 }
 
 /* 🗂🎓 WHICH SHELVES THIS PILE MAY GO ON, narrowed by the class chosen in
@@ -30822,7 +30890,7 @@ var USAGE_EVENTS = {
   consultAnswer:   { label: 'Answered a question with a recording', count: 'answered' },
   // 🔎 Brought a paper in from a website by its link (v1.91.0).
   paperlink: { label: 'Brought in a paper by its link', count: 'paperlinks' },
-  // ⚡ Started a quick practice from the mistake book (v1.94.0).
+  // ⚡ Started a quick practice from the mistake book (v1.95.0).
   quickpractice: { label: 'Started a quick practice', count: 'quickpractice' }
 };
 function usageLabel(key) {
@@ -35763,6 +35831,7 @@ $('setAllBtn').addEventListener('click', setAllWorksheets);
 $('assignToggle').addEventListener('click', toggleAssignOpen);
 $('upCancel').addEventListener('click', function () { $('uploadModal').classList.remove('open'); });
 $('upGo').addEventListener('click', function () { $('fileInput').click(); });
+$('upAdv').addEventListener('toggle', upGoSync);   // ⚙ v1.94.0
 $('upKeyBtn').addEventListener('click', function () { $('upKeyInput').click(); });
 $('upKeyInput').addEventListener('change', function (e) {
   var f = e.target.files && e.target.files[0];
@@ -35904,6 +35973,8 @@ function paperOnReturn() {
   if (!$('uploadModal') || !$('uploadModal').classList.contains('open')) return;
   if (document.visibilityState && document.visibilityState !== 'visible') return;
   if ($('upLink') && $('upLink').value.trim()) return;
+  var adv = $('upAdv');
+  if (adv && $('upPaste') && adv.contains($('upPaste')) && !adv.open) { adv.open = true; upGoSync(); }
   var f = $('upFind');
   if (f) {
     f.classList.remove('nudge');
@@ -35923,13 +35994,13 @@ function openFindPaper() {
   var site = PAPER_SITES[0];
   // 📚 With SG Exam's list in hand the paper is picked HERE, so no new tab.
   if (paperListReady()) {
-    openUploadModal();
+    openUploadModal('find');
     try { $('upFind').scrollIntoView({ block: 'start' }); } catch (e) { /* old Safari */ }
     return;
   }
   var w = null;
   try { w = window.open(site.url, '_blank', 'noopener'); } catch (e) { w = null; }
-  openUploadModal();
+  openUploadModal('find');
   if (!$('uploadModal').classList.contains('open')) return;
   paperArmReturn();
   // `noopener` makes window.open return null even when it worked, so a null
@@ -36145,14 +36216,18 @@ function paperPickPaint(fresh) {
   if (!box) return;
   if (!paperListReady()) {
     box.classList.add('hidden');
+    if ($('upPickYearWrap')) $('upPickYearWrap').classList.add('hidden');
     if (paste) paste.open = true;
     return;
   }
   box.classList.remove('hidden');
+  if ($('upPickYearWrap')) $('upPickYearWrap').classList.remove('hidden');
   if (fresh) {
     paperPick = paperPickDefaults();
     if (paste) paste.open = false;
     if ($('upPickSearch')) $('upPickSearch').value = '';
+    // ⚙ The list has arrived: Find folds back to the simple view.
+    if (typeof upModeApply === 'function') upModeApply();
   }
   var levels = [['', 'All levels']];
   for (var n = 6; n >= 1; n--) levels.push(['P' + n, 'P' + n]);
