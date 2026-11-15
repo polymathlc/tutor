@@ -77,6 +77,10 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/cer-mcq-browser-check.mjs
+      - name: Check Find exam paper brings a paper in by its link, on an iPad and a phone
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/find-paper-browser-check.mjs
       - name: Check the toolbar scroll and zoom buttons, and a broad fingertip still scrolls
         env:
           PW: ./node_modules/playwright/index.mjs

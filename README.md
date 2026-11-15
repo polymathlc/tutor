@@ -17,6 +17,17 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.91.0 — 🔎 Find exam paper: bring a paper in by its link, no downloading
+
+**🔎 Find exam paper** (beside ⬆️ Upload a worksheet) opens SG Exam in a new tab and the upload dialog here at the
+same time. Tap a paper on SG Exam, copy its link (the page's address, or press and hold **Download Paper** and choose
+**Copy Link**), come back, tap **📋 Paste link** and **⬇ Bring it in**. Study Buddy fetches that one PDF and uploads it
+exactly as if you had picked the file, with the dialog's name, help level, answer key and shelf. A Google Drive or
+Google Docs link to a PDF works the same way. Made for the iPad first: big buttons, no zooming, and the dialog points
+at 📋 when you come back to the tab. Other sites are not fetched (download and upload those as before), a private
+Drive file is said to be private, and nothing is fetched until you press Bring it in. The fetching is done by the new
+`studyBuddyPaper` function (`functions/paper-fetch-service.js`).
+
 ## v1.88.0 — ✏️ The model suite: draw a bar model and put it on the page
 
 The **Model suite** button on the worksheet toolbar (the three coloured bars, beside 🖱️) opens Ans Key's bar-model

@@ -2,6 +2,24 @@
 
 Guidance for Claude when working in this repo.
 
+## 🔎 FIND AN EXAM PAPER — a paper in by its link, no download (v1.91.0)
+
+Search `🔎 FIND AN EXAM PAPER`. `#findPaperBtn` (home, beside Upload) → `openFindPaper()` calls `window.open(SG Exam)`
+FIRST (inside the tap, or iPad Safari blocks it) and then `openUploadModal()`, whose `#upFind` box (`paperReset` on
+every open) holds 🌐 site links (`PAPER_SITES`), `#upLink`, 📋 `paperPaste` (`navigator.clipboard.readText`, press-and-hold
+fallback) and ⬇ `paperBringIn` → `paperLinkCheck` (pure; same host list as the server) → `paperFetch` (POST `{url}` +
+ID token + App Check to `studyBuddyPaper`) → a `File` → **`handleUpload([file])`, the one upload door**. Returning to
+the tab (`paperOnReturn`) nudges 📋. Usage event `paperlink`.
+- **Server** `functions/paper-fetch-service.js`: ONE file per press, hosts a fixed list (`START_HOSTS`: sgexam.com,
+  Google Drive/Docs; `*.googleusercontent.com` only as a redirect hop), redirects followed by hand and re-checked,
+  https only, no userinfo/port, `%PDF-` sniffed, `MAX_PDF_BYTES` (30 MB, under the 32 MB reply cap) enforced while
+  streaming. An SG Exam page is read once for its first Drive link (`driveLinksIn`) and its `<title>` (the name).
+  Drive's virus-scan page is read for its form (`confirmFormIn`); Google's sign-in = `private`. Per-instance limiter.
+  Adding a site = `START_HOSTS`/`SITE_HOSTS` + `PAPER_HOSTS`/`PAPER_SITES` in index.html + a test with its real page shape.
+- Wiring census: use `new window.URL(` / `window.File` etc. in the wiring tail, and no `"`/`'` inside regex literals
+  (the census strips strings naively). Checks: `node --test functions/test/paper-fetch-service.test.js`,
+  `node tools/find-paper-browser-check.mjs` (iPad, phone, laptop; `FIND_SCREENSHOTS=dir`; in CI).
+
 ## ✏️ THE MODEL SUITE — Ans Key's bar-model drawing board (v1.88.0)
 
 Search `✏️ Model suite — the model studio's glue` (just after the 📋 picture drop handler). `model-studio.js` /

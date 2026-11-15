@@ -11,10 +11,10 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.88.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.88.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.88.0">
-<link rel="stylesheet" href="model-studio.css?v=1.88.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.91.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.91.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.91.0">
+<link rel="stylesheet" href="model-studio.css?v=1.91.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -2397,6 +2397,36 @@
     .barStack, .lessonBar, .lessonPlayer, #lessonModal, .lessonCamWin, #lessonExportModal, .playlistPanel,
     .vidPills, .vidMenu, .vidBadge { display: none !important; }
   }
+
+  /* ---------- 🔎 FIND AN EXAM PAPER (v1.91.0) ----------
+     Built for a finger on an iPad first: every control is at least 44px
+     tall, the link box is 16px text (Safari zooms the page into a smaller
+     one), and the row wraps rather than squeezing on a phone. */
+  .upFind {
+    margin-top: 4px; margin-bottom: 6px; padding: 16px 18px;
+    border: 1px solid var(--accent-strong); border-radius: var(--radius);
+    background: #FFF8EE;
+  }
+  .upFind h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+  .upFindSteps { margin: 8px 0 12px 1.2em; padding: 0; font-size: 0.87rem; color: var(--ink-soft); line-height: 1.7; }
+  .upFindSites { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .upFindSite { display: inline-flex; align-items: center; min-height: 44px; text-decoration: none; }
+  .upFindRow { display: flex; gap: 8px; flex-wrap: wrap; align-items: stretch; }
+  .upFindRow input[type=text] { flex: 1 1 260px; min-width: 0; min-height: 48px; font-size: 16px; }
+  .upFindRow .btn { min-height: 48px; }
+  #upLinkPaste { white-space: nowrap; }
+  .upFindMsg { margin-top: 8px; font-size: 0.84rem; min-height: 1.2em; color: var(--ink-soft); line-height: 1.5; }
+  .upFindMsg.bad { color: var(--danger); }
+  .upFindMsg.good { color: #2E7D32; }
+  .upFind.nudge #upLinkPaste { animation: upFindNudge 1.2s ease 2; }
+  @keyframes upFindNudge { 0%, 100% { transform: none; } 30% { transform: scale(1.08); } 60% { transform: scale(0.98); } }
+  .upOr { display: flex; align-items: center; gap: 12px; margin: 18px 0 2px; color: var(--ink-faint); font-size: 0.8rem; font-weight: 700; }
+  .upOr::before, .upOr::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+  #findPaperBtn { min-height: 44px; }
+  @media (max-width: 600px) {
+    .upFindRow .btn { flex: 1 1 auto; }
+  }
+  @media (prefers-reduced-motion: reduce) { .upFind.nudge #upLinkPaste { animation: none; } }
 </style>
 <link rel="stylesheet" href="adventure.css?v=1.54.0">
 <link rel="stylesheet" href="adventure-shell.css?v=1.54.0">
@@ -2493,6 +2523,7 @@
             <span class="spacer"></span>
             <button class="btn hidden" id="setAllBtn" title="Give your students every paper of yours that is not on their shelves yet">📌 Set all for my class</button>
             <button class="btn" id="progressBtn" title="Every topic and learning objective, with your marks on it, added up across every worksheet you have marked">📈 My progress</button>
+            <button class="btn" id="findPaperBtn" title="Open an exam paper website, then bring a paper in by its link: no downloading">🔎 Find exam paper</button>
             <button class="btn btnPrimary" id="uploadBtn">⬆️ Upload a worksheet</button>
           </div>
           <div id="shelfBar" class="shelfBar hidden"></div>
@@ -2726,6 +2757,28 @@
   <div class="modalCard">
     <div class="modalHead"><h2>Upload a worksheet</h2></div>
     <div class="modalBody">
+      <!-- 🔎 FIND AN EXAM PAPER (v1.91.0): a paper from a website, by its
+           link, with no download. The settings below (name, level,
+           subject, help, key, shelf) apply to it exactly as to a file. -->
+      <div class="upFind" id="upFind">
+        <h3>🔎 Bring in an exam paper from a website</h3>
+        <ol class="upFindSteps">
+          <li>Open the site and tap the paper you want.</li>
+          <li>Copy its link: the page’s address, or press and hold <b>Download Paper</b> and choose <b>Copy Link</b>.</li>
+          <li>Come back here, tap <b>📋 Paste link</b>, then <b>⬇ Bring it in</b>.</li>
+        </ol>
+        <p class="hint" style="margin:-4px 0 12px">The choices further down (name, help level, answer key) are used for it too.
+          Only that one paper is fetched, and only when you press Bring it in.</p>
+        <div class="upFindSites" id="upFindSites"></div>
+        <div class="upFindRow">
+          <input type="text" id="upLink" inputmode="url" autocomplete="off" autocapitalize="off" autocorrect="off"
+                 spellcheck="false" enterkeyhint="go" placeholder="Paste the paper’s link here" aria-label="The paper’s link">
+          <button class="btn" id="upLinkPaste" type="button">📋 Paste link</button>
+          <button class="btn btnPrimary" id="upLinkGo" type="button">⬇ Bring it in</button>
+        </div>
+        <div class="upFindMsg" id="upLinkMsg" role="status" aria-live="polite"></div>
+      </div>
+      <div class="upOr">or upload a PDF from this device</div>
       <p class="sub">Pick the PDF — or <b>hold Ctrl (⌘ on a Mac) and pick as many as you like</b> — then say how much
         help you would like. You can change the help level any time.</p>
       <div class="fields">
@@ -3432,11 +3485,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.88.0"></script>
-<script src="lo-marks.js?v=1.88.0"></script>
-<script src="lo-practice.js?v=1.88.0"></script>
-<script src="cer-mcq.js?v=1.88.0"></script>
-<script src="model-studio.js?v=1.88.0"></script>
+<script src="concept-tags.js?v=1.91.0"></script>
+<script src="lo-marks.js?v=1.91.0"></script>
+<script src="lo-practice.js?v=1.91.0"></script>
+<script src="cer-mcq.js?v=1.91.0"></script>
+<script src="model-studio.js?v=1.91.0"></script>
 <script>
 'use strict';
 
@@ -3533,7 +3586,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.88.0';
+var APP_VERSION = 'v1.91.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -28279,6 +28332,7 @@ function openUploadModal() {
   fillUploadShelves();
   $('upShelfWrap').classList.toggle('hidden', !canShelve);
   fillGradeGrid('upGradeGrid', upGrade, function (k) { upGrade = k; });
+  if (typeof paperReset === 'function') paperReset();   // 🔎 v1.91.0
   $('uploadModal').classList.add('open');
 }
 
@@ -29995,7 +30049,9 @@ var USAGE_EVENTS = {
   // "answered one" is counted from consult-answer.js.
   consultQuestion: { label: 'Left the teacher a question', count: 'questions' },
   consultReply:    { label: 'Watched a recorded answer', count: 'answers' },
-  consultAnswer:   { label: 'Answered a question with a recording', count: 'answered' }
+  consultAnswer:   { label: 'Answered a question with a recording', count: 'answered' },
+  // 🔎 Brought a paper in from a website by its link (v1.91.0).
+  paperlink: { label: 'Brought in a paper by its link', count: 'paperlinks' }
 };
 function usageLabel(key) {
   var e = USAGE_EVENTS[key];
@@ -34912,6 +34968,16 @@ $('whoAmI').addEventListener('click', function () {
 });
 
 $('uploadBtn').addEventListener('click', openUploadModal);
+$('findPaperBtn').addEventListener('click', openFindPaper);
+$('upLinkPaste').addEventListener('click', paperPaste);
+$('upLinkGo').addEventListener('click', paperBringIn);
+$('upLink').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.preventDefault(); paperBringIn(); }
+});
+$('upLink').addEventListener('input', function () {
+  if ($('upFind')) $('upFind').classList.remove('nudge');
+  if ($('upLinkMsg') && $('upLinkMsg').classList.contains('bad')) paperMsg('');
+});
 $('setAllBtn').addEventListener('click', setAllWorksheets);
 $('assignToggle').addEventListener('click', toggleAssignOpen);
 $('upCancel').addEventListener('click', function () { $('uploadModal').classList.remove('open'); });
@@ -34934,6 +35000,245 @@ $('fileInput').addEventListener('change', function (e) {
   e.target.value = '';
   if (list.length) handleUpload(list);
 });
+
+/* =====================================================================
+   🔎 FIND AN EXAM PAPER — a paper from a website, with no download (v1.91.0)
+
+   "I'm tired of downloading a worksheet first and then uploading it." A
+   page cannot reach into another site's tab and take a file out of it, and
+   a browser fetch of SG Exam or Google Drive is blocked by CORS. So:
+
+     🔎 Find exam paper (home) opens the site in a NEW TAB and the upload
+     dialog here at the same moment → the person taps a paper there and
+     copies its link → comes back, 📋 Paste link, ⬇ Bring it in → the
+     `studyBuddyPaper` function fetches THAT ONE file (functions/
+     paper-fetch-service.js: fixed hosts, every redirect checked, must be a
+     PDF) → the bytes become a File and go through `handleUpload`, the very
+     door a picked PDF goes through, with the dialog's own settings.
+
+   - TABLET FIRST. Most of the centre's work is on iPads. The new tab is
+     opened INSIDE the tap (`openFindPaper` calls window.open before
+     anything else, or Safari's pop-up blocker eats it); the paste is
+     `navigator.clipboard.readText` (Safari shows its own Paste bubble), with
+     press-and-hold in the box as the fallback; every control is ≥ 44px; the
+     box is 16px text so Safari does not zoom; nothing focuses the box by
+     itself (that throws the keyboard over the dialog). Coming back to this
+     tab nudges the 📋 button.
+   - THE LINK IS CHECKED HERE FIRST (`paperLinkCheck`, the server's own host
+     list) so a wrong paste is answered at once, in words, with no call. The
+     server checks it again; this check is a courtesy, never the lock.
+   - `paperBusy` keeps a double tap to one fetch, and the dialog stays open
+     while it runs so a failure is said where the link is.
+   ===================================================================== */
+var PAPER_ENDPOINT = 'https://us-central1-mathgen--app.cloudfunctions.net/studyBuddyPaper';
+var PAPER_TIMEOUT_MS = 75000;
+var PAPER_SITES = [
+  { name: 'SG Exam', url: 'https://sgexam.com/', what: 'free primary school papers (P1–P6)' }
+];
+var PAPER_HOSTS = ['sgexam.com', 'www.sgexam.com', 'drive.google.com', 'docs.google.com', 'drive.usercontent.google.com'];
+var paperBusy = false;
+var paperAwaitingLink = false;
+
+/* Pull the link out of whatever was pasted and say whether the server will
+   take it. Pure. → { ok, url, why } */
+function paperLinkCheck(raw) {
+  var text = String(raw == null ? '' : raw).trim();
+  if (!text) return { ok: false, url: '', why: 'Paste the paper’s link first.' };
+  var m = /https?:\/\/[^\s\x22\x27<>]+/i.exec(text);
+  var link = m ? m[0].replace(/[).,;]+$/, '') : '';
+  if (!link && /^(www\.)?(sgexam\.com|drive\.google\.com|docs\.google\.com)\//i.test(text)) link = 'https://' + text.split(/\s/)[0];
+  if (!link) return { ok: false, url: '', why: 'That does not look like a link. Copy the paper’s link from the site and paste it here.' };
+  var u;
+  try { u = new window.URL(link); } catch (e) { return { ok: false, url: '', why: 'That link could not be read. Copy it again and paste it here.' }; }
+  if (u.protocol === 'http:') { u.protocol = 'https:'; }
+  var host = u.hostname.toLowerCase();
+  if (PAPER_HOSTS.indexOf(host) === -1) {
+    return { ok: false, url: '', why: 'Study Buddy can bring papers in from SG Exam or a Google Drive link. For other sites, download the PDF and upload it below.' };
+  }
+  if ((host === 'sgexam.com' || host === 'www.sgexam.com') && (u.pathname === '/' || !u.pathname)) {
+    return { ok: false, url: '', why: 'That is SG Exam’s front page. Tap one paper there first, then copy that page’s link.' };
+  }
+  if (/^\/drive\/folders\//.test(u.pathname)) {
+    return { ok: false, url: '', why: 'That is a whole Google Drive folder. Open one paper in it and copy that link.' };
+  }
+  return { ok: true, url: u.toString(), why: '' };
+}
+
+function paperMsg(text, kind) {
+  var el = $('upLinkMsg');
+  if (!el) return;
+  el.textContent = text || '';
+  el.classList.toggle('bad', kind === 'bad');
+  el.classList.toggle('good', kind === 'good');
+}
+
+function paperSitesPaint() {
+  var box = $('upFindSites');
+  if (!box || box.childNodes.length) return;
+  PAPER_SITES.forEach(function (site) {
+    // A real link, not a button: on an iPad a plain <a target=_blank> is the
+    // one thing every browser opens in a new tab without asking.
+    var a = document.createElement('a');
+    a.className = 'btn upFindSite';
+    a.href = site.url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.textContent = '🌐 Open ' + site.name + ' ↗';
+    a.title = site.name + ': ' + site.what;
+    a.addEventListener('click', function () { paperArmReturn(); });
+    box.appendChild(a);
+  });
+}
+
+/* Called whenever the upload dialog opens: a fresh box every time. */
+function paperReset() {
+  paperSitesPaint();
+  if ($('upLink')) $('upLink').value = '';
+  paperMsg('');
+  paperBusy = false;
+  paperAwaitingLink = false;
+  if ($('upFind')) $('upFind').classList.remove('nudge');
+  paperButtons();
+}
+
+function paperButtons() {
+  if ($('upLinkGo')) {
+    $('upLinkGo').disabled = paperBusy;
+    $('upLinkGo').textContent = paperBusy ? '⏳ Bringing it in…' : '⬇ Bring it in';
+  }
+  if ($('upLinkPaste')) $('upLinkPaste').disabled = paperBusy;
+  if ($('upGo')) $('upGo').disabled = paperBusy;
+}
+
+/* The person went to the site. When this tab is looked at again with no
+   link in the box, point at 📋 Paste link. */
+function paperArmReturn() {
+  paperAwaitingLink = true;
+  paperMsg('When you have copied the paper’s link, come back here and tap 📋 Paste link.');
+}
+function paperOnReturn() {
+  if (!paperAwaitingLink || paperBusy) return;
+  if (!$('uploadModal') || !$('uploadModal').classList.contains('open')) return;
+  if (document.visibilityState && document.visibilityState !== 'visible') return;
+  if ($('upLink') && $('upLink').value.trim()) return;
+  var f = $('upFind');
+  if (f) {
+    f.classList.remove('nudge');
+    void f.offsetWidth;   // restart the animation
+    f.classList.add('nudge');
+  }
+  paperMsg('Welcome back. Tap 📋 Paste link to put the paper’s link in the box.');
+}
+document.addEventListener('visibilitychange', paperOnReturn);
+window.addEventListener('focus', paperOnReturn);
+
+/* 🔎 on the home screen: the site in a new tab AND the dialog here, both
+   inside the one tap. window.open FIRST, before anything that could take a
+   moment, or the iPad's pop-up blocker refuses it. */
+function openFindPaper() {
+  if (!currentUser) { signIn(); return; }
+  var site = PAPER_SITES[0];
+  var w = null;
+  try { w = window.open(site.url, '_blank', 'noopener'); } catch (e) { w = null; }
+  openUploadModal();
+  if (!$('uploadModal').classList.contains('open')) return;
+  paperArmReturn();
+  // `noopener` makes window.open return null even when it worked, so a null
+  // is not proof of a block; the link button is there either way.
+  if (!w) paperMsg('If ' + site.name + ' did not open, tap 🌐 Open ' + site.name + ' ↗ above. Then copy a paper’s link and come back.');
+  try { $('upFind').scrollIntoView({ block: 'start' }); } catch (e) { /* old Safari */ }
+}
+
+async function paperPaste() {
+  var box = $('upLink');
+  if (!box) return;
+  var text = '';
+  try {
+    if (navigator.clipboard && navigator.clipboard.readText) text = await navigator.clipboard.readText();
+  } catch (e) { text = ''; }
+  if (!text) {
+    paperMsg('Press and hold in the box, then choose Paste.', 'bad');
+    try { box.focus(); } catch (e) { /* ignore */ }
+    return;
+  }
+  box.value = text.trim();
+  if ($('upFind')) $('upFind').classList.remove('nudge');
+  paperAwaitingLink = false;
+  var c = paperLinkCheck(box.value);
+  if (c.ok) paperMsg('Got the link. Tap ⬇ Bring it in.', 'good');
+  else paperMsg(c.why, 'bad');
+}
+
+/* The words for a refusal the server gave, or for no answer at all. */
+function paperFailWords(code, message) {
+  if (message) return message;
+  if (code === 'network' || code === 'timeout') return 'Study Buddy could not fetch the paper just now. Check the internet and try again, or download it and upload it below.';
+  if (code === 'app_check') return 'Reload Study Buddy, then try again.';
+  return 'That paper could not be brought in. Try again, or download it and upload it below.';
+}
+
+async function paperFetch(url) {
+  if (!currentUser) return { ok: false, code: 'sign_in', message: 'Sign in first.' };
+  var controller = typeof AbortController !== 'undefined' ? new window.AbortController() : null;
+  var timer = setTimeout(function () { if (controller) controller.abort(); }, PAPER_TIMEOUT_MS);
+  try {
+    if (typeof window.liveAppCheckToken !== 'function') return { ok: false, code: 'app_check' };
+    var tokens = await Promise.all([currentUser.getIdToken(), window.liveAppCheckToken()]);
+    var res = await fetch(PAPER_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tokens[0], 'X-Firebase-AppCheck': tokens[1] },
+      body: JSON.stringify({ url: url }),
+      signal: controller ? controller.signal : undefined
+    });
+    if (!res.ok) {
+      var body = null;
+      try { body = await res.json(); } catch (e) { body = null; }
+      return { ok: false, code: (body && body.error && body.error.code) || ('http_' + res.status),
+        message: (body && body.error && body.error.message) || '' };
+    }
+    var blob = await res.blob();
+    var head = new window.Uint8Array(await blob.slice(0, 5).arrayBuffer());
+    if (!(head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46)) {
+      return { ok: false, code: 'not_pdf', message: 'That link did not give a PDF.' };
+    }
+    var name = '';
+    try { name = decodeURIComponent(res.headers.get('X-Paper-Name') || ''); } catch (e) { name = ''; }
+    return { ok: true, blob: blob, name: name || 'Exam paper' };
+  } catch (e) {
+    return { ok: false, code: (e && e.name === 'AbortError') ? 'timeout' : 'network' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function paperBringIn() {
+  if (paperBusy) return;
+  var box = $('upLink');
+  var c = paperLinkCheck(box ? box.value : '');
+  if (!c.ok) { paperMsg(c.why, 'bad'); return; }
+  paperBusy = true;
+  paperAwaitingLink = false;
+  paperButtons();
+  paperMsg('Fetching the paper… this takes a few seconds.');
+  // Blur the box so the iPad keyboard goes down and the message shows.
+  try { if (box) box.blur(); } catch (e) { /* ignore */ }
+  var got = await paperFetch(c.url);
+  paperBusy = false;
+  paperButtons();
+  if (!got.ok) { paperMsg(paperFailWords(got.code, got.message), 'bad'); return; }
+  if (!$('uploadModal').classList.contains('open')) return;   // closed while it was fetching
+  var file;
+  try {
+    file = new window.File([got.blob], got.name.replace(/[\\/:*?\x22<>|]+/g, ' ') + '.pdf', { type: 'application/pdf' });
+  } catch (e) {
+    // Very old Safari has no File constructor; a named Blob uploads the same way.
+    file = got.blob;
+    try { file.name = got.name + '.pdf'; } catch (e2) { /* ignore */ }
+  }
+  paperMsg('Got it. Uploading “' + got.name + '”…', 'good');
+  usageNote('paperlink', /drive|docs\.google/.test(c.url) ? 'Google Drive' : 'SG Exam');
+  handleUpload([file]);
+}
 
 $('gradeCancel').addEventListener('click', function () { $('gradeModal').classList.remove('open'); });
 $('gradeSave').addEventListener('click', saveGrade);
