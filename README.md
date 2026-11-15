@@ -17,6 +17,21 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.92.0 — 📚 Pick a paper from SG Exam's list, no copying links
+
+🔎 Find exam paper now lists SG Exam's papers inside Study Buddy: choose the level, subject and year
+(or search a school), tap a paper, and it comes straight in. It starts on the student's own level and
+subject, newest first. Pasting a link still works for anything else, under *Or paste a link*.
+
+- The list is `papers/sgexam.json`: links and descriptions only, never a copy of a paper. It is
+  collected every Sunday morning by `.github/workflows/sgexam-catalogue.yml`
+  (`tools/sgexam-catalogue.mjs`), which reads robots.txt first and then the ~30 listing pages one at
+  a time, four seconds apart. A run that finds far fewer papers than are saved keeps the old list.
+- A paper is fetched only when somebody taps it, through the same `studyBuddyPaper` function a
+  pasted link uses.
+- Without the list (before the first collection, or on a network that blocks it) the dialog is
+  exactly v1.91.0's paste road.
+
 ## v1.91.0 — 🔎 Find exam paper: bring a paper in by its link, no downloading
 
 **🔎 Find exam paper** (beside ⬆️ Upload a worksheet) opens SG Exam in a new tab and the upload dialog here at the

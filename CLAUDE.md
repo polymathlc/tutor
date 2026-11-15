@@ -2,6 +2,17 @@
 
 Guidance for Claude when working in this repo.
 
+## 📚 PICK A PAPER FROM SG EXAM'S LIST (v1.92.0)
+
+Search `📚 PICK A PAPER FROM SG EXAM'S LIST`. `papers/sgexam.json` (`{source, fetchedAt, count, papers: [{t,u,y,l,s,sl,e,sc}]}`)
+is written weekly by `tools/sgexam-catalogue.mjs` from `.github/workflows/sgexam-catalogue.yml` (robots.txt
+obeyed, listing pages only, `CRAWL_GAP_MS` apart, refuses to shrink below `MIN_KEEP_RATIO`, commits to main and
+asks Pages to rebuild). LINKS ONLY, never a paper. The client loads it after sign-in (`paperListSoon`) and in
+`paperReset`; `paperListClean` drops any row `paperLinkCheck` refuses; `#upPick` (level/subject/year/search,
+`PAPER_PICK_PAGE` rows + Show more) shows only when the list loaded, and then `#upPaste` (the v1.91.0 paste road)
+is folded and 🔎 opens no new tab. A row → `paperPickTake` → `#upLink` + `paperBringIn`, the same road as a paste.
+Checks: `node --test tools/sgexam-catalogue-tests.mjs`, `node tools/find-paper-browser-check.mjs` (list runs too).
+
 ## 🔎 FIND AN EXAM PAPER — a paper in by its link, no download (v1.91.0)
 
 Search `🔎 FIND AN EXAM PAPER`. `#findPaperBtn` (home, beside Upload) → `openFindPaper()` calls `window.open(SG Exam)`
