@@ -17,6 +17,20 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.94.0 — ⚡ Quick practice: a few questions from your mistake book, picked for you
+
+- **A new gold ⚡ Quick practice button** sits on the home screen beside 📈 My progress, and first in the
+  📕 mistake book's bar. Tap it, choose how many questions (5, 10, 15, 20, or type your own number) and,
+  when the book has more than one subject, which subject. Tap ▶ Start and practice begins straight away.
+- **Study Buddy picks the questions**: the ones still to redo that you have not tried again come first,
+  then the ones you practised longest ago. Only when there are not enough still to redo does it add a
+  few you already sorted, to keep them sharp, and the window says so. The questions are mixed across
+  topics, so ten questions are not ten fractions in a row.
+- It is the same ✏️ Practise as before: answers are checked the same way, MCQs are tried as MCQs, and a
+  question you get right moves to Sorted. At the end, **⚡ N more** starts another round of the same size
+  with fresh questions.
+- The app remembers your number and subject for next time. What was practised when is kept on the device.
+
 ## v1.93.0 — 📐 Chung GPT fits an iPad standing up, and the keyboard never hides the Ask box
 
 - **On an iPad in portrait, Chung GPT now sits under the worksheet instead of over it.** The page stays on top and the

@@ -2,6 +2,25 @@
 
 Guidance for Claude when working in this repo.
 
+## ⚡ QUICK PRACTICE — a few questions from the mistake book, picked for you (v1.94.0)
+
+Search `⚡ QUICK PRACTICE` (script, just above `pracCurrent`; stylesheet after `.progTip`). Zhi Kai: "add a quick
+practice button to practice x number of questions from the students mistake list".
+- `#quickPracBtn` (home, beside 📈 My progress; shown signed in, from `renderAuth`) → `qpOpen(true)` (reads the book
+  first); `#qpBookBtn` (first in `renderMistTools`) → `qpOpen(false)`. `#qpModal` (a `.modalBack`, so the Escape sweep
+  closes it) painted by `qpRender`: subject chips only when the book holds 2+ subjects, `QP_PRESETS` up to what the
+  book holds (the last chip is "All N" or `QP_MAX`), `#qpOwn` their own number (`qpCleanN`), `#qpGo`. Every target
+  ≥ 44px.
+- **`qpPick` is the ONE chooser and is PURE** (seen map, rng, topicOf handed in): open + never practised, then open
+  oldest-practised, then Sorted only to fill the number; random between ties; `qpInterleave` deals topic by topic.
+- **It is the book's own session**: `qpGo` → `pracStart(ids, { quick: {n, subject} })`. `prac.quick` sets
+  `#pracTitle` and adds `#qpAgain` (⚡ N more) on the finish screen.
+- What was practised when is `localStorage` `polymath.tutorQuickSeen.<uid>` (`qpStamp` at all three `prac.done++`,
+  capped `QP_SEEN_MAX`), never Firestore (the mistake rows are the mirror's shape). Number + subject remembered in
+  `polymath.tutorQuickPref`. Usage event `quickpractice`.
+- Checks: `node --test tools/quick-practice-tests.mjs`, `node tools/quick-practice-browser-check.mjs` (in CI;
+  `QP_SCREENSHOTS=dir`).
+
 ## 📐 THE APP FITS THE SCREEN — the panel docks on an iPad standing up, and the keyboard is room (v1.93.0)
 
 Search `📐 THE APP FITS THE SCREEN` (script, just above `/* ---- The buddy panel ---- */`) and `▤ AN iPAD STANDING UP`

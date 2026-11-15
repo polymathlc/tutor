@@ -11,10 +11,10 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.93.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.93.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.93.0">
-<link rel="stylesheet" href="model-studio.css?v=1.93.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.94.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.94.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.94.0">
+<link rel="stylesheet" href="model-studio.css?v=1.94.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -1636,6 +1636,39 @@
   }
   .progPractise { border-color: #C9A227; background: #FFF6D8; font-weight: 600; }
   .progTip { margin: 2px 0 8px; }
+  /* ⚡ QUICK PRACTICE (v1.94.0). The button is gold, the colour the
+     practise buttons already wear, so it reads as "practise" at a glance.
+     Every target in the window is at least 44px tall: it is pressed with a
+     finger on an iPad. */
+  .qpHomeBtn, .qpBookBtn { border-color: #C9A227; background: #FFF6D8; font-weight: 600; }
+  .qpCard { max-width: 480px; }
+  .qpLead { margin: 0 0 14px; font-size: 0.95rem; line-height: 1.45; }
+  .qpLabel { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
+             color: var(--muted, #6B6B66); margin: 14px 0 8px; }
+  .qpRow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .qpChip {
+    font: inherit; font-size: 1rem; min-height: 44px; min-width: 56px; padding: 8px 16px;
+    border-radius: 12px; cursor: pointer; touch-action: manipulation;
+    border: 1.5px solid var(--line, #E2E2DD); background: var(--bg, #fff); color: var(--ink, #1F1F1C);
+  }
+  .qpChip.on { background: #1F4E79; border-color: #1F4E79; color: #fff; font-weight: 700; }
+  .qpChip:disabled { opacity: 0.4; cursor: default; }
+  .qpOwn { display: inline-flex; align-items: center; gap: 6px; }
+  .qpOwn input {
+    font: inherit; font-size: 1rem; width: 84px; min-height: 44px; padding: 8px 10px; border-radius: 12px;
+    border: 1.5px solid var(--line, #E2E2DD); background: var(--bg, #fff); color: var(--ink, #1F1F1C);
+  }
+  .qpOwn input.on { border-color: #1F4E79; box-shadow: 0 0 0 2px rgba(31, 78, 121, 0.18); }
+  .qpNote { margin: 16px 0 0; font-size: 0.88rem; line-height: 1.45; color: var(--muted, #6B6B66); }
+  .qpEmpty { text-align: center; padding: 10px 0; }
+  .qpEmpty .qpBig { font-size: 2rem; display: block; margin-bottom: 6px; }
+  #qpFoot .btn { min-height: 44px; }
+  #qpGo { min-width: 160px; }
+  @media (max-width: 520px) {
+    #qpModal .modalCard { max-height: 92vh; }
+    #qpFoot { justify-content: stretch; }
+    #qpFoot .btn { flex: 1 1 auto; }
+  }
   @media print { .progTools, .progTip, .lpGoMark { display: none !important; } }
   /* 🧹 Start fresh (v1.81.0). The button sits at the far left of its row,
      away from Done, so it is never the thing a hurried thumb lands on. */
@@ -2622,6 +2655,7 @@
             <h2>My worksheets</h2>
             <span class="spacer"></span>
             <button class="btn hidden" id="setAllBtn" title="Give your students every paper of yours that is not on their shelves yet">📌 Set all for my class</button>
+            <button class="btn qpHomeBtn hidden" id="quickPracBtn" type="button" title="Practise a few questions from your mistake book, picked for you">⚡ Quick practice</button>
             <button class="btn" id="progressBtn" title="Every topic and learning objective, with your marks on it, added up across every worksheet you have marked">📈 My progress</button>
             <button class="btn" id="findPaperBtn" title="Open an exam paper website, then bring a paper in by its link: no downloading">🔎 Find exam paper</button>
             <button class="btn btnPrimary" id="uploadBtn">⬆️ Upload a worksheet</button>
@@ -3224,12 +3258,27 @@
 <div class="modalBack" id="pracModal">
   <div class="modalCard">
     <div class="modalHead">
-      <h2>✏️ Practise</h2>
+      <h2 id="pracTitle">✏️ Practise</h2>
       <span class="spacer"></span>
       <span class="pracCount" id="pracCount"></span>
     </div>
     <div class="modalBody" id="pracBody"></div>
     <div class="modalFoot" id="pracFoot"></div>
+  </div>
+</div>
+
+<!-- ⚡ QUICK PRACTICE (v1.94.0): how many questions, from which subject, then
+     straight into ✏️ Practise with questions picked from the mistake book.
+     Painted by qpRender(). -->
+<div class="modalBack" id="qpModal">
+  <div class="modalCard qpCard" role="dialog" aria-modal="true" aria-labelledby="qpTitle">
+    <div class="modalHead">
+      <h2 id="qpTitle">⚡ Quick practice</h2>
+      <span class="spacer"></span>
+      <button class="btn btnSm btnGhost" id="qpClose" type="button" aria-label="Close">✕</button>
+    </div>
+    <div class="modalBody" id="qpBody"></div>
+    <div class="modalFoot" id="qpFoot"></div>
   </div>
 </div>
 
@@ -3606,11 +3655,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.93.0"></script>
-<script src="lo-marks.js?v=1.93.0"></script>
-<script src="lo-practice.js?v=1.93.0"></script>
-<script src="cer-mcq.js?v=1.93.0"></script>
-<script src="model-studio.js?v=1.93.0"></script>
+<script src="concept-tags.js?v=1.94.0"></script>
+<script src="lo-marks.js?v=1.94.0"></script>
+<script src="lo-practice.js?v=1.94.0"></script>
+<script src="cer-mcq.js?v=1.94.0"></script>
+<script src="model-studio.js?v=1.94.0"></script>
 <script>
 'use strict';
 
@@ -3707,7 +3756,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.93.0';
+var APP_VERSION = 'v1.94.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -23208,6 +23257,15 @@ function renderMistTools(show) {
   var picked = pracSelectedIds();
   var n = picked.length;
 
+  // ⚡ Quick practice comes first: a few questions, picked for them.
+  var quick = document.createElement('button');
+  quick.className = 'btn qpBookBtn';
+  quick.id = 'qpBookBtn';
+  quick.textContent = '⚡ Quick practice';
+  quick.title = 'Practise a few questions from your mistake book, picked for you';
+  quick.addEventListener('click', function () { qpOpen(false); });
+  bar.appendChild(quick);
+
   var all = document.createElement('button');
   all.className = 'btn btnPrimary';
   all.textContent = '✏️ Practise all ' + show.length;
@@ -24035,7 +24093,11 @@ function pracStart(ids, opts) {
   if (!ids.length) { toast('Pick at least one question to practise.'); return; }
   prac = { ids: ids, i: 0, done: 0, right: 0, busy: false, revealed: false, result: null, typed: '',
            // 🎯 a session started from ▶ Practise this gap names the gap it is for
-           gap: (opts && opts.gap) || '' };
+           gap: (opts && opts.gap) || '',
+           // ⚡ a quick practice remembers its number and subject for ⚡ Another round
+           quick: (opts && opts.quick) || null };
+  var head = $('pracTitle');
+  if (head) head.textContent = prac.quick ? '⚡ Quick practice' : '✏️ Practise';
   $('pracModal').classList.add('open');
   pracRender();
 }
@@ -24044,6 +24106,366 @@ function pracClose() {
   prac = null;
   renderMistakes();
 }
+/* =====================================================================
+   ⚡ QUICK PRACTICE — a few questions from the book, picked for you (v1.94.0)
+   ---------------------------------------------------------------------
+   Zhi Kai: "add a quick practice button to practice x number of questions
+   from the students mistake list". ✏️ Practise all is every card on
+   screen, which after a term is forty questions nobody sits down to; and
+   picking cards by hand is a job a ten-year-old does not do. So one gold
+   button — ⚡ Quick practice, on the home screen beside 📈 My progress and
+   first in the mistake book's bar — asks HOW MANY (5, 10, 15, 20 or their
+   own number) and from WHICH SUBJECT, and starts ✏️ Practise straight
+   away on questions this app chose.
+
+   IT IS THE SAME SESSION, NOT A SECOND ONE. `qpGo` hands ids to
+   `pracStart`, so the marking, the MCQ format, the gap nudge, "moves to
+   Sorted when right" and the finish screen are the book's own, and a fix
+   to any of them reaches this too.
+
+   `qpPick` IS THE ONE PLACE THE QUESTIONS ARE CHOSEN, and it is PURE (the
+   clock, the random numbers and what was practised when are all handed
+   in), so the harness pins the order:
+     ① still to redo and never practised — the ones nobody has looked at;
+     ② still to redo, least recently practised first;
+     ③ only when ① and ② cannot fill the number: Sorted ones, least
+        recently practised first — a question got right once is worth
+        another look, and "you only have 3" is a worse answer to "10" than
+        3 to redo and 7 to keep sharp. The window SAYS when that happens.
+   Ties are broken at random, so pressing it twice is not the same set.
+   The chosen questions are then dealt out topic by topic (`qpInterleave`)
+   so ten questions are not ten fractions in a row.
+
+   WHAT WAS PRACTISED WHEN LIVES ON THIS DEVICE (`QP_SEEN_KEY` + uid),
+   stamped by every ✏️ Practise answer (`qpStamp`), never in Firestore:
+   the mistake rows are a shared shape the teacher's mirror reads, and a
+   field written on every answer is a write per question for a hint about
+   ORDER. A device that refuses storage still gets quick practice; it just
+   picks at random within each tier.
+   ===================================================================== */
+var QP_PRESETS = [5, 10, 15, 20];
+var QP_MAX = 50;                          // one sitting, not a test
+var QP_DEFAULT = 5;
+var QP_SEEN_KEY = 'polymath.tutorQuickSeen.';
+var QP_SEEN_MAX = 400;                    // stamps kept per account
+var QP_PREF_KEY = 'polymath.tutorQuickPref';
+var qp = null;                            // the window's state while it is open
+
+/* ---- pure ---- */
+function qpSubjectOf(m) {
+  return typeof mistSubjectKey === 'function' ? mistSubjectKey(m) : String((m && m.subject) || '');
+}
+function qpPool(list, subject) {
+  return (list || []).filter(function (m) {
+    return m && m.id && (!subject || subject === 'all' || qpSubjectOf(m) === subject);
+  });
+}
+/* { open, sorted, total, subjects: [{ key, open, total }] } — the counts the
+   window shows. A subject is listed by what it holds IN TOTAL, so a subject
+   whose every question is Sorted can still be picked. */
+function qpCounts(list, subject) {
+  var pool = qpPool(list, subject);
+  var open = pool.filter(function (m) { return !m.cleared; }).length;
+  var by = {}, order = [];
+  (list || []).forEach(function (m) {
+    if (!m || !m.id) return;
+    var k = qpSubjectOf(m);
+    if (!by[k]) { by[k] = { key: k, open: 0, total: 0 }; order.push(k); }
+    by[k].total++;
+    if (!m.cleared) by[k].open++;
+  });
+  return { open: open, sorted: pool.length - open, total: pool.length,
+           subjects: order.map(function (k) { return by[k]; }) };
+}
+function qpTopicOf(m) {
+  if (typeof mistTopicKey === 'function') { try { return String(mistTopicKey(m) || ''); } catch (e) { /* fall through */ } }
+  return String((m && m.topic) || '').toLowerCase();
+}
+/* Deal the chosen questions out one topic at a time, keeping each topic's
+   own order and the order the topics first appear in. Pure. */
+function qpInterleave(list, topicOf) {
+  topicOf = topicOf || qpTopicOf;
+  var by = {}, order = [];
+  (list || []).forEach(function (m) {
+    var k = topicOf(m);
+    if (!by[k]) { by[k] = []; order.push(k); }
+    by[k].push(m);
+  });
+  var out = [];
+  for (var round = 0; out.length < (list || []).length; round++) {
+    order.forEach(function (k) { if (by[k][round]) out.push(by[k][round]); });
+  }
+  return out;
+}
+/* opts: { subject, seen: { id: ms }, rng: () => [0,1), topicOf }.
+   Returns { ids, open, sorted } — how many of each tier went in. */
+function qpPick(list, n, opts) {
+  opts = opts || {};
+  var seen = opts.seen || {};
+  var rng = typeof opts.rng === 'function' ? opts.rng : Math.random;
+  n = Math.max(0, Math.floor(Number(n) || 0));
+  var pool = qpPool(list, opts.subject).map(function (m) {
+    var at = Number(seen[m.id]) || 0;
+    return { m: m, tier: m.cleared ? 2 : (at ? 1 : 0), at: at, r: rng() };
+  });
+  pool.sort(function (a, b) {
+    if (a.tier !== b.tier) return a.tier - b.tier;
+    if (a.at !== b.at) return a.at - b.at;       // least recently practised first
+    return a.r - b.r;                            // and a fair shuffle between equals
+  });
+  var chosen = pool.slice(0, n);
+  var open = chosen.filter(function (x) { return x.tier < 2; }).length;
+  var ms = qpInterleave(chosen.map(function (x) { return x.m; }), opts.topicOf);
+  return { ids: ms.map(function (m) { return m.id; }), open: open, sorted: chosen.length - open };
+}
+/* The number the student typed, as a number this can use — or 0. */
+function qpCleanN(v, most) {
+  var n = Math.floor(Number(String(v == null ? '' : v).trim()));
+  if (!isFinite(n) || n < 1) return 0;
+  return Math.min(n, Math.max(1, Math.min(most || QP_MAX, QP_MAX)));
+}
+
+/* ---- this device's memory ---- */
+function qpSeenKey() { return QP_SEEN_KEY + ((currentUser && currentUser.uid) || 'anon'); }
+function qpSeen() {
+  try {
+    var o = JSON.parse(localStorage.getItem(qpSeenKey()) || '{}');
+    return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+  } catch (e) { return {}; }
+}
+function qpStamp(id) {
+  if (!id) return;
+  try {
+    var o = qpSeen();
+    o[id] = Date.now();
+    var ids = Object.keys(o);
+    if (ids.length > QP_SEEN_MAX) {
+      ids.sort(function (a, b) { return (o[a] || 0) - (o[b] || 0); })
+         .slice(0, ids.length - QP_SEEN_MAX).forEach(function (k) { delete o[k]; });
+    }
+    localStorage.setItem(qpSeenKey(), JSON.stringify(o));
+  } catch (e) { /* the order is a nicety; practice still works */ }
+}
+function qpPref() {
+  try {
+    var o = JSON.parse(localStorage.getItem(QP_PREF_KEY) || '{}') || {};
+    return { n: qpCleanN(o.n) || QP_DEFAULT, subject: typeof o.subject === 'string' ? o.subject : 'all' };
+  } catch (e) { return { n: QP_DEFAULT, subject: 'all' }; }
+}
+function qpPrefSave(n, subject) {
+  try { localStorage.setItem(QP_PREF_KEY, JSON.stringify({ n: n, subject: subject })); } catch (e) { /* fine */ }
+}
+
+/* ---- the window ---- */
+async function qpOpen(fresh) {
+  if (!currentUser) { toast('Sign in first.'); return; }
+  var pref = qpPref();
+  qp = { n: pref.n, own: '', subject: pref.subject, loading: !!fresh };
+  $('qpModal').classList.add('open');
+  qpRender();
+  // From the home screen the book may not have been read yet this visit.
+  if (fresh) {
+    await loadMistakes(true);
+    if (!qp) return;
+    qp.loading = false;
+    qpRender();
+  }
+}
+function qpClose() {
+  $('qpModal').classList.remove('open');
+  qp = null;
+}
+/* The subject the window is really on: a remembered one this book no
+   longer has falls back to all of them, and an account with ONE subject
+   in the book never sees a choice at all. */
+function qpSubjectNow() {
+  var c = qpCounts(mistakes, 'all');
+  if (!qp || qp.subject === 'all') return 'all';
+  return c.subjects.some(function (s) { return s.key === qp.subject; }) ? qp.subject : 'all';
+}
+function qpWant(total) {
+  if (!qp) return 0;
+  var n = qp.own !== '' ? qpCleanN(qp.own, total) : qp.n;
+  return Math.min(n || 0, total);
+}
+function qpChip(parent, label, on, onPick, disabled) {
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'qpChip' + (on ? ' on' : '');
+  b.textContent = label;
+  b.setAttribute('aria-pressed', on ? 'true' : 'false');
+  b.disabled = !!disabled;
+  b.addEventListener('click', onPick);
+  parent.appendChild(b);
+  return b;
+}
+function qpRender() {
+  var body = $('qpBody'), foot = $('qpFoot');
+  if (!body || !foot) return;
+  body.innerHTML = '';
+  foot.innerHTML = '';
+  if (!qp) return;
+
+  if (qp.loading) {
+    var wait = document.createElement('p');
+    wait.className = 'qpLead';
+    wait.textContent = 'Opening your mistake book…';
+    body.appendChild(wait);
+    return;
+  }
+
+  var all = qpCounts(mistakes, 'all');
+  if (!all.total) {
+    var empty = document.createElement('div');
+    empty.className = 'qpEmpty';
+    var big = document.createElement('span');
+    big.className = 'qpBig';
+    big.textContent = '🌱';
+    empty.appendChild(big);
+    var t = document.createElement('p');
+    t.className = 'qpLead';
+    t.textContent = 'Your mistake book is empty, so there is nothing to practise yet. Mark a worksheet and any question you did not get right will land here.';
+    empty.appendChild(t);
+    body.appendChild(empty);
+    var ok = document.createElement('button');
+    ok.className = 'btn btnPrimary';
+    ok.type = 'button';
+    ok.textContent = 'OK';
+    ok.addEventListener('click', qpClose);
+    foot.appendChild(ok);
+    return;
+  }
+
+  var subject = qpSubjectNow();
+  var c = qpCounts(mistakes, subject);
+
+  var lead = document.createElement('p');
+  lead.className = 'qpLead';
+  lead.textContent = 'Pick how many questions. Study Buddy chooses them from your mistake book: the ones you have not tried again first, then the ones you practised longest ago.';
+  body.appendChild(lead);
+
+  if (all.subjects.length > 1) {
+    var sl = document.createElement('div');
+    sl.className = 'qpLabel';
+    sl.textContent = 'Subject';
+    body.appendChild(sl);
+    var sr = document.createElement('div');
+    sr.className = 'qpRow';
+    sr.setAttribute('role', 'group');
+    sr.setAttribute('aria-label', 'Subject');
+    qpChip(sr, 'All subjects', subject === 'all', function () { qp.subject = 'all'; qpRender(); });
+    all.subjects.forEach(function (s) {
+      var name = typeof mistSubjectLabel === 'function' ? mistSubjectLabel(s.key) : (subjectLabel(s.key) || s.key);
+      qpChip(sr, name + ' (' + s.total + ')', subject === s.key, function () { qp.subject = s.key; qpRender(); });
+    });
+    body.appendChild(sr);
+  }
+
+  var nl = document.createElement('div');
+  nl.className = 'qpLabel';
+  nl.textContent = 'How many questions';
+  body.appendChild(nl);
+  var nr = document.createElement('div');
+  nr.className = 'qpRow';
+  nr.setAttribute('role', 'group');
+  nr.setAttribute('aria-label', 'How many questions');
+  var most = Math.min(c.total, QP_MAX);
+  var presets = QP_PRESETS.filter(function (p) { return p < most; });
+  presets.push(most);                       // "All N" (or 50) is always the last chip
+  presets.forEach(function (p) {
+    var isAll = p === most && QP_PRESETS.indexOf(p) < 0;
+    var label = isAll ? (most === c.total ? 'All ' + p : String(p)) : String(p);
+    qpChip(nr, label, qp.own === '' && Math.min(qp.n, most) === p, function () { qp.n = p; qp.own = ''; qpRender(); });
+  });
+  var own = document.createElement('label');
+  own.className = 'qpOwn';
+  var ownCap = document.createElement('span');
+  ownCap.textContent = 'or';
+  own.appendChild(ownCap);
+  var inp = document.createElement('input');
+  inp.type = 'number';
+  inp.id = 'qpOwn';
+  inp.inputMode = 'numeric';
+  inp.min = '1';
+  inp.max = String(most);
+  inp.placeholder = 'Own';
+  inp.setAttribute('aria-label', 'Your own number of questions, up to ' + most);
+  inp.value = qp.own;
+  if (qp.own !== '') inp.classList.add('on');
+  inp.addEventListener('input', function () {
+    qp.own = inp.value;
+    // Only the chips and the note change; the box itself keeps its caret.
+    nr.querySelectorAll('.qpChip').forEach(function (b) { b.classList.toggle('on', qp.own === '' && Number(b.textContent.replace(/\D/g, '')) === Math.min(qp.n, most)); });
+    inp.classList.toggle('on', qp.own !== '');
+    qpNote(note, c);
+    go.disabled = !qpWant(c.total);
+    go.textContent = qpGoLabel(c.total);
+  });
+  inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); qpGo(); } });
+  own.appendChild(inp);
+  nr.appendChild(own);
+  body.appendChild(nr);
+
+  var note = document.createElement('p');
+  note.className = 'qpNote';
+  note.setAttribute('role', 'status');
+  qpNote(note, c);
+  body.appendChild(note);
+
+  var cancel = document.createElement('button');
+  cancel.className = 'btn';
+  cancel.type = 'button';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', qpClose);
+  foot.appendChild(cancel);
+  var go = document.createElement('button');
+  go.className = 'btn btnPrimary';
+  go.type = 'button';
+  go.id = 'qpGo';
+  go.textContent = qpGoLabel(c.total);
+  go.disabled = !qpWant(c.total);
+  go.addEventListener('click', function () { qpGo(); });
+  foot.appendChild(go);
+}
+function qpGoLabel(total) {
+  var n = qpWant(total);
+  return n ? '▶ Start ' + n + ' question' + (n === 1 ? '' : 's') : '▶ Start';
+}
+function qpNote(el, c) {
+  var n = qpWant(c.total);
+  var where = c.open + ' still to redo' + (c.sorted ? ', ' + c.sorted + ' already sorted' : '') + '.';
+  if (!n) { el.textContent = 'You have ' + where + ' Type a number from 1 to ' + Math.min(c.total, QP_MAX) + '.'; return; }
+  if (!c.open) {
+    el.textContent = 'Every question here is sorted. Well done! These ' + n + ' are ones you got right before, to keep them sharp.';
+  } else if (n > c.open) {
+    el.textContent = 'You have ' + where + ' All ' + c.open + ' go in, plus ' + (n - c.open) +
+      ' you sorted before, to keep them sharp.';
+  } else {
+    el.textContent = 'You have ' + where;
+  }
+}
+/* Start. `again` is the finish screen's ⚡ Another round: the same number
+   and subject, picked afresh — the questions just answered are now the
+   most recently practised, so they go to the back. */
+function qpGo(again) {
+  var n, subject;
+  if (again) { n = again.n; subject = again.subject; }
+  else {
+    if (!qp) return;
+    subject = qpSubjectNow();
+    n = qpWant(qpCounts(mistakes, subject).total);
+  }
+  if (!n) { toast('Pick how many questions first.'); return; }
+  var picked = qpPick(mistakes, n, { subject: subject, seen: qpSeen() });
+  if (!picked.ids.length) { toast('There is nothing in your mistake book to practise yet.'); return; }
+  if (!again) {
+    if (qp && qp.own !== '') qpPrefSave(n, subject); else qpPrefSave(qp ? qp.n : n, subject);
+    qpClose();
+  }
+  usageNote('quickpractice', picked.ids.length + ' questions');
+  pracStart(picked.ids, { quick: { n: n, subject: subject } });
+}
+
 function pracCurrent() { return prac ? mistakeById(prac.ids[prac.i]) : null; }
 /* What the question is WORTH, not what it scored. Last time's 0 out of 2 is
    the mark they are here to improve on, and hanging it over the retry is the
@@ -24141,6 +24563,7 @@ async function pracCheck() {
   prac.busy = false;
   prac.revealed = true;
   prac.done++;
+  qpStamp(m.id);
   usageNote('practice', m.docName || '');
   if (prac.result && prac.result.verdict === 'correct') usageAdd('practiceRight', 1);
   if (prac.result && prac.result.verdict && typeof StudyAdventure !== 'undefined') StudyAdventure.practice(m, mine, adventureContext);
@@ -24264,6 +24687,7 @@ function pracMcqUi(m) {
     prac.revealed = true;
     prac.result = { verdict: r.ok ? 'correct' : 'wrong', feedback: '', mine: mine, mcq: true };
     prac.done++;
+    qpStamp(m.id);
     usageNote('practice', m.docName || '');
     if (r.ok) usageAdd('practiceRight', 1);
     if (typeof StudyAdventure !== 'undefined') StudyAdventure.practice(m, mine, adventureContext);
@@ -24278,6 +24702,7 @@ function pracMcqUi(m) {
     prac.revealed = true;
     prac.result = { verdict: '', feedback: '', mine: '', mcq: true };
     prac.done++;
+    qpStamp(m.id);
     pracRender();
   }));
   prac.mcq = { id: m.id, ui: ui };
@@ -24307,6 +24732,17 @@ function pracRender(finished) {
                     : 'They are all still in the book. Read the answers through, then come back and try again.');
     end.appendChild(sub);
     body.appendChild(end);
+    /* ⚡ Another round: same number, same subject, picked afresh. */
+    if (prac.quick) {
+      var round = prac.quick;
+      var more = document.createElement('button');
+      more.className = 'btn';
+      more.id = 'qpAgain';
+      more.textContent = '⚡ ' + round.n + ' more';
+      more.title = 'Another quick practice of ' + round.n + ', starting with the ones you have not just done';
+      more.addEventListener('click', function () { qpGo(round); });
+      foot.appendChild(more);
+    }
     var fin = document.createElement('button');
     fin.className = 'btn btnPrimary';
     fin.textContent = 'Done';
@@ -30385,7 +30821,9 @@ var USAGE_EVENTS = {
   consultReply:    { label: 'Watched a recorded answer', count: 'answers' },
   consultAnswer:   { label: 'Answered a question with a recording', count: 'answered' },
   // 🔎 Brought a paper in from a website by its link (v1.91.0).
-  paperlink: { label: 'Brought in a paper by its link', count: 'paperlinks' }
+  paperlink: { label: 'Brought in a paper by its link', count: 'paperlinks' },
+  // ⚡ Started a quick practice from the mistake book (v1.94.0).
+  quickpractice: { label: 'Started a quick practice', count: 'quickpractice' }
 };
 function usageLabel(key) {
   var e = USAGE_EVENTS[key];
@@ -31162,6 +31600,7 @@ function renderAuth() {
   $('signedOutCard').classList.toggle('hidden', signedIn);
   $('homeSignedIn').classList.toggle('hidden', !signedIn);
   $('mistakesBtn').classList.toggle('hidden', !signedIn);
+  $('quickPracBtn').classList.toggle('hidden', !signedIn);
   freshButtonsShow();
   $('peopleBtn').classList.toggle('hidden', !isAdmin(currentUser));
   // A student's level and subject are on screen, not buried in a menu: they
@@ -35259,6 +35698,8 @@ $('backBtn').addEventListener('click', function () {
   loadWorksheets();
 });
 $('mistakesBtn').addEventListener('click', function () { showView('mistake'); loadMistakes(); });
+$('quickPracBtn').addEventListener('click', function () { qpOpen(true); });
+$('qpClose').addEventListener('click', qpClose);
 $('mistBackBtn').addEventListener('click', function () { showView('home'); });
 $('notesBtn').addEventListener('click', openNotesModal);
 $('notesClose').addEventListener('click', function () { $('notesModal').classList.remove('open'); });
