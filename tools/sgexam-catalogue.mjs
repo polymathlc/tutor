@@ -22,7 +22,8 @@
 //
 // Pure parts are exported for tools/sgexam-catalogue-tests.mjs; running the
 // file does the crawl:  node tools/sgexam-catalogue.mjs [--out papers/sgexam.json]
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const SITE = 'https://sgexam.com/';
@@ -254,6 +255,7 @@ async function crawl(outPath) {
     console.error(`Only ${cat.count} papers (had ${before}); the saved list was left as it was.`);
     process.exit(1);
   }
+  mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, JSON.stringify(cat) + '\n');
   console.log('wrote', outPath);
 }
