@@ -24,6 +24,7 @@ const { createCentreRepository } = require('./centre-admin-repository');
 const { createSampleRepository, createSampleService, BUCKET } = require('./sample-materials-service');
 const { createSampleQuestionService } = require('./sample-questions');
 const { createConsultService, createConsultRepository } = require('./consult-service');
+const { createPaperService } = require('./paper-fetch-service');
 
 initializeApp();
 const openaiKey = defineSecret('OPENAI_API_KEY');
@@ -113,3 +114,15 @@ exports.studyBuddySampleCleanup = onSchedule({
   timeZone: 'Asia/Singapore', timeoutSeconds: 180, maxInstances: 1,
   memory: '256MiB', retryCount: 3, minBackoffSeconds: 10, maxBackoffSeconds: 60
 }, sampleService.sweep);
+
+// 🔎 Find an exam paper: fetches ONE paper the signed-in person pasted the
+// link of (an SG Exam paper page or a Google Drive / Docs link), checks it is
+// a PDF and hands it back, so it can be uploaded without a download first.
+// No secret. The hosts it may reach are a fixed list in paper-fetch-service.js.
+const paperService = createPaperService({
+  auth: getAuth(), appCheck: getAppCheck(), report: code => logger.warn(code)
+});
+exports.studyBuddyPaper = onRequest({
+  region: 'us-central1', timeoutSeconds: 60,
+  maxInstances: 3, concurrency: 10, memory: '512MiB', invoker: 'public'
+}, paperService.handler);
