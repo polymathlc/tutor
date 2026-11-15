@@ -17,6 +17,16 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.94.0 — ⚙ Find exam paper is just the list
+
+- 🔎 **Find exam paper** now opens on the paper list alone: your level and subject are already chosen, there is a
+  search box, and you tap ⬇ Bring in on the paper you want.
+- Everything else is folded under **⚙ Advanced options**: the year filter, pasting a link from a website, uploading
+  a PDF from this device, and the settings (name, help level, answer key, shelf). The upload button appears when the
+  section is opened.
+- If the list could not load, the paste-a-link box stays up front, because it is then the only way in.
+- ⬆ **Upload a worksheet** is unchanged.
+
 ## v1.93.0 — 📐 Chung GPT fits an iPad standing up, and the keyboard never hides the Ask box
 
 - **On an iPad in portrait, Chung GPT now sits under the worksheet instead of over it.** The page stays on top and the
