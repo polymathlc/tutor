@@ -11,10 +11,10 @@
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.91.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.91.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.91.0">
-<link rel="stylesheet" href="model-studio.css?v=1.91.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.92.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.92.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.92.0">
+<link rel="stylesheet" href="model-studio.css?v=1.92.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -2427,6 +2427,32 @@
     .upFindRow .btn { flex: 1 1 auto; }
   }
   @media (prefers-reduced-motion: reduce) { .upFind.nudge #upLinkPaste { animation: none; } }
+  /* 📚 PICK A PAPER FROM THE SG EXAM LIST (v1.92.0) */
+  .upPick { margin: 6px 0 14px; }
+  .upPickFilters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+  .upPickFilters select, .upPickFilters input { min-height: 44px; font-size: 16px; }
+  .upPickFilters select { flex: 1 1 110px; min-width: 0; }
+  .upPickFilters input { flex: 2 1 200px; min-width: 0; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: inherit; -webkit-appearance: none; appearance: none; }
+  .upPickCount { font-size: 0.82rem; color: var(--ink-soft); margin: 2px 0 8px; }
+  .upPickList { max-height: min(46vh, 420px); overflow-y: auto; -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--line); border-radius: 12px; background: #fff; overscroll-behavior: contain; }
+  .upPickYear { position: sticky; top: 0; z-index: 1; background: #F4F1FA; font-weight: 700; font-size: 0.82rem;
+    padding: 6px 14px; border-bottom: 1px solid var(--line); }
+  .upPickRow { display: flex; width: 100%; align-items: center; gap: 12px; min-height: 52px; padding: 8px 14px;
+    border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+  .upPickRow:last-child { border-bottom: 0; }
+  .upPickRow:hover, .upPickRow:focus-visible { background: #F7F4FC; }
+  .upPickRow .pkMain { flex: 1 1 auto; min-width: 0; }
+  .upPickRow .pkSchool { display: block; font-weight: 600; }
+  .upPickRow .pkWhat { display: block; font-size: 0.8rem; color: var(--ink-soft); }
+  .upPickRow .pkGo { flex: 0 0 auto; font-size: 0.82rem; font-weight: 700; color: #5E35B1; white-space: nowrap; }
+  .upPickRow[disabled] { opacity: 0.55; cursor: default; }
+  .upPickRow.busy .pkGo { color: var(--ink-soft); }
+  .upPickEmpty { padding: 16px 14px; color: var(--ink-soft); font-size: 0.88rem; }
+  .upPickMore { margin-top: 8px; min-height: 44px; }
+  .upPaste > summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; min-height: 44px; display: flex; align-items: center; }
+  .upPaste[open] > summary { margin-bottom: 4px; }
+  .upPaste:not([open]) + .upFindMsg:empty { display: none; }
 </style>
 <link rel="stylesheet" href="adventure.css?v=1.54.0">
 <link rel="stylesheet" href="adventure-shell.css?v=1.54.0">
@@ -2762,6 +2788,24 @@
            subject, help, key, shelf) apply to it exactly as to a file. -->
       <div class="upFind" id="upFind">
         <h3>🔎 Bring in an exam paper from a website</h3>
+        <!-- 📚 (v1.92.0) SG Exam's papers, listed here: pick one and it comes in.
+             Hidden until papers/sgexam.json has loaded; the paste road below
+             is then folded away, and open again whenever the list is missing. -->
+        <div class="upPick hidden" id="upPick">
+          <p class="hint" style="margin:0 0 10px">Pick a paper from SG Exam’s free papers and it comes straight in. Newest first.</p>
+          <div class="upPickFilters">
+            <select id="upPickLevel" aria-label="Level"></select>
+            <select id="upPickSubject" aria-label="Subject"></select>
+            <select id="upPickYear" aria-label="Year"></select>
+            <input type="search" id="upPickSearch" placeholder="Search a school or exam" aria-label="Search a school or exam"
+                   autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search">
+          </div>
+          <div class="upPickCount" id="upPickCount" role="status" aria-live="polite"></div>
+          <div class="upPickList" id="upPickList"></div>
+          <button class="btn upPickMore hidden" id="upPickMore" type="button">Show more</button>
+        </div>
+        <details class="upPaste" id="upPaste" open>
+        <summary id="upPasteHead">Or paste a link from a website</summary>
         <ol class="upFindSteps">
           <li>Open the site and tap the paper you want.</li>
           <li>Copy its link: the page’s address, or press and hold <b>Download Paper</b> and choose <b>Copy Link</b>.</li>
@@ -2776,6 +2820,7 @@
           <button class="btn" id="upLinkPaste" type="button">📋 Paste link</button>
           <button class="btn btnPrimary" id="upLinkGo" type="button">⬇ Bring it in</button>
         </div>
+        </details>
         <div class="upFindMsg" id="upLinkMsg" role="status" aria-live="polite"></div>
       </div>
       <div class="upOr">or upload a PDF from this device</div>
@@ -3485,11 +3530,11 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.91.0"></script>
-<script src="lo-marks.js?v=1.91.0"></script>
-<script src="lo-practice.js?v=1.91.0"></script>
-<script src="cer-mcq.js?v=1.91.0"></script>
-<script src="model-studio.js?v=1.91.0"></script>
+<script src="concept-tags.js?v=1.92.0"></script>
+<script src="lo-marks.js?v=1.92.0"></script>
+<script src="lo-practice.js?v=1.92.0"></script>
+<script src="cer-mcq.js?v=1.92.0"></script>
+<script src="model-studio.js?v=1.92.0"></script>
 <script>
 'use strict';
 
@@ -3586,7 +3631,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.91.0';
+var APP_VERSION = 'v1.92.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -34839,6 +34884,7 @@ if (auth) auth.onAuthStateChanged(async function (user) {
     loadMistakes().then(mistakeMirrorCatchUp, function () {});
     usageStart(user);
     usageNote('signin');
+    try { paperListSoon(); } catch (e) { /* the paste road works without it */ }
     onboardRequire(user).catch(function (e) {
       // A gate that throws must not be a gate nobody can get past.
       console.warn('first sign-in: could not be asked', e);
@@ -34970,6 +35016,11 @@ $('whoAmI').addEventListener('click', function () {
 $('uploadBtn').addEventListener('click', openUploadModal);
 $('findPaperBtn').addEventListener('click', openFindPaper);
 $('upLinkPaste').addEventListener('click', paperPaste);
+$('upPickLevel').addEventListener('change', function (e) { paperPickSet('level', e.target.value); });
+$('upPickSubject').addEventListener('change', function (e) { paperPickSet('subject', e.target.value); });
+$('upPickYear').addEventListener('change', function (e) { paperPickSet('year', e.target.value); });
+$('upPickSearch').addEventListener('input', function (e) { paperPickSet('q', e.target.value); });
+$('upPickMore').addEventListener('click', function () { paperPick.shown += PAPER_PICK_PAGE; paperPickList(); });
 $('upLinkGo').addEventListener('click', paperBringIn);
 $('upLink').addEventListener('keydown', function (e) {
   if (e.key === 'Enter') { e.preventDefault(); paperBringIn(); }
@@ -35093,6 +35144,8 @@ function paperSitesPaint() {
 /* Called whenever the upload dialog opens: a fresh box every time. */
 function paperReset() {
   paperSitesPaint();
+  paperPickPaint(true);
+  if (paperList === null) paperListLoad();
   if ($('upLink')) $('upLink').value = '';
   paperMsg('');
   paperBusy = false;
@@ -35138,6 +35191,12 @@ window.addEventListener('focus', paperOnReturn);
 function openFindPaper() {
   if (!currentUser) { signIn(); return; }
   var site = PAPER_SITES[0];
+  // 📚 With SG Exam's list in hand the paper is picked HERE, so no new tab.
+  if (paperListReady()) {
+    openUploadModal();
+    try { $('upFind').scrollIntoView({ block: 'start' }); } catch (e) { /* old Safari */ }
+    return;
+  }
   var w = null;
   try { w = window.open(site.url, '_blank', 'noopener'); } catch (e) { w = null; }
   openUploadModal();
@@ -35238,6 +35297,228 @@ async function paperBringIn() {
   paperMsg('Got it. Uploading “' + got.name + '”…', 'good');
   usageNote('paperlink', /drive|docs\.google/.test(c.url) ? 'Google Drive' : 'SG Exam');
   handleUpload([file]);
+}
+
+/* =====================================================================
+   📚 PICK A PAPER FROM SG EXAM'S LIST (v1.92.0)
+
+   "Crawl sgexam.com and save the links and descriptions… so Find exam paper
+   just loads the link." The list is papers/sgexam.json, collected once a week
+   by tools/sgexam-catalogue.mjs (.github/workflows/sgexam-catalogue.yml):
+   LINKS and descriptions only, never a paper. Tapping a row puts that link
+   through the very road a pasted link takes (`paperBringIn` →
+   `studyBuddyPaper` → `handleUpload`), so nothing about fetching changed.
+
+   - THE LIST IS OPTIONAL. Until it has loaded — or if it never does (a
+     school network, a first deploy before the crawl ran) — the picker stays
+     hidden and the paste road is open, exactly as in v1.91.0. 🔎 on the home
+     screen opens SG Exam in a new tab only in that case.
+   - EVERY ROW IS CHECKED WITH `paperLinkCheck` as it is read, so a list that
+     somehow carried a link to another site is a list that drops that row,
+     never a fetch the server would refuse anyway.
+   - It starts on the student's own level and subject; the teacher's picks
+     in the dialog decide it for the teacher. A pick also fills the dialog's
+     level and subject when they were left to the read, so the paper is filed
+     where the list said it belongs.
+   - Rows are drawn PAPER_PICK_PAGE at a time (a level × subject is ~400
+     papers) with Show more, so an iPad never lays out thousands of buttons.
+   ===================================================================== */
+var PAPER_LIST_URL = 'papers/sgexam.json';
+var PAPER_PICK_PAGE = 40;
+var PAPER_PICK_SUBJECTS = ['English', 'Maths', 'Science', 'Chinese', 'Higher Chinese'];
+var paperList = null;        // null = not asked yet; false = could not be read; [] … = the papers
+var paperListJob = null;
+var paperPick = { level: '', subject: '', year: '', q: '', shown: PAPER_PICK_PAGE };
+
+/* Keep only rows that are well formed AND a link the server will take. Pure. */
+function paperListClean(data) {
+  var rows = data && Array.isArray(data.papers) ? data.papers : [];
+  var out = [];
+  rows.forEach(function (p) {
+    if (!p || typeof p.u !== 'string' || !/^P[1-6]$/.test(String(p.l)) || !(Number(p.y) > 1990)) return;
+    if (PAPER_PICK_SUBJECTS.indexOf(String(p.sl)) < 0) return;
+    if (!paperLinkCheck(p.u).ok) return;
+    out.push({ t: String(p.t || '').slice(0, 160), u: p.u, y: Number(p.y), l: String(p.l), s: String(p.s || ''),
+      sl: String(p.sl), e: String(p.e || '').slice(0, 80), sc: String(p.sc || '').slice(0, 80) });
+  });
+  out.sort(function (a, b) { return (b.y - a.y) || (a.sc < b.sc ? -1 : a.sc > b.sc ? 1 : 0); });
+  return out;
+}
+
+function paperListLoad() {
+  if (paperList) return Promise.resolve(paperList);
+  if (paperListJob) return paperListJob;
+  paperListJob = fetch(PAPER_LIST_URL, { cache: 'no-cache' }).then(function (res) {
+    if (!res.ok) throw new Error('http ' + res.status);
+    return res.json();
+  }).then(function (data) {
+    var rows = paperListClean(data);
+    paperList = rows.length ? rows : false;
+    return paperList;
+  }).catch(function () {
+    paperList = false;
+    return false;
+  }).then(function (got) {
+    paperListJob = null;
+    if ($('uploadModal') && $('uploadModal').classList.contains('open')) paperPickPaint(true);
+    return got;
+  });
+  return paperListJob;
+}
+/* Asked for quietly after sign-in, so 🔎 knows by the time it is tapped. */
+function paperListSoon() { setTimeout(function () { paperListLoad(); }, 2500); }
+function paperListReady() { return Array.isArray(paperList) && paperList.length > 0; }
+
+/* The filters, from what the dialog already knows. */
+function paperPickDefaults() {
+  var lvl = '', sub = '';
+  var st = (!isAdmin(currentUser) && typeof activeStudent === 'function') ? activeStudent() : null;
+  if (st && /^P[1-6]$/.test(String(st.level || ''))) lvl = st.level;
+  else if ($('upLevel') && /^P[1-6]$/.test($('upLevel').value)) lvl = $('upLevel').value;
+  var subId = st ? studentSubject(st) : ($('upSubject') ? $('upSubject').value : '');
+  if ($('upSubject') && $('upSubject').value && SUBJECT_OK[$('upSubject').value]) subId = $('upSubject').value;
+  sub = { english: 'English', math: 'Maths', science: 'Science', chinese: 'Chinese' }[subId] || '';
+  if (!lvl && paperListReady()) lvl = paperList[0].l;
+  return { level: lvl, subject: sub, year: '', q: '', shown: PAPER_PICK_PAGE };
+}
+
+/* Which papers the filters let through. Pure over its arguments. */
+function paperPickFilter(list, f, ignoreYear) {
+  var terms = String(f.q || '').toLowerCase().split(/\s+/).filter(Boolean);
+  return (list || []).filter(function (p) {
+    if (f.level && p.l !== f.level) return false;
+    if (f.subject && p.sl !== f.subject) return false;
+    if (!ignoreYear && f.year && String(p.y) !== String(f.year)) return false;
+    if (!terms.length) return true;
+    var hay = (p.sc + ' ' + p.e + ' ' + p.sl + ' ' + p.y + ' ' + p.t).toLowerCase();
+    return terms.every(function (t) { return hay.indexOf(t) >= 0; });
+  });
+}
+
+function paperPickOptions(sel, items, value) {
+  if (!sel) return;
+  sel.innerHTML = '';
+  items.forEach(function (it) {
+    var o = document.createElement('option');
+    o.value = it[0];
+    o.textContent = it[1];
+    sel.appendChild(o);
+  });
+  sel.value = value;
+  if (sel.value !== value) sel.value = '';
+}
+
+/* Draw the picker. `fresh` = the dialog has just opened or the list has just
+   arrived: the filters start from the defaults again. */
+function paperPickPaint(fresh) {
+  var box = $('upPick'), paste = $('upPaste');
+  if (!box) return;
+  if (!paperListReady()) {
+    box.classList.add('hidden');
+    if (paste) paste.open = true;
+    return;
+  }
+  box.classList.remove('hidden');
+  if (fresh) {
+    paperPick = paperPickDefaults();
+    if (paste) paste.open = false;
+    if ($('upPickSearch')) $('upPickSearch').value = '';
+  }
+  var levels = [['', 'All levels']];
+  for (var n = 6; n >= 1; n--) levels.push(['P' + n, 'P' + n]);
+  paperPickOptions($('upPickLevel'), levels, paperPick.level);
+  paperPickOptions($('upPickSubject'), [['', 'All subjects']].concat(PAPER_PICK_SUBJECTS.map(function (x) { return [x, x]; })), paperPick.subject);
+  var years = [];
+  paperPickFilter(paperList, paperPick, true).forEach(function (p) { if (years.indexOf(p.y) < 0) years.push(p.y); });
+  years.sort(function (a, b) { return b - a; });
+  if (paperPick.year && years.indexOf(Number(paperPick.year)) < 0) paperPick.year = '';
+  paperPickOptions($('upPickYear'), [['', 'All years']].concat(years.map(function (y) { return [String(y), String(y)]; })), String(paperPick.year || ''));
+  paperPickList();
+}
+
+function paperPickList() {
+  var list = $('upPickList');
+  if (!list) return;
+  var hits = paperPickFilter(paperList, paperPick, false);
+  list.innerHTML = '';
+  var shown = hits.slice(0, paperPick.shown);
+  var year = null;
+  shown.forEach(function (p) {
+    if (p.y !== year) {
+      year = p.y;
+      var h = document.createElement('div');
+      h.className = 'upPickYear';
+      h.textContent = String(p.y);
+      list.appendChild(h);
+    }
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'upPickRow';
+    b.setAttribute('data-url', p.u);
+    var main = document.createElement('span');
+    main.className = 'pkMain';
+    var school = document.createElement('span');
+    school.className = 'pkSchool';
+    school.textContent = p.sc || p.t;
+    var what = document.createElement('span');
+    what.className = 'pkWhat';
+    what.textContent = [p.l + ' ' + p.sl, p.e].filter(Boolean).join(' · ');
+    main.appendChild(school);
+    main.appendChild(what);
+    var go = document.createElement('span');
+    go.className = 'pkGo';
+    go.textContent = '⬇ Bring in';
+    b.appendChild(main);
+    b.appendChild(go);
+    b.setAttribute('aria-label', 'Bring in ' + p.y + ' ' + p.l + ' ' + p.sl + ' ' + p.e + ' ' + p.sc);
+    b.disabled = paperBusy;
+    b.addEventListener('click', function () { paperPickTake(p, b); });
+    list.appendChild(b);
+  });
+  if (!hits.length) {
+    var none = document.createElement('div');
+    none.className = 'upPickEmpty';
+    none.textContent = paperPick.q ? 'No paper matches that search. Try fewer words, or another year.'
+      : 'No papers for this choice yet. Try another level, subject or year.';
+    list.appendChild(none);
+  }
+  if ($('upPickCount')) {
+    $('upPickCount').textContent = hits.length
+      ? (hits.length === 1 ? '1 paper' : hits.length.toLocaleString() + ' papers') +
+        (hits.length > shown.length ? ' · showing ' + shown.length : '')
+      : '';
+  }
+  if ($('upPickMore')) $('upPickMore').classList.toggle('hidden', hits.length <= shown.length);
+}
+
+function paperPickSet(key, value) {
+  paperPick[key] = value;
+  paperPick.shown = PAPER_PICK_PAGE;
+  if (key === 'q') paperPickList();
+  else paperPickPaint(false);
+  if ($('upPickList')) $('upPickList').scrollTop = 0;
+}
+
+/* A row tapped: its link goes down the pasted-link road. */
+function paperPickTake(p, btn) {
+  if (paperBusy) return;
+  if ($('upLink')) $('upLink').value = p.u;
+  // Fill the dialog's level and subject when they were left to the read.
+  if ($('upLevel') && !$('upLevelWrap').classList.contains('hidden') && !$('upLevel').value) {
+    $('upLevel').value = p.l;
+    if ($('upLevel').value !== p.l) $('upLevel').value = '';
+  }
+  if ($('upSubject') && p.s && SUBJECT_OK[p.s] && !$('upSubjectWrap').classList.contains('hidden')) {
+    var had = $('upSubject').value;
+    $('upSubject').value = p.s;
+    if ($('upSubject').value !== p.s) $('upSubject').value = had;
+  }
+  document.querySelectorAll('#upPickList .upPickRow').forEach(function (r) { r.disabled = true; });
+  if (btn) { btn.classList.add('busy'); var g = btn.querySelector('.pkGo'); if (g) g.textContent = '⏳'; }
+  Promise.resolve(paperBringIn()).then(function () {
+    document.querySelectorAll('#upPickList .upPickRow').forEach(function (r) { r.disabled = paperBusy; });
+    if (btn) { btn.classList.remove('busy'); var g2 = btn.querySelector('.pkGo'); if (g2) g2.textContent = '⬇ Bring in'; }
+  });
 }
 
 $('gradeCancel').addEventListener('click', function () { $('gradeModal').classList.remove('open'); });

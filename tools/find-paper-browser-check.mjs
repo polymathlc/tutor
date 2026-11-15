@@ -187,6 +187,113 @@ async function run(label, opts) {
   await ctx.close();
 }
 
+/* ---------------- 📚 the SG Exam list (v1.92.0) ---------------- */
+const LIST = { source: 'https://sgexam.com/', count: 0, papers: [] };
+const row = (y, l, sl, s, e, sc, slug) => ({ t: `${y}-${l}-${sl}-${e}-${sc}`, u: `https://sgexam.com/subject/${slug}/${y}-${l.toLowerCase()}-${sc.toLowerCase().replace(/\W+/g, '-')}/`, y, l, s, sl, e, sc });
+for (const [y, sc] of [[2026, 'ACS Junior'], [2026, 'Nan Hua'], [2025, 'Ai Tong'], [2025, 'Tao Nan'], [2024, 'Rosyth']]) {
+  LIST.papers.push(row(y, 'P5', 'Maths', 'math', 'SA2', sc, 'maths'));
+}
+for (let i = 0; i < 45; i++) LIST.papers.push(row(2020 + (i % 6), 'P6', 'Science', 'science', 'Prelim Exam', 'School ' + String(i).padStart(2, '0'), 'science'));
+LIST.papers.push({ ...row(2026, 'P5', 'Maths', 'math', 'SA2', 'Evil', 'maths'), u: 'https://evil.example/2026-p5.pdf' });
+LIST.count = LIST.papers.length;
+
+async function runList(label, opts) {
+  console.log('\n' + label + ' — picking from the SG Exam list');
+  const ctx = await browser.newContext(opts);
+  const asked = [];
+  await ctx.addInitScript(list => {
+    const real = window.fetch.bind(window);
+    window.fetch = (url, init) => /papers\/sgexam\.json/.test(String(url))
+      ? Promise.resolve(new Response(JSON.stringify(list), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      : real(url, init);
+  }, LIST);
+  await ctx.route('**/*', route => {
+    const url = route.request().url();
+    if (url.startsWith('file:')) return route.continue();
+    if (url === ENDPOINT) {
+      const req = route.request();
+      if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'POST' } });
+      asked.push(req.postData());
+      return route.fulfill({ status: 200, contentType: 'application/pdf', body: PDF,
+        headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'X-Paper-Name', 'X-Paper-Name': encodeURIComponent('2025 P5 Maths SA2 Ai Tong') } });
+    }
+    return route.abort();
+  });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto(FILE);
+  await page.waitForTimeout(800);
+  await page.evaluate(async () => {
+    currentUser = { uid: 'u1', email: 'student@example.com', displayName: 'Test', getIdToken: async () => 'id-token' };
+    window.liveAppCheckToken = async () => 'app-check';
+    activeStudent = () => ({ name: 'Ann', level: 'P5', subject: 'math' });
+    window.__uploads = [];
+    handleUpload = async function (files) {
+      window.__uploads.push({ name: files[0].name, type: files[0].type });
+      document.getElementById('uploadModal').classList.remove('open');
+    };
+    showView('home');
+    document.getElementById('homeSignedIn').classList.remove('hidden');
+    document.getElementById('signedOutCard').classList.add('hidden');
+    await paperListLoad();
+  });
+  const tap = async sel => { if (opts.hasTouch) await page.locator(sel).first().tap(); else await page.locator(sel).first().click(); };
+
+  const popupWait = ctx.waitForEvent('page', { timeout: 1500 }).catch(() => null);
+  await tap('#findPaperBtn');
+  const popup = await popupWait;
+  ok('with the list in hand, 🔎 opens NO new tab', !popup, popup ? popup.url() : '');
+  ok('…the dialog is open with the picker showing', await page.locator('#uploadModal.open').count() === 1 && await page.locator('#upPick').isVisible());
+  ok('…and the paste road is folded away', !(await page.evaluate(() => document.getElementById('upPaste').open)));
+  ok('it starts on the student’s own level and subject',
+    (await page.inputValue('#upPickLevel')) === 'P5' && (await page.inputValue('#upPickSubject')) === 'Maths');
+  const rows = await page.locator('#upPickList .upPickRow').count();
+  ok('…listing that level and subject’s papers, and never a link to another site', rows === 5, 'rows ' + rows);
+  ok('…newest first, under year headings',
+    (await page.locator('#upPickList .upPickYear').first().textContent()) === '2026' &&
+    (await page.locator('#upPickList .upPickYear').count()) === 3);
+  const sz = await page.evaluate(() => {
+    const r = document.querySelector('#upPickList .upPickRow').getBoundingClientRect();
+    const card = document.querySelector('#uploadModal .modalCard');
+    return {
+      row: r.height,
+      sel: ['upPickLevel', 'upPickSubject', 'upPickYear', 'upPickSearch'].map(id => document.getElementById(id).getBoundingClientRect().height),
+      font: ['upPickLevel', 'upPickSearch'].map(id => parseFloat(getComputedStyle(document.getElementById(id)).fontSize)),
+      overflow: card.scrollWidth - card.clientWidth
+    };
+  });
+  ok('rows and filters are finger-sized, 16px text, no sideways scroll',
+    sz.row >= 44 && sz.sel.every(h => h >= 44) && sz.font.every(f => f >= 16) && sz.overflow <= 1, JSON.stringify(sz));
+  if (SHOTS) await page.screenshot({ path: path.join(SHOTS, label.replace(/\W+/g, '-') + '-list.png') });
+
+  await page.fill('#upPickSearch', 'nan hua');
+  ok('search narrows by school', (await page.locator('#upPickList .upPickRow').count()) === 1);
+  await page.fill('#upPickSearch', '');
+  await page.selectOption('#upPickYear', '2025');
+  ok('a year shows only that year', (await page.locator('#upPickList .upPickRow').count()) === 2);
+
+  await page.selectOption('#upPickLevel', 'P6');
+  await page.selectOption('#upPickSubject', 'Science');
+  ok('another level and subject: 40 shown, then Show more',
+    (await page.locator('#upPickList .upPickRow').count()) === 40 && await page.locator('#upPickMore').isVisible(),
+    String(await page.locator('#upPickList .upPickRow').count()));
+  await tap('#upPickMore');
+  ok('…Show more shows the rest', (await page.locator('#upPickList .upPickRow').count()) === 45 && !(await page.locator('#upPickMore').isVisible()));
+
+  await page.selectOption('#upPickLevel', 'P5');
+  await page.selectOption('#upPickSubject', 'Maths');
+  await page.selectOption('#upPickYear', '2025');
+  const want = LIST.papers.find(p => p.sc === 'Ai Tong').u;
+  await tap(`#upPickList .upPickRow[data-url="${want}"]`);
+  await page.waitForFunction(() => window.__uploads.length > 0, null, { timeout: 5000 }).catch(() => {});
+  ok('tapping a paper asks for THAT link, once', asked.length === 1 && JSON.parse(asked[0]).url === want, asked.join(' | '));
+  const ups = await page.evaluate(() => window.__uploads);
+  ok('…and it is uploaded as a named PDF', ups.length === 1 && ups[0].name === '2025 P5 Maths SA2 Ai Tong.pdf' && ups[0].type === 'application/pdf', JSON.stringify(ups));
+  ok('no page errors along the way', errors.length === 0, errors.join(' | '));
+  await ctx.close();
+}
+
 const ipad = devices && devices['iPad (gen 7)'] ? { ...devices['iPad (gen 7)'] } : { viewport: { width: 810, height: 1080 }, hasTouch: true, isMobile: true };
 delete ipad.defaultBrowserType;
 await run('iPad (touch)', ipad);
@@ -194,6 +301,9 @@ const phone = devices && devices['iPhone 13'] ? { ...devices['iPhone 13'] } : { 
 delete phone.defaultBrowserType;
 await run('Phone (touch)', phone);
 await run('Laptop (mouse)', { viewport: { width: 1280, height: 800 } });
+await runList('iPad (touch)', ipad);
+await runList('Phone (touch)', phone);
+await runList('Laptop (mouse)', { viewport: { width: 1280, height: 800 } });
 
 await browser.close();
 console.log('\n' + (fail ? '✗ ' + fail + ' of ' + (pass + fail) + ' checks failed' : '✓ all ' + pass + ' checks passed'));

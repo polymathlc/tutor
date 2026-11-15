@@ -1,0 +1,60 @@
+# 📚 THE SG EXAM PAPER LIST — refreshed once a week (tools/sgexam-catalogue.mjs).
+#
+# It saves LINKS and descriptions only (papers/sgexam.json), never a paper.
+# The crawl reads robots.txt first and fetches the ~30 listing pages one at a
+# time, four seconds apart. A run that finds far fewer papers than are saved
+# keeps the old list and goes red, so a bad week never empties the picker.
+name: Refresh the SG Exam paper list
+
+on:
+  schedule:
+    - cron: '17 19 * * 6'      # Sunday 03:17 Singapore time, when nobody is using it
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: sgexam-catalogue
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: The list's own tests
+        run: node --test tools/sgexam-catalogue-tests.mjs
+      - name: Collect the paper links
+        run: node tools/sgexam-catalogue.mjs --out papers/sgexam.json
+      - name: Check the saved list
+        run: node --test tools/sgexam-catalogue-tests.mjs
+      - name: Save it if it changed
+        id: save
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- papers/sgexam.json && git ls-files --error-unmatch papers/sgexam.json >/dev/null 2>&1; then
+            echo 'No change to the paper list.'
+            echo 'changed=no' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add papers/sgexam.json
+          git commit -m "Refresh the SG Exam paper list ($(node -p "require('./papers/sgexam.json').count") papers)"
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep $((i * 5)); done
+          echo 'changed=yes' >> "$GITHUB_OUTPUT"
+      # A push made with the workflow token does not start other workflows, so
+      # the site is asked to rebuild by hand. Best effort: a failure here only
+      # means the new list goes out with the next ordinary deploy.
+      - name: Publish it
+        if: steps.save.outputs.changed == 'yes'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds"
