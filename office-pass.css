@@ -1,0 +1,18 @@
+/* 🔗 The PIN box on the sign-in card (office-pass.js). */
+#officePassSlot { margin-top: 22px; }
+.opBox { max-width: 420px; margin: 0 auto; padding: 18px 20px 16px; border-radius: 16px;
+  background: rgba(94, 53, 177, .06); border: 1px solid rgba(94, 53, 177, .18); text-align: left; }
+.opHead { font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+.opSub { margin: 0 0 12px; font-size: 13px; line-height: 1.45; color: #555; }
+.opRow { display: flex; gap: 10px; align-items: center; }
+.opPin { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 8px 14px; border-radius: 12px; border: 1px solid #c9c2dc;
+  font: 700 22px/1.2 ui-monospace, Menlo, monospace; letter-spacing: 8px; text-align: center; background: #fff; color: #1a1a1a; }
+.opPin:focus { outline: 2px solid #5E35B1; outline-offset: 1px; }
+.opGo { min-height: 44px; min-width: 76px; }
+.opStatus { margin: 10px 0 0; font-size: 13px; color: #444; }
+.opStatus.bad { color: #b3261e; }
+@media (prefers-color-scheme: dark) {
+  .opSub, .opStatus { color: #bbb; }
+  .opPin { background: #1e1b26; color: #f2f2f2; border-color: #4a4160; }
+}
+@media print { #officePassSlot { display: none; } }

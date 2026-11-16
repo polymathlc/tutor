@@ -32,13 +32,26 @@ function isCentrePractice(user, nowMs = Date.now()) {
     typeof user.centreStudentKey === 'string' && /^[a-f0-9]{64}$/.test(user.centreStudentKey) &&
     Number.isInteger(user.centrePracticeExpiresAt) && user.centrePracticeExpiresAt > Math.floor(nowMs / 1000);
 }
+// 🔗 A child signed in by their personal class link or PIN (Ans Key's
+// ansKeyLiveClass `study` action mints the token). The uid is the roster's own
+// ("office-<family>-<child>"), the claim names the roster child, and the
+// account holds exactly one student, at index 0.
+const OFFICE_UID = /^office-[A-Za-z0-9-]{1,120}$/;
+const OFFICE_ID = /^[A-Za-z0-9-]{1,60}_[A-Za-z0-9-]{1,60}$/;
+function isOfficePass(user) {
+  if (!user || user.firebase?.sign_in_provider !== 'custom' || user.officePass !== true) return false;
+  if (!OFFICE_UID.test(user.uid || '') || !OFFICE_ID.test(user.officeId || '') || protectedIdentity(user)) return false;
+  const [family, child] = String(user.officeId).split('_');
+  return user.uid === 'office-' + family + '-' + child;
+}
 function isSupportedStudent(user, nowMs = Date.now()) {
-  return !!user?.uid && (user.firebase?.sign_in_provider === 'google.com' || isCentrePractice(user, nowMs));
+  return !!user?.uid && (user.firebase?.sign_in_provider === 'google.com' || isCentrePractice(user, nowMs) || isOfficePass(user));
 }
 function matchesCentreStudent(user, index, student, nowMs = Date.now()) {
   if (user?.firebase?.sign_in_provider === 'google.com') return true;
+  if (isOfficePass(user)) return index === 0;
   return isCentrePractice(user, nowMs) && user.centreStudentIndex === index &&
     (student === undefined || user.centreStudentKey === centreStudentKey(student));
 }
 module.exports = { ADMIN_EMAIL, PROTECTED_EMAILS, PRACTICE_SECONDS, UID, CentreError, hasAdminRole, protectedIdentity,
-  centreStudentKey, isCentrePractice, isSupportedStudent, matchesCentreStudent };
+  centreStudentKey, isCentrePractice, isOfficePass, isSupportedStudent, matchesCentreStudent };

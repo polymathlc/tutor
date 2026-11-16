@@ -2,6 +2,23 @@
 
 Guidance for Claude when working in this repo.
 
+## 🔗 SIGNED IN BY THE CLASS LINK OR PIN (v1.96.0)
+
+`office-pass.js` / `office-pass.css` (`window.OfficePass`: `pure`, `mount`, `boot`, `signInWith`, `busy`), `#officePassSlot`
+on the sign-in card, and the anonymous-user guard at the top of the `onAuthStateChanged` hook.
+- **Ans Key's server decides who the child is** (`functions/live-class.js` in polymathlc/anskey, action `study`): it checks
+  the personal link's MAC + generation or the PIN (`STUDY_PIN_LIMITS`, its own `studyPins` bucket), writes
+  `studentProfiles/office-<family>-<child>` from /office (merge: name, level, subject from the slots' timetable subjects,
+  `officeId`, `levelSource:'office'`, `officeSlots`, `tutorOnboard` v2 enrolled, no fee) and mints a custom token with
+  `{officePass: true, officeId}`. Nothing in this repo trusts a code.
+- **The flow:** `signInAnonymously` (only to have an ID token + App Check for that call) → POST → delete the anonymous
+  user → `signInWithCustomToken`. The auth hook **ignores an anonymous user** while `OfficePass.busy()` and signs a
+  leftover one out — an anonymous account must never reach `onboardRequire` (it would be asked the onboarding questions).
+- `?pass=` is read once and stripped (`stripPass`) before anything else; a Google account already signed in is asked first.
+- **Server:** `isOfficePass` in `functions/centre-auth.js` (custom provider, the claim, uid = `office-` + the claim's ids,
+  never a protected identity) makes `isSupportedStudent` true; `matchesCentreStudent` allows index 0 only.
+- Checks: `node --test tools/office-pass-tests.mjs`, `node --test functions/test/centre-admin.test.js`.
+
 ## ⚡ QUICK PRACTICE — a few questions from the mistake book, picked for you (v1.95.0)
 
 Search `⚡ QUICK PRACTICE` (script, just above `pracCurrent`; stylesheet after `.progTip`). Zhi Kai: "add a quick
