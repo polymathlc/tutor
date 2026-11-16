@@ -10,11 +10,12 @@
 <title>Study Buddy — Polymath Learning Centre</title>
 <link rel="stylesheet" href="centre-admin.css?v=1.58.0">
 <link rel="stylesheet" href="consult.css?v=1.65.0">
+<link rel="stylesheet" href="office-pass.css?v=1.96.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.95.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.95.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.95.0">
-<link rel="stylesheet" href="model-studio.css?v=1.95.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.96.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.96.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.96.0">
+<link rel="stylesheet" href="model-studio.css?v=1.96.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -2641,6 +2642,8 @@
           <div class="rowBtns">
             <button class="btn btnPrimary btnBig" id="signInBtn2">Sign in with Google to start</button>
           </div>
+          <!-- 🔗 The class card's PIN (or its 📖 code, ?pass=) signs a centre child in as themselves. office-pass.js -->
+          <div id="officePassSlot"></div>
         </div>
 
         <div id="homeSignedIn" class="hidden">
@@ -3681,12 +3684,13 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <script src="centre-admin.js?v=1.58.0"></script>
+<script src="office-pass.js?v=1.96.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.95.0"></script>
-<script src="lo-marks.js?v=1.95.0"></script>
-<script src="lo-practice.js?v=1.95.0"></script>
-<script src="cer-mcq.js?v=1.95.0"></script>
-<script src="model-studio.js?v=1.95.0"></script>
+<script src="concept-tags.js?v=1.96.0"></script>
+<script src="lo-marks.js?v=1.96.0"></script>
+<script src="lo-practice.js?v=1.96.0"></script>
+<script src="cer-mcq.js?v=1.96.0"></script>
+<script src="model-studio.js?v=1.96.0"></script>
 <script>
 'use strict';
 
@@ -3783,7 +3787,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.95.0';
+var APP_VERSION = 'v1.96.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -35623,6 +35627,13 @@ $('playlistStop').addEventListener('click', lessonPlaylistStopAll);
    wiring at the bottom of the file down with it. */
 var authChangeEpoch = 0;
 if (auth) auth.onAuthStateChanged(async function (user) {
+  /* 🔗 An anonymous account is only ever office-pass.js asking the server
+     who a class link or PIN names; it is never a student. While that runs it
+     is ignored, and one left over from an interrupted sign-in is signed out. */
+  if (user && user.isAnonymous) {
+    if (!(typeof OfficePass !== 'undefined' && OfficePass.busy())) { try { await auth.signOut(); } catch (e) {} }
+    return;
+  }
   var authEpoch = ++authChangeEpoch;
   try {
     if (typeof CentreAdmin !== 'undefined') await CentreAdmin.authReady(user);

@@ -17,6 +17,18 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.96.0 — 🔗 Sign in with your class card: the link or the PIN
+
+- Every centre child already has a personal live-class link and a four-number PIN (Ans Key v1.210.0).
+  The **same link**, opened here (the 📖 Study Buddy code on the printed card, or `…/tutor/?pass=…`),
+  or the **same PIN** typed in the new box on the sign-in card, signs the child in **as themselves**:
+  no Google account, no first-sign-in questions.
+- Study Buddy then shows **their own level and subjects**, read from /office on every sign-in
+  (P3 is Science only; a child in both a Maths and a Science class gets both).
+- The server checks everything: a replaced link (↻ New in Ans Key) stops working at once, wrong PINs
+  are counted (five an hour per device, thirty in all), and the code is taken off the address bar
+  the moment it is read.
+
 ## v1.95.0 — ⚡ Quick practice: a few questions from your mistake book, picked for you
 
 - **A new gold ⚡ Quick practice button** sits on the home screen beside 📈 My progress, and first in the

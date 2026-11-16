@@ -247,3 +247,20 @@ test('unexpected failures report only a safe code and never leak custom tokens o
   assert.ok(!JSON.stringify(response).includes('private-token-and-key'));
   assert.deepEqual(h.calls.at(-1), ['report', 'centre_request_failed']);
 });
+
+test('🔗 a child signed in by their class link or PIN is a student with exactly one child', () => {
+  const { isOfficePass } = require('../centre-auth');
+  const pass = { uid: 'office-famA-sA1', officePass: true, officeId: 'famA_sA1', firebase: { sign_in_provider: 'custom' } };
+  assert.equal(isOfficePass(pass), true);
+  assert.equal(isSupportedStudent(pass), true);
+  assert.equal(matchesCentreStudent(pass, 0), true);
+  assert.equal(matchesCentreStudent(pass, 1), false, 'one child per link account');
+  // Every part must agree: the provider, the claim, the uid and the roster id.
+  assert.equal(isOfficePass({ ...pass, firebase: { sign_in_provider: 'anonymous' } }), false);
+  assert.equal(isOfficePass({ ...pass, officePass: 'yes' }), false);
+  assert.equal(isOfficePass({ ...pass, officeId: 'famB_sB1' }), false, 'a claim naming another child');
+  assert.equal(isOfficePass({ ...pass, uid: 'someone-else' }), false);
+  assert.equal(isOfficePass({ ...pass, officeId: '../x' }), false);
+  assert.equal(isOfficePass({ ...pass, email: ADMIN_EMAIL }), false, 'never the teacher\'s account');
+  assert.equal(isOfficePass(null), false);
+});
