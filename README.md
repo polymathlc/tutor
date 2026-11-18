@@ -17,6 +17,24 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.97.0 — 🎯 The learning objective tracker
+
+- **📕 The mistake book now opens on a learning objective tracker.** A hero card shows the student's
+  overall mastery (marks got over marks attempted on every marked paper) and four numbers a parent can
+  read at a glance: still to redo, sorted, objectives to work on and objectives secure. A subject switch
+  sits in it when there is more than one subject, and it narrows the book underneath too.
+- **Every learning objective is a card**: its own score ring, its syllabus code (P5 · FR 2.6), the
+  objective in words, a bar of what is still to redo against what is sorted, the trend across papers,
+  and **▶ Practise N**. The weakest one with something to redo is marked **★ Start here**. Show the
+  objectives to work on, all of them, or the secure ones; order them by what needs most work, most to
+  redo, or the syllabus (grouped by topic).
+- **Tap a card and that objective opens in a sheet**: its score paper by paper, ▶ Practise the
+  mistakes to redo, ✨ fresh practice questions on the same skill (with answers and working), 🖨 a
+  worksheet of them, and the mistakes themselves. Finish a practice session and you come back to the
+  objective, so you can see the bar move.
+- 📈 My progress has a 🎯 Objective tracker button. Built for an iPad standing up or lying down, a
+  laptop and a phone.
+
 ## v1.96.0 — 🔗 Sign in with your class card: the link or the PIN
 
 - Every centre child already has a personal live-class link and a four-number PIN (Ans Key v1.210.0).

@@ -2,6 +2,26 @@
 
 Guidance for Claude when working in this repo.
 
+## 🎯 THE LEARNING OBJECTIVE TRACKER — the top of the mistake book (v1.97.0)
+
+`lo-tracker.js` / `lo-tracker.css` (`window.LoTracker`: `pure`, `mount`, `openFocus`, `closeFocus`, `isFocusOpen`,
+`focusKey`, `cards`) and the glue `🎯 THE LEARNING OBJECTIVE TRACKER` just above `renderMistakes` (`lotEnv`, `lotSubjects`,
+`lotPickSubject`, `lotItem`, `lotGroupOf`, `renderLoTracker`). Zhi Kai: "a super professional polished and sleek interface for
+the mistakes tracking platform which conveniently clicks into each learning objectives mistakes to practice again" — the
+marketing centrepiece, so it is judged on screenshots as well as behaviour.
+- `#lotHost` heads `#mistakeView` (the old Comeback Corner banner went); `renderMistakes` draws it first, every time.
+- **It owns no data and no behaviour.** `lotEnv()` hands it the book (`lotItem`, via `mistPlace`) and the subject's
+  `progressRows` rows, and every action is the app's own door: `pracStart(ids, { title })` (pracStart now takes a title),
+  `lpOpen([lotGroupOf(c)])`, `mwsExport`, `qpOpen(false)`, `mistakeCard`. No model, Firestore or network in lo-tracker.js
+  (the test pins it). `lotReturn` reopens the objective's sheet from `pracClose`.
+- **The model is pure** (`build`, `statusOf`, `sortCards`, `filterCards`, `summary`, `nextUp`, `trendOf`): one card per
+  objective id, else per topic, else one "Not filed" card; status bands = 📈's (≥80 secure only with nothing to redo, ≥50
+  getting there, else needs work; no marks + open = To redo).
+- The subject is the BOOK's (`mistSubject`): choosing one in the hero narrows the list too. The sheet is `#lotFocus`, a
+  `.modalBack` (Escape sweep closes it): a right side sheet above 900px, a bottom sheet below. Every class is `lot-`.
+- Usage event `tracker`. Checks: `node --test tools/lo-tracker-tests.mjs`, `node tools/lo-tracker-browser-check.mjs` (in CI;
+  `LOT_SCREENSHOTS=dir`, `LOT_SCALE=2`). Ans Key was not changed.
+
 ## 🔗 SIGNED IN BY THE CLASS LINK OR PIN (v1.96.0)
 
 `office-pass.js` / `office-pass.css` (`window.OfficePass`: `pure`, `mount`, `boot`, `signInWith`, `busy`), `#officePassSlot`
