@@ -12,12 +12,13 @@
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="office-pass.css?v=1.96.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.99.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.99.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.99.0">
-<link rel="stylesheet" href="model-studio.css?v=1.99.0">
-<link rel="stylesheet" href="lo-tracker.css?v=1.99.0">
-<link rel="stylesheet" href="practice-draw.css?v=1.99.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.100.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.100.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.100.0">
+<link rel="stylesheet" href="model-studio.css?v=1.100.0">
+<link rel="stylesheet" href="lo-tracker.css?v=1.100.0">
+<link rel="stylesheet" href="practice-draw.css?v=1.100.0">
+<link rel="stylesheet" href="practice-size.css?v=1.100.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -3299,9 +3300,13 @@
       <h2 id="pracTitle">✏️ Practise</h2>
       <span class="spacer"></span>
       <span class="pracCount" id="pracCount"></span>
+      <!-- ↔ v1.100.0: fill the screen / put it back (practice-size.js) -->
+      <button type="button" class="psMaxBtn" id="pracMax" title="Fill the screen" aria-label="Fill the screen" aria-pressed="false">⤢</button>
     </div>
     <div class="modalBody" id="pracBody"></div>
     <div class="modalFoot" id="pracFoot"></div>
+    <!-- ↔ v1.100.0: drag to make the window bigger or smaller (mouse, finger or Apple Pencil) -->
+    <button type="button" class="psGrip" id="pracGrip" title="Drag to resize the window (double-tap for the usual size)" aria-label="Resize the practice window — drag, or use the arrow keys"></button>
   </div>
 </div>
 
@@ -3694,14 +3699,15 @@
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="office-pass.js?v=1.96.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.99.0"></script>
-<script src="lo-marks.js?v=1.99.0"></script>
-<script src="lo-practice.js?v=1.99.0"></script>
-<script src="cer-mcq.js?v=1.99.0"></script>
-<script src="model-studio.js?v=1.99.0"></script>
-<script src="lo-tracker.js?v=1.99.0"></script>
-<script src="question-band.js?v=1.99.0"></script>
-<script src="practice-draw.js?v=1.99.0"></script>
+<script src="concept-tags.js?v=1.100.0"></script>
+<script src="lo-marks.js?v=1.100.0"></script>
+<script src="lo-practice.js?v=1.100.0"></script>
+<script src="cer-mcq.js?v=1.100.0"></script>
+<script src="model-studio.js?v=1.100.0"></script>
+<script src="lo-tracker.js?v=1.100.0"></script>
+<script src="question-band.js?v=1.100.0"></script>
+<script src="practice-draw.js?v=1.100.0"></script>
+<script src="practice-size.js?v=1.100.0"></script>
 <script>
 'use strict';
 
@@ -3798,7 +3804,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.99.0';
+var APP_VERSION = 'v1.100.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -24595,6 +24601,9 @@ function pracStart(ids, opts) {
   // 🎯 a session started from an objective in the tracker names the objective
   if (head) head.textContent = prac.quick ? '⚡ Quick practice' : ((opts && opts.title) || '✏️ Practise');
   $('pracModal').classList.add('open');
+  // ↔ the size this device last gave the window (v1.100.0)
+  pracSizeBind();
+  if (pracWin) pracWin.apply();
   pracRender();
   /* ✂️ Any of these still cut out as a whole page (or by the model's own
      guess) is cut again by its printed number, in the order they come up,
@@ -25301,7 +25310,7 @@ function pracDrawMount(m, body, nodes) {
   imgs.forEach(function (img, i) {
     S.attach(img, 'q' + i, { full: img.classList.contains('pracShot') });
   });
-  return { S: S, drawFirst: drawFirst };
+  return { S: S, drawFirst: drawFirst, bar: bar };
 }
 /* Each picture that carries ink, with the ink on it, as the marker's
    images — at most PRAC_DRAW_MAX_PICS. */
@@ -25328,6 +25337,93 @@ function pracDrawPromptLine(inked) {
     'one to the other; anything unclear is not an answer. Printed ink is the question, not their work.' +
     (bare ? ' One picture could not include the printed question, so it shows their strokes alone on white, at the ' +
       'same size and in the same place as on the question.' : '');
+}
+
+/* =====================================================================
+   ↔ THE PRACTICE WINDOW'S SIZE and 🔍 THE PICTURES' SIZE (v1.100.0)
+   ---------------------------------------------------------------------
+   Zhi Kai: "allow me to resize the window for the practice, also allow
+   resizing of dgrams using +,- buttons". practice-size.js
+   (window.PracSize) does both; this is where ✏️ Practise — the book's,
+   ⚡ Quick practice's and the tracker's ▶ Practise, one window — uses it.
+   - `pracSizeBind` wires #pracGrip (drag the corner) and #pracMax (⤢)
+     ONCE; `pracStart` puts back the size remembered on this device.
+   - `pracZoomMount` puts 🔍 − 100% + with the pen (or in a `.psBar` of its
+     own) and sizes every picture; `pracZoomSet` keeps the place the
+     student was looking at while the pictures grow. The zoom is kept in
+     localStorage `polymath.tutorPracZoom` across questions and visits.
+   - The ink needs nothing from here: practice-draw.js keeps strokes as
+     fractions of the picture and redraws when the picture's box changes.
+   ===================================================================== */
+var PRAC_ZOOM_KEY = 'polymath.tutorPracZoom';
+var pracWin = null;
+var pracZoom = null;
+function pracSizeReady() {
+  return typeof PracSize !== 'undefined' && PracSize && typeof PracSize.bindWindow === 'function';
+}
+function pracSizeBind() {
+  if (pracWin || !pracSizeReady()) return;
+  var back = $('pracModal');
+  var card = back && back.querySelector('.modalCard');
+  if (!card || !$('pracGrip')) return;
+  pracWin = PracSize.bindWindow({
+    back: back, card: card, grip: $('pracGrip'), max: $('pracMax'),
+    key: 'polymath.tutorPracWin',
+    // A wider window is a wider strip: a zoomed picture is sized again.
+    onSize: function () { if (prac && pracZoomGet() !== 1) PracSize.applyZoom($('pracBody'), pracZoomGet()); }
+  });
+}
+function pracZoomGet() {
+  if (!pracSizeReady()) return 1;
+  if (pracZoom == null) pracZoom = PracSize.cleanZoom(PracSize.readJson(PRAC_ZOOM_KEY) || 1);
+  return pracZoom;
+}
+function pracZoomSet(z) {
+  if (!pracSizeReady()) return;
+  z = PracSize.cleanZoom(z);
+  var body = $('pracBody');
+  /* Keep the middle of what is on screen in the middle: the window's own
+     scroll and each picture's strip, as fractions of what they scroll. */
+  var mid = function (el, axis) {
+    var size = axis === 'x' ? el.scrollWidth : el.scrollHeight;
+    var view = axis === 'x' ? el.clientWidth : el.clientHeight;
+    var pos = axis === 'x' ? el.scrollLeft : el.scrollTop;
+    return size > 0 ? (pos + view / 2) / size : 0.5;
+  };
+  var put = function (el, axis, f) {
+    if (axis === 'x') el.scrollLeft = Math.max(0, f * el.scrollWidth - el.clientWidth / 2);
+    else el.scrollTop = Math.max(0, f * el.scrollHeight - el.clientHeight / 2);
+  };
+  var fy = body ? mid(body, 'y') : 0.5;
+  var strips = body ? Array.prototype.slice.call(body.querySelectorAll('.pracPicScroll')) : [];
+  var fx = strips.map(function (s) { return mid(s, 'x'); });
+  pracZoom = z;
+  PracSize.writeJson(PRAC_ZOOM_KEY, z === 1 ? null : z);
+  if (!body) return;
+  PracSize.applyZoom(body, z);
+  if (body.scrollHeight > body.clientHeight) put(body, 'y', fy);
+  strips.forEach(function (s, i) { put(s, 'x', fx[i]); });
+}
+/* The child of `body` that holds `node`. */
+function pracTopOf(body, node) {
+  while (node && node.parentNode && node.parentNode !== body) node = node.parentNode;
+  return node && node.parentNode === body ? node : null;
+}
+function pracZoomMount(body, bar) {
+  if (!pracSizeReady() || !body) return null;
+  var pics = PracSize.picturesIn(body);
+  if (!pics.length) return null;
+  PracSize.applyZoom(body, pracZoomGet());        // also puts each picture in its strip
+  var group = PracSize.zoomGroup(document, pracZoomGet, pracZoomSet);
+  if (bar) { bar.appendChild(group); return group; }
+  var own = document.createElement('div');
+  own.className = 'psBar';
+  own.setAttribute('role', 'toolbar');
+  own.setAttribute('aria-label', 'Picture size');
+  own.appendChild(group);
+  var at = pracTopOf(body, pics[0]);
+  if (at) body.insertBefore(own, at); else body.insertBefore(own, body.firstChild);
+  return group;
 }
 
 function pracRender(finished) {
@@ -25400,6 +25496,9 @@ function pracRender(finished) {
   qNodes.forEach(function (n) { body.appendChild(n); });
   /* ✏️ THE PEN ON THE PICTURE (v1.98.0) — see `✏️ DRAW ON THE QUESTION`. */
   var drawn = asMcq ? null : pracDrawMount(m, body, qNodes);
+  /* 🔍 − 100% + for the pictures (v1.100.0) — with the pen while it is up,
+     else in a bar of its own (an MCQ, or once the answer is shown). */
+  pracZoomMount(body, drawn && drawn.bar && !drawn.bar.classList.contains('pdOff') ? drawn.bar : null);
 
   /* 🎯 THE NUDGE AIMED AT THE GAP (v1.76.0). Before they answer, the slip
      this question was filed under — its name and what to do about it, NEVER

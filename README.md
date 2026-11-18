@@ -17,6 +17,18 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.100.0 — ↔ A bigger practice window and 🔍 bigger diagrams
+
+- **Drag the practice window bigger.** ✏️ Practise (the mistake book, ⚡ Quick practice and the tracker's ▶ Practise)
+  has a grip in its bottom-right corner. Drag it with a mouse, a finger or an Apple Pencil; the window stays centred
+  and the corner stays under your finger. ⤢ in the title bar fills the screen and puts it back; a double tap on the
+  grip goes back to the usual size; the arrow keys move it too. The size is remembered on the device as a share of
+  the screen, so turning an iPad round keeps it.
+- **🔍 − 100% + for the diagrams.** Beside the drawing tools (and in a bar of their own on a multiple-choice question).
+  Tap for one step, hold to keep going; tap the percentage for 100%. A picture wider than the window scrolls sideways
+  in its own strip. The size is remembered for the next question and the next visit.
+- **Drawings stay on the picture.** Lines already drawn grow and shrink with it, and you can keep drawing at any size.
+
 ## v1.99.0 — 📚 The mistake tracker by topic
 
 - **The tracker now opens on topics** — Fractions, Percentage, Ratio, Geometry and so on, the topics a parent
