@@ -1,0 +1,360 @@
+/* =====================================================================
+   🎯 THE LEARNING OBJECTIVE TRACKER (lo-tracker.css) — see lo-tracker.js.
+   Every class starts `lot-`. The tokens are the tracker's own, set on
+   `.lot` and `.lot-focusBack`, so nothing here can repaint the rest of the
+   app, and the rest of the app cannot repaint this.
+   ===================================================================== */
+.lot, .lot-focusBack {
+  --lot-ink: #15322d;
+  --lot-ink-soft: #4d5f5a;
+  --lot-ink-faint: #85938f;
+  --lot-line: #e4e9e6;
+  --lot-card: #ffffff;
+  --lot-wash: #f4f7f5;
+  --lot-teal: #1f6b5e;
+  --lot-teal-deep: #123f38;
+  --lot-mint: #3fbf95;
+  --lot-work: #d9485f;    --lot-work-bg: #fdecef;
+  --lot-close: #d98a1c;   --lot-close-bg: #fdf3e2;
+  --lot-redo: #5b6fd6;    --lot-redo-bg: #eef0fd;
+  --lot-secure: #22936b;  --lot-secure-bg: #e5f5ee;
+  --lot-radius: 20px;
+  --lot-shadow: 0 1px 2px rgba(18, 63, 56, .05), 0 8px 24px rgba(18, 63, 56, .07);
+  --lot-shadow-hover: 0 2px 4px rgba(18, 63, 56, .06), 0 16px 36px rgba(18, 63, 56, .12);
+  font-variant-numeric: tabular-nums;
+}
+.lot { display: block; margin: 0 0 34px; color: var(--lot-ink); }
+.lot *, .lot-focusBack * { box-sizing: border-box; }
+
+/* ---------- ① The hero ---------- */
+.lot-hero {
+  position: relative; overflow: hidden; isolation: isolate;
+  border-radius: 28px; padding: 30px 32px 26px; color: #fff;
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(63, 191, 149, .38) 0%, rgba(63, 191, 149, 0) 55%),
+    radial-gradient(90% 120% at 0% 100%, rgba(255, 204, 128, .20) 0%, rgba(255, 204, 128, 0) 60%),
+    linear-gradient(135deg, #123f38 0%, #1b5a4f 52%, #237364 100%);
+  box-shadow: 0 18px 48px rgba(18, 63, 56, .22), inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+.lot-heroGlow {
+  position: absolute; z-index: -1; right: -80px; top: -120px; width: 380px; height: 380px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, .10) 0%, rgba(255, 255, 255, 0) 70%);
+  pointer-events: none;
+}
+.lot-heroMain { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 28px; align-items: center; }
+.lot-eyebrow {
+  font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase;
+  color: rgba(255, 255, 255, .66); margin-bottom: 8px;
+}
+.lot-heroTitle { font-size: clamp(24px, 3.2vw, 34px); line-height: 1.15; letter-spacing: -.02em; font-weight: 800; margin: 0 0 10px; }
+.lot-heroSub { margin: 0; max-width: 560px; font-size: 14.5px; line-height: 1.6; color: rgba(255, 255, 255, .80); }
+.lot-heroSide { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.lot-heroRingCap { max-width: 168px; font-size: 11.5px; line-height: 1.4; color: rgba(255, 255, 255, .66); }
+
+.lot-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 24px; }
+.lot-kpi {
+  position: relative; padding: 14px 16px 13px; border-radius: 16px;
+  background: rgba(255, 255, 255, .09); border: 1px solid rgba(255, 255, 255, .13);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.lot-kpi::before {
+  content: ''; position: absolute; left: 16px; top: 0; width: 26px; height: 3px; border-radius: 0 0 3px 3px;
+  background: var(--kpi, #fff);
+}
+.lot-kpi--open { --kpi: #ff8a9a; }
+.lot-kpi--done { --kpi: #7be0b9; }
+.lot-kpi--focus { --kpi: #ffc46b; }
+.lot-kpi--secure { --kpi: #9fe8cf; }
+.lot-kpiNum { font-size: 30px; font-weight: 800; line-height: 1.1; letter-spacing: -.02em; }
+.lot-kpiLab { font-size: 12.5px; font-weight: 700; color: rgba(255, 255, 255, .84); margin-top: 2px; }
+.lot-kpiSub { font-size: 11.5px; color: rgba(255, 255, 255, .58); margin-top: 1px; }
+
+.lot-heroActs { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 14px; margin-top: 20px; }
+.lot-heroNext {
+  min-width: 0; flex: 1 1 200px; font-size: 13px; color: rgba(255, 255, 255, .72);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.lot-heroNext::before { content: 'Next up: '; font-weight: 700; color: rgba(255, 255, 255, .9); }
+
+/* ---------- Rings ---------- */
+.lot-ring { position: relative; flex: none; display: grid; place-items: center; }
+.lot-ring svg { display: block; }
+.lot-ringTrack { stroke: rgba(21, 50, 45, .09); }
+.lot-ringArc { stroke: var(--ring, var(--lot-teal)); transition: stroke-dasharray .6s cubic-bezier(.2, .8, .2, 1); }
+.lot-ring--work { --ring: var(--lot-work); }
+.lot-ring--close { --ring: var(--lot-close); }
+.lot-ring--redo { --ring: var(--lot-redo); }
+.lot-ring--secure { --ring: var(--lot-secure); }
+.lot-ring--hero .lot-ringTrack { stroke: rgba(255, 255, 255, .14); }
+.lot-ring--hero .lot-ringArc { stroke: #7be0b9; filter: drop-shadow(0 0 6px rgba(123, 224, 185, .45)); }
+.lot-ringMid { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1; }
+.lot-ringNum { font-weight: 800; font-size: 15px; letter-spacing: -.02em; color: var(--lot-ink); }
+.lot-ringNum small { font-size: .62em; font-weight: 700; margin-left: 1px; opacity: .7; }
+.lot-ring--hero .lot-ringNum { color: #fff; font-size: 34px; }
+.lot-ringCap { margin-top: 4px; font-size: 10px; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; color: var(--lot-ink-faint); }
+.lot-ring--hero .lot-ringCap { color: rgba(255, 255, 255, .62); }
+
+/* ---------- Segmented controls ---------- */
+.lot-seg {
+  display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 14px;
+  background: #e9eeeb; border: 1px solid #e1e7e3;
+}
+.lot-segBtn {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px;
+  border: 0; border-radius: 10px; background: transparent; color: var(--lot-ink-soft);
+  font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  transition: background .15s, color .15s, box-shadow .15s;
+}
+.lot-segBtn:hover { color: var(--lot-ink); }
+.lot-segBtn.on { background: #fff; color: var(--lot-ink); box-shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 2px 8px rgba(18, 63, 56, .08); }
+.lot-segN {
+  min-width: 22px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center;
+  font-size: 11.5px; font-weight: 800; background: rgba(21, 50, 45, .08); color: var(--lot-ink-soft);
+}
+.lot-segBtn.on .lot-segN { background: var(--lot-teal); color: #fff; }
+.lot-segHero { margin-top: 18px; background: rgba(0, 0, 0, .18); border-color: rgba(255, 255, 255, .10); }
+.lot-segHero .lot-segBtn { color: rgba(255, 255, 255, .78); }
+.lot-segHero .lot-segBtn:hover { color: #fff; }
+.lot-segHero .lot-segBtn.on { background: #fff; color: var(--lot-teal-deep); }
+.lot-segHero .lot-segN { background: rgba(255, 255, 255, .16); color: #fff; }
+.lot-segHero .lot-segBtn.on .lot-segN { background: var(--lot-teal); }
+.lot-segSm .lot-segBtn { min-height: 36px; font-size: 13px; padding: 0 12px; }
+
+/* ---------- Buttons ---------- */
+.lot-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 0 18px;
+  border-radius: 12px; border: 1px solid transparent; font: inherit; font-size: 14px; font-weight: 800;
+  cursor: pointer; white-space: nowrap; transition: transform .12s, box-shadow .15s, background .15s, border-color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.lot-btn:active { transform: translateY(1px) scale(.99); }
+.lot-btn:focus-visible, .lot-segBtn:focus-visible, .lot-card:focus-visible, .lot-close:focus-visible {
+  outline: 3px solid rgba(63, 191, 149, .55); outline-offset: 2px;
+}
+.lot-btnPrimary { background: var(--lot-teal); color: #fff; box-shadow: 0 1px 2px rgba(18, 63, 56, .2), 0 6px 16px rgba(31, 107, 94, .25); }
+.lot-btnPrimary:hover { background: #18594e; }
+.lot-btnSoft { background: var(--lot-secure-bg); color: var(--lot-secure); border-color: #cdebdc; }
+.lot-btnSecondary { background: #fff; color: var(--lot-teal); border-color: #cfe0da; }
+.lot-btnSecondary:hover { border-color: var(--lot-teal); }
+.lot-btnGhost { background: transparent; color: var(--lot-ink-soft); border-color: var(--lot-line); }
+.lot-btnGhost:hover { background: #fff; color: var(--lot-ink); border-color: #cfd8d4; }
+.lot-btnHero { background: #fff; color: var(--lot-teal-deep); box-shadow: 0 8px 22px rgba(0, 0, 0, .18); }
+.lot-btnHero:hover { background: #f1fbf7; }
+.lot-btnGlass { background: rgba(255, 255, 255, .12); color: #fff; border-color: rgba(255, 255, 255, .24); }
+.lot-btnGlass:hover { background: rgba(255, 255, 255, .2); }
+.lot-btnBig { min-height: 50px; font-size: 15px; padding: 0 22px; border-radius: 14px; }
+.lot-btnMore { display: flex; margin: 18px auto 0; background: #fff; color: var(--lot-teal); border-color: #cfe0da; }
+
+/* ---------- ② The objectives ---------- */
+.lot-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px; margin: 32px 2px 16px; }
+.lot-sectionTitle { font-size: 21px; font-weight: 800; letter-spacing: -.01em; margin: 0 auto 0 0; color: var(--lot-ink); }
+.lot-sort { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: var(--lot-ink-faint); }
+.lot-sort select {
+  min-height: 44px; padding: 0 34px 0 14px; border-radius: 12px; border: 1px solid #dbe3df; background: #fff;
+  font: inherit; font-size: 14px; font-weight: 700; color: var(--lot-ink); cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #6b7d78 50%), linear-gradient(135deg, #6b7d78 50%, transparent 50%);
+  background-position: calc(100% - 18px) 19px, calc(100% - 13px) 19px; background-size: 5px 5px; background-repeat: no-repeat;
+}
+
+.lot-topicHead { display: flex; align-items: baseline; gap: 12px; margin: 22px 4px 10px; }
+.lot-topicHead:first-child { margin-top: 4px; }
+.lot-topicName { font-size: 15px; font-weight: 800; color: var(--lot-ink); }
+.lot-topicN { font-size: 12.5px; color: var(--lot-ink-faint); font-weight: 700; }
+
+.lot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 16px; }
+
+.lot-card {
+  position: relative; display: flex; flex-direction: column; gap: 14px; min-width: 0;
+  padding: 18px 18px 14px; border-radius: var(--lot-radius); background: var(--lot-card);
+  border: 1px solid var(--lot-line); box-shadow: var(--lot-shadow); cursor: pointer;
+  transition: transform .18s cubic-bezier(.2, .8, .2, 1), box-shadow .18s, border-color .18s;
+  -webkit-tap-highlight-color: transparent;
+}
+.lot-card::before {
+  content: ''; position: absolute; left: 18px; right: 18px; top: 0; height: 3px; border-radius: 0 0 4px 4px;
+  background: var(--ring, var(--lot-teal)); opacity: .9;
+}
+.lot-card--work { --ring: var(--lot-work); }
+.lot-card--close { --ring: var(--lot-close); }
+.lot-card--redo { --ring: var(--lot-redo); }
+.lot-card--secure { --ring: var(--lot-secure); }
+@media (hover: hover) {
+  .lot-card:hover { transform: translateY(-2px); box-shadow: var(--lot-shadow-hover); border-color: #d3ddd9; }
+  .lot-card:hover .lot-open { color: var(--lot-teal); }
+  .lot-card:hover .lot-openArrow { transform: translateX(3px); }
+}
+.lot-card--next { border-color: rgba(31, 107, 94, .45); box-shadow: 0 0 0 3px rgba(63, 191, 149, .14), var(--lot-shadow); }
+.lot-nextFlag {
+  position: absolute; right: 14px; top: -11px; padding: 3px 10px; border-radius: 999px;
+  background: var(--lot-teal); color: #fff; font-size: 11px; font-weight: 800; letter-spacing: .02em;
+  box-shadow: 0 4px 10px rgba(31, 107, 94, .3);
+}
+.lot-cardTop { display: flex; gap: 14px; align-items: flex-start; min-width: 0; }
+.lot-cardWords { min-width: 0; flex: 1; }
+.lot-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+.lot-chip {
+  display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 7px;
+  font-size: 11.5px; font-weight: 800; letter-spacing: .02em; white-space: nowrap;
+}
+.lot-chipLevel { background: #e8f0ed; color: var(--lot-teal); }
+.lot-chipCode { background: #f1f3f2; color: var(--lot-ink-soft); font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; }
+.lot-pill {
+  display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 800; white-space: nowrap;
+}
+.lot-pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.lot-pill--work { background: var(--lot-work-bg); color: var(--lot-work); }
+.lot-pill--close { background: var(--lot-close-bg); color: #b26a00; }
+.lot-pill--redo { background: var(--lot-redo-bg); color: var(--lot-redo); }
+.lot-pill--secure { background: var(--lot-secure-bg); color: var(--lot-secure); }
+.lot-cardTitle {
+  margin: 0; font-size: 15.5px; line-height: 1.38; font-weight: 800; color: var(--lot-ink); letter-spacing: -.005em;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.lot-cardTopic { margin-top: 4px; font-size: 12.5px; color: var(--lot-ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.lot-cardMid { display: flex; align-items: center; gap: 16px; min-width: 0; margin-top: auto; }
+.lot-meter { flex: 1; min-width: 0; }
+.lot-meterBar { display: flex; height: 8px; border-radius: 999px; background: #eef2f0; overflow: hidden; }
+.lot-meterDone { background: linear-gradient(90deg, #2fb383, var(--lot-secure)); }
+.lot-meterOpen { background: linear-gradient(90deg, #f07b8d, var(--lot-work)); }
+.lot-meterLab { display: flex; gap: 12px; margin-top: 7px; font-size: 12.5px; font-weight: 700; }
+.lot-meterOpenLab { color: var(--lot-work); }
+.lot-meterDoneLab { color: var(--lot-secure); }
+.lot-muted { color: var(--lot-ink-faint); font-size: 13px; }
+
+.lot-spark { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
+.lot-sparkSvg { display: block; overflow: visible; }
+.lot-sparkLine { stroke: var(--ring, var(--lot-teal)); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.lot-sparkArea { fill: var(--ring, var(--lot-teal)); opacity: .09; }
+.lot-sparkDot { fill: #fff; stroke: var(--ring, var(--lot-teal)); stroke-width: 2; }
+.lot-sparkNone { font-size: 11.5px; color: var(--lot-ink-faint); font-weight: 700; }
+.lot-delta { font-size: 11.5px; font-weight: 800; white-space: nowrap; }
+.lot-delta.up { color: var(--lot-secure); }
+.lot-delta.down { color: var(--lot-work); }
+.lot-delta.flat { color: var(--lot-ink-faint); }
+
+.lot-cardFoot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px solid #eef2f0; }
+.lot-cardFoot .lot-btn { min-height: 42px; padding: 0 15px; font-size: 13.5px; }
+.lot-open { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 800; color: var(--lot-ink-faint); transition: color .15s; }
+.lot-openArrow { font-size: 20px; line-height: 1; transition: transform .15s; }
+
+.lot-empty {
+  margin-top: 18px; padding: 40px 24px; border-radius: var(--lot-radius); text-align: center;
+  background: #fff; border: 1px dashed #d6dfdb;
+}
+.lot-emptyIcon { font-size: 34px; }
+.lot-emptyTitle { margin-top: 6px; font-size: 17px; font-weight: 800; }
+.lot-emptySub { max-width: 440px; margin: 6px auto 0; font-size: 13.5px; color: var(--lot-ink-soft); line-height: 1.6; }
+
+/* ---------- ③ The objective sheet ---------- */
+.lot-focusBack.modalBack { padding: 0; align-items: stretch; justify-content: flex-end; background: rgba(12, 32, 28, .42);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.lot-sheet {
+  position: relative; width: min(760px, 100%); height: 100%; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--lot-wash); box-shadow: -24px 0 60px rgba(12, 32, 28, .25); outline: none;
+  padding: 0 0 36px; animation: lotSlideIn .28s cubic-bezier(.2, .8, .2, 1);
+  -webkit-overflow-scrolling: touch;
+}
+@keyframes lotSlideIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+.lot-grab { display: none; }
+.lot-sheetHead {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 18px; padding: 24px 26px 20px;
+  background: rgba(255, 255, 255, .94); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--lot-line);
+}
+.lot-sheetHead .lot-ringNum { font-size: 24px; }
+.lot-sheetWords { min-width: 0; flex: 1; }
+.lot-sheetTitle { margin: 0; font-size: clamp(18px, 2.4vw, 23px); line-height: 1.3; font-weight: 800; letter-spacing: -.01em; color: var(--lot-ink); }
+.lot-sheetTopic { margin-top: 5px; font-size: 13px; color: var(--lot-ink-faint); }
+.lot-close {
+  align-self: flex-start; flex: none; width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--lot-line);
+  background: #fff; color: var(--lot-ink-soft); font-size: 17px; font-weight: 700; cursor: pointer;
+}
+.lot-close:hover { color: var(--lot-ink); border-color: #cfd8d4; }
+
+.lot-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 20px 26px 0; }
+.lot-stat { padding: 13px 14px; border-radius: 14px; background: #fff; border: 1px solid var(--lot-line); }
+.lot-statNum { font-size: 22px; font-weight: 800; letter-spacing: -.02em; color: var(--lot-ink); }
+.lot-statLab { font-size: 12px; font-weight: 700; color: var(--lot-ink-faint); }
+.lot-sheetActs { display: flex; flex-wrap: wrap; gap: 10px; padding: 18px 26px 4px; }
+.lot-sheetActs > .lot-btnPrimary { flex: 1 1 260px; }
+.lot-printRow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; width: 100%; }
+.lot-check { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: 13.5px; font-weight: 700; color: var(--lot-ink-soft); cursor: pointer; }
+.lot-check input { width: 20px; height: 20px; accent-color: var(--lot-teal); }
+
+.lot-papers, .lot-mistakes { margin: 18px 26px 0; padding: 18px 20px; border-radius: var(--lot-radius); background: #fff; border: 1px solid var(--lot-line); }
+.lot-mistakes { background: transparent; border: 0; padding: 4px 0 0; }
+.lot-blockHead { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 12px; }
+.lot-blockHead h4 { margin: 0 auto 0 0; font-size: 15px; font-weight: 800; color: var(--lot-ink); }
+.lot-cols { display: flex; align-items: flex-end; gap: 12px; overflow-x: auto; padding-bottom: 2px; }
+.lot-col { flex: 1 0 64px; max-width: 120px; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
+.lot-colPct { font-size: 12.5px; font-weight: 800; color: var(--lot-ink); }
+.lot-colBox { width: 100%; height: 108px; display: flex; align-items: flex-end; border-radius: 10px; background: #f2f5f3; overflow: hidden; }
+.lot-colBar { width: 100%; border-radius: 10px 10px 0 0; transition: height .5s cubic-bezier(.2, .8, .2, 1); }
+.lot-colBar--work { background: linear-gradient(180deg, #f07b8d, var(--lot-work)); }
+.lot-colBar--close { background: linear-gradient(180deg, #f2b25a, var(--lot-close)); }
+.lot-colBar--secure { background: linear-gradient(180deg, #45c597, var(--lot-secure)); }
+.lot-colName { width: 100%; font-size: 11px; line-height: 1.3; color: var(--lot-ink-faint); text-align: center;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lot-mistGrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.lot-pad { padding: 18px 4px; }
+
+/* ---------- Narrower screens ---------- */
+@media (max-width: 700px) {
+  .lot-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 900px) {
+  .lot-hero { padding: 26px 24px 22px; border-radius: 24px; }
+  .lot-kpi { padding: 12px 14px 11px; }
+  .lot-kpiNum { font-size: 26px; }
+  .lot-sheet { width: 100%; height: auto; max-height: 94%; margin-top: auto; border-radius: 26px 26px 0 0;
+    box-shadow: 0 -18px 50px rgba(12, 32, 28, .28); animation-name: lotSlideUp; }
+  .lot-focusBack.modalBack { align-items: flex-end; }
+  .lot-grab { display: block; width: 44px; height: 5px; border-radius: 3px; background: #cbd5d1; margin: 10px auto 0; }
+  .lot-sheetHead { border-radius: 26px 26px 0 0; padding-top: 14px; }
+}
+@keyframes lotSlideUp { from { transform: translateY(60px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-width: 640px) {
+  .lot-heroMain { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .lot-heroSide { flex-direction: row; text-align: left; justify-content: flex-start; }
+  .lot-heroSide .lot-ring { transform: scale(.82); transform-origin: left center; margin-right: -22px; }
+  .lot-hero { padding: 22px 18px 18px; }
+  .lot-kpi { padding: 12px 13px 11px; }
+  .lot-kpiNum { font-size: 24px; }
+  .lot-heroActs .lot-btn { flex: 1 1 auto; }
+  .lot-heroNext { flex-basis: 100%; order: 3; }
+  .lot-segHero { display: flex; }
+  .lot-segHero .lot-segBtn { flex: 1 1 auto; justify-content: center; }
+  .lot-tools { gap: 10px; }
+  .lot-sectionTitle { flex-basis: 100%; }
+  .lot-tools .lot-seg { flex: 1 1 100%; }
+  .lot-tools .lot-seg .lot-segBtn { flex: 1 1 auto; justify-content: center; padding: 0 8px; }
+  .lot-sort { flex: 1 1 100%; }
+  .lot-sort select { flex: 1; }
+  .lot-stats { gap: 8px; padding: 14px 16px 0; }
+  .lot-stat { padding: 10px 10px 9px; }
+  .lot-statNum { font-size: 18px; }
+  .lot-statLab { font-size: 11px; line-height: 1.3; }
+  .lot-sheetActs .lot-btn { flex: 1 1 100%; }
+  .lot-printRow .lot-btn { flex: 1 1 auto; }
+  .lot-sheetHead { padding: 14px 16px 16px; gap: 12px; }
+  .lot-sheetHead .lot-ring { transform: scale(.8); margin: -9px; }
+  .lot-sheetActs { padding: 16px 16px 4px; }
+  .lot-papers, .lot-mistakes { margin: 16px 16px 0; }
+  .lot-papers { padding: 16px; }
+  .lot-cardMid .lot-spark { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lot-sheet, .lot-card, .lot-ringArc, .lot-colBar { animation: none !important; transition: none !important; }
+}
+@media print {
+  .lot, .lot-focusBack { display: none !important; }
+}
+
+/* ---------- The book around the tracker (index.html's own markup) ---------- */
+#mistakeView .mistTopHead { margin-bottom: 18px; }
+#mistakeView .mistBookHead { display: flex; align-items: flex-end; gap: 16px; margin: 6px 2px 16px; padding-top: 26px; border-top: 1px solid #e4e9e6; }
+#mistakeView .mistBookHead h3 { font-size: 21px; font-weight: 800; letter-spacing: -.01em; color: #15322d; margin: 0 0 4px; }
+#mistakeView .mistBookHead .sub { margin: 0; max-width: 720px; font-size: 13.5px; }

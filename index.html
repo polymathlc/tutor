@@ -12,10 +12,11 @@
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="office-pass.css?v=1.96.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.96.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.96.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.96.0">
-<link rel="stylesheet" href="model-studio.css?v=1.96.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.97.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.97.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.97.0">
+<link rel="stylesheet" href="model-studio.css?v=1.97.0">
+<link rel="stylesheet" href="lo-tracker.css?v=1.97.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -2884,19 +2885,25 @@
     <!-- ============ MISTAKE BOOK ============ -->
     <div class="view" id="mistakeView">
       <main>
-        <div class="adventureComeback"><img data-adventure-companion="encourage" src="assets/companions/orbit-encourage.webp" width="110" height="110" alt="" onerror="this.hidden=true"><div><span class="adventureEyebrow">THE COMEBACK CORNER</span><h3>Every mistake is a new beginning.</h3><p>Try it again, find your way, and celebrate how far you have come. Your next breakthrough could be right here.</p></div></div>
-        <div class="sectionHead">
+        <div class="sectionHead mistTopHead">
           <h2>📕 My mistake book</h2>
           <span class="spacer"></span>
           <button class="btn btnDanger freshBtn hidden" id="mistFresh" type="button"
                   title="Delete your own worksheets, mistake book and learning objective progress, and start again">🧹 Start fresh…</button>
           <button class="btn" id="mistBackBtn">← My worksheets</button>
         </div>
-        <p class="sub" style="margin:0 4px 18px">
-          Every question you did not get right, kept with a picture of the question itself — so it still makes
-          sense once the worksheet has been handed in. Crop the picture down to just the question when the whole
-          page is too much.
-        </p>
+        <!-- 🎯 THE LEARNING OBJECTIVE TRACKER (v1.97.0): the book read objective by objective, each one a tap
+             away from practising its mistakes again. Drawn by lo-tracker.js from renderMistakes(). -->
+        <div id="lotHost"></div>
+        <div class="mistBookHead" id="mistBookHead">
+          <div>
+            <h3>Every mistake</h3>
+            <p class="sub">
+              Every question you did not get right, kept with a picture of the question itself — so it still makes
+              sense once the worksheet has been handed in. Filter, search, practise or print them here.
+            </p>
+          </div>
+        </div>
         <div class="mistFilters" id="mistFilters"></div>
         <div class="mistTools" id="mistTools"></div>
         <div id="mistList"></div>
@@ -3686,11 +3693,12 @@
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="office-pass.js?v=1.96.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.96.0"></script>
-<script src="lo-marks.js?v=1.96.0"></script>
-<script src="lo-practice.js?v=1.96.0"></script>
-<script src="cer-mcq.js?v=1.96.0"></script>
-<script src="model-studio.js?v=1.96.0"></script>
+<script src="concept-tags.js?v=1.97.0"></script>
+<script src="lo-marks.js?v=1.97.0"></script>
+<script src="lo-practice.js?v=1.97.0"></script>
+<script src="cer-mcq.js?v=1.97.0"></script>
+<script src="model-studio.js?v=1.97.0"></script>
+<script src="lo-tracker.js?v=1.97.0"></script>
 <script>
 'use strict';
 
@@ -3787,7 +3795,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.96.0';
+var APP_VERSION = 'v1.97.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -22949,6 +22957,25 @@ function renderProgress() {
     prac.addEventListener('click', function () { lpFromProgressAll(s.subject, s.rows); });
     bar.appendChild(prac);
   }
+  /* 🎯 The tracker (v1.97.0): the same objectives as cards, each one tap
+     from practising its mistakes again. */
+  if (typeof lotReady === 'function' && lotReady()) {
+    var trk = document.createElement('button');
+    trk.type = 'button';
+    trk.className = 'btn btnSm progTracker';
+    trk.id = 'progTracker';
+    trk.textContent = '🎯 Objective tracker';
+    trk.title = 'Every learning objective as a card, with its mistakes one tap away';
+    trk.addEventListener('click', function () {
+      closeProgress();
+      lotSubject = s.subject;
+      if (mistSubject !== 'all') mistSubject = s.subject;
+      showView('mistake');
+      loadMistakes();
+      renderMistakes();
+    });
+    bar.appendChild(trk);
+  }
   body.appendChild(bar);
 
   var focus = progressFocus(s.rows);
@@ -23103,8 +23130,134 @@ function mistSelect(parent, label, value, options, onPick) {
   return sel;
 }
 
+/* =====================================================================
+   🎯 THE LEARNING OBJECTIVE TRACKER (v1.97.0)
+   ---------------------------------------------------------------------
+   Zhi Kai: "Build a super professional polished and sleek interface for
+   the mistakes tracking platform which conveniently clicks into each
+   learning objectives mistakes to practice again."
+
+   `lo-tracker.js` (window.LoTracker) draws the top of 📕 the mistake book:
+   a hero with the mastery ring and four numbers, one card per learning
+   objective (its score, to redo vs sorted, its trend, ▶ Practise N), and a
+   sheet for ONE objective with its papers, its mistakes and every action.
+   It owns no data and no behaviour: `lotEnv()` hands it the book in a
+   neutral shape and the app's own doors —
+     · ▶ Practise  → `pracStart(ids, { title })` (the book's own session:
+       marking, the MCQ format, "moves to Sorted when right"); when the
+       session closes, the objective's sheet opens again (`lotReturn`) so
+       the student SEES the bar move;
+     · ✨ New questions → `lpOpen` (lo-practice's window, the same one 📈 My
+       progress opens on a row);
+     · 🖨 → `mwsExport`; ⚡ → `qpOpen`; the mistakes → `mistakeCard`.
+   The subject is the BOOK's subject: choosing one in the hero narrows the
+   list underneath too, so the two halves of the page never disagree.
+   ===================================================================== */
+var lotSubject = '';
+var lotReturn = '';
+function lotReady() {
+  return typeof LoTracker !== 'undefined' && LoTracker && typeof LoTracker.mount === 'function';
+}
+/* The subjects the tracker can show: every subject with a mistake or a
+   marked paper, in the app's own order. */
+function lotSubjects() {
+  var seen = {}, out = [];
+  function add(key) {
+    if (!key || key === MIST_NO_SUBJECT || seen[key]) return seen[key];
+    seen[key] = { key: key, label: mistSubjectLabel(key), n: 0 };
+    out.push(seen[key]);
+    return seen[key];
+  }
+  mistakes.forEach(function (m) { var e = add(mistSubjectKey(m)); if (e && !m.cleared) e.n++; });
+  (typeof progressRows === 'function' ? progressRows(worksheets) : []).forEach(function (s) { add(s.subject); });
+  return out.sort(function (a, b) { return mistSubjectRank(a.key) - mistSubjectRank(b.key); });
+}
+/* Which subject is showing: the book's own filter when one is set, else
+   the last one chosen, else the subject with the most still to redo
+   (maths on a tie, the subject with the syllabus ladder). */
+function lotPickSubject(subs) {
+  var keys = subs.map(function (s) { return s.key; });
+  if (mistSubject !== 'all' && keys.indexOf(mistSubject) >= 0) return (lotSubject = mistSubject);
+  if (lotSubject && keys.indexOf(lotSubject) >= 0) return lotSubject;
+  var best = subs.slice().sort(function (a, b) {
+    return (b.n - a.n) || ((diagLadder(b.key) ? 1 : 0) - (diagLadder(a.key) ? 1 : 0));
+  })[0];
+  lotSubject = best ? best.key : '';
+  return lotSubject;
+}
+/* A mistake in the tracker's neutral shape. */
+function lotItem(m) {
+  var p = mistPlace(m);
+  return {
+    id: m.id, cleared: !!m.cleared, lo: p.lo || '', loTitle: p.loTitle || '', loText: p.loText || '',
+    topic: p.topic || '', topicKey: p.sylTopic || (p.topic ? '~' + reportTopicKey(p.topic) : ''),
+    order: p.order === Infinity ? null : p.order, level: m.level || '',
+    createdAt: stampOf(m.createdAt), docName: m.docName || ''
+  };
+}
+/* The objective as one group of lo-practice's window. */
+function lotGroupOf(c) {
+  var sel = c.lo ? { los: [c.lo], tkeys: [], topics: [] }
+    : (c.topicKey && c.topicKey.charAt(0) !== '~' ? { los: [], tkeys: [c.topicKey], topics: [] }
+      : { los: [], tkeys: [], topics: [c.topic] });
+  return {
+    key: 't:' + c.key, kind: c.lo ? 'lo' : 'topic', code: c.lo || '',
+    title: c.title, topic: c.lo ? c.topic : '', level: c.level || '',
+    order: c.order === Infinity ? 0 : c.order,
+    got: c.got, att: c.att, tot: c.tot, pct: c.pct, q: c.total, qs: '', sel: sel
+  };
+}
+function lotEnv() {
+  var subs = lotSubjects();
+  var subject = lotPickSubject(subs);
+  var prog = (typeof progressRows === 'function' ? progressRows(worksheets) : []).filter(function (s) { return s.subject === subject; })[0];
+  var st = activeStudent();
+  return {
+    subject: subject,
+    subjectLabel: subject ? mistSubjectLabel(subject) : '',
+    subjects: subs,
+    studentName: st && st.name ? st.name : '',
+    papers: prog ? prog.papers : 0,
+    items: mistakes.filter(function (m) { return mistSubjectKey(m) === subject; }).map(lotItem),
+    rows: prog ? prog.rows.filter(function (r) { return r.labelled !== false; }) : [],
+    onSubject: function (key) {
+      lotSubject = key;
+      mistSubject = key; mistTopic = 'all'; mistLo = 'all';
+      renderMistakes();
+    },
+    practise: function (ids, c) {
+      lotReturn = c ? c.key : '';
+      LoTracker.closeFocus();
+      usageNote('tracker', subject);
+      pracStart(ids, { title: '🎯 ' + (c ? (c.short ? sentenceCase(c.short) : c.title) : 'Practise') });
+    },
+    canFresh: function (c) { return lpReady() && !!(c && (c.lo || c.topicKey)); },
+    fresh: function (c) {
+      usageNote('tracker', subject);
+      lpOpen([lotGroupOf(c)], {
+        subject: subject, sort: 'syllabus', level: c.level || '',
+        title: '✨ ' + c.title + ' — fresh practice'
+      });
+    },
+    print: function (ids, withKey) { mwsExport(ids, !!withKey); },
+    quick: function () { qpOpen(false); },
+    cardNode: function (id) { var m = mistakeById(id); return m ? mistakeCard(m) : null; }
+  };
+}
+function sentenceCase(t) {
+  var s = String(t || '').trim();
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+}
+function renderLoTracker() {
+  var host = $('lotHost');
+  if (!host || !lotReady()) return;
+  try { LoTracker.mount(host, lotEnv()); }
+  catch (e) { console.warn('tracker: could not draw', e); }
+}
+
 function renderMistakes() {
   if (!$('mistFilters')) return;
+  renderLoTracker();
   mistPruneFilters();
   renderMistFilters();
   renderMistList();
@@ -24128,7 +24281,8 @@ function pracStart(ids, opts) {
            // ⚡ a quick practice remembers its number and subject for ⚡ Another round
            quick: (opts && opts.quick) || null };
   var head = $('pracTitle');
-  if (head) head.textContent = prac.quick ? '⚡ Quick practice' : '✏️ Practise';
+  // 🎯 a session started from an objective in the tracker names the objective
+  if (head) head.textContent = prac.quick ? '⚡ Quick practice' : ((opts && opts.title) || '✏️ Practise');
   $('pracModal').classList.add('open');
   pracRender();
 }
@@ -24136,6 +24290,10 @@ function pracClose() {
   $('pracModal').classList.remove('open');
   prac = null;
   renderMistakes();
+  /* 🎯 Back to the objective it was started from, so the student sees its
+     bar move from "to redo" to "sorted". */
+  if (lotReturn && lotReady() && view === 'mistake') LoTracker.openFocus(lotReturn);
+  lotReturn = '';
 }
 /* =====================================================================
    ⚡ QUICK PRACTICE — a few questions from the book, picked for you (v1.95.0)
@@ -30895,7 +31053,9 @@ var USAGE_EVENTS = {
   // 🔎 Brought a paper in from a website by its link (v1.91.0).
   paperlink: { label: 'Brought in a paper by its link', count: 'paperlinks' },
   // ⚡ Started a quick practice from the mistake book (v1.95.0).
-  quickpractice: { label: 'Started a quick practice', count: 'quickpractice' }
+  quickpractice: { label: 'Started a quick practice', count: 'quickpractice' },
+  // 🎯 Practised an objective from the learning objective tracker (v1.97.0).
+  tracker: { label: 'Practised a learning objective', count: 'tracker' }
 };
 function usageLabel(key) {
   var e = USAGE_EVENTS[key];
