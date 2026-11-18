@@ -48,6 +48,23 @@ marketing centrepiece, so it is judged on screenshots as well as behaviour.
 - Usage event `tracker`. Checks: `node --test tools/lo-tracker-tests.mjs`, `node tools/lo-tracker-browser-check.mjs` (in CI;
   `LOT_SCREENSHOTS=dir`, `LOT_SCALE=2`). Ans Key was not changed.
 
+## 📚 THE TRACKER BY TOPIC (v1.99.0)
+
+Search `📚 THE TOPICS` in lo-tracker.js. Zhi Kai: "also allow another more general view of mistakes like fractions,
+percentage rather than individual learning objectives. put the learning objectives under the topics so practicing a
+topic like fractions is possible."
+- **A topic is the syllabus sub-strand**: `topicNameOf` = a card's topic line before `': '` ("Fractions: Four Operations"
+  → Fractions; across years, so P4 + P5 Fractions are one topic); science topics (Heat, Light…) are used whole; the
+  unfiled card is its own group, last. `buildTopics(cards)` makes cards of the SAME shape as objective cards (`kind:
+  'topic'`, `children` weakest first, `open` = theirs in that order, `history` merged per paper by `mergeHistory`), so
+  `statusOf` / `sortCards` / `filterCards` / `summary` / `nextUp` read them unchanged.
+- `state.view` 'topics' (default) | 'objectives'; the host remembers it (`lotView`, localStorage
+  `polymath.tutorLotView`, `env.view` / `env.onView`) — lo-tracker.js still keeps nothing in storage.
+- Topic card lists `TOPIC_ROWS` (3) objectives as `.lot-loRowBtn` doors (`openFocus(key, { from })`); the topic's sheet
+  lists all of them (`topicObjectivesNode`); an objective opened from a topic shows `.lot-back` (`state.focusFrom`).
+- ▶ a topic → `pracStart(ids, { title: '📚 <topic> — the whole topic' })`, `lotReturn` reopens the topic; ✨ a topic →
+  `lpOpen(lotGroupsOf(c))` (every freshable objective). Checks: the same two lo-tracker tools.
+
 ## 🔗 SIGNED IN BY THE CLASS LINK OR PIN (v1.96.0)
 
 `office-pass.js` / `office-pass.css` (`window.OfficePass`: `pure`, `mount`, `boot`, `signInWith`, `busy`), `#officePassSlot`

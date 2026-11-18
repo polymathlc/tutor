@@ -1,4 +1,9 @@
-/* 🎯 THE LEARNING OBJECTIVE TRACKER (v1.97.0), in a real browser.
+/* 🎯 THE LEARNING OBJECTIVE TRACKER (v1.97.0) and 📚 ITS TOPICS (v1.99.0), in a real browser.
+   📚 The tracker opens on topics (Fractions, Ratio, Percentage…), each card
+   carrying its objectives; a topic's sheet lists every objective under it,
+   ▶ Practise all runs the whole topic in the book's own session, an
+   objective opened from a topic offers ‹ back to it, and 🎯 switches to one
+   card per objective (remembered on the device).
    On an iPad standing up and lying down, a laptop and a phone: the tracker
    heads the mistake book with no sideways scroll; every objective is a card
    with its score and ▶ Practise; tapping a card opens that objective's sheet
@@ -127,10 +132,12 @@ const measure = page => page.evaluate(() => {
     title: (document.querySelector('.lot-heroTitle') || {}).textContent || '',
     kpis: Array.from(document.querySelectorAll('.lot-kpi')).map(k => k.querySelector('.lot-kpiNum').textContent + ' ' + k.querySelector('.lot-kpiLab').textContent),
     cards: Array.from(document.querySelectorAll('#lotHost .lot-card')).map(c => ({ key: c.dataset.lot, ...box(c), status: c.className })),
-    targets: Array.from(document.querySelectorAll('#lotHost .lot-btn, #lotHost .lot-segBtn, #lotHost select, #lotFocus.open .lot-btn, #lotFocus.open .lot-close'))
+    targets: Array.from(document.querySelectorAll('#lotHost .lot-btn, #lotHost .lot-segBtn, #lotHost select, #lotHost .lot-loRowBtn, #lotFocus.open .lot-btn, #lotFocus.open .lot-close, #lotFocus.open .lot-back'))
       .filter(b => b.offsetParent).map(b => ({ t: (b.textContent || b.tagName).trim().slice(0, 30), h: Math.round(b.getBoundingClientRect().height) })),
     sheet: sheet && box(sheet),
     sheetTitle: sheet ? sheet.querySelector('.lot-sheetTitle').textContent : '',
+    sheetLos: sheet ? sheet.querySelectorAll('.lot-loItem').length : 0,
+    back: sheet && sheet.querySelector('.lot-back') ? sheet.querySelector('.lot-back').textContent : '',
     sheetCards: sheet ? sheet.querySelectorAll('.mistCard').length : 0,
     firstInBook: (() => { const a = host && host.nextElementSibling; return a ? a.id : ''; })()
   };
@@ -151,9 +158,89 @@ async function shot(page, file) {
 }
 
 try {
-  /* ① iPad standing up: the hero, the cards, a card into its sheet, ▶ Practise and back. */
+  /* 📚 iPad standing up, TOPICS: the default view, a topic into its sheet, ▶ the whole topic and back,
+     an objective under it and ‹ back, an objective straight off a topic card. */
   {
     const { ctx, page } = await open({ width: 820, height: 1180 }, 'ipad');
+    let m = await checkFits(page, 'iPad portrait, topics');
+    await shot(page, 'lot-topics-ipad-portrait.png');
+    assert.equal(await page.evaluate(() => LoTracker.view()), 'topics', 'the tracker opens on topics');
+    assert.equal(m.title, 'Caius’s progress by topic');
+    assert.deepEqual(m.kpis, ['16 Still to redo', '3 Sorted', '8 Topics to work on', '1 Topics secure']);
+    assert.equal(m.cards.length, 8, 'To work on: every topic but Whole Numbers');
+    assert.equal(m.cards[0].key, 'g:ratio', 'the weakest topic comes first');
+    assert.match(m.cards[0].status, /lot-card--topic.*lot-card--next/, '…marked ★ Start here');
+    const fracRows = await page.locator('#lotHost .lot-card[data-lot="g:fractions"] .lot-loRowBtn').count();
+    assert.equal(fracRows, 3, 'the Fractions card carries its three objectives');
+    assert.match(await page.locator('#lotHost .lot-viewBar').textContent(), /Topics9.*Learning objectives14/,
+      'the switch says nine topics hold fourteen objectives');
+
+    // Open Fractions.
+    await page.locator('#lotHost .lot-card[data-lot="g:fractions"] .lot-topicTitle').tap();
+    await page.waitForTimeout(350);
+    m = await measure(page);
+    assert.ok(m.sheet, 'tapping a topic opens its sheet');
+    assert.ok(m.sheet.l >= -0.5 && m.sheet.r <= m.winW + 0.5 && m.sheet.b <= m.winH + 0.5, 'the sheet is inside the screen');
+    assert.equal(m.sheetTitle, 'Fractions');
+    assert.equal(m.sheetLos, 3, 'the topic\'s sheet lists its objectives');
+    assert.equal(m.sheetCards, 4, '…and the four mistakes still to redo across them');
+    m.targets.forEach(t => assert.ok(t.h >= 36, 'topic sheet: "' + t.t + '" is finger-sized'));
+    await shot(page, 'lot-topics-ipad-portrait-sheet.png');
+
+    // ▶ Practise all → the whole topic in one session, weakest objective first.
+    await page.locator('#lotFocus .lot-sheetActs .lot-btnPrimary').tap();
+    await page.waitForTimeout(80);
+    const s = await page.evaluate(() => ({
+      prac: document.getElementById('pracModal').classList.contains('open'),
+      title: document.getElementById('pracTitle').textContent,
+      count: document.getElementById('pracCount').textContent,
+      los: prac.ids.map(id => mistakeById(id).lo)
+    }));
+    assert.ok(s.prac, '▶ Practise all opens ✏️ Practise');
+    assert.match(s.title, /^📚 Fractions/, 'the session is named after the topic');
+    assert.equal(s.count, 'Question 1 of 4');
+    assert.deepEqual(s.los, ['P5.FR.2.6', 'P5.FR.2.6', 'P5.FR.2.6', 'P5.FR.2.1'], 'every Fractions mistake, the weakest objective first');
+    await page.evaluate(async () => { await setMistakeCleared(prac.ids[0], true).catch(() => {}); mistakeById(prac.ids[0]).cleared = true; pracClose(); });
+    await page.waitForTimeout(350);
+    let back = await page.evaluate(() => ({ open: LoTracker.isFocusOpen(), key: LoTracker.focusKey(),
+      tabs: Array.from(document.querySelectorAll('#lotFocus .lot-segSm .lot-segN')).map(x => x.textContent) }));
+    assert.ok(back.open && back.key === 'g:fractions', 'closing the session goes back to the topic');
+    assert.deepEqual(back.tabs, ['3', '2'], '…where one has moved from To redo to Sorted');
+
+    // An objective under the topic, and ‹ back.
+    await page.locator('#lotFocus .lot-loItem').first().tap();
+    await page.waitForTimeout(300);
+    m = await measure(page);
+    assert.match(m.sheetTitle, /word problems involving addition, subtraction and multiplication/i);
+    assert.equal(m.back, '‹ Fractions', 'an objective opened from its topic offers the way back');
+    await shot(page, 'lot-topics-ipad-portrait-objective.png');
+    await page.locator('#lotFocus .lot-back').tap();
+    await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(() => LoTracker.focusKey()), 'g:fractions', '‹ goes back to the topic');
+    await page.keyboard.press('Escape');
+
+    // A row on a topic card opens that objective, not the topic.
+    await page.locator('#lotHost .lot-card[data-lot="g:ratio"] .lot-loRowBtn').first().tap();
+    await page.waitForTimeout(300);
+    m = await measure(page);
+    assert.equal(await page.evaluate(() => LoTracker.focusKey()), 'lo:P5.RAT.1.7');
+    assert.equal(m.back, '‹ Ratio');
+    await page.keyboard.press('Escape');
+
+    // 🎯 Learning objectives — remembered on the device.
+    await page.locator('#lotHost .lot-segView .lot-segBtn[data-view="objectives"]').tap();
+    await page.waitForTimeout(80);
+    assert.equal(await page.evaluate(() => localStorage.getItem('polymath.tutorLotView')), 'objectives');
+    await page.evaluate(() => { LoTracker.reset(); renderMistakes(); });
+    assert.equal(await page.evaluate(() => LoTracker.view()), 'objectives', 'the choice comes back from the device');
+    await ctx.close();
+  }
+
+  /* ① iPad standing up, OBJECTIVES: the hero, the cards, a card into its sheet, ▶ Practise and back. */
+  {
+    const { ctx, page } = await open({ width: 820, height: 1180 }, 'ipad');
+    await page.locator('#lotHost .lot-segView .lot-segBtn[data-view="objectives"]').tap();
+    await page.waitForTimeout(80);
     let m = await checkFits(page, 'iPad portrait');
     await shot(page, 'lot-ipad-portrait.png');
     assert.equal(m.title, 'Caius’s learning objectives');
@@ -216,6 +303,15 @@ try {
     const { ctx, page } = await open({ width: 1180, height: 820 }, 'ipadL');
     await checkFits(page, 'iPad landscape');
     await shot(page, 'lot-ipad-landscape.png');
+    // 📚 ✨ on a topic opens lo-practice on every one of its objectives.
+    await page.locator('#lotHost .lot-card[data-lot="g:fractions"] .lot-btnGhost').click();
+    await page.waitForTimeout(150);
+    const lp = await page.evaluate(() => ({ open: LoPractice.isOpen(), title: (document.querySelector('.lp-title, .lpTitle, [class*="lp"] h2') || {}).textContent || '' }));
+    assert.ok(lp.open, '✨ on a topic opens lo-practice\'s window');
+    await page.evaluate(() => LoPractice.close && LoPractice.close());
+    await page.waitForTimeout(80);
+    await page.locator('#lotHost .lot-segView .lot-segBtn[data-view="objectives"]').click();
+    await page.waitForTimeout(80);
     const cols = await page.evaluate(() => {
       const tops = Array.from(document.querySelectorAll('#lotHost .lot-card')).slice(0, 3).map(c => Math.round(c.getBoundingClientRect().top));
       return tops.filter(t => t === tops[0]).length;
@@ -238,6 +334,17 @@ try {
   /* ③ A laptop: four numbers in a row, the sheet slides in from the side. */
   {
     const { ctx, page } = await open({ width: 1440, height: 900 }, 'laptop');
+    await checkFits(page, 'laptop, topics');
+    await shot(page, 'lot-topics-laptop.png');
+    await page.locator('#lotHost .lot-card[data-lot="g:ratio"] .lot-topicTitle').click();
+    await page.waitForTimeout(350);
+    const tm = await measure(page);
+    assert.ok(tm.sheet && Math.round(tm.sheet.r) === tm.winW && tm.sheet.w <= 760.5, 'a topic\'s side sheet on the right');
+    assert.equal(tm.sheetLos, 2);
+    await shot(page, 'lot-topics-laptop-sheet.png');
+    await page.keyboard.press('Escape');
+    await page.locator('#lotHost .lot-segView .lot-segBtn[data-view="objectives"]').click();
+    await page.waitForTimeout(80);
     await checkFits(page, 'laptop');
     await shot(page, 'lot-laptop.png');
     const kpiRow = await page.evaluate(() => new Set(Array.from(document.querySelectorAll('.lot-kpi')).map(k => Math.round(k.getBoundingClientRect().top))).size);
@@ -253,6 +360,16 @@ try {
   /* ④ A phone: everything stacks, the sheet rises from the bottom; an empty book says so. */
   {
     const { ctx, page } = await open({ width: 390, height: 844 }, 'phone');
+    await checkFits(page, 'phone, topics');
+    await shot(page, 'lot-topics-phone.png');
+    await page.locator('#lotHost .lot-card[data-lot="g:fractions"] .lot-topicTitle').tap();
+    await page.waitForTimeout(350);
+    const pm = await measure(page);
+    assert.ok(pm.sheet && pm.sheet.w <= 390.5 && Math.round(pm.sheet.b) === 844, 'a topic\'s bottom sheet on a phone');
+    await shot(page, 'lot-topics-phone-sheet.png');
+    await page.keyboard.press('Escape');
+    await page.locator('#lotHost .lot-segView .lot-segBtn[data-view="objectives"]').tap();
+    await page.waitForTimeout(80);
     await checkFits(page, 'phone');
     await shot(page, 'lot-phone.png');
     await page.locator('#lotHost .lot-card').first().tap();

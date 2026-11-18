@@ -12,12 +12,12 @@
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="office-pass.css?v=1.96.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.98.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.98.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.98.0">
-<link rel="stylesheet" href="model-studio.css?v=1.98.0">
-<link rel="stylesheet" href="lo-tracker.css?v=1.98.0">
-<link rel="stylesheet" href="practice-draw.css?v=1.98.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.99.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.99.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.99.0">
+<link rel="stylesheet" href="model-studio.css?v=1.99.0">
+<link rel="stylesheet" href="lo-tracker.css?v=1.99.0">
+<link rel="stylesheet" href="practice-draw.css?v=1.99.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -3694,14 +3694,14 @@
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="office-pass.js?v=1.96.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.98.0"></script>
-<script src="lo-marks.js?v=1.98.0"></script>
-<script src="lo-practice.js?v=1.98.0"></script>
-<script src="cer-mcq.js?v=1.98.0"></script>
-<script src="model-studio.js?v=1.98.0"></script>
-<script src="lo-tracker.js?v=1.98.0"></script>
-<script src="question-band.js?v=1.98.0"></script>
-<script src="practice-draw.js?v=1.98.0"></script>
+<script src="concept-tags.js?v=1.99.0"></script>
+<script src="lo-marks.js?v=1.99.0"></script>
+<script src="lo-practice.js?v=1.99.0"></script>
+<script src="cer-mcq.js?v=1.99.0"></script>
+<script src="model-studio.js?v=1.99.0"></script>
+<script src="lo-tracker.js?v=1.99.0"></script>
+<script src="question-band.js?v=1.99.0"></script>
+<script src="practice-draw.js?v=1.99.0"></script>
 <script>
 'use strict';
 
@@ -3798,7 +3798,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.98.0';
+var APP_VERSION = 'v1.99.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -23420,6 +23420,13 @@ function mistSelect(parent, label, value, options, onPick) {
    ===================================================================== */
 var lotSubject = '';
 var lotReturn = '';
+/* 📚 TOPICS or 🎯 LEARNING OBJECTIVES (v1.99.0): how the tracker reads the
+   book, remembered on this device (a preference, like the subtitles; a
+   device that refuses storage still gets Topics, the default). */
+var LOT_VIEW_KEY = 'polymath.tutorLotView';
+var lotView = (function () {
+  try { var v = localStorage.getItem(LOT_VIEW_KEY); return v === 'objectives' ? v : 'topics'; } catch (e) { return 'topics'; }
+})();
 function lotReady() {
   return typeof LoTracker !== 'undefined' && LoTracker && typeof LoTracker.mount === 'function';
 }
@@ -23460,6 +23467,18 @@ function lotItem(m) {
     createdAt: stampOf(m.createdAt), docName: m.docName || ''
   };
 }
+/* What ✨ fresh questions can be written from: an objective, or a topic
+   with something inside it filed against the syllabus. */
+function lotFreshable(c) {
+  return !!(c && (c.lo || c.topicKey));
+}
+/* ✨ on a TOPIC opens lo-practice's window on every one of its objectives
+   (the window groups them, weakest first) — the road 📈 My progress takes
+   for a topic row; on an objective, on that one. */
+function lotGroupsOf(c) {
+  var list = c && c.kind === 'topic' ? (c.children || []) : [c];
+  return list.filter(lotFreshable).map(lotGroupOf);
+}
 /* The objective as one group of lo-practice's window. */
 function lotGroupOf(c) {
   var sel = c.lo ? { los: [c.lo], tkeys: [], topics: [] }
@@ -23483,6 +23502,11 @@ function lotEnv() {
     subjects: subs,
     studentName: st && st.name ? st.name : '',
     papers: prog ? prog.papers : 0,
+    view: lotView,
+    onView: function (v) {
+      lotView = v === 'objectives' ? v : 'topics';
+      try { localStorage.setItem(LOT_VIEW_KEY, lotView); } catch (e) { /* the default comes back next time */ }
+    },
     items: mistakes.filter(function (m) { return mistSubjectKey(m) === subject; }).map(lotItem),
     rows: prog ? prog.rows.filter(function (r) { return r.labelled !== false; }) : [],
     onSubject: function (key) {
@@ -23494,14 +23518,16 @@ function lotEnv() {
       lotReturn = c ? c.key : '';
       LoTracker.closeFocus();
       usageNote('tracker', subject);
-      pracStart(ids, { title: '🎯 ' + (c ? (c.short ? sentenceCase(c.short) : c.title) : 'Practise') });
+      pracStart(ids, { title: c && c.kind === 'topic' ? '📚 ' + c.title + ' — the whole topic'
+        : '🎯 ' + (c ? (c.short ? sentenceCase(c.short) : c.title) : 'Practise') });
     },
-    canFresh: function (c) { return lpReady() && !!(c && (c.lo || c.topicKey)); },
+    canFresh: function (c) { return lpReady() && lotGroupsOf(c).length > 0; },
     fresh: function (c) {
       usageNote('tracker', subject);
-      lpOpen([lotGroupOf(c)], {
-        subject: subject, sort: 'syllabus', level: c.level || '',
-        title: '✨ ' + c.title + ' — fresh practice'
+      var topic = c.kind === 'topic';
+      lpOpen(lotGroupsOf(c), {
+        subject: subject, sort: topic ? 'weak' : 'syllabus', level: topic ? '' : (c.level || ''),
+        title: '✨ ' + c.title + (topic ? ' — fresh practice across the topic' : ' — fresh practice')
       });
     },
     print: function (ids, withKey) { mwsExport(ids, !!withKey); },
@@ -31472,7 +31498,7 @@ var USAGE_EVENTS = {
   // ⚡ Started a quick practice from the mistake book (v1.95.0).
   quickpractice: { label: 'Started a quick practice', count: 'quickpractice' },
   // 🎯 Practised an objective from the learning objective tracker (v1.97.0).
-  tracker: { label: 'Practised a learning objective', count: 'tracker' }
+  tracker: { label: 'Practised a learning objective or topic', count: 'tracker' }
 };
 function usageLabel(key) {
   var e = USAGE_EVENTS[key];

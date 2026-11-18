@@ -17,6 +17,19 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.99.0 — 📚 The mistake tracker by topic
+
+- **The tracker now opens on topics** — Fractions, Percentage, Ratio, Geometry and so on, the topics a parent
+  reads on the syllabus. P4 and P5 Fractions are one topic. Each topic card has its own mastery ring, status,
+  to-redo/sorted bar and trend over every objective inside it, and lists those objectives (weakest first),
+  each one tap from its own sheet.
+- **▶ Practise a whole topic** runs every question still to redo in it as one ✏️ Practise session, starting
+  with the weakest objective; **✨ New questions** writes fresh questions across all its objectives.
+- **A topic's sheet** lists every learning objective under it with its score and ▶ for that objective alone;
+  an objective opened from a topic has **‹ back** to it.
+- **📚 Topics / 🎯 Learning objectives** switch above the list; the v1.97.0 objective cards are one tap away,
+  and the choice is remembered on the device.
+
 ## v1.98.0 — ✏️ Draw on practice questions, and ✂️ each question cut out on its own
 
 - **✏️ Every picture in ✏️ Practise can be drawn on** — the mistake book's, ⚡ Quick practice's and 🎯 an
