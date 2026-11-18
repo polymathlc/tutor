@@ -12,11 +12,12 @@
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="office-pass.css?v=1.96.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.97.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.97.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.97.0">
-<link rel="stylesheet" href="model-studio.css?v=1.97.0">
-<link rel="stylesheet" href="lo-tracker.css?v=1.97.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.98.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.98.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.98.0">
+<link rel="stylesheet" href="model-studio.css?v=1.98.0">
+<link rel="stylesheet" href="lo-tracker.css?v=1.98.0">
+<link rel="stylesheet" href="practice-draw.css?v=1.98.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -3693,12 +3694,14 @@
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="office-pass.js?v=1.96.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.97.0"></script>
-<script src="lo-marks.js?v=1.97.0"></script>
-<script src="lo-practice.js?v=1.97.0"></script>
-<script src="cer-mcq.js?v=1.97.0"></script>
-<script src="model-studio.js?v=1.97.0"></script>
-<script src="lo-tracker.js?v=1.97.0"></script>
+<script src="concept-tags.js?v=1.98.0"></script>
+<script src="lo-marks.js?v=1.98.0"></script>
+<script src="lo-practice.js?v=1.98.0"></script>
+<script src="cer-mcq.js?v=1.98.0"></script>
+<script src="model-studio.js?v=1.98.0"></script>
+<script src="lo-tracker.js?v=1.98.0"></script>
+<script src="question-band.js?v=1.98.0"></script>
+<script src="practice-draw.js?v=1.98.0"></script>
 <script>
 'use strict';
 
@@ -3795,7 +3798,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.97.0';
+var APP_VERSION = 'v1.98.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -15879,8 +15882,11 @@ var MB_BUILD_SYS =
   '- OMIT the image block entirely for a question that is only words, and for a figure you cannot locate: a ' +
   'wrong rectangle keeps somebody else\'s picture and looks exactly like a working one.\n' +
   '- "questionBox" is ONE rectangle round the WHOLE of this question as it is printed — its wording, its ' +
-  'figure, its options and the space left to answer in — and nothing of the question above or below it. Leave ' +
-  'it out entirely if you cannot place it.\n' +
+  'figure, its options and the space left to answer in — and nothing of the question above or below it. Its ' +
+  'TOP is the line this question\'s own number is printed on; it never takes in the end of the previous ' +
+  'question (its last line, its answer box or answer lines), a section instruction such as "Questions 10 to 14 ' +
+  'carry 2 marks each", or the page header. Its BOTTOM stops above the next question\'s number and above the ' +
+  'page footer (page number, website, "Go on to the next page"). Leave it out entirely if you cannot place it.\n' +
   '- Never invent a block. If the question is one sentence, one text block is the whole correct answer.';
 
 /* The pages this question is printed on. A question stitched over a page
@@ -15979,7 +15985,7 @@ async function _mbQuestionCrop(built, context, enhance) {
   return enhance === false ? crop : await mbEnhance(crop, context);
 }
 
-async function mbRebuild(it, id, context) {
+async function mbRebuild(it, id, context, how) {
   try {
     var built = await _mbBuildBlocks(it, context);
     if (!built) return null;
@@ -15991,7 +15997,9 @@ async function mbRebuild(it, id, context) {
        so it is redrawn only then. An image call spent on a picture no card
        will ever display is one the next question does not get — and on a
        paper where every question set out properly, it is the whole ration. */
-    out.qcrop = await _mbQuestionCrop(built, context, !out.blocks.length);
+    /* ✂️ Not cut at all when the caller already has the question cut out
+       by its printed number (v1.98.0) — and so not sent to be redrawn. */
+    out.qcrop = how && how.noQcrop ? '' : await _mbQuestionCrop(built, context, !out.blocks.length);
     return out;
   } catch (e) { console.warn('question rebuild failed', e); return null; }
 }
@@ -16123,7 +16131,15 @@ async function mbRedoOne(m) {
     var blocks = await _mbBuildFigures(built.blocks, built.shots, m.id, null);
     if (blocks.length) patch.blocks = blocks;
   }
-  var crop = await _mbQuestionCrop(built, null, !patch.blocks);
+  /* ✂️ The question cut out by its printed number when its worksheet's
+     words can be read (v1.98.0); the model's rectangle only when not. */
+  var crop = '';
+  try {
+    var where = await qbSourceFor(m);
+    if (where && where.src) crop = await qbandCrop(where.src, m);
+  } catch (e) { crop = ''; }
+  if (crop) patch.cropV = QB_V;
+  else crop = await _mbQuestionCrop(built, null, !patch.blocks);
   if (crop) {
     var path = await _mbUpload(crop, m.id + '-q' + Date.now().toString(36));
     if (path) { patch.imagePath = path; patch.shot = 'question'; }
@@ -17384,16 +17400,29 @@ async function fileMistakes(opts) {
          refuse the write, must cost the picture and never the mistake. */
       var ref = await coll.add(doc);
       if (!mistakeContextOK(context)) break;
-      var patch = {};
+      /* ✂️ v1.98.0: the question cut out by its printed number, off the
+         PDF's own words, FIRST — it is free and exact. `cropV` says this
+         mistake was filed under that rule, so it is never cut again. */
+      var patch = { cropV: QB_V };
+      var band = '';
+      try { band = await qbandCrop(qbOpenSource, it); } catch (e) { band = ''; }
+      if (!mistakeContextOK(context)) break;
       try {
-        var built = await mbRebuild(it, ref.id, context);
+        var built = await mbRebuild(it, ref.id, context, { noQcrop: !!band });
         if (!mistakeContextOK(context)) break;
         if (built && built.blocks.length) patch.blocks = built.blocks;
-        if (built && built.qcrop) {
+        if (band) {
+          var bp = await _mbUpload(band, ref.id);
+          if (bp) { patch.imagePath = bp; patch.shot = 'question'; }
+        } else if (built && built.qcrop) {
           var qp = await _mbUpload(built.qcrop, ref.id);
           if (qp) { patch.imagePath = qp; patch.shot = 'question'; }
         }
       } catch (e) { console.warn('Question rebuild could not be saved', e); }
+      if (band && !patch.imagePath) {
+        try { var bp2 = await _mbUpload(band, ref.id); if (bp2) { patch.imagePath = bp2; patch.shot = 'question'; } }
+        catch (e) { /* the whole page, below */ }
+      }
       if (!patch.imagePath) {
         // ③ The whole page, which is where this started — and CLEAN, so it
         // can be practised from and printed like the two tiers above it.
@@ -17487,6 +17516,242 @@ async function mistakeShotFor(it) {
   var c = await rbCleanPage(it.page);
   if (!c) return null;
   return 'data:image/jpeg;base64,' + rbJpeg(c, 1600, 0.86);
+}
+
+/* =====================================================================
+   ✂️ THE QUESTION'S OWN BAND — cut out by its printed number (v1.98.0)
+   ---------------------------------------------------------------------
+   question-band.js (window.QBand) finds the question on the page from the
+   PDF's own words: from the line its number starts to the next number in
+   the same margin, a section line or the footer. This is where the app
+   uses it — see the header of that file for why.
+
+   ① FILING (`fileMistakes`) and 🧩 SETTING OUT AGAIN (`mbRedoOne`) cut
+     the whole-question picture this way FIRST, off the open worksheet's
+     clean page. The model's rectangle is kept only for a PDF with no text
+     (a scan), and the whole page only when neither works. A band crop is
+     never sent to be redrawn: it is the PDF's own print, already clean,
+     and an image model has nothing to add but the risk of a changed word.
+   ② A MISTAKE FILED BEFORE THIS (`cropV` under `QB_V`) whose picture is a
+     whole page or the model's guess is cut again from its worksheet's PDF
+     when it comes up — ✏️ Practise queues the session's questions in order
+     (`qbQueue`), and opening 📕 the book queues a few more. The PDF is
+     fetched once per worksheet (`qbDocLoad`, two kept). A worksheet that
+     has gone, or a page with no text, is marked done (`cropV`) and never
+     asked again; a failed download is not, and is tried next visit.
+   ③ A picture being drawn on is never swapped under the pen: the new cut
+     shows the next time that question comes up.
+   ===================================================================== */
+var QB_V = 2;                  // the crop rule a mistake's picture was cut with
+var QB_SWEEP_MAX = 6;          // re-cut per visit to the book, beyond a practice session's own
+var QB_SWEEP_SESSION = 30;     // …and per sitting, so a long book is done over a few visits
+var _qbSwept = 0;
+var QB_DOCS_KEPT = 2;
+var _qbQueue = [];
+var _qbBusy = false;
+var _qbTried = {};
+var _qbDocs = [];              // [{ id, job }] — a loaded PDF per worksheet
+var _qbChanged = 0;
+
+function qbReady() { return typeof QBand !== 'undefined' && QBand && typeof QBand.locate === 'function'; }
+
+/* A page's words, as QBand reads them. Kept on the page object: pdf.js
+   reads the text once, and a paper with ten wrong answers asks ten times. */
+async function qbItemsOf(pdfPage) {
+  if (!pdfPage || typeof pdfPage.getTextContent !== 'function') return [];
+  if (pdfPage._qbItems) return pdfPage._qbItems;
+  var vp = pdfPage.getViewport({ scale: 1 });
+  var tc = await pdfPage.getTextContent();
+  var items = QBand.fromPdf((tc && tc.items) || [], vp.transform, vp.width, vp.height);
+  try { pdfPage._qbItems = items; } catch (e) { /* a frozen object: read again next time */ }
+  return items;
+}
+/* A clean render of a page that is NOT on screen — a saved mistake's
+   worksheet — the same size `rbCleanPage` renders the open one. */
+async function qbRender(pdfPage) {
+  var vp1 = pdfPage.getViewport({ scale: 1 });
+  var sc = Math.min(4, Math.max(1, RB_PAGE_MAX_SIDE / Math.max(vp1.width, vp1.height)));
+  var vp = pdfPage.getViewport({ scale: sc });
+  var c = document.createElement('canvas');
+  c.width = Math.floor(vp.width);
+  c.height = Math.floor(vp.height);
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, c.width, c.height);
+  await pdfPage.render({ canvasContext: ctx, viewport: vp }).promise;
+  return c;
+}
+/* THE CUT. `src(num)` hands back { page, canvas() } for a page number, or
+   null. Returns a JPEG data URL, or '' when the question cannot be found
+   by its number — the caller then keeps what it had. */
+async function qbandCrop(src, q) {
+  if (!qbReady() || !q) return '';
+  var n = QBand.numOf(q.number);
+  var first = parseInt(q.page, 10) || 0;
+  if (!n || first < 1) return '';
+  var nums = [first];
+  var last = parseInt(q.endPage, 10) || 0;
+  if (last > first && last <= first + 2) for (var k = first + 1; k <= last; k++) nums.push(k);
+  var pieces = [], made = [];
+  try {
+    for (var i = 0; i < nums.length; i++) {
+      var pg = await src(nums[i]);
+      if (!pg || !pg.page) break;
+      var band = QBand.locate(await qbItemsOf(pg.page), n, { cont: i > 0 });
+      if (!band) { if (i === 0) return ''; break; }
+      var canvas = await pg.canvas();
+      if (!canvas) { if (i === 0) return ''; break; }
+      if (pg.own) made.push(canvas);
+      var piece = QBand.cropBand(document, canvas, band);
+      if (!piece) { if (i === 0) return ''; break; }
+      pieces.push(piece);
+      if (band.why === 'next' || band.why === 'section') break;   // it ended on this page
+    }
+    if (!pieces.length) return '';
+    var out = QBand.stack(document, pieces);
+    var data = out ? out.toDataURL('image/jpeg', 0.9) : '';
+    pieces.concat(out ? [out] : []).concat(made).forEach(function (c) { c.width = 0; c.height = 0; });
+    return data;
+  } catch (e) {
+    console.warn('question band: not cut', e);
+    return '';
+  }
+}
+/* The open worksheet's pages, as `qbandCrop` wants them. */
+function qbOpenSource(num) {
+  var p = pages.find(function (pg) { return pg.num === num; });
+  if (!p || !p.page) return Promise.resolve(null);
+  return Promise.resolve({ page: p.page, canvas: function () { return rbCleanPage(num); } });
+}
+/* A saved worksheet's PDF, by id. The student's own document names the
+   file (a set worksheet's copy names the teacher's, which they may read —
+   it is the door `openWorksheet` uses). */
+async function qbDocLoad(docId) {
+  for (var i = 0; i < _qbDocs.length; i++) if (_qbDocs[i].id === docId) return _qbDocs[i].job;
+  var job = (async function () {
+    if (typeof pdfjsLib === 'undefined' || !db || !storage) return null;
+    var snap = await db.collection(COLLECTION).doc(docId).get();
+    if (!snap.exists) return { gone: true };
+    var w = snap.data() || {};
+    if (!w.storagePath) return { gone: true };
+    var url = await storage.ref(w.storagePath).getDownloadURL();
+    var resp = await fetch(url);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    var buf = await resp.arrayBuffer();
+    var pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+    return { pdf: pdf };
+  })();
+  _qbDocs.push({ id: docId, job: job });
+  /* A failed download is forgotten at once, so the next visit tries again. */
+  job.catch(function () { _qbDocs = _qbDocs.filter(function (d) { return d.job !== job; }); });
+  while (_qbDocs.length > QB_DOCS_KEPT) {
+    var old = _qbDocs.shift();
+    old.job.then(function (r) { if (r && r.pdf && r.pdf.destroy) r.pdf.destroy(); }, function () {});
+  }
+  return job;
+}
+function qbDocSource(pdf) {
+  return async function (num) {
+    if (!pdf || num < 1 || num > pdf.numPages) return null;
+    var page = await pdf.getPage(num);
+    return { page: page, own: true, canvas: function () { return qbRender(page); } };
+  };
+}
+/* Where a mistake's pages come from: the open worksheet when it is this
+   one, else its PDF. { src } | { gone: true } | null (try again later). */
+async function qbSourceFor(m) {
+  if (m.docId && m.docId === currentDocId && pages.length) return { src: qbOpenSource };
+  if (!m.docId) return { gone: true };
+  var r = await qbDocLoad(m.docId);
+  if (!r) return null;
+  if (r.gone) return { gone: true };
+  return { src: qbDocSource(r.pdf) };
+}
+
+/* Does this saved mistake still want cutting again? */
+function qbWants(m) {
+  if (!qbReady() || !m || !m.id || !m.docId || _qbTried[m.id]) return false;
+  if ((Number(m.cropV) || 0) >= QB_V) return false;
+  var tier = mistakeTier(m);
+  if (tier !== 'question' && tier !== 'page') return false;
+  return !!QBand.numOf(m.number) && (parseInt(m.page, 10) || 0) >= 1;
+}
+function qbQueue(ids, front) {
+  if (!qbReady() || !currentUser) return;
+  var want = (ids || []).filter(function (id) { return qbWants(mistakeById(id)) && _qbQueue.indexOf(id) < 0; });
+  if (!want.length) return;
+  _qbQueue = front ? want.concat(_qbQueue.filter(function (id) { return want.indexOf(id) < 0; })) : _qbQueue.concat(want);
+  qbRun();
+}
+function qbSweep() {
+  if (!qbReady() || !currentUser || !Array.isArray(mistakes) || _qbBusy || _qbQueue.length) return;
+  var room = Math.min(QB_SWEEP_MAX, QB_SWEEP_SESSION - _qbSwept);
+  if (room <= 0) return;
+  var ids = mistakes.filter(function (m) { return !m.cleared && qbWants(m); }).slice(0, room).map(function (m) { return m.id; });
+  _qbSwept += ids.length;
+  qbQueue(ids, false);
+}
+async function qbRun() {
+  if (_qbBusy) return;
+  _qbBusy = true;
+  try {
+    while (_qbQueue.length) {
+      var m = mistakeById(_qbQueue.shift());
+      if (!qbWants(m)) continue;
+      try { await qbRecrop(m); } catch (e) { console.warn('question band: re-cut skipped', e); }
+    }
+  } finally {
+    _qbBusy = false;
+    if (_qbChanged) { _qbChanged = 0; mistakeMirrorSync(); }
+  }
+}
+/* Cut ONE saved mistake again. The old picture is deleted only after the
+   new one is written, the rule 🧩 `mbRedoOne` keeps. */
+async function qbRecrop(m) {
+  _qbTried[m.id] = 1;
+  var uid = currentUser && currentUser.uid;
+  var where = await qbSourceFor(m);
+  if (!where) return 'later';
+  if (!currentUser || currentUser.uid !== uid) return 'later';
+  var data = where.src ? await qbandCrop(where.src, m) : '';
+  if (!currentUser || currentUser.uid !== uid) return 'later';
+  var patch = { cropV: QB_V };
+  var oldPath = m.imagePath || '';
+  if (data) {
+    var path = await _mbUpload(data, m.id + '-b' + Date.now().toString(36));
+    if (path) {
+      patch.imagePath = path;
+      patch.shot = 'question';
+      try { var u = await mistakePathUrl(path); if (u) patch.imageUrl = u; } catch (e) { /* the catch-up mints it */ }
+    }
+  }
+  await mistakesCollRef().doc(m.id).set(patch, { merge: true });
+  Object.keys(patch).forEach(function (k) { m[k] = patch[k]; });
+  if (!patch.imagePath) return 'kept';
+  m._url = '';
+  m._hay = null;
+  m._urlTried = false;
+  if (oldPath && oldPath !== patch.imagePath) {
+    try { await storage.ref(oldPath).delete(); } catch (e) { /* a tidy-up is never worth the card */ }
+  }
+  _qbChanged++;
+  qbShow(m);
+  return 'done';
+}
+/* The new picture onto the screen — never under a pen that is drawing on
+   the old one (the ink is laid over THAT picture). */
+var _qbShowTimer = 0;
+function qbShow(m) {
+  if (prac && $('pracModal') && $('pracModal').classList.contains('open')) {
+    if (pracCurrent() === m && !prac.revealed && !prac.busy && !(pracDrawOf(m) && pracDrawOf(m).hasInk())) {
+      prac.draw = null;
+      pracRender();
+    }
+    return;
+  }
+  if (view !== 'mistake') return;
+  clearTimeout(_qbShowTimer);
+  _qbShowTimer = setTimeout(function () { if (view === 'mistake' && !prac) renderMistakes(); }, 400);
 }
 
 /* ---- WHICH TIER THIS ONE IS, and the ONE place it is decided ----
@@ -23261,6 +23526,8 @@ function renderMistakes() {
   mistPruneFilters();
   renderMistFilters();
   renderMistList();
+  // ✂️ a few old whole-page pictures cut down to their question, quietly
+  if (view === 'mistake' && typeof qbSweep === 'function') qbSweep();
 }
 
 /* THE BAR AND THE LIST ARE PAINTED APART, and that split is what makes the
@@ -23538,14 +23805,32 @@ var MQ_SKIN = {
   sheet: { text: 'mwsQText', img: 'mwsShot',   fig: 'mwsShot', opts: 'mwsOpts', opt: 'mwsOpt' }
 };
 
-function _mqImg(cls, urlOrPromise, onClick) {
+function _mqImg(cls, urlOrPromise, onClick, cors) {
   var img = document.createElement('img');
   img.className = cls;
   img.alt = '';
+  /* ✏️ A picture the student draws on is read back into a canvas for the
+     marker, and a canvas fed a picture with no CORS grant cannot be read.
+     `crossOrigin` has to be set BEFORE `src`, or it does nothing. */
+  if (cors) img.crossOrigin = 'anonymous';
   // A picture that cannot be fetched — deleted, or a Storage rule that says
   // no — takes itself off rather than leaving a broken-image frame, which
   // reads as a broken app when the question itself is perfectly whole.
-  img.addEventListener('error', function () { if (img.parentNode) img.parentNode.removeChild(img); });
+  img.addEventListener('error', function () {
+    /* …except once, for a picture asked for WITH CORS: the browser may hold
+       the same file from the card, fetched without, and refuse to reuse it.
+       Without CORS it still shows and can still be drawn on; only the
+       marker then sees the ink on white rather than over the question. */
+    if (img.crossOrigin && !img._corsRetried && img.src) {
+      img._corsRetried = true;
+      var again = img.src;
+      img.removeAttribute('crossorigin');
+      img.src = again;
+      return;
+    }
+    var gone = img.parentNode && img.parentNode.classList && img.parentNode.classList.contains('pdWrap') ? img.parentNode : img;
+    if (gone.parentNode) gone.parentNode.removeChild(gone);
+  });
   if (onClick) img.addEventListener('click', onClick);
   if (typeof urlOrPromise === 'string') { if (urlOrPromise) img.src = urlOrPromise; else return null; }
   else urlOrPromise.then(function (u) { if (u) img.src = u; else img.remove(); });
@@ -23580,12 +23865,12 @@ function questionNodes(m, kind, opts) {
         return;
       }
       var im = _mqImg(skin.fig + (b.role === 'options' ? ' mqOptsPic' : ''),
-                      b._url || mistakeBlockUrl(b));
+                      b._url || mistakeBlockUrl(b), null, !!opts.cors);
       if (im) out.push(im);
     });
   } else if (tier === 'question' || tier === 'page') {
     if (!opts.noPic) {
-      var pic = _mqImg(skin.img, m._url || mistakeImageUrl(m), opts.onPicClick);
+      var pic = _mqImg(skin.img, m._url || mistakeImageUrl(m), opts.onPicClick, !!opts.cors);
       if (pic) out.push(pic);
     }
     if (tier === 'page' && m.question) {
@@ -24285,6 +24570,10 @@ function pracStart(ids, opts) {
   if (head) head.textContent = prac.quick ? '⚡ Quick practice' : ((opts && opts.title) || '✏️ Practise');
   $('pracModal').classList.add('open');
   pracRender();
+  /* ✂️ Any of these still cut out as a whole page (or by the model's own
+     guess) is cut again by its printed number, in the order they come up,
+     while the student works on the first. */
+  if (typeof qbQueue === 'function') qbQueue(ids, true);
 }
 function pracClose() {
   $('pracModal').classList.remove('open');
@@ -24706,11 +24995,27 @@ async function pracCheck() {
   var adventureContext = typeof StudyAdventure !== 'undefined' ? StudyAdventure.capture(m.subject) : null;
   var el = $('pracAnswer');
   var mine = String((el ? el.value : prac.typed) || '').trim();
+  /* ✏️ An answer DRAWN on the picture is an answer (v1.98.0): a matching
+     question is a set of lines, not a sentence. */
+  var pen = pracDrawOf(m);
+  var drew = !!(pen && pen.hasInk());
   // A blank is not a wrong answer here either — it has simply not been
   // attempted, and marking one would be the app telling a child they failed
   // a question they never tried.
-  if (!mine) { toast('Have a go first — write what you think the answer is.'); return; }
+  if (!mine && !drew) {
+    toast(pen ? 'Have a go first — draw on the picture or write what you think the answer is.'
+              : 'Have a go first — write what you think the answer is.');
+    return;
+  }
   if (!aiAvailable()) return;
+  // The ink is read off BEFORE the window redraws into its busy state.
+  var inked = drew ? pracDrawImages(pen) : [];
+  if (drew && !inked.length && !mine) {
+    toast('Your drawing could not be read just now — write your answer in the box as well.');
+    return;
+  }
+  var typedNow = mine;
+  if (!mine) mine = PRAC_DRAWN_WORDS;
   prac.busy = true;
   pracRender();
   try {
@@ -24736,10 +25041,13 @@ async function pracCheck() {
         (m.tagWhy ? ' — last time: ' + m.tagWhy : '') +
         '. In the feedback, say plainly whether they have avoided that slip this time.');
     }
-    lines.push('What they have written NOW: ' + mine);
+    if (inked.length) lines.push(pracDrawPromptLine(inked));
+    lines.push('What they have written NOW: ' + (typedNow || '(nothing typed — their answer is DRAWN on the picture)'));
     var raw = await window.askGemini(lines.join('\n'), {
       system: PRAC_SYS + aiGrounding('mark', { context: m, q: m.question }) + tutorMethodRule(),
-      maxOutputTokens: 2400, temperature: 0.2, json: true, timeoutMs: 60000, routeTimeoutMs: 25000
+      images: inked.length ? inked.map(function (im) { return { mimeType: im.mimeType, data: im.data }; }) : undefined,
+      maxOutputTokens: 2400, temperature: 0.2, json: true,
+      timeoutMs: inked.length ? 90000 : 60000, routeTimeoutMs: inked.length ? 40000 : 25000
     });
     var out = _parseAIJson(raw) || {};
     var v = String(out.verdict || '').toLowerCase().trim();
@@ -24812,6 +25120,7 @@ function pracNext() {
   prac.revealed = false;
   prac.result = null;
   prac.typed = '';
+  prac.draw = null;           // ✏️ a fresh page for the next question
   pracRender();
 }
 
@@ -24898,6 +25207,103 @@ function pracMcqUi(m) {
   return ui;
 }
 
+/* =====================================================================
+   ✏️ DRAW ON THE QUESTION — the pen in ✏️ Practise (v1.98.0)
+   ---------------------------------------------------------------------
+   practice-draw.js (window.PracDraw) is the ink; this is where ✏️ Practise
+   — the book's, ⚡ Quick practice's and 🎯 an objective's — puts it.
+
+   EVERY PICTURE OF THE QUESTION GETS THE PEN, not only the ones a rule
+   guesses need it: a question that has to be answered ON the picture
+   ("Match.", "Circle…", "Shade…", "Complete the bar model", a number in a
+   box) is the one a student must not be left without, and a rule that
+   misses one leaves them exactly where Zhi Kai's screenshot did. What the
+   rule (`PracDraw.wantsDrawing`) decides is only whether the PEN is picked
+   up for them, so a finger on an ordinary picture still scrolls.
+
+   An MCQ keeps its own ✓ Check (cer-mcq.js) and gets no pen. A question
+   with no picture at all has nothing to draw on and keeps the text box.
+
+   THE INK IS THE SESSION'S, never the mistake's: `prac.draw` holds one
+   question's ink (it survives `pracRender` redrawing the window, and is
+   dropped by `pracNext`), and after ✅ Check it stays on the picture,
+   read-only, beside the answer. ✅ Check sends each inked picture WITH the
+   ink (`pracDrawImages`) and says what it is (`pracDrawPromptLine`).
+   ===================================================================== */
+var PRAC_DRAWN_WORDS = '✏️ (drawn on the picture)';
+var PRAC_DRAW_MAX_PICS = 4;
+function pracDrawReady() {
+  return typeof PracDraw !== 'undefined' && PracDraw && typeof PracDraw.session === 'function';
+}
+/* The words the question is set out in, for the "is this answered on the
+   picture" rule — the wording, every text block, the stripped description. */
+function pracDrawWords(m) {
+  if (!m) return '';
+  var t = [m.question || ''];
+  mistakeBlocks(m).forEach(function (b) { if (b.type === 'text') t.push(b.text); });
+  return t.join(' ');
+}
+function pracDrawWants(m) { return pracDrawReady() && PracDraw.wantsDrawing(pracDrawWords(m)); }
+/* This question's ink, or null — never another question's. */
+function pracDrawOf(m) {
+  return prac && m && prac.draw && prac.drawFor === m.id ? prac.draw : null;
+}
+/* Put the pen on the question's pictures. Returns { S, drawFirst } or null
+   when there is nothing to draw on. */
+function pracDrawMount(m, body, nodes) {
+  if (!pracDrawReady() || !prac || !m) return null;
+  var imgs = (nodes || []).filter(function (n) {
+    return n && n.tagName === 'IMG' && !n.classList.contains('mqOptsPic');
+  });
+  if (!imgs.length) return null;
+  var drawFirst = pracDrawWants(m);
+  var S = pracDrawOf(m);
+  if (!S) {
+    S = PracDraw.session({ tool: drawFirst ? 'pen' : 'scroll' });
+    prac.draw = S;
+    prac.drawFor = m.id;
+  }
+  S.setReadOnly(!!prac.revealed || !!prac.busy);
+  var bar = S.toolbar(document);
+  var hint = document.createElement('div');
+  hint.className = 'pdHint';
+  hint.textContent = drawFirst
+    ? '✏️ This one is answered ON the picture — draw your lines, circles or numbers on it, then press Check my answer.'
+    : '✏️ Need to draw? Pick the pen and write on the picture. ✋ scrolls.';
+  bar.insertBefore(hint, bar.firstChild);
+  body.insertBefore(bar, imgs[0]);
+  imgs.forEach(function (img, i) {
+    S.attach(img, 'q' + i, { full: img.classList.contains('pracShot') });
+  });
+  return { S: S, drawFirst: drawFirst };
+}
+/* Each picture that carries ink, with the ink on it, as the marker's
+   images — at most PRAC_DRAW_MAX_PICS. */
+function pracDrawImages(S) {
+  if (!S || typeof S.layersFor !== 'function') return [];
+  var out = [];
+  Object.keys(S.inks || {}).forEach(function (key) {
+    if (out.length >= PRAC_DRAW_MAX_PICS || !S.hasInk(key)) return;
+    var L = S.layersFor(key)[0];
+    if (!L || !L.img) return;
+    var im = null;
+    try { im = S.composite(L.img, key, 1600); } catch (e) { im = null; }
+    if (im && im.data) out.push(im);
+  });
+  return out;
+}
+function pracDrawPromptLine(inked) {
+  var many = inked.length > 1;
+  var bare = inked.some(function (im) { return !im.withPicture; });
+  return 'The student DREW their answer on the attached picture' + (many ? 's' : '') + ' of the question. Their ' +
+    'coloured pen strokes (and any yellow highlighting) on top of the printed question ARE their answer: lines ' +
+    'joining one thing to another, circles, ticks, crosses, shading, labels, and numbers or words written in boxes ' +
+    'or spaces. Read exactly what they drew. A line counts as joining two things only when it clearly runs from ' +
+    'one to the other; anything unclear is not an answer. Printed ink is the question, not their work.' +
+    (bare ? ' One picture could not include the printed question, so it shows their strokes alone on white, at the ' +
+      'same size and in the same place as on the question.' : '');
+}
+
 function pracRender(finished) {
   var body = $('pracBody');
   var foot = $('pracFoot');
@@ -24963,7 +25369,11 @@ function pracRender(finished) {
      are not printed under the question as well. */
   var asMcq = pracIsMcq(m);
   // The same question the card shows and the sheet prints — one renderer.
-  questionNodes(m, 'prac', asMcq ? { noOpts: true } : null).forEach(function (n) { body.appendChild(n); });
+  // ✏️ Asked for WITH CORS, so the picture can be drawn on and sent back.
+  var qNodes = questionNodes(m, 'prac', asMcq ? { noOpts: true } : { cors: true });
+  qNodes.forEach(function (n) { body.appendChild(n); });
+  /* ✏️ THE PEN ON THE PICTURE (v1.98.0) — see `✏️ DRAW ON THE QUESTION`. */
+  var drawn = asMcq ? null : pracDrawMount(m, body, qNodes);
 
   /* 🎯 THE NUDGE AIMED AT THE GAP (v1.76.0). Before they answer, the slip
      this question was filed under — its name and what to do about it, NEVER
@@ -24976,18 +25386,25 @@ function pracRender(finished) {
 
   var lab = document.createElement('div');
   lab.className = 'boxLabel';
-  lab.textContent = 'Your answer';
+  lab.textContent = drawn ? 'Your answer — draw it on the picture, write it here, or both' : 'Your answer';
   body.appendChild(lab);
   var ta = document.createElement('textarea');
   ta.id = 'pracAnswer';
   ta.className = 'pracAnswer';
   ta.rows = 3;
-  ta.placeholder = 'Write it out again…';
+  ta.placeholder = drawn ? (drawn.drawFirst ? 'Anything to add to your drawing? (optional)' : 'Write it out again, or draw on the picture above…')
+                         : 'Write it out again…';
   ta.value = (prac.result && prac.result.mine) || prac.typed || '';
   ta.disabled = !!prac.revealed || !!prac.busy;
   ta.addEventListener('input', function () { prac.typed = ta.value; });
   body.appendChild(ta);
-  if (!prac.revealed && !prac.busy) setTimeout(function () { ta.focus(); }, 30);
+  if (!prac.revealed && !prac.busy && !(drawn && drawn.drawFirst)) setTimeout(function () { ta.focus(); }, 30);
+  if (prac.revealed && drawn && drawn.S.hasInk()) {
+    var dn = document.createElement('div');
+    dn.className = 'pracDrawnNote';
+    dn.textContent = '✏️ Your drawing is on the picture above, to compare with the answer below.';
+    body.appendChild(dn);
+  }
 
   if (prac.revealed) {
     var r = prac.result || {};
