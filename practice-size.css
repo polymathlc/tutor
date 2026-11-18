@@ -1,0 +1,105 @@
+/* ↔ A BIGGER PRACTICE WINDOW and 🔍 BIGGER DIAGRAMS (v1.100.0) — see practice-size.js. */
+
+/* ① The window. Sized by the grip, it keeps the space it was given: the
+   body takes what the title and the buttons leave and scrolls. */
+#pracModal .modalCard { position: relative; }
+#pracModal .modalBody { flex: 1 1 auto; min-height: 0; }
+#pracModal.psSized { padding: 8px; }
+#pracModal.psDragging, #pracModal.psDragging * { cursor: nwse-resize !important; user-select: none; -webkit-user-select: none; }
+/* The buttons along the foot stop short of the grip. */
+#pracModal .modalFoot { padding-right: 56px; }
+
+.psGrip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-bottom-right-radius: var(--radius, 14px);
+  background: transparent;
+  cursor: nwse-resize;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  z-index: 4;
+}
+/* Three diagonal ridges, the corner everybody knows how to drag. */
+.psGrip::before {
+  content: '';
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  width: 18px;
+  height: 18px;
+  background:
+    linear-gradient(135deg, transparent 0 46%, var(--ink-faint, #8a8f98) 46% 54%, transparent 54% 100%),
+    linear-gradient(135deg, transparent 0 66%, var(--ink-faint, #8a8f98) 66% 74%, transparent 74% 100%),
+    linear-gradient(135deg, transparent 0 86%, var(--ink-faint, #8a8f98) 86% 94%, transparent 94% 100%);
+  border-radius: 0 0 6px 0;
+  opacity: .85;
+}
+.psGrip:hover::before, .psGrip:focus-visible::before, #pracModal.psDragging .psGrip::before { opacity: 1; filter: brightness(.6); }
+.psGrip:focus-visible { outline: 2px solid var(--accent-deep, #1E5BD8); outline-offset: -4px; }
+
+.psMaxBtn {
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px -10px -8px 0;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-soft, #444);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.psMaxBtn:hover, .psMaxBtn:focus-visible { background: var(--bg-soft, #f4f5f7); border-color: var(--line, #e3e5e8); }
+
+/* ② The pictures. Each sits in a strip of its own that scrolls sideways
+   once the picture is wider than the window, so the words and the tools
+   never move. */
+.pracPicScroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+.pracPicScroll.pracZoomed { border-radius: var(--radius-sm, 8px); box-shadow: inset -10px 0 8px -10px rgba(0, 0, 0, .25); }
+.pracPicScroll > .pdWrap, .pracPicScroll > img { margin-left: 0; margin-right: 0; }
+
+.psZoom { margin-left: auto; }
+.psIcon { font-size: 16px; padding: 0 2px 0 4px; opacity: .75; }
+.psBtn { font-size: 24px; font-weight: 700; }
+.psPct {
+  min-width: 62px;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft, #444);
+}
+/* The bar a multiple-choice question gets (it has no pen). */
+.psBar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  width: fit-content;
+  margin: 4px 0 8px auto;
+  padding: 6px 8px;
+  background: var(--card, #fff);
+  border: 1px solid rgba(0, 0, 0, .1);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .06);
+}
+@media (max-width: 480px) {
+  .psZoom { margin-left: 0; }
+  .psPct { min-width: 54px; }
+}
+@media print { .psGrip, .psMaxBtn, .psBar, .psZoom { display: none !important; } }

@@ -109,3 +109,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/practice-draw-browser-check.mjs
+      - name: Check the practice window resizes and its pictures zoom with the ink on them
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/practice-size-browser-check.mjs

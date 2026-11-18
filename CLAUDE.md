@@ -2,6 +2,25 @@
 
 Guidance for Claude when working in this repo.
 
+## ↔ THE PRACTICE WINDOW RESIZES and 🔍 ITS PICTURES ZOOM (v1.100.0)
+
+Zhi Kai: "allow me to resize the window for the practice, also allow resizing of dgrams using +,- buttons".
+- **`practice-size.js` / `.css` (`window.PracSize`)**: pure `cleanZoom`, `stepZoom` (×1.2, a step across 100% stops on
+  it), `holdRate`, `zoomLabel`, `clampWin` (`WIN_MIN_W`/`H`, 8px from the edge), `cleanPref`/`winFromPref`/`prefFromWin`
+  (the size is a FRACTION of the screen, or `{max:true}`), `picWidth`; DOM `applyZoom(body, z)`, `zoomGroup(doc, get, set)`
+  (pointerdown = one step at once, held past `HOLD_MS` = rAF at `holdRate`, keyboard click = a step), `bindWindow`.
+- **Window:** `#pracGrip` (`.psGrip`, 44px, `touch-action: none`, pointer events so mouse/finger/Pencil are one road; the
+  card is centred so size grows by 2× the corner's move) and `#pracMax` (⤢) in `#pracModal`. Bound once by
+  `pracSizeBind`; `pracStart` calls `pracWin.apply()`. localStorage `polymath.tutorPracWin`. `#pracModal.psSized` = 8px
+  padding. Double-tap / dblclick resets.
+- **Pictures:** glue `↔ THE PRACTICE WINDOW'S SIZE` just above `pracRender`: `pracZoomMount(body, bar)` — with the pen's
+  `.pdBar` (pracDrawMount now returns `bar`) while it is not `pdOff`, else its own `.psBar`. Every `img.pracShot` /
+  `img.pracFig` goes into a `.pracPicScroll` strip (sideways scroll there, never the page). **The size is set on the
+  `.pdWrap` AND the img** — the ink canvas covers the wrap, so the two must match; PracDraw redraws from fractions via its
+  ResizeObserver. `pracZoomSet` keeps the middle in view. localStorage `polymath.tutorPracZoom`.
+- Checks: `node --test tools/practice-size-tests.mjs`, `node tools/practice-size-browser-check.mjs` (in CI;
+  `PS_SCREENSHOTS=dir`, `PS_SCALE=2`) — it checks a line drawn before a zoom is on the same spot after it.
+
 ## ✏️ DRAW ON PRACTICE QUESTIONS and ✂️ THE QUESTION'S OWN BAND (v1.98.0)
 
 Zhi Kai: "if the question requires annotation, student must have annotating tools on screen to help them practice
