@@ -148,7 +148,7 @@ test('Study Buddy loads it, versioned with the app, and hands it the grounded as
   assert.match(HTML, /function lpAsk\(prompt, opts\) \{[\s\S]{0,400}aiGrounding\('teach'/);
   assert.match(HTML, /LoPractice\.setMcq\(lpMcqNode\)/);
   assert.match(HTML, /if \(asMcq\) \{ pracRenderMcq\(m, body, foot\); return; \}/);
-  assert.match(HTML, /questionNodes\(m, 'prac', asMcq \? \{ noOpts: true \} : null\)/, 'the options are not printed twice');
+  assert.match(HTML, /questionNodes\(m, 'prac', asMcq \? \{ noOpts: true \} : (?:null|\{ cors: true \})\)/, 'the options are not printed twice');
   assert.match(HTML, /retry: false,\s+\/\/ the first ✓ Check is the one that counts/);
   assert.match(HTML, /if \(!m\.cleared\) setMistakeCleared\(m\.id, true\);[\s\S]{0,200}pracRender\(\);\s*\n\s*\}, function \(\) \{/,
     'a right answer files it under Sorted');

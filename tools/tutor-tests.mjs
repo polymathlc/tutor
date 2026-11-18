@@ -1232,7 +1232,7 @@ ok('deleting takes every picture the mistake owns, not only the one on the card'
    prints a photograph of the page. */
 ok('the card builds its question through the one renderer',
    /questionNodes\(m, 'card', \{ noPic: true \}\)/.test(html));
-ok('the practice session does too', /questionNodes\(m, 'prac'(?:, asMcq \? \{ noOpts: true \} : null)?\)/.test(html));
+ok('the practice session does too', /questionNodes\(m, 'prac'(?:, asMcq \? \{ noOpts: true \} : (?:null|\{ cors: true \}))?\)/.test(html));
 ok('and so does the printed sheet', /questionNodes\(m, 'sheet'\)/.test(html));
 ok('✂️ Crop is offered only where the picture is actually on screen',
    /if \(m\.imagePath && tier !== 'blocks'\)/.test(html));
@@ -1479,7 +1479,7 @@ ok('…and the shared cut is what redraws it',
    anyway is an image call the next question does not get — and on a paper
    where every question set out properly, it is the whole ration. */
 ok('the whole-question crop is redrawn only when it will be SEEN',
-   /out\.qcrop = await _mbQuestionCrop\(built, context, !out\.blocks\.length\);/.test(html) &&
+   /out\.qcrop = (?:how && how\.noQcrop \? '' : )?await _mbQuestionCrop\(built, context, !out\.blocks\.length\);/.test(html) &&
    /_mbQuestionCrop\(built, null, !patch\.blocks\);/.test(html),
    'the marking run and the button both weigh it');
 ok('…but it is still CUT either way, as the fallback behind the blocks',
@@ -1708,10 +1708,11 @@ ok('the class-wide panel refuses anyone but the admin IN THE HANDLER',
 ok('the mirror is written after the book is reloaded',
    /await loadMistakes\(true\);[\s\S]{0,500}mistakeMirrorSync\(\);/.test(FILING));
 ok('…and again whenever the book CHANGES',
-   (html.match(/mistakeMirrorSync\(\);/g) || []).length === 5,
+   (html.match(/mistakeMirrorSync\(\);/g) || []).length === 6,
    'filed, sorted and removed — or the teacher reads a book that no longer exists — ' +
    'plus 🖼 the catch-up that mints the picture links for a book filed before they were kept, ' +
-   'plus 🧹 Start fresh clearing one student of several');
+   'plus 🧹 Start fresh clearing one student of several, ' +
+   'plus ✂️ old pictures cut again by their question number (v1.98.0)');
 /* 🖼 …and the catch-up ASKS FIRST. A sync on every sign-in whether or not it
    had anything to do is a write a hundred students make every morning for
    nothing. */
@@ -4526,13 +4527,13 @@ ok('the block figures are awaited too, not only the whole-page picture',
    /mistakeBlocks\(m\)\.map\(function \(b\) \{ return mistakeBlockUrl\(b\)\.then\(warm\); \}\)/.test(html));
 ok('a picture that will not load takes itself off the sheet',
    /im\.onerror = res;/.test(html) &&
-   /img\.addEventListener\('error', function \(\) \{ if \(img\.parentNode\) img\.parentNode\.removeChild\(img\); \}\)/.test(html));
+   /img\.addEventListener\('error', function \(\) \{[\s\S]{0,900}if \(gone\.parentNode\) gone\.parentNode\.removeChild\(gone\);/.test(html));
 /* Getting it right is what the book is for, so a correct retry files it
    under Sorted — and it must be reversible, which is the card's own ↩︎. */
 ok('a correct retry clears the mistake',
    /prac\.result\.verdict === 'correct'[\s\S]{0,400}setMistakeCleared\(m\.id, true\)/.test(html));
 ok('a blank retry is never marked wrong',
-   /if \(!mine\) \{ toast\('Have a go first/.test(html));
+   /if \(!mine && !drew\) \{\s*toast\(pen \? 'Have a go first/.test(html));
 ok('the answer is not on screen until the question has been answered',
    /if \(prac\.revealed\) \{[\s\S]{0,900}boxNode\('The answer'/.test(html));
 

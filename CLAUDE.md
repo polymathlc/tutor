@@ -2,6 +2,32 @@
 
 Guidance for Claude when working in this repo.
 
+## ✏️ DRAW ON PRACTICE QUESTIONS and ✂️ THE QUESTION'S OWN BAND (v1.98.0)
+
+Zhi Kai: "if the question requires annotation, student must have annotating tools on screen to help them practice
+the question. the question has question 9 also that means the cropping failed to work."
+- **`practice-draw.js` / `.css` (`window.PracDraw`)**: its own small ink (NOT the worksheet's pen): `session({tool})`
+  → `attach(img, key, {full})`, `toolbar(doc)`, `composite(img, key)`, `hasInk`, `undoOne`, `clear`, `setReadOnly`.
+  Strokes are FRACTIONS of the picture. A pencil always writes; once one is used a finger is a palm; ✋ Scroll lets a
+  finger scroll. `wantsDrawing(text)` only decides whether the pen starts picked up — every picture gets the tools.
+- Glue `✏️ DRAW ON THE QUESTION — the pen in ✏️ Practise` just above `pracRender`: `pracDrawMount` (every non-MCQ
+  `img` from `questionNodes(m, 'prac', { cors: true })`, not `.mqOptsPic`), `pracDrawOf`, `pracDrawImages`,
+  `pracDrawPromptLine`. Ink lives on `prac.draw` for ONE question (dropped by `pracNext`), never saved. `pracCheck`
+  takes ink as an answer and sends the composites as `images`. `_mqImg(…, cors)` sets `crossOrigin` before `src` and
+  retries once without it (a card's cached no-CORS copy), then the marker gets ink on white.
+- **`question-band.js` (`window.QBand`, pure but `cropBand`/`stack`)**: `fromPdf` (pdf.js items → page fractions),
+  `linesOf`, `startsQ`/`qNumOf` (a printed "10." beats a bare "10"; "10 + 10" is not a question), `isSection`,
+  `isFooter`, `locate(items, n, {cont})` → `{top, bot, why}`, `inkBox`, `cropBand`, `stack`.
+- Glue `✂️ THE QUESTION'S OWN BAND` after `mistakeShotFor`: `qbandCrop(src, q)`, `qbOpenSource`, `qbDocLoad` (a
+  saved worksheet's PDF by `storagePath`, two kept), `qbSourceFor`, `qbWants`/`qbQueue`/`qbSweep`/`qbRun`/`qbRecrop`,
+  `qbShow` (never swaps a picture under ink). `fileMistakes` cuts by number FIRST (`mbRebuild(…, {noQcrop})`, no
+  redraw), writes `cropV: QB_V` on every new mistake; `mbRedoOne` prefers it; `pracStart` queues its ids;
+  `renderMistakes` sweeps `QB_SWEEP_MAX` (session cap `QB_SWEEP_SESSION`). Old picture deleted after the new is set.
+- `MB_BUILD_SYS` now says where `questionBox` starts and stops (for scans, where the band finds nothing).
+- Checks: `node --test tools/question-band-tests.mjs tools/practice-draw-tests.mjs`,
+  `node tools/practice-draw-browser-check.mjs` (in CI; `PD_SCREENSHOTS=dir`, `PD_SCALE=2`). lo-practice.js's own
+  "New questions" try box is unchanged (shared with Ans Key).
+
 ## 🎯 THE LEARNING OBJECTIVE TRACKER — the top of the mistake book (v1.97.0)
 
 `lo-tracker.js` / `lo-tracker.css` (`window.LoTracker`: `pure`, `mount`, `openFocus`, `closeFocus`, `isFocusOpen`,

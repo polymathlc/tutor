@@ -1,0 +1,105 @@
+/* ✏️ DRAW ON THE QUESTION (v1.98.0) — see practice-draw.js. */
+.pdWrap {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 12px 0;
+  line-height: 0;
+}
+.pdWrap.pdFull { width: 100%; }
+/* The picture's own margin moves to the wrapper, so the ink canvas (which
+   covers the wrapper) lies exactly over the picture. */
+.pdWrap > img { display: block; margin: 0 !important; max-width: 100%; }
+.pdWrap.pdFull > img { width: 100%; }
+.pdInk {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: pan-x pan-y pinch-zoom;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.pdWrap.pdDrawing {
+  outline: 2px solid rgba(30, 91, 216, .35);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.pdBar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 4px 0 10px;
+  padding: 6px 8px;
+  background: var(--card, #fff);
+  border: 1px solid rgba(0, 0, 0, .1);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .06);
+}
+.pdBar.pdOff { display: none; }
+.pdHint {
+  flex: 1 1 100%;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--muted, #5f6368);
+}
+.pdGroup { display: flex; align-items: center; gap: 3px; }
+.pdBtn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid rgba(0, 0, 0, .12);
+  border-radius: 10px;
+  background: #fff;
+  color: #1f1f1f;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.pdBtn:disabled { opacity: .4; cursor: default; }
+.pdBtn.on {
+  background: #E8F0FE;
+  border-color: #1E5BD8;
+  box-shadow: inset 0 0 0 1px #1E5BD8;
+}
+.pdColour {
+  min-width: 32px;
+  width: 32px;
+  min-height: 44px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  position: relative;
+}
+.pdColour::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-radius: 50%;
+  background: var(--pd-c, #1E5BD8);
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px rgba(0, 0, 0, .15);
+}
+.pdColour.on { background: transparent; box-shadow: none; border-color: transparent; }
+.pdColour.on::after { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--pd-c, #1E5BD8); }
+.pracDrawnNote {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--muted, #5f6368);
+}
+@media (max-width: 480px) {
+  .pdBar { gap: 6px 8px; padding: 6px; }
+  .pdBtn { min-width: 42px; font-size: 18px; }
+  .pdColour { min-width: 32px; width: 32px; }
+}
+@media print { .pdBar, .pdInk { display: none !important; } }

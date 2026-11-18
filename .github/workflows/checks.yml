@@ -105,3 +105,7 @@ jobs:
         env:
           PW: ./node_modules/playwright/index.mjs
         run: node tools/model-studio-browser-check.mjs
+      - name: Check practice questions can be drawn on and are cut to their own question
+        env:
+          PW: ./node_modules/playwright/index.mjs
+        run: node tools/practice-draw-browser-check.mjs

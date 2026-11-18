@@ -17,6 +17,23 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.98.0 — ✏️ Draw on practice questions, and ✂️ each question cut out on its own
+
+- **✏️ Every picture in ✏️ Practise can be drawn on** — the mistake book's, ⚡ Quick practice's and 🎯 an
+  objective's ▶ Practise. Tools sit just above the picture and stay in view while it scrolls: ✋ Scroll,
+  ✏️ Pen, 🖍 Highlighter, 🧽 Eraser, four colours, ↶ Undo and 🗑 Rub it all out. A question answered ON the
+  picture ("Match.", "Circle…", "Shade…", "Complete the bar model", a number in a box) picks the pen up by
+  itself; on any other picture a finger still scrolls and an Apple Pencil still writes.
+- **✅ Check my answer marks the drawing.** The picture goes to the marker with the ink on it, so lines,
+  circles, ticks and numbers in boxes are read as the answer; the text box is optional beside it. After
+  marking, the drawing stays on the picture, read-only, next to the answer.
+- **✂️ A practice question shows only its own question.** It is cut out of the worksheet by its printed
+  number, read from the PDF's own words: from the line "10." starts to the next question number, a
+  section line ("Questions 10 to 14 carry 2 marks each") or the page footer. No AI guess, so no tail of
+  the question before. New mistakes are filed this way, 🧩 Set it out again uses it, and mistakes already
+  in the book that show a whole page are cut again the first time they come up in practice (and a few at
+  a time when the book is opened). A scanned PDF with no words keeps the previous picture.
+
 ## v1.97.0 — 🎯 The learning objective tracker
 
 - **📕 The mistake book now opens on a learning objective tracker.** A hero card shows the student's
