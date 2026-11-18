@@ -146,7 +146,14 @@
 .lot-btnMore { display: flex; margin: 18px auto 0; background: #fff; color: var(--lot-teal); border-color: #cfe0da; }
 
 /* ---------- ② The objectives ---------- */
-.lot-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px; margin: 32px 2px 16px; }
+/* 📚 / 🎯 The two ways to read the book (v1.99.0) */
+.lot-viewBar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 14px 20px; margin: 34px 2px 0; }
+.lot-viewWords { flex: 1 1 300px; min-width: 0; }
+.lot-viewSub { margin: 4px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--lot-ink-soft); max-width: 560px; }
+.lot-segView { background: #e3ebe7; }
+.lot-segView .lot-segBtn { min-height: 44px; padding: 0 16px; font-size: 14px; }
+.lot-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px; margin: 18px 2px 16px; }
+.lot-tools .lot-sort { margin-left: auto; }
 .lot-sectionTitle { font-size: 21px; font-weight: 800; letter-spacing: -.01em; margin: 0 auto 0 0; color: var(--lot-ink); }
 .lot-sort { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; color: var(--lot-ink-faint); }
 .lot-sort select {
@@ -163,6 +170,7 @@
 .lot-topicN { font-size: 12.5px; color: var(--lot-ink-faint); font-weight: 700; }
 
 .lot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 16px; }
+.lot-gridTopics { grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 18px; }
 
 .lot-card {
   position: relative; display: flex; flex-direction: column; gap: 14px; min-width: 0;
@@ -212,6 +220,74 @@
   margin: 0; font-size: 15.5px; line-height: 1.38; font-weight: 800; color: var(--lot-ink); letter-spacing: -.005em;
   display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
+/* ---------- 📚 A topic card ---------- */
+.lot-card--topic { gap: 14px; padding-top: 20px; }
+.lot-card--topic::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--ring, var(--lot-teal)) 6%, transparent) 0%, transparent 42%);
+}
+.lot-topicTitle { font-size: 21px; line-height: 1.2; letter-spacing: -.015em; -webkit-line-clamp: 2; }
+.lot-chipCount { background: #f1f3f2; color: var(--lot-ink-soft); }
+.lot-chipTopic { background: var(--lot-teal); color: #fff; }
+.lot-loList { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 2px; padding: 6px; margin: 0 -4px;
+  border-radius: 14px; background: var(--lot-wash); border: 1px solid #edf1ef; }
+.lot-loRow { display: flex; align-items: center; gap: 10px; min-width: 0; width: 100%; text-align: left; color: var(--lot-ink); font: inherit; }
+.lot-loRowBtn {
+  min-height: 44px; padding: 6px 10px; border: 0; border-radius: 10px; background: transparent; cursor: pointer;
+  transition: background .15s; -webkit-tap-highlight-color: transparent;
+}
+.lot-loRowBtn:hover { background: #fff; box-shadow: 0 1px 2px rgba(18, 63, 56, .06); }
+.lot-loRowBtn:focus-visible { outline: 3px solid rgba(63, 191, 149, .55); outline-offset: 1px; }
+.lot-loDot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--dot, var(--lot-teal));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dot, var(--lot-teal)) 18%, transparent); }
+.lot-loRow--work { --dot: var(--lot-work); }
+.lot-loRow--close { --dot: var(--lot-close); }
+.lot-loRow--redo { --dot: var(--lot-redo); }
+.lot-loRow--secure { --dot: var(--lot-secure); }
+.lot-loWords { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.lot-loTitle { font-size: 13.5px; line-height: 1.35; font-weight: 700; color: var(--lot-ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lot-loMeta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.lot-loNums { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; text-align: right; }
+.lot-loPct { font-size: 13.5px; font-weight: 800; color: var(--lot-ink); }
+.lot-loOpen { font-size: 11.5px; font-weight: 800; color: var(--lot-work); white-space: nowrap; }
+.lot-loDone { font-size: 11.5px; font-weight: 800; color: var(--lot-secure); white-space: nowrap; }
+.lot-loMore { padding: 4px 10px 3px 29px; font-size: 12px; font-weight: 700; color: var(--lot-ink-faint); }
+.lot-card--topic .lot-cardTop, .lot-card--topic .lot-cardMid, .lot-card--topic .lot-cardFoot { position: relative; z-index: 1; }
+
+/* ---------- 📚 The topic's sheet: its objectives as rows ---------- */
+.lot-back {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 36px; margin: 0 0 6px -6px; padding: 0 10px;
+  border: 0; border-radius: 10px; background: transparent; color: var(--lot-teal); font: inherit; font-size: 13.5px; font-weight: 800;
+  cursor: pointer;
+}
+.lot-back:hover { background: #e8f0ed; }
+.lot-back:focus-visible { outline: 3px solid rgba(63, 191, 149, .55); outline-offset: 2px; }
+.lot-loRows { display: flex; flex-direction: column; gap: 8px; }
+.lot-loItem {
+  display: flex; align-items: center; gap: 14px; min-width: 0; padding: 10px 12px 10px 10px; border-radius: 16px;
+  background: var(--lot-wash); border: 1px solid #edf1ef; cursor: pointer;
+  transition: background .15s, border-color .15s, box-shadow .15s; -webkit-tap-highlight-color: transparent;
+}
+.lot-loItem--work { --ring: var(--lot-work); --dot: var(--lot-work); }
+.lot-loItem--close { --ring: var(--lot-close); --dot: var(--lot-close); }
+.lot-loItem--redo { --ring: var(--lot-redo); --dot: var(--lot-redo); }
+.lot-loItem--secure { --ring: var(--lot-secure); --dot: var(--lot-secure); }
+.lot-loItem:focus-visible { outline: 3px solid rgba(63, 191, 149, .55); outline-offset: 2px; }
+@media (hover: hover) {
+  .lot-loItem:hover { background: #fff; border-color: #d3ddd9; box-shadow: var(--lot-shadow); }
+  .lot-loItem:hover .lot-openArrow { transform: translateX(3px); color: var(--lot-teal); }
+}
+.lot-loItem .lot-loRow { flex: 1; }
+.lot-loItem .lot-loDot { display: none; }
+.lot-loItem .lot-loTitle { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; font-size: 14px; }
+.lot-loItem .lot-ringNum { font-size: 12px; }
+.lot-loItemActs { flex: none; display: flex; align-items: center; gap: 6px; }
+.lot-loItemActs .lot-openArrow { color: var(--lot-ink-faint); }
+.lot-btnSoftTeal { min-height: 40px; padding: 0 13px; font-size: 13px; background: #e3f1ec; color: var(--lot-teal); border-color: #cfe5dc; }
+.lot-btnSoftTeal:hover { background: var(--lot-teal); color: #fff; }
+.lot-topicLos .lot-blockHead .lot-muted { font-weight: 700; font-size: 12.5px; }
+
 .lot-cardTopic { margin-top: 4px; font-size: 12.5px; color: var(--lot-ink-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .lot-cardMid { display: flex; align-items: center; gap: 16px; min-width: 0; margin-top: auto; }
@@ -328,6 +404,13 @@
   .lot-segHero { display: flex; }
   .lot-segHero .lot-segBtn { flex: 1 1 auto; justify-content: center; }
   .lot-tools { gap: 10px; }
+  .lot-viewBar { margin-top: 26px; }
+  .lot-segView { display: flex; flex: 1 1 100%; }
+  .lot-segView .lot-segBtn { flex: 1 1 0; justify-content: center; padding: 0 8px; font-size: 13.5px; }
+  .lot-tools .lot-sort { margin-left: 0; }
+  .lot-loItem { gap: 10px; padding: 9px 10px 9px 8px; }
+  .lot-loItem .lot-loNums { display: none; }
+  .lot-topicTitle { font-size: 19px; }
   .lot-sectionTitle { flex-basis: 100%; }
   .lot-tools .lot-seg { flex: 1 1 100%; }
   .lot-tools .lot-seg .lot-segBtn { flex: 1 1 auto; justify-content: center; padding: 0 8px; }

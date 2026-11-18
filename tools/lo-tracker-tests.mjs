@@ -126,13 +126,18 @@ test('index.html loads it, versioned with the app, and wires every door', () => 
   assert.ok(/function renderMistakes\(\) \{\n  if \(!\$\('mistFilters'\)\) return;\n  renderLoTracker\(\);/.test(html), 'drawn every time the book is');
   const glue = html.slice(html.indexOf('function lotEnv()'), html.indexOf('function renderLoTracker()'));
   assert.ok(/pracStart\(ids, \{ title:/.test(glue), '▶ Practise is the book\'s own session');
-  assert.ok(/lpOpen\(\[lotGroupOf\(c\)\]/.test(glue), '✨ fresh questions are lo-practice\'s window');
+  assert.ok(/lpOpen\(lotGroupsOf\(c\), \{/.test(glue), '✨ fresh questions are lo-practice\'s window');
+  assert.ok(/function lotGroupsOf\(c\) \{\n  var list = c && c\.kind === 'topic' \? \(c\.children \|\| \[\]\) : \[c\];/.test(html),
+    '📚 a topic\'s ✨ is every one of its objectives');
+  assert.ok(/view: lotView,/.test(glue) && /localStorage\.setItem\(LOT_VIEW_KEY, lotView\)/.test(glue),
+    '📚 / 🎯 the view is remembered by the host, never by lo-tracker.js');
+  assert.ok(/c && c\.kind === 'topic' \? '📚 ' \+ c\.title/.test(glue), '▶ a whole topic is named after the topic');
   assert.ok(/mwsExport\(ids, !!withKey\)/.test(glue), '🖨 is the book\'s own sheet');
   assert.ok(/qpOpen\(false\)/.test(glue), '⚡ is quick practice');
   assert.ok(/mistakeCard\(m\)/.test(glue), 'the mistakes are the book\'s own cards');
   assert.ok(/if \(lotReturn && lotReady\(\) && view === 'mistake'\) LoTracker\.openFocus\(lotReturn\);/.test(html),
     'closing a session started from an objective goes back to that objective');
-  assert.ok(/tracker: \{ label: 'Practised a learning objective'/.test(html), 'the usage event has a name the panel can print');
+  assert.ok(/tracker: \{ label: 'Practised a learning objective or topic'/.test(html), 'the usage event has a name the panel can print');
   assert.ok(/id="progTracker"/.test(html) || /trk\.id = 'progTracker'/.test(html), '📈 My progress links to the tracker');
 });
 
@@ -147,4 +152,95 @@ test('the stylesheet is scoped and fits a finger', () => {
   assert.match(css, /\.lot-btn \{[^}]*min-height: 44px/);
   assert.match(css, /\.lot-segBtn \{[^}]*min-height: 40px/);
   assert.match(css, /prefers-reduced-motion/);
+});
+
+
+/* ================= 📚 THE TOPICS (v1.99.0) ================= */
+const mathItem = (id, lo, topic, extra = {}) => ({ id, lo, loTitle: lo, loText: 'objective ' + lo, topic, topicKey: lo.split('.').slice(0, 2).join('.') + ' ' + topic,
+  order: null, level: lo.slice(0, 2), createdAt: 1, docName: 'Paper', cleared: false, ...extra });
+const mathRow = (lo, topic, got, att, history = [], extra = {}) => ({ lo, sylTopic: lo.split('.').slice(0, 2).join('.') + ' ' + topic, topic,
+  objective: 'objective ' + lo, level: lo.slice(0, 2), order: 5, awarded: got, attempted: att, total: att, papers: history.length, history, ...extra });
+
+test('📚 a topic is the strand a parent reads: the part before the colon, across years', () => {
+  assert.equal(P.topicNameOf({ topic: 'Fractions: Four Operations', key: 'lo:x' }), 'Fractions');
+  assert.equal(P.topicNameOf({ topic: 'Whole Numbers: Multiplication and Division', key: 'lo:x' }), 'Whole Numbers');
+  assert.equal(P.topicNameOf({ topic: 'Heat', key: 'lo:heat-flow' }), 'Heat', 'a science topic is used whole');
+  assert.equal(P.topicNameOf({ key: '~unfiled', topic: 'Marked before objectives were kept' }), 'Not filed yet');
+  assert.equal(P.subTopicOf({ topic: 'Fractions: Fraction and Division' }), 'Fraction and Division');
+  assert.equal(P.subTopicOf({ topic: 'Heat' }), '');
+  const cards = P.build([
+    mathItem('a', 'P5.FR.2.6', 'Fractions: Four Operations'),
+    mathItem('b', 'P4.FR.3.1', 'Fractions: Addition and Subtraction'),
+    mathItem('c', 'P5.PCT.1.5', 'Percentage: Percentage'),
+    mathItem('d', 'P5.FR.1.2', 'Fractions: Fraction and Division', { cleared: true })
+  ], []);
+  const topics = P.buildTopics(cards);
+  assert.deepEqual(topics.map(t => t.title).sort(), ['Fractions', 'Percentage']);
+  const fr = topics.find(t => t.title === 'Fractions');
+  assert.equal(fr.kind, 'topic');
+  assert.equal(fr.key, 'g:fractions');
+  assert.equal(fr.children.length, 3, 'P4 and P5 Fractions are one topic, three objectives under it');
+  assert.equal(fr.level, 'P4–5');
+  assert.deepEqual(fr.open.sort(), ['a', 'b']);
+  assert.deepEqual(fr.sorted, ['d']);
+  assert.equal(fr.total, 3);
+  assert.match(fr.topic, /Four Operations/);
+  const pct = topics.find(t => t.title === 'Percentage');
+  assert.equal(pct.topic, '', 'a topic whose sub-topic is its own name says nothing twice');
+});
+
+test('📚 a topic adds up its objectives: marks, status, the papers, and the weakest objective first', () => {
+  const h = (at, g, a, name) => ({ at, awarded: g, attempted: a, name });
+  const cards = P.build([
+    mathItem('a', 'P5.FR.2.6', 'Fractions: Four Operations'),
+    mathItem('b', 'P5.FR.2.6', 'Fractions: Four Operations'),
+    mathItem('c', 'P5.FR.2.1', 'Fractions: Four Operations')
+  ], [
+    mathRow('P5.FR.2.6', 'Fractions: Four Operations', 2, 10, [h(1, 0, 5, 'SA1'), h(2, 2, 5, 'WA2')]),
+    mathRow('P5.FR.2.1', 'Fractions: Four Operations', 7, 10, [h(1, 3, 5, 'SA1'), h(2, 4, 5, 'WA2')]),
+    mathRow('P5.FR.1.2', 'Fractions: Fraction and Division', 10, 10, [h(2, 10, 10, 'WA2')])
+  ]);
+  const [fr] = P.buildTopics(cards);
+  assert.equal(fr.got, 19);
+  assert.equal(fr.att, 30);
+  assert.equal(fr.pct, 63);
+  assert.equal(fr.status, 'close', 'the same bands as an objective, over the whole topic');
+  assert.deepEqual(fr.children.map(c => c.lo), ['P5.FR.2.6', 'P5.FR.2.1', 'P5.FR.1.2'], 'weakest objective first');
+  assert.deepEqual(fr.open, ['a', 'b', 'c'], '▶ Practise starts with the weakest objective\'s questions');
+  assert.equal(fr.focusN, 2, 'two of three objectives still to work on');
+  assert.deepEqual(fr.trend.points.map(p => p.pct), [30, 80], 'one point per paper: SA1 3/10, WA2 16/20');
+  assert.equal(fr.papers, 2);
+  assert.equal(P.statusOf(fr), fr.status, 'statusOf reads a topic unchanged');
+});
+
+test('📚 topics sort, filter and sum by the same rules as objectives', () => {
+  const cards = P.build([
+    mathItem('a', 'P5.FR.2.6', 'Fractions: Four Operations'),
+    mathItem('b', 'P5.PCT.1.5', 'Percentage: Percentage'),
+    mathItem('c', 'P5.PCT.1.5', 'Percentage: Percentage'),
+    { id: 'u', lo: '', topic: '', topicKey: '', cleared: false }
+  ], [
+    mathRow('P5.FR.2.6', 'Fractions: Four Operations', 7, 10, [], { order: 30 }),
+    mathRow('P5.PCT.1.5', 'Percentage: Percentage', 2, 10, [], { order: 40 }),
+    mathRow('P5.WN.2.2', 'Whole Numbers: Four Operations', 10, 10, [], { order: 1 })
+  ]);
+  const topics = P.buildTopics(cards);
+  assert.deepEqual(P.sortCards(topics, 'priority').map(t => t.title), ['Percentage', 'Fractions', 'Not filed yet', 'Whole Numbers']);
+  assert.deepEqual(P.sortCards(topics, 'syllabus').map(t => t.title), ['Whole Numbers', 'Fractions', 'Percentage', 'Not filed yet'],
+    'syllabus order, and the unfiled group last');
+  assert.equal(P.nextUp(topics).title, 'Percentage');
+  assert.deepEqual(P.filterCards(topics, 'secure').map(t => t.title), ['Whole Numbers']);
+  const s = P.summary(topics);
+  assert.equal(s.objectives, 4, 'four topics');
+  assert.equal(s.open, 4, 'the topics still add up to the whole book');
+  assert.equal(s.secure, 1);
+  assert.equal(P.levelSpan(['P5']), 'P5');
+  assert.equal(P.levelSpan(['P6', 'P4', 'P5']), 'P4–6');
+  assert.equal(P.levelSpan([]), '');
+});
+
+test('📚 the topic view is the default and the file still keeps nothing itself', () => {
+  assert.match(src, /view: 'topics', cards: \[\], topics: \[\]/);
+  assert.deepEqual(T.VIEWS.map(v => v[0]), ['topics', 'objectives']);
+  assert.ok(/env\.onView\(v\[0\]\)/.test(src), 'a change is handed to the host to remember');
 });
