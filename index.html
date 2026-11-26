@@ -12,13 +12,13 @@
 <link rel="stylesheet" href="consult.css?v=1.65.0">
 <link rel="stylesheet" href="office-pass.css?v=1.96.0">
 <link rel="stylesheet" href="consult-answer.css?v=1.69.0">
-<link rel="stylesheet" href="lo-marks.css?v=1.100.0">
-<link rel="stylesheet" href="lo-practice.css?v=1.100.0">
-<link rel="stylesheet" href="cer-mcq.css?v=1.100.0">
-<link rel="stylesheet" href="model-studio.css?v=1.100.0">
-<link rel="stylesheet" href="lo-tracker.css?v=1.100.0">
-<link rel="stylesheet" href="practice-draw.css?v=1.100.0">
-<link rel="stylesheet" href="practice-size.css?v=1.100.0">
+<link rel="stylesheet" href="lo-marks.css?v=1.101.0">
+<link rel="stylesheet" href="lo-practice.css?v=1.101.0">
+<link rel="stylesheet" href="cer-mcq.css?v=1.101.0">
+<link rel="stylesheet" href="model-studio.css?v=1.101.0">
+<link rel="stylesheet" href="lo-tracker.css?v=1.101.0">
+<link rel="stylesheet" href="practice-draw.css?v=1.101.0">
+<link rel="stylesheet" href="practice-size.css?v=1.101.0">
 <!-- 📲 Installable app (Polymath install kit v2.0.0): manifest + icons make "Install" / "Add to Home Screen"
      work on PC, Android and iPhone/iPad. pwa-install.js registers sw.js and drives every [data-pwa-install] control.
      The tab and home-screen icons are local files in assets/app-icons/ (since v1.71.0), not the Dropbox
@@ -3699,15 +3699,16 @@
 <script src="centre-admin.js?v=1.58.0"></script>
 <script src="office-pass.js?v=1.96.0"></script>
 <script src="functions/learner-guidance.js?v=1.59.0"></script>
-<script src="concept-tags.js?v=1.100.0"></script>
-<script src="lo-marks.js?v=1.100.0"></script>
-<script src="lo-practice.js?v=1.100.0"></script>
-<script src="cer-mcq.js?v=1.100.0"></script>
-<script src="model-studio.js?v=1.100.0"></script>
-<script src="lo-tracker.js?v=1.100.0"></script>
-<script src="question-band.js?v=1.100.0"></script>
-<script src="practice-draw.js?v=1.100.0"></script>
-<script src="practice-size.js?v=1.100.0"></script>
+<script src="concept-tags.js?v=1.101.0"></script>
+<script src="teacher-voice.js?v=1.101.0"></script>
+<script src="lo-marks.js?v=1.101.0"></script>
+<script src="lo-practice.js?v=1.101.0"></script>
+<script src="cer-mcq.js?v=1.101.0"></script>
+<script src="model-studio.js?v=1.101.0"></script>
+<script src="lo-tracker.js?v=1.101.0"></script>
+<script src="question-band.js?v=1.101.0"></script>
+<script src="practice-draw.js?v=1.101.0"></script>
+<script src="practice-size.js?v=1.101.0"></script>
 <script>
 'use strict';
 
@@ -3804,7 +3805,7 @@ function tutorMethodRule() {
 }
 /* ================= End AI request deadlines ================= */
 
-var APP_VERSION = 'v1.100.0';
+var APP_VERSION = 'v1.101.0';
 var ADMIN_EMAIL = 'chungzhikai@gmail.com';
 var ADMIN_DISPLAY_NAME = 'Mr Chung';
 /* This app's OWN worksheet collection. Deliberately not `pdfAnnotator`:
@@ -4980,6 +4981,7 @@ function _notesDetach() {
 }
 
 function stopTeachingNotes() {
+  if (typeof tvReset === 'function') tvReset();   // 📖 one teacher's answers never ground another account
   _notesAttachSeq++;          // supersede any attach still resolving its owner
   _notesDetach();
   notesLoaded = false;
@@ -5585,6 +5587,89 @@ function guidanceBlock(context) {
 /* Everything the AI should know about this teacher, appended to a system
    prompt. ONE call site per AI feature, so nothing can be grounded on the
    notes in one place and not another. */
+/* ================= 📖 THE ANSWER BOOK — the teacher's own answers (v1.101.0) =================
+   teacher-voice.js (window.TeacherVoice) is BYTE FOR BYTE Ans Key's file. Ans
+   Key is the one writer: every answer the teacher writes there is kept, word
+   for word, with its question, in users/{teacher}/aiTraining/answerBook. This
+   app only READS it, so a hint, a mark or an explanation here follows the
+   teacher's own answer to that question. Nothing here writes to the book —
+   nothing a child writes is the teacher's answer.
+   - Grounding stays synchronous: the answers are fetched BEFORE they are
+     needed — the paper's own when a worksheet opens (`tvPrimeSoon`, by the
+     printed words on its pages), a practice session's when it starts, and a
+     question asked about for the next time it is asked (`tvBlock`).
+   - The cache follows the teacher: another account on the device drops it
+     (`tvReset`, from stopTeachingNotes). */
+var tvReader = null;
+var tvPrimeTimer = null;
+function tvInit() {
+  if (tvReader) return tvReader;
+  if (typeof window === 'undefined' || !window.TeacherVoice || typeof db === 'undefined' || !db) return null;
+  tvReader = window.TeacherVoice.reader({
+    owner: function () { try { return notesOwner() || ''; } catch (e) { return ''; } },
+    getDoc: function (segs) {
+      return db.doc(segs.join('/')).get().then(function (d) { return d.exists ? d.data() : null; });
+    },
+    listEntries: function () {
+      var o = notesOwner();
+      if (!o || !isAdmin(currentUser) || o !== currentUser.uid) return Promise.resolve([]);
+      return db.collection('users').doc(o).collection(window.TeacherVoice.COLL).doc(window.TeacherVoice.BOOK_DOC)
+        .collection(window.TeacherVoice.ENTRIES).get().then(function (snap) {
+          var out = []; snap.forEach(function (d) { out.push(d.data()); }); return out;
+        });
+    },
+    log: function (msg, err) { console.warn(msg, err); }
+  });
+  return tvReader;
+}
+function tvPaperKey() { return (typeof currentDocId !== 'undefined' && currentDocId) || ('epoch' + (typeof wsEpoch !== 'undefined' ? wsEpoch : 0)); }
+function tvSource(context) { return context === undefined ? (typeof wsMeta !== 'undefined' ? wsMeta : {}) : (context || {}); }
+/* The block for aiGrounding. With a question: the teacher's answer to it (or
+   to one like it). Without: this paper's answers. '' when there is none. */
+function tvBlock(kind, opts) {
+  var r = tvInit();
+  if (!r) return '';
+  var o = opts || {};
+  var src = tvSource(o.context);
+  var q = o.q ? String(o.q) : '';
+  var ctx = { q: q, lvl: src.level || '', sub: src.subject || '', key: tvPaperKey() };
+  // A question asked about now is fetched for the next time it is asked.
+  if (q && r.primeQuestion) r.primeQuestion(q, ctx).catch(function () {});
+  try { return r.block(kind, ctx); } catch (e) { return ''; }
+}
+function tvPrimeSoon() {
+  if (!tvInit()) return;
+  if (tvPrimeTimer) clearTimeout(tvPrimeTimer);
+  tvPrimeTimer = setTimeout(function () { tvPrimeTimer = null; tvPrime(); }, 900);
+}
+async function tvPrime() {
+  var r = tvInit();
+  if (!r || !pages || !pages.length) return 0;
+  var epoch = wsEpoch, key = tvPaperKey();
+  try {
+    if (isAdmin(currentUser)) await r.loadAll();
+    var texts = [];
+    for (var i = 0; i < pages.length && i < 40; i++) {
+      var p = pages[i];
+      if (!p || !p.page || typeof p.page.getTextContent !== 'function') continue;
+      var tc = await p.page.getTextContent();
+      texts.push((tc.items || []).map(function (it) { return it.str || ''; }).join(' '));
+      if (epoch !== wsEpoch) return 0;
+    }
+    return await r.primePaper(texts, { key: key, lvl: wsMeta.level, sub: wsMeta.subject, ws: docName });
+  } catch (e) { console.warn('📖 Answer book not primed', e); return 0; }
+}
+// A practice session's questions, fetched while the first one is read.
+function tvPrimeQuestions(list) {
+  var r = tvInit();
+  if (!r) return;
+  (list || []).slice(0, 20).forEach(function (m) {
+    if (m && m.question) r.primeQuestion(String(m.question), { lvl: m.level || '', sub: m.subject || '' }).catch(function () {});
+  });
+}
+function tvReset() { if (tvReader) tvReader.reset(); }
+/* ================= End answer book ================= */
+
 function aiGrounding(kind, opts) {
   /* Retrieve examples for the current question. A saved mistake supplies its
      own context; every route receives the learner guidance even without notes. */
@@ -5595,13 +5680,15 @@ function aiGrounding(kind, opts) {
   var guide = guidanceBlock(context);
   var notes = notesBlock(kind, context);
   var style = styleBlock(kind, q, context);
-  if (!guide && !notes && !style) return learner;
+  // 📖 The teacher's own answer to this question (or this paper's), word for word.
+  var voice = (typeof tvBlock === 'function') ? tvBlock(kind, opts) : '';
+  if (!guide && !notes && !style && !voice) return learner;
   var authority = kind === 'mark'
     ? "\n\nAUTHORITY ORDER: what the worksheet itself prints always wins — never mark against it. Then the general guidance above. Use the notes and the style for the keywords, the phrasing and the standard expected; fall back to ordinary syllabus knowledge only where they say nothing."
     : kind === 'hint'
       ? "\n\nAUTHORITY ORDER: what the worksheet itself prints or shows always wins — never contradict it, and what the student has already written on it is never evidence of anything. Then the general guidance above. Build the hint out of the notes and the style FIRST — the concept, the keywords and the wording are theirs — and fall back to ordinary syllabus knowledge only where they say nothing."
       : "\n\nAUTHORITY ORDER: what the worksheet itself prints or shows always wins — never contradict it. Then the general guidance above. Otherwise base the content AND the wording on the notes and the style, and fall back to ordinary syllabus knowledge only where they say nothing.";
-  return guide + notes + style + authority + learner;
+  return guide + notes + style + voice + authority + learner;
 }
 
 /* Whether what is about to be written is grounded on anything at all — said
@@ -24605,6 +24692,8 @@ function pracStart(ids, opts) {
   pracSizeBind();
   if (pracWin) pracWin.apply();
   pracRender();
+  // 📖 the teacher's own answers to these questions, fetched while the first is read
+  if (typeof tvPrimeQuestions === 'function') tvPrimeQuestions(ids.map(mistakeById));
   /* ✂️ Any of these still cut out as a whole page (or by the model's own
      guess) is cut again by its printed number, in the order they come up,
      while the student works on the first. */
@@ -29213,6 +29302,7 @@ async function openWorksheet(id) {
     renderHints();
     renderMarking();
     renderChat();
+    if (typeof tvPrimeSoon === 'function') tvPrimeSoon();   // 📖 the teacher's answers to this paper's questions
     showView('ws');
     keyAutoScan(false).then(function () {
       if (currentDocId === id && !wsKey.scanPending && keyHasAnything() && !wsKey.rows.length) keyRefreshRows(wsEpoch);
@@ -30016,6 +30106,7 @@ async function uploadOne(file, s, keyFile, solo) {
   wsMeta.level = level;
   wsMeta.subject = subject;
   wsMeta.guidance = s.grade;
+  if (typeof tvPrimeSoon === 'function') tvPrimeSoon();   // 📖 a paper the teacher has answered in Ans Key
   usageNote('upload', name);
   var id = db.collection(COLLECTION).doc().id;
   await storage.ref(STORAGE_DIR + '/' + id + '.pdf')
