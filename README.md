@@ -17,6 +17,15 @@ bank trials through the dedicated sample API. See [sample materials](docs/sample
 
 ---
 
+## v1.101.0 — 📖 Hints, marks and explanations follow the teacher's own answers
+
+Every answer Mr Chung writes in Ans Key is now kept, word for word, with its question, in one
+**answer book**. Study Buddy reads it: when a student asks for a hint, is marked, or asks why,
+the AI is handed the teacher's own answer to THAT question (or to the most similar one he has
+answered), so the help comes out in his keywords, his phrasing and his layout. The paper's own
+answers are fetched when a worksheet opens, a practice session's when it starts. Nothing a
+student writes is ever added to the book, and the hint ceiling still decides what may be said.
+
 ## v1.100.0 — ↔ A bigger practice window and 🔍 bigger diagrams
 
 - **Drag the practice window bigger.** ✏️ Practise (the mistake book, ⚡ Quick practice and the tracker's ▶ Practise)

@@ -2,6 +2,20 @@
 
 Guidance for Claude when working in this repo.
 
+## 📖 THE ANSWER BOOK — hints, marks and explanations in the teacher's own words (v1.101.0)
+
+`teacher-voice.js` (`window.TeacherVoice`) is **byte for byte the same file in polymathlc/anskey, tutor, cer and
+scan**; `tools/teacher-voice-tests.mjs` (also shared) compares the copies when siblings are checked out beside this
+repo. Ans Key is the ONLY writer (`users/{admin}/aiTraining/answerBook/entries`, `answerIndex-<bucket>`, `answerIndex`).
+- Glue `📖 THE ANSWER BOOK — the teacher's own answers (v1.101.0)` just above `aiGrounding`: `tvInit` (the reader:
+  `getDoc`; `listEntries` only for the teacher on their own account), `tvBlock(kind, opts)` (appended by
+  `aiGrounding` as `voice`; with `opts.q` it also primes that question for next time), `tvPrimeSoon` / `tvPrime`
+  (both worksheet doors: the pages' printed text → `primePaper`), `tvPrimeQuestions` (`pracStart`), `tvReset`
+  (`stopTeachingNotes`). Grounding stays SYNCHRONOUS: an unprimed question gets nothing this time, never a wait.
+- Nothing here writes to the book (the test fails on a write in the glue). The help ceiling still applies: the block
+  says what the teacher wrote, the rungs decide what may be said.
+- Checks: `node --test tools/tutor-voice-tests.mjs tools/teacher-voice-tests.mjs`.
+
 ## ↔ THE PRACTICE WINDOW RESIZES and 🔍 ITS PICTURES ZOOM (v1.100.0)
 
 Zhi Kai: "allow me to resize the window for the practice, also allow resizing of dgrams using +,- buttons".
